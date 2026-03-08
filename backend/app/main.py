@@ -137,49 +137,110 @@ class AdminURLRequest(BaseModel):
     url: str
     source_name: str
 
+@app.get("/api/admin/stats")
+def get_admin_stats():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM announcements")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT origin_source, COUNT(*) as cnt 
+        FROM announcements 
+        WHERE origin_source IS NOT NULL AND origin_source != ''
+        GROUP BY origin_source 
+        ORDER BY cnt DESC
+    """)
+    by_source = [{"source": r[0], "count": r[1]} for r in cursor.fetchall()]
+
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM admin_urls WHERE is_active = 1")
+    active_urls = cursor.fetchone()[0]
+
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "data": {
+            "total_announcements": total,
+            "by_source": by_source,
+            "user_count": user_count,
+            "active_manual_urls": active_urls,
+        }
+    }
+
+
 @app.get("/api/admin/system-sources")
 def get_system_sources():
     from app.services.public_api_service import gov_api_service
     is_live = gov_api_service.is_configured()
+
+    apis = [
+        {
+            "id": "kised-api", "name": "K-Startup 공식 API", "type": "API",
+            "status": "LIVE" if is_live else "SIMULATED",
+            "description": "중소벤처기업부 창업지원사업 통합 데이터"
+        },
+        {
+            "id": "msit-rnd-api", "name": "과기정통부 R&D 사업공고 API", "type": "API",
+            "status": "LIVE" if is_live else "SIMULATED",
+            "description": "과학기술정보통신부 국가R&D 사업공고 (data.go.kr)"
+        },
+        {
+            "id": "mss-api", "name": "중소벤처기업부 사업공고 API", "type": "API",
+            "status": "LIVE" if is_live else "SIMULATED",
+            "description": "중소벤처기업부 공식 사업공고 조회"
+        },
+        {
+            "id": "bizinfo-portal-api", "name": "기업마당 포털 API", "type": "API",
+            "status": "LIVE" if os.getenv("BIZINFO_PORTAL_KEY") else "KEY_REQUIRED",
+            "description": "기업마당 포털 직접 연동 API (bizinfoApi.do)"
+        },
+        {
+            "id": "smes24-api", "name": "중소벤처24 공고정보 API", "type": "API",
+            "status": "LIVE" if os.getenv("SMES24_API_TOKEN") else "KEY_REQUIRED",
+            "description": "중소벤처24 사업공고 (자격요건 구조화 데이터 포함)"
+        },
+        {
+            "id": "foodpolis-api", "name": "한국식품산업클러스터진흥원 API", "type": "API",
+            "status": "LIVE" if os.getenv("FOODPOLIS_API_KEY") else "KEY_REQUIRED",
+            "description": "식품산업 관련 사업공고 (foodpolis.kr)"
+        },
+    ]
+
+    scrapers = [
+        {
+            "id": "k-startup", "name": "K-Startup 스크래퍼", "type": "Scraper",
+            "status": "ACTIVE",
+            "description": "K-Startup 공고 목록 페이지 Playwright 크롤링"
+        },
+        {
+            "id": "msit", "name": "과기정통부 스크래퍼", "type": "Scraper",
+            "status": "ACTIVE",
+            "description": "과기정통부 공지사항 페이지 Playwright 크롤링"
+        },
+        {
+            "id": "mss", "name": "중기부 스크래퍼", "type": "Scraper",
+            "status": "ACTIVE",
+            "description": "중소벤처기업부 공고 게시판 Playwright 크롤링"
+        },
+        {
+            "id": "sbc", "name": "중진공 스크래퍼", "type": "Scraper",
+            "status": "ACTIVE",
+            "description": "중소벤처기업진흥공단 공고 Playwright 크롤링"
+        },
+        {
+            "id": "bizinfo-scraper", "name": "기업마당 스크래퍼", "type": "Scraper",
+            "status": "ACTIVE",
+            "description": "기업마당 공고 상세페이지 Playwright 크롤링"
+        },
+    ]
+
     return {
         "status": "SUCCESS",
-        "data": [
-            {
-                "id": "k-startup",
-                "name": "K-Startup 공식 API",
-                "type": "API",
-                "status": "LIVE" if is_live else "SIMULATED",
-                "description": "중소벤처기업부 창업지원사업 통합 데이터"
-            },
-            {
-                "id": "msit-rnd",
-                "name": "과기정통부 R&D 사업공고 API",
-                "type": "API",
-                "status": "LIVE" if is_live else "SIMULATED",
-                "description": "과학기술정보통신부 국가R&D 사업공고 (data.go.kr 15074634)"
-            },
-            {
-                "id": "bizinfo",
-                "name": "기업마당 (Bizinfo)",
-                "type": "Portal API",
-                "status": "LIVE (API)",
-                "description": "기업마당 포털 직접 연동 API (bizinfoApi.do) 실시간 수집"
-            },
-            {
-                "id": "smes24",
-                "name": "중소벤처24 공고정보 API",
-                "type": "API",
-                "status": "LIVE" if os.getenv("SMES24_API_TOKEN") else "KEY_REQUIRED",
-                "description": "중소벤처24 사업공고 (자격요건 구조화 데이터 포함)"
-            },
-            {
-                "id": "foodpolis",
-                "name": "한국식품산업클러스터진흥원 API",
-                "type": "API",
-                "status": "LIVE" if os.getenv("FOODPOLIS_API_KEY") else "KEY_REQUIRED",
-                "description": "식품산업 관련 사업공고 (foodpolis.kr)"
-            }
-        ]
+        "data": { "apis": apis, "scrapers": scrapers }
     }
 
 @app.get("/api/admin/urls")

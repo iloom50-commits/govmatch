@@ -1,7 +1,7 @@
 "use client";
 
 import ResultCard from "./ResultCard";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import NotificationModal from "./NotificationModal";
 
 interface MatchItem {
@@ -14,19 +14,82 @@ interface MatchItem {
     summary_text: string;
     origin_url?: string;
     url?: string;
+    category?: string;
+    department?: string;
+    origin_source?: string;
 }
+
+const TAB_GROUPS: { label: string; key: string; categories: string[] }[] = [
+  { label: "전체", key: "all", categories: [] },
+  { label: "창업지원", key: "startup", categories: ["Entrepreneurship", "Small Business/Startup"] },
+  { label: "R&D/기술", key: "rnd", categories: ["R&D", "R&D/Digital"] },
+  { label: "자금/융자", key: "loan", categories: ["Loan/Investment"] },
+  { label: "경영/판로", key: "biz", categories: ["Marketing", "General Business Support", "SME Support", "General"] },
+  { label: "특화산업", key: "special", categories: ["Food Industry"] },
+];
+
+type SortKey = "score" | "deadline" | "latest";
 
 export default function Dashboard({ matches, profile, onEditProfile, onLogout }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("score");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+
+  const filteredMatches = useMemo(() => {
+    let result = [...matches];
+
+    if (activeTab !== "all") {
+      const group = TAB_GROUPS.find(t => t.key === activeTab);
+      if (group) {
+        result = result.filter(m => {
+          const cat = (m.category || "").trim();
+          return group.categories.some(gc =>
+            cat.toLowerCase().includes(gc.toLowerCase())
+          );
+        });
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(m =>
+        (m.title || "").toLowerCase().includes(q) ||
+        (m.summary_text || "").toLowerCase().includes(q) ||
+        (m.department || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (sortKey === "score") {
+      result.sort((a, b) => b.match_score - a.match_score);
+    } else if (sortKey === "deadline") {
+      result.sort((a, b) => {
+        if (!a.deadline_date) return 1;
+        if (!b.deadline_date) return -1;
+        return new Date(a.deadline_date).getTime() - new Date(b.deadline_date).getTime();
+      });
+    }
+
+    return result;
+  }, [matches, activeTab, searchQuery, sortKey]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: matches.length };
+    TAB_GROUPS.forEach(g => {
+      if (g.key === "all") return;
+      counts[g.key] = matches.filter(m => {
+        const cat = (m.category || "").trim();
+        return g.categories.some(gc => cat.toLowerCase().includes(gc.toLowerCase()));
+      }).length;
+    });
+    return counts;
+  }, [matches]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-4 md:px-0">
       
-      {/* Refined Sidebar: Expert Density */}
       <aside className="space-y-6">
         <div className="glass p-6 md:p-7 rounded-[2rem] space-y-8 shadow-xl lg:sticky lg:top-8 overflow-hidden group/sidebar border border-white/40">
-          {/* Subtle Glow */}
           <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full group-hover/sidebar:bg-indigo-500/15 transition-all duration-1000 pointer-events-none" />
           
           <div className="flex items-center gap-4 relative z-10">
@@ -80,53 +143,118 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
         </div>
       </aside>
 
-      {/* Results Content Area */}
       <main className="space-y-10 lg:pb-16">
-        <header className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 md:gap-7">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="h-px bg-indigo-200 w-8" />
-              <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.3em]">AI 지원금 추천 엔진</p>
+        <header className="space-y-5">
+          <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 md:gap-7">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="h-px bg-indigo-200 w-8" />
+                <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.3em]">AI 지원금 추천 엔진</p>
+              </div>
+              <h2 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight whitespace-nowrap">
+                맞춤형 <span className="text-indigo-600 italic">지원사업 매칭</span>
+              </h2>
             </div>
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight whitespace-nowrap">
-              맞춤형 <span className="text-indigo-600 italic">지원사업 매칭</span>
-            </h2>
           </div>
-          
-          <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1 rounded-xl border border-white/80 shadow-sm self-start xl:self-auto">
-            {["전체", "금융지원", "인력지원"].map((tab, idx) => (
-              <button 
-                key={idx}
-                onClick={() => setActiveTab(tab === "전체" ? "all" : tab)}
-                className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all duration-500 ${activeTab === (tab === "전체" ? "all" : tab) ? "bg-slate-950 text-white shadow-md scale-105" : "text-slate-500 hover:bg-slate-50"}`}
-              >
-                {tab}
-              </button>
-            ))}
+
+          {/* Search + Sort */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">🔍</span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="공고명, 부처명으로 검색..."
+                className="w-full pl-10 pr-4 py-3 bg-white/70 backdrop-blur-md border border-white/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-300 transition-all shadow-sm font-medium"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+              )}
+            </div>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="px-4 py-3 bg-white/70 backdrop-blur-md border border-white/80 rounded-xl text-sm text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 shadow-sm cursor-pointer"
+            >
+              <option value="score">적합도순</option>
+              <option value="deadline">마감임박순</option>
+            </select>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-xl border border-white/80 shadow-sm overflow-x-auto">
+            {TAB_GROUPS.map((tab) => {
+              const count = tabCounts[tab.key] || 0;
+              if (tab.key !== "all" && count === 0) return null;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-black transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
+                    activeTab === tab.key
+                      ? "bg-slate-950 text-white shadow-md"
+                      : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                    activeTab === tab.key
+                      ? "bg-white/20 text-white/80"
+                      : "bg-slate-100 text-slate-400"
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Result count */}
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+            <span className="text-[10px] font-bold text-slate-500">
+              총 <span className="text-indigo-600 font-black">{filteredMatches.length}</span>건 매칭
+              {searchQuery && <span className="text-slate-400"> (검색: &ldquo;{searchQuery}&rdquo;)</span>}
+            </span>
           </div>
         </header>
 
-        {matches.length === 0 ? (
+        {filteredMatches.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 md:py-20 px-8 text-center bg-white/40 backdrop-blur-xl rounded-[2.5rem] border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-3xl mb-6 animate-pulse">🔍</div>
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 mb-4">맞춤형 공고가 아직 없습니다</h2>
+            <h2 className="text-xl md:text-2xl font-black text-slate-900 mb-4">
+              {matches.length === 0 ? "맞춤형 공고가 아직 없습니다" : "조건에 맞는 공고가 없습니다"}
+            </h2>
             <p className="text-xs md:text-base text-slate-500 max-w-lg mx-auto mb-8 font-medium leading-relaxed">
-              국가기관의 최신 공고 데이터를 실시간으로 분석하고 있습니다.<br className="hidden md:block" />잠시 후 다시 시도하시거나 알림 설정을 켜주세요.
+              {matches.length === 0
+                ? <>국가기관의 최신 공고 데이터를 실시간으로 분석하고 있습니다.<br className="hidden md:block" />잠시 후 다시 시도하시거나 알림 설정을 켜주세요.</>
+                : "검색어나 필터 조건을 변경해 보세요."
+              }
             </p>
-            <button 
-              onClick={() => setIsNotifyOpen(true)}
-              className="px-8 py-3.5 bg-slate-950 text-white rounded-xl font-black hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
-            >
-              알림 받기 설정
-            </button>
+            {matches.length === 0 ? (
+              <button 
+                onClick={() => setIsNotifyOpen(true)}
+                className="px-8 py-3.5 bg-slate-950 text-white rounded-xl font-black hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+              >
+                알림 받기 설정
+              </button>
+            ) : (
+              <button 
+                onClick={() => { setActiveTab("all"); setSearchQuery(""); }}
+                className="px-8 py-3.5 bg-slate-950 text-white rounded-xl font-black hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+              >
+                필터 초기화
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-7">
-            {matches.map((res, idx) => (
+            {filteredMatches.map((res, idx) => (
               <div 
-                key={idx} 
+                key={res.announcement_id ?? idx} 
                 className={`${idx === 0 ? "sm:col-span-2" : ""} animate-in fade-in slide-in-from-bottom-6 duration-700`}
-                style={{ animationDelay: `${idx * 100}ms` }}
+                style={{ animationDelay: `${idx * 80}ms` }}
               >
                 <ResultCard res={res} isCompact={idx !== 0} />
               </div>
@@ -156,16 +284,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4">
                 <button 
-                  onClick={() => alert('내 기업에 꼭 필요한 사업이 있나요? 제안 주시면 빠르게 검토하겠습니다! 💡')}
+                  onClick={() => setIsNotifyOpen(true)}
                   className="w-full sm:w-auto px-8 py-4 bg-white text-slate-950 rounded-xl font-black shadow-lg hover:scale-105 transition-all text-xs md:text-sm"
                 >
-                  📍 지원사업 제안하기
+                  🔔 알림 설정
                 </button>
                 <button 
-                  onClick={() => alert('전문가 맞춤 컨설팅 서비스가 준비 중입니다. 🎯')}
+                  onClick={onEditProfile}
                   className="w-full sm:w-auto px-8 py-4 bg-white/5 text-white rounded-xl font-black border border-white/10 hover:bg-white/10 transition-all text-xs md:text-sm"
                 >
-                  맞춤형 컨설팅 허브
+                  기업 정보 수정
                 </button>
               </div>
             </div>
@@ -173,7 +301,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
         </section>
       </main>
 
-      {/* Notification Settings Modal */}
       <NotificationModal 
         isOpen={isNotifyOpen} 
         onClose={() => setIsNotifyOpen(false)}

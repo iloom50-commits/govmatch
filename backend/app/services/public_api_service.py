@@ -181,13 +181,14 @@ class GovernmentAPIService:
                 url = cols.get("biz_aply_url") or cols.get("biz_gdnc_url") or cols.get("detlUrl")
                 
                 if title and url:
-                    # Handle domain-only URLs
                     if not url.startswith("http"):
-                        if "k-startup.go.kr" in url:
-                            url = "https://www.k-startup.go.kr"
-                        else:
-                            url = f"https://{url}"
-                    
+                        url = f"https://{url}"
+
+                    # K-Startup 도메인만 있는 경우 공고 ID로 상세 URL 구성
+                    pbanc_sn = cols.get("pbancSn") or cols.get("pbanc_sn")
+                    if url.rstrip("/") in ("https://www.k-startup.go.kr", "http://www.k-startup.go.kr") and pbanc_sn:
+                        url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
+
                     mapped.append({
                         "title": title,
                         "url": url,
@@ -205,15 +206,17 @@ class GovernmentAPIService:
     def _map_kised_fields(self, items):
         mapped = []
         for item in items:
-            # Field names as per data.go.kr 'getAnnouncementInformation01':
-            # pbancNm: 공고명
-            # detlUrl: 상세페이지 URL
-            # pbancCn: 공고내용
-            # pbancDeptNm: 부서명/기관명
             title = item.get("pbancNm") or item.get("title")
             url = item.get("detlUrl") or item.get("link")
             
             if title and url:
+                if not url.startswith("http"):
+                    url = f"https://{url}"
+
+                pbanc_sn = item.get("pbancSn") or item.get("pbanc_sn")
+                if url.rstrip("/") in ("https://www.k-startup.go.kr", "http://www.k-startup.go.kr") and pbanc_sn:
+                    url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
+
                 mapped.append({
                     "title": title,
                     "url": url,

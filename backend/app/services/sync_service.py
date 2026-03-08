@@ -11,6 +11,29 @@ from app.services.admin_scraper import admin_scraper
 from app.services.scrapers.bizinfo import BizinfoScraper
 from app.services.ai_service import ai_service
 
+DOMAIN_ONLY_BLOCKLIST = {
+    "https://www.k-startup.go.kr",
+    "http://www.k-startup.go.kr",
+    "https://www.mss.go.kr",
+    "https://www.sbc.or.kr",
+    "https://www.bizinfo.go.kr",
+    "https://www.msit.go.kr",
+    "https://www.foodpolis.kr",
+}
+
+def _is_valid_detail_url(url: str) -> bool:
+    if not url or not url.startswith("http"):
+        return False
+    if "#" in url and url.split("#")[1] in ("", "view"):
+        return False
+    if "main.do" in url:
+        return False
+    stripped = url.rstrip("/")
+    if stripped in DOMAIN_ONLY_BLOCKLIST:
+        return False
+    return True
+
+
 class SyncService:
     """모든 스크래퍼 및 공식 API를 총괄하고 데이터를 동기화하는 서비스"""
     
@@ -79,7 +102,10 @@ class SyncService:
         
         for item in results:
             try:
-                # 1. 중복 체크 및 신규 여부 확정 (Deduplication)
+                if not _is_valid_detail_url(item.get('url', '')):
+                    print(f"  ⏩ Skipping invalid URL: {item.get('title', '')[:30]} -> {item.get('url', '')}")
+                    continue
+
                 cursor.execute("SELECT announcement_id FROM announcements WHERE origin_url = ?", (item['url'],))
                 exists = cursor.fetchone()
                 

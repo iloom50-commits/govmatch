@@ -45,17 +45,37 @@ class MSSScraper(EnhancedBaseScraper):
                         href = link.get('href', '')
                         text = link.get_text(strip=True)
                         if len(text) > 10 and ('공고' in text or '지원' in text or '사업' in text):
-                            if not href.startswith('http'):
-                                href = self.BASE_URL + (href if href.startswith('/') else f"/{href}")
-                            announcements.append({'title': text, 'url': href})
+                            if href and not href.startswith('#') and href != 'javascript:void(0)':
+                                if not href.startswith('http'):
+                                    href = self.BASE_URL + (href if href.startswith('/') else f"/{href}")
+                                announcements.append({'title': text, 'url': href, 'click': False})
+                            else:
+                                announcements.append({'title': text, 'url': '', 'click': True})
             
             print(f"Found {len(announcements)} potential MSS links. Processing top 5...")
 
-            for ann in announcements[:5]:
+            for idx, ann in enumerate(announcements[:5]):
                 try:
-                    await page.goto(ann['url'], wait_until="domcontentloaded", timeout=30000)
+                    if ann['click']:
+                        selector = f"table tbody tr:nth-child({idx + 2}) a"
+                        link_el = page.locator(selector).first
+                        if await link_el.count() == 0:
+                            continue
+                        async with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
+                            await link_el.click()
+                        await page.wait_for_timeout(1500)
+                    else:
+                        await page.goto(ann['url'], wait_until="domcontentloaded", timeout=30000)
+
+                    actual_url = page.url
+                    if actual_url.rstrip('/') == self.BASE_URL.rstrip('/') or '#' in actual_url:
+                        print(f"  ⏩ Skipped (invalid detail URL): {ann['title'][:30]}")
+                        await page.goto(self.LIST_URL, wait_until="domcontentloaded", timeout=30000)
+                        await page.wait_for_timeout(1000)
+                        continue
+
                     detail_html = await page.content()
-                    parsed_info = self.parser.parse(detail_html, ann['url'])
+                    parsed_info = self.parser.parse(detail_html, actual_url)
                     
                     program_data = {
                         "title": ann['title'],
@@ -63,21 +83,27 @@ class MSSScraper(EnhancedBaseScraper):
                         "department": "중소벤처기업부",
                         "category": "SME Support",
                         "region": "All",
-                        "url": ann['url'],
+                        "url": actual_url,
                         "status": "Open",
                         "origin_source": "mss"
                     }
                     
-                    # AI 구조화
                     eligibility = await ai_service.extract_structured_eligibility(program_data["description"])
                     if eligibility:
                         program_data["eligibility_logic"] = eligibility
                     
                     results.append(program_data)
                     print(f"  ✅ Scraped & Analyzed: {ann['title'][:30]}")
+
+                    await page.goto(self.LIST_URL, wait_until="domcontentloaded", timeout=30000)
+                    await page.wait_for_timeout(1000)
                     
                 except Exception as e:
                     print(f"  ❌ Error processing MSS item: {e}")
+                    try:
+                        await page.goto(self.LIST_URL, wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
             
             await self.close_browser()
 

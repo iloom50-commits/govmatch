@@ -28,11 +28,10 @@ const TAB_GROUPS: { label: string; key: string; categories: string[] }[] = [
   { label: "특화산업", key: "special", categories: ["Food Industry"] },
 ];
 
-type SortKey = "score" | "deadline" | "latest";
+type SortKey = "score" | "deadline";
 
 export default function Dashboard({ matches, profile, onEditProfile, onLogout }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
 
@@ -51,15 +50,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
       }
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      result = result.filter(m =>
-        (m.title || "").toLowerCase().includes(q) ||
-        (m.summary_text || "").toLowerCase().includes(q) ||
-        (m.department || "").toLowerCase().includes(q)
-      );
-    }
-
     if (sortKey === "score") {
       result.sort((a, b) => b.match_score - a.match_score);
     } else if (sortKey === "deadline") {
@@ -71,7 +61,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
     }
 
     return result;
-  }, [matches, activeTab, searchQuery, sortKey]);
+  }, [matches, activeTab, sortKey]);
 
   const tabCounts = useMemo(() => {
     const counts: Record<string, number> = { all: matches.length };
@@ -157,33 +147,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
             </div>
           </div>
 
-          {/* Search + Sort */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">🔍</span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="공고명, 부처명으로 검색..."
-                className="w-full pl-10 pr-4 py-3 bg-white/70 backdrop-blur-md border border-white/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-300 transition-all shadow-sm font-medium"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
-              )}
-            </div>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="px-4 py-3 bg-white/70 backdrop-blur-md border border-white/80 rounded-xl text-sm text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/30 shadow-sm cursor-pointer"
-            >
-              <option value="score">적합도순</option>
-              <option value="deadline">마감임박순</option>
-            </select>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-xl border border-white/80 shadow-sm overflow-x-auto">
+          {/* Tabs + Sort toggle */}
+          <div className="flex items-center gap-2 bg-white/60 backdrop-blur-md p-1.5 rounded-xl border border-white/80 shadow-sm overflow-x-auto">
             {TAB_GROUPS.map((tab) => {
               const count = tabCounts[tab.key] || 0;
               if (tab.key !== "all" && count === 0) return null;
@@ -208,6 +173,27 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
                 </button>
               );
             })}
+
+            <div className="ml-auto flex-shrink-0 h-6 w-px bg-slate-200" />
+
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {([
+                { key: "score" as SortKey, label: "적합도" },
+                { key: "deadline" as SortKey, label: "마감임박" },
+              ]).map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setSortKey(s.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all duration-300 whitespace-nowrap ${
+                    sortKey === s.key
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-slate-400 hover:bg-slate-50"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Result count */}
@@ -215,7 +201,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
             <span className="text-[10px] font-bold text-slate-500">
               총 <span className="text-indigo-600 font-black">{filteredMatches.length}</span>건 매칭
-              {searchQuery && <span className="text-slate-400"> (검색: &ldquo;{searchQuery}&rdquo;)</span>}
             </span>
           </div>
         </header>
@@ -229,7 +214,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
             <p className="text-xs md:text-base text-slate-500 max-w-lg mx-auto mb-8 font-medium leading-relaxed">
               {matches.length === 0
                 ? <>국가기관의 최신 공고 데이터를 실시간으로 분석하고 있습니다.<br className="hidden md:block" />잠시 후 다시 시도하시거나 알림 설정을 켜주세요.</>
-                : "검색어나 필터 조건을 변경해 보세요."
+                : "다른 카테고리 탭을 선택해 보세요."
               }
             </p>
             {matches.length === 0 ? (
@@ -241,10 +226,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
               </button>
             ) : (
               <button 
-                onClick={() => { setActiveTab("all"); setSearchQuery(""); }}
+                onClick={() => setActiveTab("all")}
                 className="px-8 py-3.5 bg-slate-950 text-white rounded-xl font-black hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
               >
-                필터 초기화
+                전체 보기
               </button>
             )}
           </div>

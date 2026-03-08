@@ -136,15 +136,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
       <main className="space-y-10 lg:pb-16">
         <header className="space-y-5">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 md:gap-7">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2.5">
-                <div className="h-px bg-indigo-200 w-8" />
-                <p className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.3em]">AI 지원금 추천 엔진</p>
-              </div>
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight whitespace-nowrap">
-                맞춤형 <span className="text-indigo-600 italic">지원사업 매칭</span>
-              </h2>
-            </div>
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight whitespace-nowrap">
+              AI 맞춤 <span className="text-indigo-600 italic">정부지원금 매칭</span>
+            </h2>
           </div>
 
           {/* Tabs + Sort toggle */}

@@ -178,9 +178,9 @@ export default function Home() {
       {/* Hero Header (Hidden when results match) */}
       {(step === "IDLE" || step === "ONBOARDING") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
-           <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 mb-2 tracking-tighter italic">AI 매칭 비서</h1>
+           <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 mb-2 tracking-tighter">AI 맞춤 <span className="text-indigo-600 italic">정부지원금 매칭</span></h1>
            <p className="text-slate-500 text-xs md:text-sm max-w-sm mx-auto font-medium leading-relaxed px-4 opacity-80">
-             가장 빠르고 정확한 실시간 <br className="md:hidden" /> 우리 기업 맞춤형 지원사업 매칭
+             우리 기업에 딱 맞는 정부지원금을 <br className="md:hidden" /> AI가 자동으로 찾아드립니다
            </p>
         </div>
       )}
@@ -207,7 +207,7 @@ export default function Home() {
 
       {step !== "RESULTS" && (
         <footer className="mt-8 md:mt-10 text-slate-400 text-[9px] font-black tracking-[0.2em] md:tracking-[0.2em] uppercase opacity-40">
-          &copy; 2026 AI 매칭 비서 (MVP 정식 버전)
+          &copy; 2026 AI 맞춤 정부지원금 매칭
         </footer>
       )}
     </main>

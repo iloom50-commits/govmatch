@@ -1,0 +1,9 @@
+fastapi>=0.129.0
+uvicorn>=0.41.0
+google-generativeai>=0.8.5
+python-dotenv>=1.0.1
+playwright>=1.56.0
+beautifulsoup4>=4.14.0
+requests>=2.32.0
+httpx>=0.28.0
+pydantic>=2.12.0

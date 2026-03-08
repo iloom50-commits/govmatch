@@ -1,0 +1,44 @@
+# Database
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+
+# Environment
+.env
+.env.local
+backend/.env
+frontend/.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Temp/Debug files
+backend/_*.py
+attachments/
+*.log
+*.zip
+
+# Screenshots/Images (test artifacts)
+e2e_*.png
+matching_*.png

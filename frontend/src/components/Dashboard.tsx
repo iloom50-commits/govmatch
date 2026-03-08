@@ -190,13 +190,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout }:
             </div>
           </div>
 
-          {/* Result count */}
-          <div className="flex items-center gap-2 px-1">
-            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-            <span className="text-[10px] font-bold text-slate-500">
-              총 <span className="text-indigo-600 font-black">{filteredMatches.length}</span>건 매칭
-            </span>
-          </div>
         </header>
 
         {filteredMatches.length === 0 ? (

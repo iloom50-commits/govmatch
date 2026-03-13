@@ -88,7 +88,7 @@ def _delete_expired_announcements():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM announcements WHERE deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE")
         row = cur.fetchone()
-        count = row[0] if row else 0
+        count = row["count"] if row else 0
         if count > 0:
             cur.execute("DELETE FROM announcements WHERE deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE")
             conn.commit()
@@ -579,7 +579,7 @@ def get_admin_stats():
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM announcements")
-    total = cursor.fetchone()[0]
+    total = cursor.fetchone()["count"]
 
     cursor.execute("""
         SELECT origin_source, COUNT(*) as cnt
@@ -591,10 +591,10 @@ def get_admin_stats():
     by_source = [{"source": r["origin_source"], "count": r["cnt"]} for r in cursor.fetchall()]
 
     cursor.execute("SELECT COUNT(*) FROM users")
-    user_count = cursor.fetchone()[0]
+    user_count = cursor.fetchone()["count"]
 
-    cursor.execute("SELECT COUNT(*) FROM admin_urls WHERE is_active = 1")
-    active_urls = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM admin_urls WHERE is_active = true")
+    active_urls = cursor.fetchone()["count"]
 
     conn.close()
     return {

@@ -186,9 +186,12 @@ def get_matches_for_user(user_profile):
     # 업력 계산
     est_date_str = user_profile.get("establishment_date", "2020-01-01")
     try:
-        est_date = datetime.datetime.strptime(est_date_str, "%Y-%m-%d")
-    except ValueError:
-        est_date = datetime.datetime.strptime("2020-01-01", "%Y-%m-%d")
+        if isinstance(est_date_str, (datetime.date, datetime.datetime)):
+            est_date = datetime.datetime(est_date_str.year, est_date_str.month, est_date_str.day)
+        else:
+            est_date = datetime.datetime.strptime(str(est_date_str), "%Y-%m-%d")
+    except (ValueError, AttributeError):
+        est_date = datetime.datetime(2020, 1, 1)
     today = datetime.date.today()
     company_age = today.year - est_date.year - ((today.month, today.day) < (est_date.month, est_date.day))
 
@@ -388,7 +391,11 @@ def get_matches_for_user(user_profile):
         # F. 마감일 가중치 (최대 5점)
         if ad.get("deadline_date"):
             try:
-                deadline = datetime.datetime.strptime(ad["deadline_date"], "%Y-%m-%d").date()
+                deadline_val = ad["deadline_date"]
+                if isinstance(deadline_val, (datetime.date, datetime.datetime)):
+                    deadline = deadline_val if isinstance(deadline_val, datetime.date) else deadline_val.date()
+                else:
+                    deadline = datetime.datetime.strptime(str(deadline_val), "%Y-%m-%d").date()
                 days_left = (deadline - today).days
                 if days_left < 0:
                     continue  # 만료 공고 제외

@@ -44,11 +44,25 @@ def get_db_connection():
 
 
 def init_database():
-    """DB 연결 확인 (테이블은 Supabase SQL Editor에서 미리 생성됨)"""
+    """DB 연결 확인 + 누락 테이블 자동 생성"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
+
+        # notification_settings 테이블이 없으면 자동 생성 (SQLite→PostgreSQL 마이그레이션 대비)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                id SERIAL PRIMARY KEY,
+                business_number VARCHAR(20) UNIQUE NOT NULL,
+                email VARCHAR(100),
+                phone_number VARCHAR(20),
+                channel VARCHAR(20) DEFAULT 'email',
+                is_active BOOLEAN DEFAULT true,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
     except Exception as e:
@@ -1097,6 +1111,8 @@ def api_save_notification_settings(settings: NotificationSettings):
         conn.commit()
         return {"status": "SUCCESS", "message": "알림 설정이 저장되었습니다."}
     except Exception as e:
+        conn.rollback()
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
@@ -1123,7 +1139,7 @@ def api_get_notification_settings(bn: str):
                 "email": "",
                 "phone_number": "",
                 "channel": "BOTH",
-                "is_active": 1
+                "is_active": True
             }
         }
 

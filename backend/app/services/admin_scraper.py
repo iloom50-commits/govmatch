@@ -111,7 +111,7 @@ class AdminScraper:
         conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM admin_urls WHERE is_active = 1")
+        cursor.execute("SELECT * FROM admin_urls WHERE is_active = true")
         targets = cursor.fetchall()
         print(f"Starting Admin Targeted Scrape for {len(targets)} URLs...")
 

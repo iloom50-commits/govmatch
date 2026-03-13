@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, date
 
 # 지역명 정규화: AI가 다양한 형태로 추출하는 지역명을 표준화
 REGION_NORMALIZE = {
@@ -36,7 +36,11 @@ class RuleEngine:
         company_years = None
         if profile.get("establishment_date"):
             try:
-                est_date = datetime.strptime(profile["establishment_date"], "%Y-%m-%d")
+                est_val = profile["establishment_date"]
+                if isinstance(est_val, (date, datetime)):
+                    est_date = datetime(est_val.year, est_val.month, est_val.day)
+                else:
+                    est_date = datetime.strptime(str(est_val), "%Y-%m-%d")
                 company_years = (datetime.now() - est_date).days / 365.25
             except (ValueError, TypeError):
                 pass

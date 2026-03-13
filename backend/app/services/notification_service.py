@@ -42,7 +42,7 @@ class NotificationService:
             FROM users u
             LEFT JOIN notification_settings ns ON u.business_number = ns.business_number
             LEFT JOIN push_subscriptions ps ON u.business_number = ps.business_number
-            WHERE (ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
+            WHERE (ns.is_active = true AND ns.email IS NOT NULL AND ns.email != '')
                OR ps.id IS NOT NULL
         """)
         users = cursor.fetchall()
@@ -59,7 +59,11 @@ class NotificationService:
         user_years = 0
         if user['establishment_date']:
             try:
-                est_date = datetime.datetime.strptime(str(user['establishment_date'])[:10], "%Y-%m-%d")
+                est_val = user['establishment_date']
+                if isinstance(est_val, (datetime.date, datetime.datetime)):
+                    est_date = datetime.datetime(est_val.year, est_val.month, est_val.day)
+                else:
+                    est_date = datetime.datetime.strptime(str(est_val)[:10], "%Y-%m-%d")
                 today = datetime.datetime.now()
                 user_years = (today - est_date).days // 365
             except Exception:

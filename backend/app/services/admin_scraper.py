@@ -108,6 +108,10 @@ class AdminScraper:
         self.database_url = database_url
 
     async def run_all(self):
+        if not PLAYWRIGHT_AVAILABLE:
+            print("Playwright not installed — skipping admin scrape (cloud mode)")
+            return
+
         conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
 

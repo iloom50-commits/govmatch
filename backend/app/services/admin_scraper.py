@@ -4,7 +4,12 @@ import psycopg2.extras
 import asyncio
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
-from playwright.async_api import async_playwright
+try:
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    async_playwright = None
+    PLAYWRIGHT_AVAILABLE = False
 from bs4 import BeautifulSoup
 from app.services.ai_service import ai_service
 from app.config import DATABASE_URL

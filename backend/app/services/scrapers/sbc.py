@@ -1,7 +1,13 @@
 from .base_enhanced import EnhancedBaseScraper
 from typing import List, Dict
 from datetime import datetime
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+try:
+    from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    async_playwright = None
+    PlaywrightTimeout = Exception
+    PLAYWRIGHT_AVAILABLE = False
 from bs4 import BeautifulSoup
 from app.services.ai_service import ai_service
 from app.services.scrapers.smart_html_parser import SmartHTMLParser

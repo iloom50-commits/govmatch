@@ -1,4 +1,7 @@
-from playwright.async_api import async_playwright
+try:
+    from playwright.async_api import async_playwright
+except ImportError:
+    async_playwright = None
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 import asyncio

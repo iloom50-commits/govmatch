@@ -52,8 +52,7 @@ def init_database():
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
     except Exception as e:
-        print(f"  DB connection error: {e}")
-        raise
+        print(f"  DB connection error (app will continue): {e}")
 
 
 init_database()

@@ -627,7 +627,7 @@ def get_admin_stats():
     cursor.execute("SELECT COUNT(*) FROM users")
     user_count = cursor.fetchone()["count"]
 
-    cursor.execute("SELECT COUNT(*) FROM admin_urls WHERE is_active = true")
+    cursor.execute("SELECT COUNT(*) FROM admin_urls WHERE is_active = 1")
     active_urls = cursor.fetchone()["count"]
 
     conn.close()

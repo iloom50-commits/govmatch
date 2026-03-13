@@ -42,7 +42,7 @@ class NotificationService:
             FROM users u
             LEFT JOIN notification_settings ns ON u.business_number = ns.business_number
             LEFT JOIN push_subscriptions ps ON u.business_number = ps.business_number
-            WHERE (ns.is_active = true AND ns.email IS NOT NULL AND ns.email != '')
+            WHERE (ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
                OR ps.id IS NOT NULL
         """)
         users = cursor.fetchall()

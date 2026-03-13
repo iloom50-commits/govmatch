@@ -1,25 +1,27 @@
-import sqlite3  # Using sqlite3 for mock/initial local testing, can be swapped for psycopg2
+import psycopg2
+import psycopg2.extras
+from app.config import DATABASE_URL
 
-def check_duplicate_url(input_url, db_path="gov_matching.db"):
+def check_duplicate_url(input_url, database_url=DATABASE_URL):
     """
     Check if the input URL already exists in the announcements table.
     """
     try:
-        conn = sqlite3.connect(db_path)
+        conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
-        
+
         # SQL query to check existence
-        query = "SELECT announcement_id FROM announcements WHERE origin_url = ?"
+        query = "SELECT announcement_id FROM announcements WHERE origin_url = %s"
         cursor.execute(query, (input_url,))
         result = cursor.fetchone()
-        
+
         conn.close()
-        
+
         if result:
             return {
                 "status": "ALREADY_EXISTS",
                 "message": "이미 분석된 공고입니다.",
-                "data": {"announcement_id": result[0]}
+                "data": {"announcement_id": result["announcement_id"]}
             }
         else:
             return {

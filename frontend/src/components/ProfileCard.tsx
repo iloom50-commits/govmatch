@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useToast } from "@/components/ui/Toast";
 
 interface ProfileCardProps {
   data: any;
@@ -10,6 +11,7 @@ interface ProfileCardProps {
 }
 
 export default function ProfileCard({ data, onConfirm, onLogout, onClose }: ProfileCardProps) {
+  const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [isRecommending, setIsRecommending] = useState(false);
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -412,11 +414,11 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
             <button 
               onClick={() => {
                 if (step === 2 && (!formData.company_name || !formData.establishment_date)) {
-                  alert("상호명과 설립일을 모두 입력해 주세요.");
+                  toast("상호명과 설립일을 모두 입력해 주세요.", "error");
                   return;
                 }
                 if (step === 3 && !formData.industry_code) {
-                  alert("정확한 매칭을 위해 업종 코드를 입력해 주세요.");
+                  toast("정확한 매칭을 위해 업종 코드를 입력해 주세요.", "error");
                   return;
                 }
                 if (step < 5) {

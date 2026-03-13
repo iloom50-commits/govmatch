@@ -1,17 +1,17 @@
 import google.generativeai as genai
 import os
 import json
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+from app.config import DATABASE_URL
 
 load_dotenv()
-
-DB_PATH = "gov_matching.db"
 
 
 class NotificationService:
@@ -34,15 +34,16 @@ class NotificationService:
         return bool(self.smtp_user and self.smtp_password)
 
     async def get_target_users(self):
-        """알림 활성화된 사용자 + 이메일 주소가 있는 사용자만 조회"""
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        """푸시 구독이 있거나 이메일 알림이 활성화된 사용자만 조회"""
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT u.*, ns.email AS notify_email, ns.channel, ns.is_active AS notify_active
+            SELECT DISTINCT u.*, ns.email AS notify_email, ns.channel, ns.is_active AS notify_active
             FROM users u
             LEFT JOIN notification_settings ns ON u.business_number = ns.business_number
-            WHERE ns.is_active = 1 OR ns.is_active IS NULL
+            LEFT JOIN push_subscriptions ps ON u.business_number = ps.business_number
+            WHERE (ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
+               OR ps.id IS NOT NULL
         """)
         users = cursor.fetchall()
         conn.close()
@@ -50,8 +51,7 @@ class NotificationService:
 
     async def get_filtered_programs(self, user):
         """사용자 프로필 기반 DB 레벨 1차 필터링"""
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
 
         user_loc = user['address_city'] if user['address_city'] else '전국'
@@ -59,7 +59,7 @@ class NotificationService:
         user_years = 0
         if user['establishment_date']:
             try:
-                est_date = datetime.datetime.strptime(user['establishment_date'][:10], "%Y-%m-%d")
+                est_date = datetime.datetime.strptime(str(user['establishment_date'])[:10], "%Y-%m-%d")
                 today = datetime.datetime.now()
                 user_years = (today - est_date).days // 365
             except Exception:
@@ -73,17 +73,17 @@ class NotificationService:
         if interests:
             placeholders = []
             for kw in interests:
-                placeholders.append("(title LIKE ? OR summary_text LIKE ?)")
+                placeholders.append("(title LIKE %s OR summary_text LIKE %s)")
                 params.append(f"%{kw}%")
                 params.append(f"%{kw}%")
             keyword_clause = f"AND ({' OR '.join(placeholders)})"
 
         query = f"""
             SELECT * FROM announcements
-            WHERE (region LIKE ? OR region IN ('전국', 'All', '온라인', '해외', '기타'))
+            WHERE (region LIKE %s OR region IN ('전국', 'All', '온라인', '해외', '기타'))
             {keyword_clause}
-            AND (established_years_limit IS NULL OR established_years_limit >= ?)
-            AND (deadline_date >= date('now') OR deadline_date IS NULL OR deadline_date = '')
+            AND (established_years_limit IS NULL OR established_years_limit >= %s)
+            AND (deadline_date >= CURRENT_DATE OR deadline_date IS NULL OR deadline_date::text = '')
             ORDER BY created_at DESC
             LIMIT 10
         """
@@ -182,7 +182,7 @@ class NotificationService:
     def send_email(self, to_email: str, company_name: str, matches: List[Dict]) -> bool:
         """SMTP를 통해 매칭 결과 이메일 발송"""
         if not self.smtp_configured:
-            print(f"  SMTP 미설정 → 이메일 발송 건너뜀 (to: {to_email})")
+            print(f"  SMTP 미설정 -> 이메일 발송 건너뜀 (to: {to_email})")
             return False
 
         msg = MIMEMultipart("alternative")
@@ -206,14 +206,71 @@ class NotificationService:
             self._log_notification(to_email, company_name, "email", f"error: {e}")
             return False
 
+    def send_push(self, business_number: str, company_name: str, matches: List[Dict]) -> int:
+        """해당 사업자의 웹 푸시 구독 전부에 알림 발송, 발송 수 리턴"""
+        try:
+            from pywebpush import webpush, WebPushException
+        except ImportError:
+            print("  pywebpush 미설치 -> 푸시 발송 건너뜀")
+            return 0
+
+        vapid_private = os.getenv("VAPID_PRIVATE_KEY", "")
+        vapid_claims_email = os.getenv("VAPID_CLAIMS_EMAIL", "")
+        if not vapid_private or not vapid_claims_email:
+            return 0
+
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor = conn.cursor()
+        cursor.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE business_number = %s", (business_number,))
+        subs = cursor.fetchall()
+        conn.close()
+
+        if not subs:
+            return 0
+
+        top = matches[0] if matches else {}
+        payload = json.dumps({
+            "title": f"[AI 매칭] {company_name} 맞춤 공고 {len(matches)}건",
+            "body": top.get("program_title", "새로운 지원사업이 매칭되었습니다."),
+            "url": top.get("url", "/"),
+        }, ensure_ascii=False)
+
+        sent = 0
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub["endpoint"],
+                        "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+                    },
+                    data=payload,
+                    vapid_private_key=vapid_private,
+                    vapid_claims={"sub": vapid_claims_email},
+                )
+                sent += 1
+            except WebPushException as e:
+                if "410" in str(e) or "404" in str(e):
+                    conn2 = psycopg2.connect(DATABASE_URL)
+                    cur2 = conn2.cursor()
+                    cur2.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (sub["endpoint"],))
+                    conn2.commit()
+                    conn2.close()
+                print(f"  Push error ({sub['endpoint'][:40]}...): {e}")
+            except Exception as e:
+                print(f"  Push error: {e}")
+
+        if sent:
+            self._log_notification(business_number, company_name, "push", f"sent:{sent}")
+        return sent
+
     def _log_notification(self, recipient: str, company_name: str, channel: str, status: str):
         """알림 발송 이력 저장"""
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS notification_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     recipient TEXT,
                     company_name TEXT,
                     channel TEXT,
@@ -222,7 +279,7 @@ class NotificationService:
                 )
             """)
             cursor.execute(
-                "INSERT INTO notification_logs (recipient, company_name, channel, status) VALUES (?, ?, ?, ?)",
+                "INSERT INTO notification_logs (recipient, company_name, channel, status) VALUES (%s, %s, %s, %s)",
                 (recipient, company_name, channel, status)
             )
             conn.commit()
@@ -261,16 +318,20 @@ class NotificationService:
                 user_dict = dict(user)
                 company_name = user_dict.get('company_name', '기업')
                 email = user_dict.get('notify_email') or user_dict.get('email')
+                bn = user_dict.get('business_number', '')
 
                 entry = {
                     "user_email": email,
                     "company_name": company_name,
                     "matches": matches,
-                    "email_sent": False
+                    "email_sent": False,
+                    "push_sent": 0,
                 }
 
                 if email:
                     entry["email_sent"] = self.send_email(email, company_name, matches)
+
+                entry["push_sent"] = self.send_push(bn, company_name, matches)
 
                 digest_results.append(entry)
 

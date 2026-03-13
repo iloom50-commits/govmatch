@@ -40,7 +40,9 @@ class AIService:
             "title": "공고 제목",
             "department": "소관 부처 또는 기관 (예: '중소벤처기업부', '부산광역시')",
             "category": "분류 (예: 'Entrepreneurship', 'Tech', 'Global', 'Loan')",
-            "description": "공고에 대한 핵심 요약 설명 (200자 이내)",
+            "description": "공고에 대한 핵심 요약 설명 (200자 이내, 순수 텍스트)",
+            "business_type": ["소상공인", "중소기업", "스타트업", "예비창업자", "수출기업" 등 대상 기업 유형 — 공고에 명시된 것만],
+            "target_keywords": ["공고 핵심 키워드 3~5개, 예: 소상공인, 시설개선, 정책자금, R&D, 수출"],
             "eligibility_logic": {{
                 "min_founding_years": "숫자 (없으면 null)",
                 "max_founding_years": "숫자 (없으면 null)",
@@ -99,7 +101,9 @@ class AIService:
             "region_restriction": "지역명" 또는 "전국",
             "target_industries": ["대상 업종명1", "대상 업종명2"],
             "required_certifications": ["벤처기업", "이노비즈" 등 필수 인증],
-            "business_type": ["중소기업", "소상공인", "예비창업자" 등 대상 기업 유형],
+            "business_type": ["소상공인", "중소기업", "스타트업", "예비창업자", "수출기업" 등 대상 기업 유형 — 공고에 명시된 것만],
+            "target_keywords": ["공고 핵심 키워드 3~5개, 예: 소상공인, 시설개선, 정책자금, R&D, 수출"],
+            "summary_text": "공고 핵심 내용을 100자 이내 순수 텍스트로 요약 (HTML 없이)",
             "summary_noun": "공고 핵심 내용을 8자 이내 명사형으로 요약"
         }}
 
@@ -201,14 +205,15 @@ class AIService:
     async def search_industry_hybrid(self, query: str) -> Dict[str, Any]:
         """DB 검색 + AI 보완 하이브리드 업종 추천"""
         candidates = []
-        
+
         # 1. DB 검색 (보다 유연한 키워드 분리 검색)
         try:
-            import sqlite3
-            conn = sqlite3.connect("gov_matching.db")
-            conn.row_factory = sqlite3.Row
+            import psycopg2
+            import psycopg2.extras
+            from app.config import DATABASE_URL
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
             cursor = conn.cursor()
-            
+
             # 검색어를 공백으로 분리 (예: "화장품 판매" -> ["화장품", "판매"])
             keywords = [k.strip() for k in query.split() if len(k.strip()) > 1]
             if not keywords:
@@ -216,11 +221,11 @@ class AIService:
 
             # 모든 키워드에 대해 검색 수행
             results_map = {}
-            for kw in keywords[:3]: # 상위 3개 키워드만
+            for kw in keywords[:3]:  # 상위 3개 키워드만
                 search_term = f"%{kw}%"
                 cursor.execute("""
-                    SELECT code, name, description FROM ksic_classification 
-                    WHERE name LIKE ? OR description LIKE ?
+                    SELECT code, name, description FROM ksic_classification
+                    WHERE name LIKE %s OR description LIKE %s
                     LIMIT 3
                 """, (search_term, search_term))
                 for row in cursor.fetchall():
@@ -231,7 +236,7 @@ class AIService:
                             "description": row['description'],
                             "reason": f"'{kw}' 키워드 검색 결과"
                         }
-            
+
             candidates = list(results_map.values())[:5]
             conn.close()
         except Exception as e:

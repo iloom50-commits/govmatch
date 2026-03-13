@@ -10,6 +10,18 @@ class GovernmentAPIService:
     
     BASE_URL = "https://apis.data.go.kr"
 
+    @staticmethod
+    def _normalize_date(raw) -> str | None:
+        """다양한 날짜 형식을 YYYY-MM-DD로 정규화"""
+        if not raw:
+            return None
+        s = str(raw).strip().replace("/", "-").replace(".", "-")
+        if len(s) == 8 and s.isdigit():
+            return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+        if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+            return s[:10]
+        return None
+
     @classmethod
     def is_configured(cls):
         # Dynamically check environment to avoid stale class variables
@@ -91,14 +103,10 @@ class GovernmentAPIService:
     def _map_mss_fields(self, items):
         mapped = []
         for item in items:
-            # Actual field names from data.go.kr MSS API include:
-            # - pblancId (Notice ID)
-            # - pblancNm (Notice Name)
-            # - pblancCtnt (Notice Content)
-            # - detailUrl (Detail URL)
             title = item.get("pblancNm") or item.get("title") or item.get("사업명")
             url = item.get("detailUrl") or item.get("link") or item.get("상세페이지URL")
             content = item.get("pblancCtnt") or item.get("contents") or item.get("사업개요")
+            deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("rcritEndDt") or item.get("endDt")
             
             if title and url:
                 mapped.append({
@@ -107,7 +115,8 @@ class GovernmentAPIService:
                     "description": content or "",
                     "department": "중소벤처기업부",
                     "category": "Small Business/Startup",
-                    "origin_source": "mss-api"
+                    "origin_source": "mss-api",
+                    "deadline_date": self._normalize_date(deadline),
                 })
         return mapped
 
@@ -189,13 +198,15 @@ class GovernmentAPIService:
                     if url.rstrip("/") in ("https://www.k-startup.go.kr", "http://www.k-startup.go.kr") and pbanc_sn:
                         url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
 
+                    deadline = cols.get("rcrit_end_de") or cols.get("rcritEndDe") or cols.get("pbanc_end_de") or cols.get("pbancEndDe")
                     mapped.append({
                         "title": title,
                         "url": url,
                         "description": cols.get("pbancCn") or cols.get("intg_pbanc_biz_nm") or "",
                         "department": cols.get("pbancDeptNm") or "창업진흥원",
                         "category": "Entrepreneurship",
-                        "origin_source": "kised-api"
+                        "origin_source": "kised-api",
+                        "deadline_date": self._normalize_date(deadline),
                     })
             print(f"    ✅ KISED XML Parsed {len(mapped)} items")
             return mapped
@@ -208,6 +219,7 @@ class GovernmentAPIService:
         for item in items:
             title = item.get("pbancNm") or item.get("title")
             url = item.get("detlUrl") or item.get("link")
+            deadline = item.get("rcritEndDe") or item.get("pbancEndDe") or item.get("rcritEndDt")
             
             if title and url:
                 if not url.startswith("http"):
@@ -223,7 +235,8 @@ class GovernmentAPIService:
                     "description": item.get("pbancCn") or "",
                     "department": item.get("pbancDeptNm") or "창업진흥원",
                     "category": "Entrepreneurship",
-                    "origin_source": "kised-api"
+                    "origin_source": "kised-api",
+                    "deadline_date": self._normalize_date(deadline),
                 })
         return mapped
 
@@ -337,14 +350,9 @@ class GovernmentAPIService:
     def _map_bizinfo_portal_fields(self, items):
         mapped = []
         for item in items:
-            # Bizinfo Portal fields:
-            # - pblancNm: 공고명
-            # - pblancUrl: 상세페이지 경로 (Relative)
-            # - bsnsSumryCn: 사업구약
-            # - jrsdInsttNm: 소관기관
-            # - pldirSportRealmLclasCodeNm: 분야
             title = item.get("pblancNm")
             rel_url = item.get("pblancUrl")
+            deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("reqstEndDe")
             
             if title and rel_url:
                 full_url = f"https://www.bizinfo.go.kr{rel_url}"
@@ -354,21 +362,17 @@ class GovernmentAPIService:
                     "description": item.get("bsnsSumryCn") or "",
                     "department": item.get("jrsdInsttNm") or "기업마당",
                     "category": item.get("pldirSportRealmLclasCodeNm") or "General Business Support",
-                    "origin_source": "bizinfo-portal-api"
+                    "origin_source": "bizinfo-portal-api",
+                    "deadline_date": self._normalize_date(deadline),
                 })
         return mapped
 
     def _map_bizinfo_fields(self, items):
         mapped = []
         for item in items:
-            # Bizinfo V4 fields:
-            # - pbaNm: 공고명
-            # - pbaUrl: 상세페이지 URL
-            # - pbaContents: 공고내용/요약
-            # - pbaInst: 소관기관
-            # - pbaArea: 지역
             title = item.get("pbaNm")
             url = item.get("pbaUrl")
+            deadline = item.get("pbaEndDe") or item.get("rcritEndDe")
             
             if title and url:
                 mapped.append({
@@ -378,7 +382,8 @@ class GovernmentAPIService:
                     "department": item.get("pbaInst") or "기업마당",
                     "category": "General Business Support",
                     "origin_source": "bizinfo-api",
-                    "region": item.get("pbaArea") or "All"
+                    "region": item.get("pbaArea") or "All",
+                    "deadline_date": self._normalize_date(deadline),
                 })
         return mapped
 
@@ -402,6 +407,7 @@ class GovernmentAPIService:
             title = item.get("subject") or item.get("title")
             url = item.get("viewUrl") or item.get("detailUrl") or item.get("link")
             dept = item.get("deptName") or "과학기술정보통신부"
+            deadline = item.get("rcritEndDe") or item.get("endDate") or item.get("closingDate")
 
             if title and url:
                 if not url.startswith("http"):
@@ -412,7 +418,8 @@ class GovernmentAPIService:
                     "description": "",
                     "department": dept,
                     "category": "R&D",
-                    "origin_source": "msit-rnd-api"
+                    "origin_source": "msit-rnd-api",
+                    "deadline_date": self._normalize_date(deadline),
                 })
         return mapped
 
@@ -426,6 +433,7 @@ class GovernmentAPIService:
                 title = None
                 url = None
                 dept = "과학기술정보통신부"
+                deadline = None
 
                 for child in item:
                     if child.tag == "subject":
@@ -434,6 +442,8 @@ class GovernmentAPIService:
                         url = child.text
                     elif child.tag == "deptName" and child.text:
                         dept = child.text
+                    elif child.tag in ("rcritEndDe", "endDate", "closingDate") and child.text:
+                        deadline = child.text
 
                 if title and url:
                     if not url.startswith("http"):
@@ -444,7 +454,8 @@ class GovernmentAPIService:
                         "description": "",
                         "department": dept,
                         "category": "R&D",
-                        "origin_source": "msit-rnd-api"
+                        "origin_source": "msit-rnd-api",
+                        "deadline_date": self._normalize_date(deadline),
                     })
             print(f"    ✅ MSIT XML Parsed {len(mapped)} items")
             return mapped
@@ -481,10 +492,9 @@ class GovernmentAPIService:
         if not end_date:
             end_date = datetime.now().strftime("%Y%m%d")
 
-        encoded_token = urllib.parse.quote_plus(token)
         url = (
             f"https://www.smes.go.kr/fnct/apiReqst/extPblancInfo"
-            f"?token={encoded_token}&strDt={start_date}&endDt={end_date}&html=no"
+            f"?token={token}&strDt={start_date}&endDt={end_date}&html=no"
         )
 
         try:
@@ -555,7 +565,7 @@ class GovernmentAPIService:
                 "category": category,
                 "origin_source": "smes24-api",
                 "region": region,
-                "deadline_date": item.get("pblancEndDt"),
+                "deadline_date": self._normalize_date(item.get("pblancEndDt")),
                 "eligibility_logic": eligibility
             })
         return mapped
@@ -612,6 +622,7 @@ class GovernmentAPIService:
             if not url:
                 url = "https://www.foodpolis.kr"
 
+            deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("endDt")
             mapped.append({
                 "title": title,
                 "url": url,
@@ -619,7 +630,8 @@ class GovernmentAPIService:
                 "department": "한국식품산업클러스터진흥원",
                 "category": "Food Industry",
                 "origin_source": "foodpolis-api",
-                "region": item.get("areaNm") or "전국"
+                "region": item.get("areaNm") or "전국",
+                "deadline_date": self._normalize_date(deadline),
             })
         return mapped
 

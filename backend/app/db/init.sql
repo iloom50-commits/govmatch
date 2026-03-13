@@ -29,8 +29,11 @@ CREATE TABLE IF NOT EXISTS users (
     revenue_bracket VARCHAR(50),            -- 매출액 구간
     employee_count_bracket VARCHAR(50),     -- 근로자 수 구간
     interests TEXT,                         -- 관심 키워드 (R&D, 마케팅 등)
-    email VARCHAR(100),
+    email VARCHAR(100) UNIQUE,
     kakao_id VARCHAR(100),
+    password_hash TEXT,                     -- bcrypt 해시
+    plan VARCHAR(20) DEFAULT 'trial',       -- trial / basic / expired
+    trial_ends_at TIMESTAMP,                -- 무료체험 종료일
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -44,7 +47,27 @@ CREATE TABLE IF NOT EXISTS admin_urls (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. 알림 설정 테이블
+-- 4. 웹 푸시 구독 테이블
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_number VARCHAR(10),
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. 사용자 저장 공고 (일정 관리)
+CREATE TABLE IF NOT EXISTS saved_announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_number VARCHAR(10) NOT NULL,
+    announcement_id INTEGER NOT NULL,
+    memo TEXT DEFAULT '',
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(business_number, announcement_id)
+);
+
+-- 6. 알림 설정 테이블
 CREATE TABLE IF NOT EXISTS notification_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     business_number VARCHAR(10) UNIQUE NOT NULL,  -- 사업자번호 (FK)

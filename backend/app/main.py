@@ -62,6 +62,26 @@ def init_database():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # SQLite에서 마이그레이션된 기존 테이블의 INTEGER→BOOLEAN 변환 시도
+        for tbl, col in [("notification_settings", "is_active"), ("admin_urls", "is_active")]:
+            try:
+                cursor.execute("""
+                    SELECT data_type FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                """, (tbl, col))
+                row = cursor.fetchone()
+                if row and row.get("data_type") == "integer":
+                    cursor.execute(f"""
+                        ALTER TABLE {tbl}
+                        ALTER COLUMN {col} SET DATA TYPE BOOLEAN
+                        USING CASE WHEN {col} = 1 THEN true ELSE false END
+                    """)
+                    conn.commit()
+                    print(f"  Migrated {tbl}.{col}: INTEGER → BOOLEAN")
+            except Exception as e:
+                conn.rollback()
+                print(f"  Note: {tbl}.{col} migration skipped: {e}")
         conn.commit()
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
@@ -1106,7 +1126,7 @@ def api_save_notification_settings(settings: NotificationSettings):
         """
         cursor.execute(query, (
             settings.business_number, settings.email, settings.phone_number,
-            settings.channel, settings.is_active
+            settings.channel, int(settings.is_active)
         ))
         conn.commit()
         return {"status": "SUCCESS", "message": "알림 설정이 저장되었습니다."}

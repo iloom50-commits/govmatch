@@ -726,25 +726,32 @@ def delete_admin_url(url_id: int):
     conn.close()
     return {"status": "SUCCESS", "message": "URL 삭제 완료"}
 
-async def _run_manual_sync():
+def _run_manual_sync_in_thread():
+    """관리자 수동 동기화를 별도 스레드에서 실행"""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     manual_sync_status["running"] = True
     manual_sync_status["last_result"] = "진행 중..."
     manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
     try:
-        await admin_scraper.run_all()
+        loop.run_until_complete(admin_scraper.run_all())
         manual_sync_status["last_result"] = "완료"
     except Exception as e:
         manual_sync_status["last_result"] = f"오류: {e}"
     finally:
         manual_sync_status["running"] = False
         manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
+        loop.close()
 
 
 @app.post("/api/admin/sync-manual", dependencies=[Depends(_verify_admin)])
-async def trigger_admin_sync(background_tasks: BackgroundTasks):
+async def trigger_admin_sync():
     if manual_sync_status["running"]:
         return {"status": "ALREADY_RUNNING", "message": "수동 동기화가 이미 진행 중입니다."}
-    background_tasks.add_task(_run_manual_sync)
+    import threading
+    t = threading.Thread(target=_run_manual_sync_in_thread, daemon=True)
+    t.start()
     return {"status": "STARTED", "message": "백그라운드에서 수동 동기화를 시작합니다."}
 
 
@@ -752,7 +759,9 @@ async def trigger_admin_sync(background_tasks: BackgroundTasks):
 def get_manual_sync_status():
     return {"status": "SUCCESS", "data": manual_sync_status}
 
-async def _run_reanalyze(limit: int):
+def _run_reanalyze_in_thread(limit: int):
+    """재분석을 별도 스레드에서 실행"""
+    import asyncio
     import re as _re
     from app.services.ai_service import ai_service as _ai
 
@@ -765,6 +774,8 @@ async def _run_reanalyze(limit: int):
         text = _re.sub(r'\s+', ' ', text)
         return text.strip()
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     reanalyze_status["running"] = True
     reanalyze_status["done"] = 0
     reanalyze_status["last_time"] = datetime.datetime.now().isoformat()
@@ -789,7 +800,7 @@ async def _run_reanalyze(limit: int):
             if len(clean) < 20 and len(row.get("title", "")) < 10:
                 reanalyze_status["done"] += 1
                 continue
-            details = await _ai.extract_program_details(input_text)
+            details = loop.run_until_complete(_ai.extract_program_details(input_text))
             if details:
                 elig = details.get("eligibility_logic", {}) or {}
                 if details.get("business_type"):
@@ -819,19 +830,22 @@ async def _run_reanalyze(limit: int):
         except Exception as e:
             print(f"Reanalyze error: {e}")
         reanalyze_status["done"] += 1
-        await asyncio.sleep(0.5)
+        import time; time.sleep(0.5)
 
     conn.close()
     reanalyze_status["running"] = False
     reanalyze_status["last_result"] = f"완료: {success}/{len(rows)}건 분석"
     reanalyze_status["last_time"] = datetime.datetime.now().isoformat()
+    loop.close()
 
 
 @app.post("/api/admin/reanalyze", dependencies=[Depends(_verify_admin)])
-async def trigger_reanalyze(background_tasks: BackgroundTasks, limit: int = 200):
+async def trigger_reanalyze(limit: int = 200):
     if reanalyze_status["running"]:
         return {"status": "ALREADY_RUNNING", "message": "재분석이 이미 진행 중입니다."}
-    background_tasks.add_task(_run_reanalyze, limit)
+    import threading
+    t = threading.Thread(target=_run_reanalyze_in_thread, args=(limit,), daemon=True)
+    t.start()
     return {"status": "STARTED", "message": f"최대 {limit}건 백그라운드 재분석 시작"}
 
 
@@ -973,25 +987,32 @@ def api_save_profile(profile: UserProfile):
 
 from app.services.sync_service import sync_service
 
-async def _run_sync():
+def _run_sync_in_thread():
+    """동기화를 별도 스레드에서 실행 (이벤트 루프 블로킹 방지)"""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     sync_status["running"] = True
     sync_status["last_result"] = "진행 중..."
     sync_status["last_time"] = datetime.datetime.now().isoformat()
     try:
-        await sync_service.sync_all()
+        loop.run_until_complete(sync_service.sync_all())
         sync_status["last_result"] = "완료"
     except Exception as e:
         sync_status["last_result"] = f"오류: {e}"
     finally:
         sync_status["running"] = False
         sync_status["last_time"] = datetime.datetime.now().isoformat()
+        loop.close()
 
 
 @app.post("/api/sync", dependencies=[Depends(_verify_admin)])
-async def api_sync_data(background_tasks: BackgroundTasks):
+async def api_sync_data():
     if sync_status["running"]:
         return {"status": "ALREADY_RUNNING", "message": "동기화가 이미 진행 중입니다."}
-    background_tasks.add_task(_run_sync)
+    import threading
+    t = threading.Thread(target=_run_sync_in_thread, daemon=True)
+    t.start()
     return {"status": "STARTED", "message": "백그라운드에서 동기화를 시작합니다."}
 
 

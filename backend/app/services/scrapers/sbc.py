@@ -71,7 +71,7 @@ class SBCScraper(EnhancedBaseScraper):
 
                     actual_url = page.url
                     if "main.do" in actual_url or actual_url.rstrip("/") == self.BASE_URL.rstrip("/"):
-                        print(f"  ⏩ Skipped (main page): {ann['title'][:30]}")
+                        print(f"  [SKIP] Skipped (main page): {ann['title'][:30]}")
                         await self._go_back(page, list_url)
                         continue
 
@@ -94,28 +94,28 @@ class SBCScraper(EnhancedBaseScraper):
                         program_data["eligibility_logic"] = eligibility
 
                     results.append(program_data)
-                    print(f"  ✅ Scraped: {ann['title'][:40]}")
+                    print(f"  [OK] Scraped: {ann['title'][:40]}")
 
                 except PlaywrightTimeout:
-                    print(f"  ⏱ Timeout: {ann['title'][:30]}")
+                    print(f"  [TIMEOUT] Timeout: {ann['title'][:30]}")
                 except ConnectionError as e:
-                    print(f"  🔌 Connection error: {e}")
+                    print(f"  [CONN] Connection error: {e}")
                 except Exception as e:
-                    print(f"  ❌ Error: {type(e).__name__}: {e}")
+                    print(f"  [ERR] Error: {type(e).__name__}: {e}")
                 finally:
                     await self._go_back(page, list_url)
 
         except PlaywrightTimeout:
-            print("❌ SBC list page timeout — skipping scraper")
+            print("[ERR] SBC list page timeout - skipping scraper")
         except Exception as e:
-            print(f"❌ SBCScraper fatal: {type(e).__name__}: {e}")
+            print(f"[ERR] SBCScraper fatal: {type(e).__name__}: {e}")
         finally:
             if browser:
                 await browser.close()
             if pw:
                 await pw.stop()
 
-        print(f"  SBC scrape done — {len(results)} items collected")
+        print(f"  SBC scrape done - {len(results)} items collected")
         return results
 
     def _extract_links(self, html: str) -> List[Dict]:

@@ -6,9 +6,10 @@ interface ProfileSettingsProps {
   profile: any;
   onSave: (data: any) => void;
   onClose: () => void;
+  onLogout?: () => void;
 }
 
-export default function ProfileSettings({ profile, onSave, onClose }: ProfileSettingsProps) {
+export default function ProfileSettings({ profile, onSave, onClose, onLogout }: ProfileSettingsProps) {
   const REVENUE_MIGRATE: Record<string, string> = {
     UNDER_1B: "1억 미만", "1B_5B": "1억~5억", "1B_TO_5B": "1억~5억",
     "5B_10B": "5억~10억", "5B_TO_10B": "5억~10억",
@@ -34,14 +35,19 @@ export default function ProfileSettings({ profile, onSave, onClose }: ProfileSet
   const [industryQuery, setIndustryQuery] = useState("");
   const [industryCandidates, setIndustryCandidates] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [industryName, setIndustryName] = useState("");
+  const [industryName, setIndustryName] = useState(profile.industry_name || "");
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   useEffect(() => {
-    if (formData.industry_code && formData.industry_code.length >= 2) {
+    // If we already have the name from the backend, no need to search
+    if (industryName) return;
+    // Otherwise try to look it up by code
+    if (formData.industry_code && formData.industry_code !== "00000" && formData.industry_code.length >= 2) {
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/industry-recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_name: "", business_content: formData.industry_code })
+        body: JSON.stringify({ company_name: formData.company_name || "", business_content: formData.industry_code })
       })
         .then(r => r.json())
         .then(result => {
@@ -165,6 +171,22 @@ export default function ProfileSettings({ profile, onSave, onClose }: ProfileSet
             </div>
           </div>
 
+          {/* Password Confirmation */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
+            <input
+              type="password"
+              placeholder="현재 비밀번호를 입력해 주세요"
+              className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
+            />
+            {passwordError && (
+              <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
+            )}
+            <p className="text-[10px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
+          </div>
+
           {/* Industry / KSIC */}
           <div className="space-y-3">
             <div className="flex justify-between items-end">
@@ -192,6 +214,11 @@ export default function ProfileSettings({ profile, onSave, onClose }: ProfileSet
                 onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
               />
             </div>
+            {(!formData.industry_code || formData.industry_code === "00000") && industryCandidates.length === 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-700">
+                업종을 검색하여 선택해 주세요. 정확한 매칭을 위해 필요합니다.
+              </div>
+            )}
             {industryCandidates.length > 0 && (
               <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
                 {industryCandidates.map((cand, idx) => (
@@ -216,12 +243,26 @@ export default function ProfileSettings({ profile, onSave, onClose }: ProfileSet
 
         {/* Footer */}
         <div className="p-5 sm:p-8 bg-slate-50/50 border-t border-slate-100">
-          <button 
-            onClick={() => onSave(formData)}
+          <button
+            onClick={() => {
+              if (!password) {
+                setPasswordError("비밀번호를 입력해 주세요.");
+                return;
+              }
+              onSave({ ...formData, password });
+            }}
             className="w-full py-5 bg-slate-950 text-white rounded-2xl font-black text-sm tracking-tight hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98]"
           >
             설정 저장하고 결과 업데이트 →
           </button>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full mt-3 py-2 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all text-center"
+            >
+              로그아웃
+            </button>
+          )}
         </div>
       </div>
     </div>

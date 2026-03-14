@@ -121,64 +121,58 @@ class SyncService:
         await self._save_to_db(all_results)
         print(f"Sync complete. Total {len(all_results)} items processed.")
 
-    async def _save_to_db(self, results):
-        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    async def _save_to_db(self, results, use_ai=False):
+        """DB 저장. use_ai=False면 API 기본 데이터만 빠르게 저장."""
+        # Supabase Direct 연결 (Transaction Pooler 6543 -> Direct 5432)
+        db_url = self.database_url.replace(":6543/", ":5432/")
+        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = True
         cursor = conn.cursor()
+        cursor.execute("SET statement_timeout = '60000'")  # 60초
+        saved, skipped, errors = 0, 0, 0
 
         for item in results:
             try:
                 if not _is_valid_detail_url(item.get('url', '')):
-                    print(f"  Skipping invalid URL: {item.get('title', '')[:30]} -> {item.get('url', '')}")
+                    skipped += 1
                     continue
 
-                cursor.execute("SELECT announcement_id FROM announcements WHERE origin_url = %s", (item['url'],))
-                exists = cursor.fetchone()
-
-                if exists:
-                    # 이미 존재하는 공고는 스킵 (사용자 요청: 수집된 공고문 제외)
-                    print(f"  Skipping duplicate: {item['title'][:20]}...")
-                    continue
-
-                # 2. 신규 공고: 상세 페이지 본문을 가져와서 AI에 전달
-                print(f"  AI Analyzing NEW item: {item['title'][:30]}...")
-                detail_text = _fetch_detail_text(item['url'])
-                if detail_text and len(detail_text) > 100:
-                    full_text = f"제목: {item['title']}\n\n[상세 페이지 본문]\n{detail_text}"
-                    print(f"    Detail page fetched: {len(detail_text)} chars")
-                else:
-                    full_text = f"제목: {item['title']}\n내용: {item.get('description', '')}"
-                details = await ai_service.extract_program_details(full_text)
-
-                if details:
-                    existing_eligibility = item.get("eligibility_logic")
-                    ai_eligibility = details.get("eligibility_logic", {})
-                    if not isinstance(ai_eligibility, dict):
-                        ai_eligibility = {}
-                    # business_type, target_keywords를 eligibility_logic에 포함
-                    if details.get("business_type"):
-                        ai_eligibility["business_type"] = details["business_type"]
-                    if details.get("target_keywords"):
-                        ai_eligibility["target_keywords"] = details["target_keywords"]
-                    if existing_eligibility and isinstance(existing_eligibility, dict) and existing_eligibility:
-                        merged_elig = {**ai_eligibility, **existing_eligibility}
+                # AI 분석 모드: 상세 페이지 + AI 분석
+                if use_ai:
+                    detail_text = _fetch_detail_text(item['url'])
+                    if detail_text and len(detail_text) > 100:
+                        full_text = f"제목: {item['title']}\n\n[상세 페이지 본문]\n{detail_text}"
                     else:
-                        merged_elig = ai_eligibility
+                        full_text = f"제목: {item['title']}\n내용: {item.get('description', '')}"
+                    details = await ai_service.extract_program_details(full_text)
 
-                    # AI 생성 순수 텍스트 요약 우선 (HTML 원문 대체)
-                    ai_summary = (
-                        details.get("summary_text")
-                        or details.get("description")
-                        or item.get("description", "")
-                    )
+                    if details:
+                        existing_eligibility = item.get("eligibility_logic")
+                        ai_eligibility = details.get("eligibility_logic", {})
+                        if not isinstance(ai_eligibility, dict):
+                            ai_eligibility = {}
+                        if details.get("business_type"):
+                            ai_eligibility["business_type"] = details["business_type"]
+                        if details.get("target_keywords"):
+                            ai_eligibility["target_keywords"] = details["target_keywords"]
+                        if existing_eligibility and isinstance(existing_eligibility, dict) and existing_eligibility:
+                            merged_elig = {**ai_eligibility, **existing_eligibility}
+                        else:
+                            merged_elig = ai_eligibility
 
-                    item.update({
-                        "title": details.get("title") or item['title'],
-                        "department": details.get("department") or item.get("department"),
-                        "category": details.get("category") or item.get("category"),
-                        "eligibility_logic": merged_elig,
-                        "description": ai_summary,
-                        "deadline_date": details.get("deadline_date") or item.get("deadline_date")
-                    })
+                        ai_summary = (
+                            details.get("summary_text")
+                            or details.get("description")
+                            or item.get("description", "")
+                        )
+                        item.update({
+                            "title": details.get("title") or item['title'],
+                            "department": details.get("department") or item.get("department"),
+                            "category": details.get("category") or item.get("category"),
+                            "eligibility_logic": merged_elig,
+                            "description": ai_summary,
+                            "deadline_date": details.get("deadline_date") or item.get("deadline_date")
+                        })
 
                 elig = item.get('eligibility_logic', {})
                 if not isinstance(elig, dict):
@@ -195,6 +189,7 @@ class SyncService:
                 query = """
                 INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (origin_url) DO NOTHING
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,
@@ -202,10 +197,15 @@ class SyncService:
                     item.get('region', 'All'), item.get('deadline_date'),
                     years_limit, revenue_limit, employee_limit, industry_codes
                 ))
+                saved += 1
+                if saved % 100 == 0:
+                    print(f"    ... {saved} saved so far")
             except Exception as e:
-                print(f"Error saving item {item.get('title','?')}: {e}")
+                errors += 1
+                if errors <= 5:
+                    print(f"Error saving item {item.get('title','?')[:30]}: {e}")
 
-        conn.commit()
         conn.close()
+        print(f"  DB Save: {saved} saved, {skipped} skipped, {errors} errors")
 
 sync_service = SyncService()

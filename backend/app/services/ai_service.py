@@ -12,7 +12,7 @@ class AIService:
     def __init__(self):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            print("⚠️ GEMINI_API_KEY not found in environment variables")
+            print("[WARN] GEMINI_API_KEY not found in environment variables")
             self.model = None
             return
             

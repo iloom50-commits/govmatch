@@ -147,11 +147,11 @@ class GovernmentAPIService:
         }
 
         try:
-            print(f"  📡 Calling KISED API: {endpoint}")
+            print(f"  [API] Calling KISED API: {endpoint}")
             response = requests.get(endpoint, params=params, timeout=15)
             
             if response.status_code != 200:
-                print(f"    ❌ KISED API Error: Status {response.status_code}")
+                print(f"    [ERR] KISED API Error: Status {response.status_code}")
                 return []
 
             # Handle XML response (often happens with data.go.kr legacy APIs)
@@ -168,11 +168,11 @@ class GovernmentAPIService:
                     items = [items] if items else []
                 return self._map_kised_fields(items)
             except Exception as e:
-                print(f"    ❌ KISED Parse Error: {e}")
+                print(f"    [ERR] KISED Parse Error: {e}")
                 return []
 
         except Exception as e:
-            print(f"  ❌ KISED Exception: {e}")
+            print(f"  [ERR] KISED Exception: {e}")
             return []
 
     def _parse_kised_xml(self, xml_text):
@@ -208,10 +208,10 @@ class GovernmentAPIService:
                         "origin_source": "kised-api",
                         "deadline_date": self._normalize_date(deadline),
                     })
-            print(f"    ✅ KISED XML Parsed {len(mapped)} items")
+            print(f"    [OK] KISED XML Parsed {len(mapped)} items")
             return mapped
         except Exception as e:
-            print(f"    ❌ KISED XML Parse Error: {e}")
+            print(f"    [ERR] KISED XML Parse Error: {e}")
             return []
 
     def _map_kised_fields(self, items):
@@ -257,12 +257,12 @@ class GovernmentAPIService:
         )
 
         try:
-            print(f"  📡 Calling MSIT R&D API (page {page})...")
+            print(f"  [API] Calling MSIT R&D API (page {page})...")
             response = requests.get(url, timeout=15)
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
-                print(f"    ❌ MSIT R&D API Error: Status {response.status_code}")
+                print(f"    [ERR] MSIT R&D API Error: Status {response.status_code}")
                 return [] if page > 1 else self._get_mock_msit_data()
 
             if "<?xml" in response.text[:100]:
@@ -271,7 +271,7 @@ class GovernmentAPIService:
             try:
                 data = response.json()
             except Exception:
-                print(f"    ❌ MSIT JSON parse failed, trying XML...")
+                print(f"    [ERR] MSIT JSON parse failed, trying XML...")
                 return self._parse_msit_xml(response.text)
 
             resp = data.get("response", [])
@@ -296,11 +296,11 @@ class GovernmentAPIService:
                 items = item_val if isinstance(item_val, list) else [item_val]
 
             total = body.get("totalCount", 0)
-            print(f"    ✅ MSIT R&D API: {len(items)} items (total: {total})")
+            print(f"    [OK] MSIT R&D API: {len(items)} items (total: {total})")
             return self._map_msit_fields(items)
 
         except Exception as e:
-            print(f"  ❌ MSIT R&D API Exception: {e}")
+            print(f"  [ERR] MSIT R&D API Exception: {e}")
             return self._get_mock_msit_data()
 
     async def fetch_bizinfo_programs(self, page=1, per_page=10):
@@ -321,7 +321,7 @@ class GovernmentAPIService:
         """기업마당(Bizinfo) 포털 직접 연동 API (bizinfoApi.do)"""
         key = os.getenv("BIZINFO_PORTAL_KEY")
         if not key:
-            print("  ⚠️ BIZINFO_PORTAL_KEY not set. Falling back to mock/scraper.")
+            print("  [WARN] BIZINFO_PORTAL_KEY not set. Falling back to mock/scraper.")
             return []
 
         url = "https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do"
@@ -331,11 +331,11 @@ class GovernmentAPIService:
         }
 
         try:
-            print(f"  📡 Calling Bizinfo Portal Direct API...")
+            print(f"  [API] Calling Bizinfo Portal Direct API...")
             response = requests.get(url, params=params, timeout=15)
             
             if response.status_code != 200:
-                print(f"    ❌ Bizinfo Portal API Error: Status {response.status_code}")
+                print(f"    [ERR] Bizinfo Portal API Error: Status {response.status_code}")
                 return []
 
             data = response.json()
@@ -344,7 +344,7 @@ class GovernmentAPIService:
             
             return self._map_bizinfo_portal_fields(items)
         except Exception as e:
-            print(f"  ❌ Bizinfo Portal Exception: {e}")
+            print(f"  [ERR] Bizinfo Portal Exception: {e}")
             return []
 
     def _map_bizinfo_portal_fields(self, items):
@@ -355,7 +355,7 @@ class GovernmentAPIService:
             deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("reqstEndDe")
             
             if title and rel_url:
-                full_url = f"https://www.bizinfo.go.kr{rel_url}"
+                full_url = rel_url if rel_url.startswith("http") else f"https://www.bizinfo.go.kr{rel_url}"
                 mapped.append({
                     "title": title,
                     "url": full_url,
@@ -457,10 +457,10 @@ class GovernmentAPIService:
                         "origin_source": "msit-rnd-api",
                         "deadline_date": self._normalize_date(deadline),
                     })
-            print(f"    ✅ MSIT XML Parsed {len(mapped)} items")
+            print(f"    [OK] MSIT XML Parsed {len(mapped)} items")
             return mapped
         except Exception as e:
-            print(f"    ❌ MSIT XML Parse Error: {e}")
+            print(f"    [ERR] MSIT XML Parse Error: {e}")
             return []
 
     def _get_mock_msit_data(self):
@@ -481,7 +481,7 @@ class GovernmentAPIService:
         """중소벤처24 사업공고 정보 조회 (기정원 발급 토큰 필요)"""
         token = os.getenv("SMES24_API_TOKEN")
         if not token:
-            print("  ⚠️ SMES24_API_TOKEN not set. Skipping 중소벤처24.")
+            print("  [WARN] SMES24_API_TOKEN not set. Skipping 중소벤처24.")
             return []
 
         import urllib.parse
@@ -498,26 +498,26 @@ class GovernmentAPIService:
         )
 
         try:
-            print(f"  📡 Calling 중소벤처24 API (period: {start_date}~{end_date})...")
+            print(f"  [API] Calling 중소벤처24 API (period: {start_date}~{end_date})...")
             response = requests.get(url, timeout=30)
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
-                print(f"    ❌ SMES24 API Error: Status {response.status_code}")
+                print(f"    [ERR] SMES24 API Error: Status {response.status_code}")
                 return []
 
             data = response.json()
             result_cd = data.get("resultCd", "99")
             if result_cd != "0":
-                print(f"    ❌ SMES24 API Result: {data.get('resultMsg', 'Unknown error')} (code: {result_cd})")
+                print(f"    [ERR] SMES24 API Result: {data.get('resultMsg', 'Unknown error')} (code: {result_cd})")
                 return []
 
             items = data.get("data", [])
-            print(f"    ✅ SMES24 API: {len(items)} items fetched")
+            print(f"    [OK] SMES24 API: {len(items)} items fetched")
             return self._map_smes24_fields(items)
 
         except Exception as e:
-            print(f"  ❌ SMES24 Exception: {e}")
+            print(f"  [ERR] SMES24 Exception: {e}")
             return []
 
     def _map_smes24_fields(self, items):
@@ -576,7 +576,7 @@ class GovernmentAPIService:
         """한국식품산업클러스터진흥원 일반사업공고 목록 조회"""
         api_key = os.getenv("FOODPOLIS_API_KEY")
         if not api_key:
-            print("  ⚠️ FOODPOLIS_API_KEY not set. Skipping 식품산업클러스터.")
+            print("  [WARN] FOODPOLIS_API_KEY not set. Skipping 식품산업클러스터.")
             return []
 
         url = "https://www.foodpolis.kr/fbip/co/io/api/apiData/list.do"
@@ -589,12 +589,12 @@ class GovernmentAPIService:
         }
 
         try:
-            print(f"  📡 Calling Foodpolis API...")
+            print(f"  [API] Calling Foodpolis API...")
             response = requests.get(url, params=params, timeout=15)
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
-                print(f"    ❌ Foodpolis API Error: Status {response.status_code}")
+                print(f"    [ERR] Foodpolis API Error: Status {response.status_code}")
                 return []
 
             data = response.json()
@@ -604,11 +604,11 @@ class GovernmentAPIService:
             if not isinstance(items, list):
                 items = [items] if items else []
 
-            print(f"    ✅ Foodpolis API: {len(items)} items")
+            print(f"    [OK] Foodpolis API: {len(items)} items")
             return self._map_foodpolis_fields(items)
 
         except Exception as e:
-            print(f"  ❌ Foodpolis Exception: {e}")
+            print(f"  [ERR] Foodpolis Exception: {e}")
             return []
 
     def _map_foodpolis_fields(self, items):

@@ -36,7 +36,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         method: "CARD",
         amount: { currency: "KRW", value: 4900 },
         orderId,
-        orderName: "AI 정부지원금 매칭 베이직 플랜",
+        orderName: "지원금매칭 베이직 플랜",
         successUrl: `${window.location.origin}/payment/success?token=${encodeURIComponent(token || "")}`,
         failUrl: `${window.location.origin}/payment/fail`,
       });
@@ -86,7 +86,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
             </div>
             <div className="space-y-2.5">
               {[
-                "AI 맞춤 정부지원금 매칭 (무제한)",
+                "AI 맞춤 지원금매칭 (무제한)",
                 "매일 오전 10시 맞춤 리포트 발송",
                 "실시간 신규 공고 알림",
                 "마감일 일정 관리",

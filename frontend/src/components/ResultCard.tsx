@@ -146,16 +146,12 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
           {res.title}
         </h3>
 
-        {/* AI analysis */}
+        {/* Recommendation & Info */}
         <div className="relative bg-slate-50/80 p-4 rounded-xl flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-5 h-5 bg-white rounded-md flex items-center justify-center text-[10px] shadow-sm border border-slate-100">✨</div>
-            <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">AI 매칭 분석</span>
-          </div>
           <p className="text-slate-700 text-xs font-semibold leading-relaxed mb-3">
             {res.recommendation_reason.split('"').map((text, i) => i % 2 === 1 ? <strong key={i} className="text-indigo-950 font-black px-0.5">{text}</strong> : text)}
           </p>
-          <div className="flex flex-wrap gap-3 pt-2.5 border-t border-slate-200/50">
+          <div className="flex flex-wrap items-center gap-3 pt-2.5 border-t border-slate-200/50">
             <div className="space-y-0.5 min-w-0">
               <span className="text-[7px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
                 <span className="w-1 h-1 bg-indigo-400 rounded-full" /> 지원 대상
@@ -174,6 +170,20 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
                 {res.employee_limit ? ` · ${res.employee_limit}인↑` : ""}
               </p>
             </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
+                }
+              }}
+              className="ml-auto px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[9px] font-black rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+              </svg>
+              AI 신청서 작성
+            </button>
           </div>
         </div>
 

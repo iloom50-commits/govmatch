@@ -78,7 +78,7 @@ def init_database():
                         USING CASE WHEN {col} = 1 THEN true ELSE false END
                     """)
                     conn.commit()
-                    print(f"  Migrated {tbl}.{col}: INTEGER → BOOLEAN")
+                    print(f"  Migrated {tbl}.{col}: INTEGER -> BOOLEAN")
             except Exception as e:
                 conn.rollback()
                 print(f"  Note: {tbl}.{col} migration skipped: {e}")
@@ -174,6 +174,7 @@ class UserProfile(BaseModel):
     revenue_bracket: Optional[str] = None
     employee_count_bracket: Optional[str] = None
     interests: Optional[str] = None
+    password: Optional[str] = None
 
 class CompanyNameRequest(BaseModel):
     company_name: str
@@ -254,6 +255,55 @@ def _get_plan_status(plan: str, trial_ends_at: str | None) -> dict:
         except ValueError:
             pass
     return {"plan": plan, "active": plan != "expired", "days_left": None, "label": plan}
+
+
+class FindEmailRequest(BaseModel):
+    company_name: str
+
+
+@app.post("/api/auth/find-email")
+def api_find_email(req: FindEmailRequest):
+    if not req.company_name or len(req.company_name.strip()) < 1:
+        raise HTTPException(status_code=400, detail="회사명을 입력해 주세요.")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT email FROM users WHERE company_name = %s", (req.company_name,))
+    user = cursor.fetchone()
+    conn.close()
+    if not user or not user.get("email"):
+        raise HTTPException(status_code=404, detail="일치하는 계정을 찾을 수 없습니다.")
+    email = user["email"]
+    local, domain = email.split("@", 1)
+    masked = local[:2] + "*" * max(len(local) - 2, 1) + "@" + domain
+    return {"status": "SUCCESS", "masked_email": masked}
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    company_name: str
+    new_password: str
+
+
+@app.post("/api/auth/reset-password")
+def api_reset_password(req: ResetPasswordRequest):
+    if not req.new_password or len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 합니다.")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT business_number FROM users WHERE email = %s AND company_name = %s",
+        (req.email, req.company_name),
+    )
+    user = cursor.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="일치하는 계정을 찾을 수 없습니다. 이메일과 회사명을 확인해 주세요.")
+    new_hash = _hash_password(req.new_password)
+    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s AND company_name = %s",
+                   (new_hash, req.email, req.company_name))
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "message": "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해 주세요."}
 
 
 @app.post("/api/auth/register")
@@ -362,6 +412,17 @@ def api_login(req: LoginRequest):
         conn2.commit()
         conn2.close()
 
+    # Lookup KSIC industry name
+    industry_name = ""
+    if u.get("industry_code"):
+        conn3 = get_db_connection()
+        cur3 = conn3.cursor()
+        cur3.execute("SELECT name FROM ksic_classification WHERE code = %s", (u["industry_code"],))
+        row3 = cur3.fetchone()
+        if row3:
+            industry_name = row3["name"]
+        conn3.close()
+
     token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, trial_ends)
     return {
         "status": "SUCCESS",
@@ -373,6 +434,7 @@ def api_login(req: LoginRequest):
             "address_city": u.get("address_city", ""),
             "establishment_date": str(u.get("establishment_date", "") or ""),
             "industry_code": u.get("industry_code", ""),
+            "industry_name": industry_name,
             "revenue_bracket": u.get("revenue_bracket", ""),
             "employee_count_bracket": u.get("employee_count_bracket", ""),
             "interests": u.get("interests", ""),
@@ -939,13 +1001,22 @@ def api_fetch_company(request: BusinessNumberRequest):
     }
 
 @app.post("/api/save-profile")
-def api_save_profile(profile: UserProfile):
+def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_current_user)):
     """
-    UPSERT logic for user profile.
+    UPSERT logic for user profile. Requires password re-verification for existing users.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # 기존 사용자인지 확인 + 비밀번호 검증
+        cursor.execute("SELECT password_hash FROM users WHERE business_number = %s", (profile.business_number,))
+        existing = cursor.fetchone()
+        if existing and existing.get("password_hash"):
+            if not profile.password:
+                raise HTTPException(status_code=401, detail="프로필 변경 시 비밀번호 확인이 필요합니다.")
+            if not _verify_password(profile.password, existing["password_hash"]):
+                raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
+
         query = """
         INSERT INTO users (business_number, company_name, establishment_date, address_city, industry_code, revenue_bracket, employee_count_bracket, interests)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -965,6 +1036,8 @@ def api_save_profile(profile: UserProfile):
         ))
         conn.commit()
         return {"status": "SUCCESS", "message": "프로필이 저장되었습니다."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

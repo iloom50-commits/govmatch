@@ -208,13 +208,17 @@ def get_matches_for_user(user_profile):
     user_rev = revenue_map.get(user_profile.get("revenue_bracket") or user_profile.get("revenue"), 0)
     user_emp = employee_map.get(user_profile.get("employee_count_bracket") or user_profile.get("employees"), 0)
 
-    # SQL 1차 필터
+    # SQL 1차 필터: 마감 공고 제외 + deadline 없는 공고는 최근 60일 이내만
     query = """
     SELECT * FROM announcements
     WHERE (region = '전국' OR region = 'All' OR region LIKE %s)
     AND (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
+    AND (
+        (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
+        OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '60 days')
+    )
     """
     cursor.execute(query, (f'%{user_profile.get("address_city", "")}%', company_age, user_rev, user_emp))
     candidates = []

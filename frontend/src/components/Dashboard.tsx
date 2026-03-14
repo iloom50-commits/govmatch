@@ -3,6 +3,7 @@
 import ResultCard from "./ResultCard";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import NotificationModal from "./NotificationModal";
+import SmartDocModal from "./SmartDocModal";
 import { useToast } from "@/components/ui/Toast";
 
 const REVENUE_KR: Record<string, string> = {
@@ -235,10 +236,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       <div className="space-y-3 relative z-10">
-        <div className="flex items-center justify-between px-1">
-          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">기업 프로필 데이터</h4>
-          <div className="h-px bg-slate-100 flex-1 ml-3" />
-        </div>
         <div className="grid grid-cols-1 gap-2">
           {[
             { label: "소재지", value: profile?.address_city || "전국", icon: "📍" },
@@ -362,12 +359,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="tracking-tight">일정 관리</span>
           </a>
         </div>
-        <button
-          onClick={onLogout}
-          className="w-full py-2 text-slate-400 hover:text-rose-500 text-[10px] font-black uppercase tracking-widest transition-all"
-        >
-          로그아웃
-        </button>
       </div>
     </div>
   );
@@ -432,8 +423,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
           <header className="space-y-3">
-            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight">
-              AI 맞춤 <span className="text-indigo-600 italic">정부지원금 매칭</span>
+            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight flex items-baseline gap-3">
+              <span className="text-indigo-600">지원금매칭</span>
+              <span className="text-xs sm:text-sm font-bold text-slate-500 tracking-normal">AI가 찾아주는 맞춤 정부보조금</span>
             </h2>
 
             {/* 탭 + 정렬 */}
@@ -562,6 +554,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           console.log("알림 설정 저장됨:", newSettings);
         }}
       />
+      <SmartDocModal />
     </div>
   );
 }

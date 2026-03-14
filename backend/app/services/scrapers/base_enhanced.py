@@ -20,7 +20,7 @@ try:
     from app.services.scrapers.attachment_downloader import AttachmentDownloader
     SMART_PARSER_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  Scraper components not fully ported yet: {e}")
+    print(f"[WARN] Scraper components not fully ported yet: {e}")
     SMART_PARSER_AVAILABLE = False
     SmartHTMLParser = None
     AttachmentDownloader = None
@@ -45,14 +45,14 @@ class EnhancedBaseScraper(BaseScraper):
             try:
                 self.smart_parser = SmartHTMLParser()
             except Exception as e:
-                print(f"⚠️  스마트 파서 초기화 실패: {e}")
+                print(f"[WARN] Smart parser init failed: {e}")
                 self.use_enhanced_parser = False
         
         if self.download_attachments:
             try:
                 self.attachment_downloader = AttachmentDownloader()
             except Exception as e:
-                print(f"⚠️  첨부 파일 다운로더 초기화 실패: {e}")
+                print(f"[WARN] Attachment downloader init failed: {e}")
                 self.download_attachments = False
     
     async def _scrape_details_enhanced(self, page, url: str) -> Dict[str, Any]:
@@ -84,7 +84,7 @@ class EnhancedBaseScraper(BaseScraper):
             return result
             
         except Exception as e:
-            print(f"  ⚠️  고도화된 파서 오류: {e}")
+            print(f"  [WARN] Enhanced parser error: {e}")
             return await self._scrape_details_basic(page, url)
     
     async def _scrape_details_basic(self, page, url: str) -> Dict[str, Any]:
@@ -118,7 +118,7 @@ class EnhancedBaseScraper(BaseScraper):
                 "end_date": end_date
             }
         except Exception as e:
-            print(f"  ⚠️  기본 파싱 오류: {e}")
+            print(f"  [WARN] Basic parsing error: {e}")
             return {}
     
     def _extract_industry_from_content(self, extracted_info: Dict) -> list:

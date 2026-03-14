@@ -119,8 +119,8 @@ export default function Home() {
   const loadUserAndMatch = useCallback(async () => {
     const token = getToken();
     if (!token) {
-      // No token = first visit → show onboarding
-      setStep("IDLE");
+      // No token → show login (user can navigate to register from there)
+      setStep("LOGIN");
       return;
     }
 
@@ -168,6 +168,7 @@ export default function Home() {
   // Login success (returning user)
   const handleLoginSuccess = async (token: string, user: any, plan: any) => {
     localStorage.setItem("auth_token", token);
+    if (user.email) localStorage.setItem("last_email", user.email);
     setPlanStatus(plan);
     setBusinessNumber(user.business_number);
 
@@ -227,6 +228,7 @@ export default function Home() {
           if (loginRes.ok) {
             toast("기존 계정으로 로그인되었습니다.", "success");
             localStorage.setItem("auth_token", loginData.token);
+            if (data.email) localStorage.setItem("last_email", data.email);
             setPlanStatus(loginData.plan);
             setBusinessNumber(loginData.user.business_number);
             // 온보딩 재시도 시 프로파일 업데이트
@@ -259,6 +261,7 @@ export default function Home() {
       }
 
       localStorage.setItem("auth_token", regData.token);
+      if (data.email) localStorage.setItem("last_email", data.email);
       localStorage.removeItem("referral_code");
       setReferralCode(null);
       setPlanStatus(regData.plan);
@@ -322,7 +325,6 @@ export default function Home() {
         revenue_bracket: finalData.revenue,
         employee_count_bracket: finalData.employees,
       };
-      setProfileData(payload);
       const res = await fetch(`${API}/api/save-profile`, {
         method: "POST",
         headers: authHeaders(),
@@ -330,6 +332,11 @@ export default function Home() {
       });
 
       const result = await res.json();
+      if (res.status === 401) {
+        toast(result.detail || "비밀번호가 올바르지 않습니다.", "error");
+        setStep("PROFILE");
+        return;
+      }
       if (result.status === "SUCCESS") {
         // Reload profile from server to get industry_name and latest data
         const meRes = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
@@ -419,10 +426,10 @@ export default function Home() {
       {(step === "IDLE" || step === "ONBOARDING" || step === "LOGIN") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 mb-2 tracking-tighter">
-            AI 맞춤 <span className="text-indigo-600 italic">정부지원금 매칭</span>
+            <span className="text-indigo-600">지원금매칭</span>
           </h1>
           <p className="text-slate-500 text-xs md:text-sm max-w-md mx-auto font-medium leading-relaxed px-4 opacity-80">
-            매시간 5,000개 이상의 정부 공고를 AI가 스캔하여
+            AI가 매시간 5,000개 이상의 정부 공고를 분석하여
             <br className="md:hidden" /> 우리 기업에 딱 맞는 지원사업을 찾아드립니다
           </p>
         </div>
@@ -452,13 +459,13 @@ export default function Home() {
 
       {/* Returning user login */}
       {step === "LOGIN" && (
-        <AuthPage onLoginSuccess={handleLoginSuccess} onGoToRegister={() => setStep("IDLE")} />
+        <AuthPage onLoginSuccess={handleLoginSuccess} onGoToRegister={() => setStep("IDLE")} initialEmail={typeof window !== "undefined" ? localStorage.getItem("last_email") || "" : ""} />
       )}
 
       {step === "LOADING" && <SkeletonLoader />}
 
       {step === "PROFILE" && (
-        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} />
+        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} />
       )}
 
       {step === "RESULTS" && (
@@ -490,7 +497,7 @@ export default function Home() {
 
       {step !== "RESULTS" && (
         <footer className="mt-8 md:mt-10 text-slate-400 text-[9px] font-black tracking-[0.2em] md:tracking-[0.2em] uppercase opacity-40">
-          &copy; 2026 AI 맞춤 정부지원금 매칭
+          &copy; 2026 지원금매칭
         </footer>
       )}
     </main>

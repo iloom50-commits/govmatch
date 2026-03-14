@@ -115,43 +115,28 @@ async def _daily_digest_loop():
             print(f"[Scheduler] digest error: {e}")
 
 
-def _delete_expired_announcements():
-    """마감일이 지난 공고를 DB에서 삭제"""
+def _log_expired_announcements():
+    """만료 공고 수만 로그에 기록 (자동 삭제 안 함 — 관리자가 수동 관리)"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM announcements WHERE deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE")
         row = cur.fetchone()
         count = row["count"] if row else 0
-        if count > 0:
-            cur.execute("DELETE FROM announcements WHERE deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE")
-            conn.commit()
-            print(f"[Scheduler] Deleted {count} expired announcements")
+        cur.execute("SELECT COUNT(*) FROM announcements")
+        total = cur.fetchone()["count"]
+        print(f"[Info] 공고 현황: 전체 {total}건, 만료 {count}건 (자동 삭제 안 함)")
         conn.close()
     except Exception as e:
-        print(f"[Scheduler] expire cleanup error: {e}")
-
-
-async def _daily_cleanup_loop():
-    """매일 자정에 만료 공고 자동 삭제"""
-    while True:
-        now = datetime.datetime.now()
-        target = now.replace(hour=0, minute=5, second=0, microsecond=0)
-        if now >= target:
-            target += datetime.timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        _delete_expired_announcements()
+        print(f"[Info] expire check error: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app):
-    _delete_expired_announcements()  # 시작 시 즉시 만료 공고 정리
+    _log_expired_announcements()  # 시작 시 현황만 로그
     task_digest = asyncio.create_task(_daily_digest_loop())
-    task_cleanup = asyncio.create_task(_daily_cleanup_loop())
     yield
     task_digest.cancel()
-    task_cleanup.cancel()
     try:
         await task_digest
     except asyncio.CancelledError:

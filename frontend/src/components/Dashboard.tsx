@@ -47,11 +47,11 @@ interface MatchItem {
 
 const TAB_GROUPS: { label: string; key: string; categories: string[] }[] = [
   { label: "전체", key: "all", categories: [] },
-  { label: "소상공인", key: "small_biz", categories: ["Small Business/Startup", "SME Support", "General Business Support", "General", "Food Industry"] },
-  { label: "창업지원", key: "startup", categories: ["Entrepreneurship", "Small Business/Startup"] },
-  { label: "R&D/기술", key: "rnd", categories: ["R&D", "R&D/Digital"] },
-  { label: "자금/융자", key: "loan", categories: ["Loan/Investment"] },
-  { label: "경영/판로", key: "biz", categories: ["Marketing", "General Business Support"] },
+  { label: "소상공인", key: "small_biz", categories: ["Small Business/Startup", "SME Support", "General Business Support", "General", "Food Industry", "소상공인", "내수"] },
+  { label: "창업", key: "startup", categories: ["Entrepreneurship", "Small Business/Startup", "창업"] },
+  { label: "R&D/기술", key: "rnd", categories: ["R&D", "R&D/Digital", "기술", "기술개발", "스마트공장", "정보"] },
+  { label: "자금/융자", key: "loan", categories: ["Loan/Investment", "금융"] },
+  { label: "경영/수출/인력", key: "biz", categories: ["Marketing", "General Business Support", "경영", "수출", "수출지원", "인력", "인력지원", "기타"] },
 ];
 
 type SortKey = "latest" | "deadline";
@@ -423,37 +423,62 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
           <header className="space-y-3">
-            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight flex items-baseline gap-3">
+            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
               <span className="text-indigo-600">지원금매칭</span>
-              <span className="text-xs sm:text-sm font-bold text-slate-500 tracking-normal">AI가 찾아주는 맞춤 정부보조금</span>
+              <span className="text-[10px] sm:text-xs md:text-sm font-bold text-slate-500 tracking-normal">AI가 찾아주는 맞춤 정부보조금</span>
             </h2>
 
             {/* 탭 + 정렬 */}
-            <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-xl border border-white/80 shadow-sm overflow-x-auto scrollbar-none">
-              {TAB_GROUPS.map((tab) => {
-                const count = tabCounts[tab.key] || 0;
-                if (tab.key !== "all" && count === 0) return null;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-black transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
-                      activeTab === tab.key
-                        ? "bg-slate-950 text-white shadow-md"
-                        : "text-slate-500 hover:bg-slate-50"
-                    }`}
-                  >
-                    {tab.label}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
-                      activeTab === tab.key
-                        ? "bg-white/20 text-white/80"
-                        : "bg-slate-100 text-slate-400"
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-xl border border-white/80 shadow-sm">
+              {/* Mobile: 드롭다운 */}
+              <div className="relative sm:hidden flex-1">
+                <select
+                  value={activeTab}
+                  onChange={(e) => setActiveTab(e.target.value)}
+                  className="w-full appearance-none bg-slate-950 text-white px-3 py-2 pr-8 rounded-lg text-[11px] font-black outline-none cursor-pointer"
+                >
+                  {TAB_GROUPS.map((tab) => {
+                    const count = tabCounts[tab.key] || 0;
+                    if (tab.key !== "all" && count === 0) return null;
+                    return (
+                      <option key={tab.key} value={tab.key}>
+                        {tab.label} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/70 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+
+              {/* Desktop: 기존 탭 버튼 */}
+              <div className="hidden sm:flex items-center gap-1">
+                {TAB_GROUPS.map((tab) => {
+                  const count = tabCounts[tab.key] || 0;
+                  if (tab.key !== "all" && count === 0) return null;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-black transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
+                        activeTab === tab.key
+                          ? "bg-slate-950 text-white shadow-md"
+                          : "text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {tab.label}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                        activeTab === tab.key
+                          ? "bg-white/20 text-white/80"
+                          : "bg-slate-100 text-slate-400"
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
               <div className="ml-auto flex-shrink-0 h-6 w-px bg-slate-200" />
 

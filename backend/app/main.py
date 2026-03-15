@@ -92,11 +92,30 @@ def init_database():
 init_database()
 
 
+SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "8"))
 DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "9"))
 
 
+async def _daily_sync_loop():
+    """매일 SYNC_HOUR 시에 공고 자동 수집"""
+    while True:
+        now = datetime.datetime.now()
+        target = now.replace(hour=SYNC_HOUR, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += datetime.timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
+        await asyncio.sleep(wait_seconds)
+        try:
+            print("[Scheduler] Running scheduled daily sync...")
+            await admin_scraper.run_all()
+            print("[Scheduler] Daily sync complete")
+        except Exception as e:
+            print(f"[Scheduler] sync error: {e}")
+
+
 async def _daily_digest_loop():
-    """매일 지정 시각(DIGEST_HOUR)에 다이제스트를 자동 생성하는 백그라운드 루프"""
+    """매일 DIGEST_HOUR 시에 매칭 + 이메일/푸시 발송"""
     from app.services.notification_service import notification_service
     while True:
         now = datetime.datetime.now()
@@ -110,7 +129,8 @@ async def _daily_digest_loop():
             print("[Scheduler] Running scheduled daily digest...")
             results = await notification_service.generate_daily_digest()
             sent = sum(1 for r in results if r.get("email_sent"))
-            print(f"[Scheduler] Digest complete: {len(results)} users, {sent} emails sent")
+            push_sent = sum(r.get("push_sent", 0) for r in results)
+            print(f"[Scheduler] Digest complete: {len(results)} users, {sent} emails, {push_sent} pushes sent")
         except Exception as e:
             print(f"[Scheduler] digest error: {e}")
 
@@ -134,8 +154,10 @@ def _log_expired_announcements():
 @asynccontextmanager
 async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
+    task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())
     yield
+    task_sync.cancel()
     task_digest.cancel()
     try:
         await task_digest

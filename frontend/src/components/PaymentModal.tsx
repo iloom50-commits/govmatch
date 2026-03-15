@@ -88,7 +88,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
               {[
                 "AI 맞춤 지원금매칭 (무제한)",
                 "매일 오전 10시 맞춤 리포트 발송",
-                "실시간 신규 공고 알림",
+                "신규 공고 알림 (매일 업데이트)",
                 "마감일 일정 관리",
                 "브라우저 푸시 알림",
               ].map((feature, i) => (

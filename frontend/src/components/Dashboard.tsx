@@ -274,7 +274,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {planStatus.plan !== "basic" && onUpgrade && (
             <button
               onClick={onUpgrade}
-              className="mt-2 w-full py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black hover:bg-indigo-700 transition-all active:scale-95"
+              className="mt-2 w-full py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-black hover:bg-amber-600 transition-all active:scale-95"
             >
               {planStatus.plan === "expired" ? "베이직 플랜 시작" : "업그레이드"}
             </button>

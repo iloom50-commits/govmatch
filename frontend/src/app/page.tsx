@@ -391,31 +391,31 @@ export default function Home() {
       )}
 
       {planStatus?.plan === "expired" && step === "RESULTS" && (
-        <div className="w-full max-w-[1600px] mx-auto mb-6 p-5 bg-rose-50 border border-rose-200 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-500 shadow-sm">
+        <div className="w-full max-w-[1600px] mx-auto mb-6 p-5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-500 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🔒</span>
             <div>
-              <p className="text-rose-900 font-black text-sm">무료체험이 종료되었습니다</p>
-              <p className="text-rose-700 text-xs font-medium">베이직 플랜(월 4,900원)으로 업그레이드하면 계속 이용할 수 있습니다.</p>
+              <p className="text-rose-900 font-bold text-sm">구독이 만료되었습니다</p>
+              <p className="text-rose-700 text-xs font-medium">플랜을 선택하면 AI 기능을 계속 이용할 수 있습니다.</p>
             </div>
           </div>
           <button
             onClick={() => setShowPayment(true)}
-            className="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-lg text-sm"
+            className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg text-sm"
           >
-            베이직 플랜 시작하기
+            플랜 선택하기
           </button>
         </div>
       )}
 
-      {planStatus?.plan === "trial" && planStatus.days_left !== null && planStatus.days_left <= 7 && step === "RESULTS" && (
-        <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between animate-in slide-in-from-top duration-500">
-          <p className="text-indigo-800 text-xs font-black">
-            무료체험 {planStatus.days_left}일 남음 — 베이직 플랜으로 업그레이드하면 중단 없이 이용 가능합니다
+      {planStatus?.plan === "free" && step === "RESULTS" && (
+        <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between animate-in slide-in-from-top duration-500">
+          <p className="text-indigo-800 text-xs font-bold">
+            FREE 플랜 사용 중 — 더 많은 AI 기능을 원하시면 업그레이드하세요 (첫 달 무료)
           </p>
           <button
             onClick={() => setShowPayment(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all flex-shrink-0"
           >
             업그레이드
           </button>
@@ -425,8 +425,8 @@ export default function Home() {
       {/* Hero Header for onboarding & login */}
       {(step === "IDLE" || step === "ONBOARDING" || step === "LOGIN") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
-          <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-slate-900 mb-2 tracking-tighter">
-            <span className="text-indigo-600">지원금매칭</span>
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-2 tracking-tighter">
+            <span className="text-indigo-600">지원금톡톡</span>
           </h1>
           <p className="text-slate-500 text-xs md:text-sm max-w-md mx-auto font-medium leading-relaxed px-4 opacity-80">
             AI가 매시간 5,000개 이상의 정부 공고를 분석하여
@@ -497,7 +497,7 @@ export default function Home() {
 
       {step !== "RESULTS" && (
         <footer className="mt-8 md:mt-10 text-slate-400 text-[9px] font-black tracking-[0.2em] md:tracking-[0.2em] uppercase opacity-40">
-          &copy; 2026 지원금매칭
+          &copy; 2026 지원금톡톡
         </footer>
       )}
     </main>

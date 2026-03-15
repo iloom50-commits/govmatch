@@ -36,11 +36,15 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(100) UNIQUE,
     kakao_id VARCHAR(100),
     password_hash TEXT,
-    plan VARCHAR(20) DEFAULT 'trial',
-    trial_ends_at TIMESTAMP,
+    plan VARCHAR(20) DEFAULT 'free',
+    plan_started_at TIMESTAMP,
+    plan_expires_at TIMESTAMP,
+    ai_usage_month INT DEFAULT 0,
+    ai_usage_reset_at TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     referral_code VARCHAR(20),
     referred_by VARCHAR(20),
+    referral_rewarded BOOLEAN DEFAULT FALSE,
     merit_months INT DEFAULT 0
 );
 

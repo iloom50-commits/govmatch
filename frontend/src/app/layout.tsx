@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "지원금매칭 — AI가 찾아주는 맞춤 정부지원금",
+  title: "지원금톡톡 — AI가 찾아주는 맞춤 정부지원금",
   description: "우리 기업에 딱 맞는 정부지원금을 AI가 자동으로 찾아드립니다. 중소기업 지원사업, 보조금, 정책자금 매칭.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "지원금매칭",
+    title: "지원금톡톡",
   },
   other: {
     "mobile-web-app-capable": "yes",
@@ -37,6 +37,17 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="theme-color" content="#2563eb" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.__pwaPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__pwaPrompt = e;
+              });
+            `,
+          }}
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

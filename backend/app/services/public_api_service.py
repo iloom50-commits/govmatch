@@ -347,15 +347,38 @@ class GovernmentAPIService:
             print(f"  [ERR] Bizinfo Portal Exception: {e}")
             return []
 
+    @staticmethod
+    def _parse_period_end_date(period_str) -> str | None:
+        """'2026-03-09 ~ 2026-03-27' 형식에서 종료일 추출"""
+        if not period_str or "~" not in str(period_str):
+            return None
+        parts = str(period_str).split("~")
+        if len(parts) == 2:
+            end_part = parts[1].strip()
+            # YYYY-MM-DD 형식 검증
+            if len(end_part) >= 10 and end_part[4] == "-" and end_part[7] == "-":
+                return end_part[:10]
+        return None
+
     def _map_bizinfo_portal_fields(self, items):
         mapped = []
         for item in items:
             title = item.get("pblancNm")
             rel_url = item.get("pblancUrl")
+            # 1) 개별 마감일 필드 시도
             deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("reqstEndDe")
+            # 2) reqstBeginEndDe ("2026-03-09 ~ 2026-03-27") 에서 종료일 추출
+            if not deadline:
+                deadline = self._parse_period_end_date(item.get("reqstBeginEndDe"))
             
             if title and rel_url:
-                full_url = rel_url if rel_url.startswith("http") else f"https://www.bizinfo.go.kr{rel_url}"
+                # Prevent URL doubling: if rel_url already has full domain, use as-is
+                if rel_url.startswith("http"):
+                    full_url = rel_url
+                elif rel_url.startswith("/"):
+                    full_url = f"https://www.bizinfo.go.kr{rel_url}"
+                else:
+                    full_url = f"https://www.bizinfo.go.kr/{rel_url}"
                 mapped.append({
                     "title": title,
                     "url": full_url,

@@ -82,6 +82,15 @@ def init_database():
             except Exception as e:
                 conn.rollback()
                 print(f"  Note: {tbl}.{col} migration skipped: {e}")
+        # ai_analyzed_at 컬럼 추가 (중복 AI 분석 방지용 타임스탬프)
+        try:
+            cursor.execute("""
+                ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMP
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         conn.commit()
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
@@ -93,11 +102,14 @@ init_database()
 
 
 SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "8"))
-DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "9"))
+DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "10"))
 
 
 async def _daily_sync_loop():
-    """매일 SYNC_HOUR 시에 공고 자동 수집"""
+    """매일 SYNC_HOUR 시에 공고 수집 → AI 재분석 파이프라인"""
+    from app.services.sync_service import SyncService
+    sync_service = SyncService()
+
     while True:
         now = datetime.datetime.now()
         target = now.replace(hour=SYNC_HOUR, minute=0, second=0, microsecond=0)
@@ -107,15 +119,23 @@ async def _daily_sync_loop():
         print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
-            print("[Scheduler] Running scheduled daily sync...")
-            await admin_scraper.run_all()
-            print("[Scheduler] Daily sync complete")
+            # Step 1: API 공고 수집 + Admin 크롤링 + Scrapers
+            print("[Scheduler] Step 1/2: 공고 수집 시작...")
+            await sync_service.sync_all()
+            print("[Scheduler] Step 1/2: 공고 수집 완료")
+
+            # Step 2: AI 재분석 (미분석 공고만 대상 — 중복 분석 방지)
+            print("[Scheduler] Step 2/2: AI 재분석 시작 (미분석 건만)...")
+            import threading
+            t = threading.Thread(target=_run_reanalyze_in_thread, args=(300,), daemon=True)
+            t.start()
+            print("[Scheduler] Step 2/2: AI 재분석 백그라운드 실행 중")
         except Exception as e:
             print(f"[Scheduler] sync error: {e}")
 
 
 async def _daily_digest_loop():
-    """매일 DIGEST_HOUR 시에 매칭 + 이메일/푸시 발송"""
+    """매일 DIGEST_HOUR(10시)에 매칭 + 이메일/푸시 발송"""
     from app.services.notification_service import notification_service
     while True:
         now = datetime.datetime.now()
@@ -262,21 +282,68 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _decode_jwt(token)
 
 
-def _get_plan_status(plan: str, trial_ends_at: str | None) -> dict:
-    """플랜 상태와 남은 일수를 계산"""
+# 플랜별 월 AI 기능 건수 제한
+PLAN_LIMITS = {
+    "free": 5,
+    "basic": 50,
+    "pro": 200,
+}
+
+# 플랜별 AI 신청 가이드 가격 (원)
+PLAN_GUIDE_PRICE = {
+    "free": None,       # 이용 불가
+    "basic": 14900,
+    "pro": 9900,
+}
+
+
+def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int = 0) -> dict:
+    """플랜 상태와 남은 일수, 잔여 건수를 계산"""
     now = datetime.datetime.utcnow()
-    if plan == "basic":
-        return {"plan": "basic", "active": True, "days_left": None, "label": "베이직"}
-    if plan == "trial" and trial_ends_at:
-        try:
-            ends = datetime.datetime.fromisoformat(str(trial_ends_at))
-            days_left = (ends - now).days
-            if days_left < 0:
-                return {"plan": "expired", "active": False, "days_left": 0, "label": "만료됨"}
-            return {"plan": "trial", "active": True, "days_left": days_left, "label": f"무료체험 D-{days_left}"}
-        except ValueError:
-            pass
-    return {"plan": plan, "active": plan != "expired", "days_left": None, "label": plan}
+    limit = PLAN_LIMITS.get(plan, 5)
+
+    if plan == "free":
+        return {
+            "plan": "free", "active": True, "days_left": None,
+            "label": "FREE",
+            "ai_used": ai_usage_month, "ai_limit": limit,
+            "guide_price": None,
+        }
+
+    if plan in ("basic", "pro"):
+        # 유료 플랜 만료 체크
+        if plan_expires_at:
+            try:
+                expires = datetime.datetime.fromisoformat(str(plan_expires_at))
+                days_left = (expires - now).days
+                if days_left < 0:
+                    # 만료 → free로 다운그레이드
+                    return {
+                        "plan": "expired", "active": False, "days_left": 0,
+                        "label": "만료됨",
+                        "ai_used": ai_usage_month, "ai_limit": PLAN_LIMITS["free"],
+                        "guide_price": None,
+                    }
+                label = "BASIC" if plan == "basic" else "PRO"
+                return {
+                    "plan": plan, "active": True, "days_left": days_left,
+                    "label": label,
+                    "ai_used": ai_usage_month, "ai_limit": limit,
+                    "guide_price": PLAN_GUIDE_PRICE.get(plan),
+                }
+            except ValueError:
+                pass
+        # plan_expires_at 없으면 활성 (영구)
+        label = "BASIC" if plan == "basic" else "PRO"
+        return {
+            "plan": plan, "active": True, "days_left": None,
+            "label": label,
+            "ai_used": ai_usage_month, "ai_limit": limit,
+            "guide_price": PLAN_GUIDE_PRICE.get(plan),
+        }
+
+    return {"plan": "free", "active": True, "days_left": None, "label": "FREE",
+            "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "guide_price": None}
 
 
 class FindEmailRequest(BaseModel):
@@ -339,7 +406,7 @@ def api_register(req: RegisterRequest):
 
     import hashlib as _hashlib
     hashed = _hash_password(req.password)
-    trial_end = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
+    now_iso = datetime.datetime.utcnow().isoformat()
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -354,7 +421,9 @@ def api_register(req: RegisterRequest):
         est_date = req.establishment_date or datetime.date.today().isoformat()
         if existing:
             cursor.execute(
-                """UPDATE users SET email=%s, password_hash=%s, plan='trial', trial_ends_at=%s,
+                """UPDATE users SET email=%s, password_hash=%s, plan='free',
+                   plan_started_at=%s, plan_expires_at=NULL,
+                   ai_usage_month=0, ai_usage_reset_at=%s,
                    company_name=COALESCE(NULLIF(%s, ''), company_name),
                    address_city=COALESCE(NULLIF(%s, '전국'), address_city),
                    industry_code=COALESCE(NULLIF(%s, '00000'), industry_code),
@@ -363,7 +432,7 @@ def api_register(req: RegisterRequest):
                    employee_count_bracket=COALESCE(%s, employee_count_bracket),
                    interests=COALESCE(%s, interests)
                    WHERE business_number=%s""",
-                (req.email, hashed, trial_end,
+                (req.email, hashed, now_iso, now_iso,
                  req.company_name or "", req.address_city or "전국",
                  req.industry_code or "00000", req.establishment_date,
                  req.revenue_bracket, req.employee_count_bracket, req.interests,
@@ -372,12 +441,13 @@ def api_register(req: RegisterRequest):
             user_id = existing["user_id"]
         else:
             cursor.execute(
-                """INSERT INTO users (business_number, company_name, email, password_hash, plan, trial_ends_at,
+                """INSERT INTO users (business_number, company_name, email, password_hash, plan,
+                   plan_started_at, ai_usage_month, ai_usage_reset_at,
                    address_city, establishment_date, industry_code, revenue_bracket, employee_count_bracket, interests,
                    referred_by)
-                   VALUES (%s, %s, %s, %s, 'trial', %s, %s, %s, %s, %s, %s, %s, %s)
+                   VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING user_id""",
-                (req.business_number, req.company_name or "", req.email, hashed, trial_end,
+                (req.business_number, req.company_name or "", req.email, hashed, now_iso, now_iso,
                  req.address_city or "전국", est_date,
                  req.industry_code or "00000", req.revenue_bracket,
                  req.employee_count_bracket, req.interests,
@@ -388,12 +458,34 @@ def api_register(req: RegisterRequest):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
+            # 가입 시 추천인 보상 (1회만 — referral_rewarded로 중복 방지)
+            if req.referred_by:
+                cursor.execute("SELECT user_id, plan, plan_expires_at, merit_months FROM users WHERE referral_code = %s", (req.referred_by,))
+                referrer = cursor.fetchone()
+                if referrer:
+                    new_merit = (referrer["merit_months"] or 0) + 1
+                    if referrer["plan"] in ("basic", "pro"):
+                        # 유료 플랜: 만료일 30일 연장
+                        try:
+                            current_end = datetime.datetime.fromisoformat(str(referrer["plan_expires_at"]))
+                            new_end = (max(current_end, datetime.datetime.utcnow()) + datetime.timedelta(days=30)).isoformat()
+                        except Exception:
+                            new_end = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
+                        cursor.execute(
+                            "UPDATE users SET merit_months=%s, plan_expires_at=%s WHERE user_id=%s",
+                            (new_merit, new_end, referrer["user_id"])
+                        )
+                    else:
+                        # free 플랜: merit_months만 적립
+                        cursor.execute("UPDATE users SET merit_months=%s WHERE user_id=%s", (new_merit, referrer["user_id"]))
+                    cursor.execute("UPDATE users SET referral_rewarded=TRUE WHERE user_id=%s", (user_id,))
+
         conn.commit()
-        token = _create_jwt(user_id, req.business_number, req.email, "trial", trial_end)
+        token = _create_jwt(user_id, req.business_number, req.email, "free", None)
         return {
             "status": "SUCCESS",
             "token": token,
-            "plan": _get_plan_status("trial", trial_end),
+            "plan": _get_plan_status("free", None, 0),
         }
     finally:
         conn.close()
@@ -420,19 +512,44 @@ def api_login(req: LoginRequest):
     if not _verify_password(req.password, u["password_hash"]):
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
 
-    plan = u.get("plan") or "trial"
-    trial_ends = u.get("trial_ends_at")
-    if trial_ends is not None:
-        trial_ends = str(trial_ends)
-    plan_status = _get_plan_status(plan, trial_ends)
+    plan = u.get("plan") or "free"
+    # trial → free 마이그레이션 (기존 사용자 호환)
+    if plan == "trial":
+        plan = "free"
+    plan_expires = u.get("plan_expires_at")
+    if plan_expires is not None:
+        plan_expires = str(plan_expires)
+    ai_usage = u.get("ai_usage_month") or 0
+
+    # 월간 사용량 리셋 체크
+    reset_at = u.get("ai_usage_reset_at")
+    now = datetime.datetime.utcnow()
+    if reset_at:
+        try:
+            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+            if now.month != reset_dt.month or now.year != reset_dt.year:
+                ai_usage = 0
+                conn_reset = get_db_connection()
+                cur_reset = conn_reset.cursor()
+                cur_reset.execute(
+                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
+                    (now.isoformat(), u["user_id"])
+                )
+                conn_reset.commit()
+                conn_reset.close()
+        except Exception:
+            pass
+
+    plan_status = _get_plan_status(plan, plan_expires, ai_usage)
 
     if plan_status["plan"] == "expired":
-        plan = "expired"
+        plan = "free"
         conn2 = get_db_connection()
         cur2 = conn2.cursor()
-        cur2.execute("UPDATE users SET plan = 'expired' WHERE user_id = %s", (u["user_id"],))
+        cur2.execute("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE user_id = %s", (u["user_id"],))
         conn2.commit()
         conn2.close()
+        plan_status = _get_plan_status("free", None, ai_usage)
 
     # Lookup KSIC industry name
     industry_name = ""
@@ -445,7 +562,7 @@ def api_login(req: LoginRequest):
             industry_name = row3["name"]
         conn3.close()
 
-    token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, trial_ends)
+    token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, plan_expires)
     return {
         "status": "SUCCESS",
         "token": token,
@@ -511,9 +628,13 @@ class UpgradePlanRequest(BaseModel):
     payment_key: Optional[str] = None
     order_id: Optional[str] = None
     amount: Optional[int] = 4900
+    target_plan: Optional[str] = "basic"  # "basic" or "pro"
+    free_trial: Optional[bool] = False    # 첫 달 무료 여부
 
 
 TOSS_SECRET_KEY = os.getenv("TOSS_SECRET_KEY", "")
+
+PLAN_PRICES = {"basic": 4900, "pro": 14900}
 
 
 @app.post("/api/plan/upgrade")
@@ -521,10 +642,12 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """결제 확인 후 플랜을 basic으로 업그레이드"""
+    """결제 확인 후 플랜을 basic 또는 pro로 업그레이드"""
     bn = current_user["bn"]
+    target = req.target_plan if req.target_plan in ("basic", "pro") else "basic"
 
-    if TOSS_SECRET_KEY and req.payment_key:
+    # 결제 검증 (첫 달 무료가 아닌 경우)
+    if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
         import httpx
         import base64
         auth = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
@@ -545,50 +668,43 @@ def api_plan_upgrade(
             detail = confirm_res.json().get("message", "결제 승인에 실패했습니다.")
             raise HTTPException(status_code=400, detail=detail)
 
+    now = datetime.datetime.utcnow()
+    expires_at = (now + datetime.timedelta(days=30)).isoformat()
+
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # 첫 달 무료는 한 번만 가능 (이미 유료 경험이 있으면 불가)
+    if req.free_trial:
+        cur.execute("SELECT plan_started_at FROM users WHERE business_number = %s", (bn,))
+        u = cur.fetchone()
+        # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
+        # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
+        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'pro')", (bn,))
+        if cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
+
     cur.execute(
-        "UPDATE users SET plan = 'basic', trial_ends_at = NULL WHERE business_number = %s",
-        (bn,),
+        """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
+           ai_usage_month = 0, ai_usage_reset_at = %s
+           WHERE business_number = %s""",
+        (target, now.isoformat(), expires_at, now.isoformat(), bn),
     )
-    # 추천인에게 merit_months +1 및 플랜 연장
-    cur.execute("SELECT referred_by FROM users WHERE business_number = %s", (bn,))
-    row = cur.fetchone()
-    if row and row["referred_by"]:
-        ref_code = row["referred_by"]
-        cur.execute("SELECT user_id, plan, trial_ends_at, merit_months FROM users WHERE referral_code = %s", (ref_code,))
-        referrer = cur.fetchone()
-        if referrer:
-            new_merit = (referrer["merit_months"] or 0) + 1
-            if referrer["plan"] == "basic":
-                # basic 플랜은 이미 무제한이므로 merit만 기록
-                cur.execute("UPDATE users SET merit_months=%s WHERE user_id=%s", (new_merit, referrer["user_id"]))
-            else:
-                # trial 또는 expired → trial_ends_at 30일 연장
-                try:
-                    base = datetime.datetime.fromisoformat(str(referrer["trial_ends_at"])) if referrer["trial_ends_at"] else datetime.datetime.utcnow()
-                    if base < datetime.datetime.utcnow():
-                        base = datetime.datetime.utcnow()
-                    new_end = (base + datetime.timedelta(days=30)).isoformat()
-                except Exception:
-                    new_end = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
-                cur.execute(
-                    "UPDATE users SET merit_months=%s, plan='trial', trial_ends_at=%s WHERE user_id=%s",
-                    (new_merit, new_end, referrer["user_id"])
-                )
     conn.commit()
     conn.close()
 
-    plan_status = _get_plan_status("basic", None)
+    plan_status = _get_plan_status(target, expires_at, 0)
+    label = "BASIC" if target == "basic" else "PRO"
     new_token = _create_jwt(
-        current_user["user_id"], bn, current_user["email"], "basic", None
+        current_user["user_id"], bn, current_user["email"], target, expires_at
     )
 
     return {
         "status": "SUCCESS",
         "token": new_token,
         "plan": plan_status,
-        "message": "베이직 플랜으로 업그레이드되었습니다.",
+        "message": f"{label} 플랜으로 업그레이드되었습니다.",
     }
 
 
@@ -597,19 +713,81 @@ def api_plan_status(current_user: dict = Depends(_get_current_user)):
     """현재 플랜 상태 조회"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT plan, trial_ends_at FROM users WHERE business_number = %s", (current_user["bn"],))
+    cursor.execute(
+        "SELECT plan, plan_expires_at, ai_usage_month, ai_usage_reset_at FROM users WHERE business_number = %s",
+        (current_user["bn"],)
+    )
     user = cursor.fetchone()
     conn.close()
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
-    trial_ends = u.get("trial_ends_at")
-    if trial_ends is not None:
-        trial_ends = str(trial_ends)
+
+    plan = u.get("plan") or "free"
+    if plan == "trial":
+        plan = "free"
+    plan_expires = u.get("plan_expires_at")
+    if plan_expires is not None:
+        plan_expires = str(plan_expires)
+    ai_usage = u.get("ai_usage_month") or 0
+
     return {
         "status": "SUCCESS",
-        "plan": _get_plan_status(u.get("plan") or "trial", trial_ends),
+        "plan": _get_plan_status(plan, plan_expires, ai_usage),
     }
+
+
+@app.post("/api/ai/use")
+def api_ai_use(current_user: dict = Depends(_get_current_user)):
+    """AI 기능 사용 시 건수 차감 (1건)"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT plan, ai_usage_month, ai_usage_reset_at FROM users WHERE business_number = %s",
+        (bn,)
+    )
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    u = dict(user)
+    plan = u.get("plan") or "free"
+    if plan == "trial":
+        plan = "free"
+    limit = PLAN_LIMITS.get(plan, 5)
+    usage = u.get("ai_usage_month") or 0
+
+    # 월간 리셋 체크
+    now = datetime.datetime.utcnow()
+    reset_at = u.get("ai_usage_reset_at")
+    if reset_at:
+        try:
+            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+            if now.month != reset_dt.month or now.year != reset_dt.year:
+                usage = 0
+                cur.execute(
+                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
+                    (now.isoformat(), bn)
+                )
+        except Exception:
+            pass
+
+    if usage >= limit:
+        conn.close()
+        raise HTTPException(
+            status_code=429,
+            detail=f"이번 달 AI 사용 한도({limit}건)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 건수를 이용할 수 있습니다."
+        )
+
+    cur.execute(
+        "UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s",
+        (bn,)
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "ai_used": usage + 1, "ai_limit": limit}
 
 
 class AdminAuthRequest(BaseModel):
@@ -829,10 +1007,19 @@ def get_manual_sync_status():
     return {"status": "SUCCESS", "data": manual_sync_status}
 
 def _run_reanalyze_in_thread(limit: int):
-    """재분석을 별도 스레드에서 실행"""
+    """재분석을 별도 스레드에서 실행 — 상세 페이지 크롤링 + AI 추출 + DB 컬럼 업데이트"""
     import asyncio
     import re as _re
+    import time
+    import requests
+    from bs4 import BeautifulSoup
     from app.services.ai_service import ai_service as _ai
+
+    _HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+    }
 
     def _strip(text):
         if not text:
@@ -843,6 +1030,22 @@ def _run_reanalyze_in_thread(limit: int):
         text = _re.sub(r'\s+', ' ', text)
         return text.strip()
 
+    def _fetch_detail(url, max_chars=8000):
+        """상세 페이지 크롤링하여 본문 텍스트 추출"""
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=12, allow_redirects=True)
+            resp.encoding = resp.apparent_encoding or "utf-8"
+            if resp.status_code != 200:
+                return ""
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup.find_all(["script", "style", "nav", "header", "footer", "aside"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            lines = [ln.strip() for ln in text.splitlines() if len(ln.strip()) > 1]
+            return "\n".join(lines)[:max_chars]
+        except Exception:
+            return ""
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     reanalyze_status["running"] = True
@@ -851,11 +1054,18 @@ def _run_reanalyze_in_thread(limit: int):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    # AI 미분석 공고만 대상 (ai_analyzed_at이 NULL인 건)
+    # eligibility_logic이 비어있거나 한 번도 AI 분석을 하지 않은 공고
     cursor.execute("""
-        SELECT announcement_id, title, summary_text
+        SELECT announcement_id, title, summary_text, origin_url, deadline_date,
+               established_years_limit, revenue_limit, employee_limit
         FROM announcements
-        WHERE eligibility_logic IS NULL OR eligibility_logic = '' OR eligibility_logic = '{}'
-        ORDER BY announcement_id
+        WHERE ai_analyzed_at IS NULL
+          AND (
+            eligibility_logic IS NULL OR eligibility_logic = '' OR eligibility_logic = '{}'
+            OR (established_years_limit IS NULL AND revenue_limit IS NULL AND employee_limit IS NULL)
+          )
+        ORDER BY created_at DESC
         LIMIT %s
     """, (limit,))
     rows = [dict(r) for r in cursor.fetchall()]
@@ -864,11 +1074,24 @@ def _run_reanalyze_in_thread(limit: int):
     success = 0
     for row in rows:
         try:
-            clean = _strip(row.get("summary_text", ""))
-            input_text = f"제목: {row.get('title', '')}\n\n내용: {clean[:8000]}"
-            if len(clean) < 20 and len(row.get("title", "")) < 10:
+            # 1. 상세 페이지 크롤링 시도
+            detail_text = ""
+            origin_url = row.get("origin_url", "")
+            if origin_url and origin_url.startswith("http"):
+                detail_text = _fetch_detail(origin_url)
+
+            # 2. 분석용 텍스트 구성 (상세 페이지 + 기존 요약)
+            clean_summary = _strip(row.get("summary_text", ""))
+            if detail_text and len(detail_text) > 100:
+                input_text = f"제목: {row.get('title', '')}\n\n[상세 페이지 본문]\n{detail_text}"
+            else:
+                input_text = f"제목: {row.get('title', '')}\n\n내용: {clean_summary[:8000]}"
+
+            if len(input_text) < 30:
                 reanalyze_status["done"] += 1
                 continue
+
+            # 3. AI 분석 (구조화된 자격요건 추출)
             details = loop.run_until_complete(_ai.extract_program_details(input_text))
             if details:
                 elig = details.get("eligibility_logic", {}) or {}
@@ -876,36 +1099,53 @@ def _run_reanalyze_in_thread(limit: int):
                     elig["business_type"] = details["business_type"]
                 if details.get("target_keywords"):
                     elig["target_keywords"] = details["target_keywords"]
+
+                # 4. eligibility 수치 추출
+                years_limit = elig.get("max_founding_years")
+                revenue_limit = elig.get("max_revenue")
+                employee_limit = elig.get("max_employee_count") or elig.get("max_employees")
+
                 ai_summary = details.get("summary_text") or details.get("description", "")
+                ai_deadline = details.get("deadline_date")
                 pk = row.get("announcement_id")
+
                 cursor.execute("""
                     UPDATE announcements SET
                         eligibility_logic = %s,
                         summary_text = CASE WHEN %s != '' THEN %s ELSE summary_text END,
                         department = CASE WHEN department IS NULL OR department = '' THEN %s ELSE department END,
                         category = CASE WHEN category IS NULL OR category = '' THEN %s ELSE category END,
-                        deadline_date = CASE WHEN deadline_date IS NULL AND %s IS NOT NULL THEN %s ELSE deadline_date END
+                        deadline_date = CASE WHEN deadline_date IS NULL AND %s IS NOT NULL THEN CAST(%s AS DATE) ELSE deadline_date END,
+                        established_years_limit = COALESCE(%s, established_years_limit),
+                        revenue_limit = COALESCE(%s, revenue_limit),
+                        employee_limit = COALESCE(%s, employee_limit),
+                        ai_analyzed_at = NOW()
                     WHERE announcement_id = %s
                 """, (
                     json.dumps(elig, ensure_ascii=False),
                     ai_summary, ai_summary,
                     details.get("department", ""),
                     details.get("category", ""),
-                    details.get("deadline_date"), details.get("deadline_date"),
+                    ai_deadline, ai_deadline,
+                    years_limit, revenue_limit, employee_limit,
                     pk,
                 ))
                 conn.commit()
                 success += 1
+                if success % 10 == 0:
+                    print(f"  [Reanalyze] {success} updated so far ({reanalyze_status['done']}/{len(rows)})")
         except Exception as e:
             print(f"Reanalyze error: {e}")
+            conn.rollback()
         reanalyze_status["done"] += 1
-        import time; time.sleep(0.5)
+        time.sleep(0.5)
 
     conn.close()
     reanalyze_status["running"] = False
     reanalyze_status["last_result"] = f"완료: {success}/{len(rows)}건 분석"
     reanalyze_status["last_time"] = datetime.datetime.now().isoformat()
     loop.close()
+    print(f"[Reanalyze] Done: {success}/{len(rows)} announcements enriched")
 
 
 @app.post("/api/admin/reanalyze", dependencies=[Depends(_verify_admin)])
@@ -1158,7 +1398,7 @@ def admin_push_test():
     sent = 0
     failed = 0
     payload = json.dumps({
-        "title": "AI 맞춤 정부지원금 매칭",
+        "title": "지원금톡톡",
         "body": "새로운 맞춤 공고가 등록되었습니다!",
         "url": "/",
     }, ensure_ascii=False)
@@ -1193,9 +1433,7 @@ def api_match_programs(request: BusinessNumberRequest):
         raise HTTPException(status_code=404, detail="사용자 정보를 찾을 수 없습니다.")
 
     user_dict = dict(user)
-    print(f"DEBUG: Matching requested for BN={request.business_number}, Profile={user_dict}")
     matches = get_matches_for_user(user_dict)
-    print(f"DEBUG: Matcher returned {len(matches)} results")
 
     # AI 추출 데이터 보완 (프론트엔드 대응)
     for match in matches:

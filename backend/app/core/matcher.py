@@ -211,7 +211,7 @@ def get_matches_for_user(user_profile):
     # SQL 1차 필터: 마감 공고 제외 + deadline 없는 공고는 최근 60일 이내만
     query = """
     SELECT * FROM announcements
-    WHERE (region = '전국' OR region = 'All' OR region LIKE %s)
+    WHERE (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region LIKE %s)
     AND (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
@@ -392,7 +392,7 @@ def get_matches_for_user(user_profile):
                         reasons.append(f"{ad_category} 분야 지원사업")
                     break
 
-        # F. 마감일 가중치 (최대 5점)
+        # F. 마감일 가중치 (최대 10점)
         if ad.get("deadline_date"):
             try:
                 deadline_val = ad["deadline_date"]
@@ -403,10 +403,15 @@ def get_matches_for_user(user_profile):
                 days_left = (deadline - today).days
                 if days_left < 0:
                     continue  # 만료 공고 제외
+                # 마감일이 있는 공고 자체에 기본 보너스 (+3점)
+                score += 3.0
                 if days_left <= 7:
-                    score += 5.0
+                    score += 7.0
                     reasons.append("마감 임박 (7일 이내)")
                 elif days_left <= 14:
+                    score += 4.0
+                    reasons.append(f"마감 D-{days_left}")
+                elif days_left <= 30:
                     score += 2.0
             except (ValueError, TypeError):
                 pass

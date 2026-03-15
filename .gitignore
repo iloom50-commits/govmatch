@@ -42,3 +42,7 @@ attachments/
 # Screenshots/Images (test artifacts)
 e2e_*.png
 matching_*.png
+test-screenshots/
+
+# Test scripts (Playwright 등)
+test-*.js

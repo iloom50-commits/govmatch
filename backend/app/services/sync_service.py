@@ -189,7 +189,21 @@ class SyncService:
                 query = """
                 INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (origin_url) DO NOTHING
+                ON CONFLICT (origin_url) DO UPDATE SET
+                    deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
+                    established_years_limit = COALESCE(EXCLUDED.established_years_limit, announcements.established_years_limit),
+                    revenue_limit = COALESCE(EXCLUDED.revenue_limit, announcements.revenue_limit),
+                    employee_limit = COALESCE(EXCLUDED.employee_limit, announcements.employee_limit),
+                    eligibility_logic = CASE
+                        WHEN EXCLUDED.eligibility_logic IS NOT NULL AND EXCLUDED.eligibility_logic != '{}' AND EXCLUDED.eligibility_logic != ''
+                        THEN EXCLUDED.eligibility_logic
+                        ELSE COALESCE(announcements.eligibility_logic, EXCLUDED.eligibility_logic)
+                    END,
+                    summary_text = CASE
+                        WHEN announcements.summary_text IS NULL OR announcements.summary_text = ''
+                        THEN EXCLUDED.summary_text
+                        ELSE announcements.summary_text
+                    END
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,

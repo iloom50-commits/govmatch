@@ -2,6 +2,17 @@
 
 import { useToast } from "@/components/ui/Toast";
 
+interface EligibilityLogic {
+  business_type?: string[];
+  target_keywords?: string[];
+  max_founding_years?: number;
+  max_revenue?: number;
+  max_employee_count?: number;
+  region_restriction?: string;
+  target_industries?: string[];
+  [key: string]: unknown;
+}
+
 interface Result {
   announcement_id: number;
   title: string;
@@ -19,6 +30,7 @@ interface Result {
   category?: string;
   department?: string;
   origin_source?: string;
+  eligibility_logic?: EligibilityLogic;
 }
 
 const CATEGORY_KR: Record<string, string> = {
@@ -84,21 +96,32 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
   const dDay = getDDayInfo(res.deadline_date);
   const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
   const sourceKr = SOURCE_KR[(res.origin_source || "").trim()] || res.origin_source || "";
+  const elig = res.eligibility_logic || {};
+  const bizTypes = (elig.business_type || []).slice(0, 3);
+  const targetText = bizTypes.length > 0
+    ? bizTypes.join(" · ")
+    : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
   return (
-    <div className={`group relative glass-card p-4 md:p-5 rounded-2xl transition-all duration-300 hover:shadow-[0_16px_32px_-8px_rgba(79,70,229,0.12)] flex flex-col h-full overflow-hidden ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""}`}>
+    <div className={`group relative glass-card p-4 md:p-5 rounded-xl transition-all duration-300 hover:shadow-[0_16px_32px_-8px_rgba(79,70,229,0.12)] flex flex-col h-full overflow-hidden ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""}`}>
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
 
-      {dDay.urgency === "critical" && (
-        <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-rose-600 text-white text-[9px] font-black rounded-full shadow-lg animate-bounce">
+      {/* Deadline badge — top-right */}
+      <div className={`absolute top-3 right-3 z-10 px-2.5 py-1.5 rounded-lg border text-center ${URGENCY_STYLES[dDay.urgency]} ${dDay.urgency === "critical" ? "animate-pulse shadow-lg" : "shadow-sm"}`}>
+        <span className="block text-[11px] font-bold leading-tight">
           {dDay.text}
-        </div>
-      )}
+        </span>
+        {res.deadline_date && (
+          <span className="block text-[8px] font-medium leading-tight mt-0.5 opacity-70">
+            ~{res.deadline_date.slice(5)}
+          </span>
+        )}
+      </div>
 
       <div className="flex flex-col gap-4 h-full relative z-[1]">
 
         {/* Tags */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap pr-[72px]">
           {onToggle && (
             <button
               type="button"
@@ -115,11 +138,8 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
               </svg>
             </button>
           )}
-          <span className={`px-2 py-0.5 text-[8px] font-black rounded-full border ${URGENCY_STYLES[dDay.urgency]}`}>
-            {res.deadline_date ? `${res.deadline_date} (${dDay.text})` : "상시모집"}
-          </span>
           {res.support_amount && (
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[8px] font-black rounded-full border border-indigo-100">
+            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[8px] font-semibold rounded-full border border-indigo-100">
               {res.support_amount}
             </span>
           )}
@@ -141,26 +161,45 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
         </div>
 
         {/* Title */}
-        <h3 className="font-black text-slate-900 text-sm md:text-base leading-snug tracking-tight group-hover:text-indigo-600 transition-colors">
+        <h3 className="font-bold text-slate-900 text-sm md:text-base leading-snug tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[2lh]" title={res.title}>
           {res.title}
         </h3>
 
         {/* Info & Buttons */}
-        <div className="relative bg-slate-50/80 p-4 rounded-xl flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
+        <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-5">
             <p className="text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
-              <span className="text-slate-400">지원 대상 :</span>
-              <span className="text-slate-900">{(res.region || "전국") + " · "}{res.established_years_limit ? `${res.established_years_limit}년 이내` : "업력 무관"}</span>
+              <span className="text-slate-400">대상 :</span>
+              <span className="text-slate-900">{targetText}{res.established_years_limit ? ` · ${res.established_years_limit}년 이내` : ""}</span>
             </p>
-            <p className="text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
-              <span className="w-1 h-1 bg-emerald-400 rounded-full shrink-0" />
-              <span className="text-slate-400">요건 :</span>
-              <span className="text-slate-900">{res.revenue_limit ? `매출 ${Math.floor(res.revenue_limit / 100000000)}억↑` : "무관"}{res.employee_limit ? ` · ${res.employee_limit}인↑` : ""}</span>
-            </p>
+            {(res.revenue_limit || res.employee_limit) && (
+              <p className="text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+                <span className="w-1 h-1 bg-emerald-400 rounded-full shrink-0" />
+                <span className="text-slate-400">요건 :</span>
+                <span className="text-slate-900">{res.revenue_limit ? `매출 ${Math.floor(res.revenue_limit / 100000000)}억↑` : ""}{res.employee_limit ? `${res.revenue_limit ? " · " : ""}${res.employee_limit}인↑` : ""}</span>
+              </p>
+            )}
           </div>
-          {/* Buttons: 모바일 세로, PC 가로 */}
-          <div className="flex flex-col md:flex-row gap-2 mt-2">
+          {/* CTA + AI link */}
+          <div className="flex items-center gap-3 mt-2">
+            {res.origin_url || res.url ? (
+              <a
+                href={res.origin_url || res.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
+              >
+                상세 공고 이동 →
+              </a>
+            ) : (
+              <button
+                onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
+                className="flex-1 py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider cursor-not-allowed"
+              >
+                링크 없음
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -168,30 +207,11 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
                   window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
                 }
               }}
-              className="flex-1 px-3 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[10px] font-black rounded-xl shadow-md hover:shadow-lg hover:scale-[1.01] transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+              className="shrink-0 text-amber-600 hover:text-amber-700 text-[11px] font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1"
             >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-              </svg>
+              <span className="text-sm animate-sparkle">✨</span>
               AI 신청서 작성
             </button>
-            {res.origin_url || res.url ? (
-              <a
-                href={res.origin_url || res.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 py-2 border-2 border-slate-300 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-wider hover:border-indigo-500 hover:text-indigo-600 transition-all active:scale-[0.98] text-center block"
-              >
-                상세 공고 확인 →
-              </a>
-            ) : (
-              <button
-                onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
-                className="flex-1 py-2 bg-slate-300 text-slate-500 rounded-xl font-black text-[10px] uppercase tracking-wider cursor-not-allowed"
-              >
-                링크 없음
-              </button>
-            )}
           </div>
         </div>
       </div>

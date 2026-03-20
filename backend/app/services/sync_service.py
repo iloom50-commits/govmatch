@@ -18,6 +18,8 @@ DOMAIN_ONLY_BLOCKLIST = {
     "https://www.bizinfo.go.kr",
     "https://www.msit.go.kr",
     "https://www.foodpolis.kr",
+    "https://fanfandaero.kr",
+    "https://www.exportvoucher.com",
 }
 
 def _is_valid_detail_url(url: str) -> bool:
@@ -99,6 +101,18 @@ class SyncService:
             # 한국식품산업클러스터진흥원
             foodpolis_results = await gov_api_service.fetch_foodpolis_programs()
             all_results.extend(foodpolis_results)
+
+            # 보조금24 (정부24 공공서비스) - 지자체·구청·도청 포함
+            gov24_results = await gov_api_service.fetch_gov24_services()
+            all_results.extend(gov24_results)
+
+            # 판판대로 (판로지원 사업)
+            fanfan_results = await gov_api_service.fetch_fanfandaero_programs()
+            all_results.extend(fanfan_results)
+
+            # 수출바우처 (수출지원기반활용사업)
+            export_results = await gov_api_service.fetch_exportvoucher_programs()
+            all_results.extend(export_results)
         except Exception as e:
             print(f"  Government API error: {e}")
 

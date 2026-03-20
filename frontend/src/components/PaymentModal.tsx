@@ -13,24 +13,28 @@ const PLANS = [
     name: "BASIC",
     price: 4900,
     priceLabel: "4,900",
+    color: "indigo",
     features: [
-      "AI 기능 50건/월",
-      "AI 맞춤 매칭 (무제한)",
-      "맞춤 알림 (무제한)",
-      "AI 신청 가이드 ₩14,900/건",
+      { text: "AI 맞춤 매칭", desc: "무제한", highlight: false },
+      { text: "맞춤 알림", desc: "무제한", highlight: false },
+      { text: "공고별 지원대상 상담", desc: "무제한", highlight: true },
+      { text: "AI 상담 (자유+컨설턴트)", desc: "1회/월", highlight: false },
+      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩19,000", highlight: false },
     ],
   },
   {
-    id: "pro",
-    name: "PRO",
-    price: 14900,
-    priceLabel: "14,900",
+    id: "biz",
+    name: "BIZ",
+    price: 19000,
+    priceLabel: "19,000",
     popular: true,
+    color: "violet",
     features: [
-      "AI 기능 200건/월",
-      "AI 맞춤 매칭 (무제한)",
-      "맞춤 알림 (무제한)",
-      "AI 신청 가이드 ₩9,900/건",
+      { text: "AI 맞춤 매칭", desc: "무제한", highlight: false },
+      { text: "맞춤 알림", desc: "무제한", highlight: false },
+      { text: "공고별 지원대상 상담", desc: "무제한", highlight: false },
+      { text: "AI 상담 (자유+컨설턴트)", desc: "무제한", highlight: true },
+      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩19,000", highlight: false },
     ],
   },
 ];
@@ -45,7 +49,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("basic");
+  const [selectedPlan, setSelectedPlan] = useState("biz");
 
   const plan = PLANS.find((p) => p.id === selectedPlan)!;
 
@@ -96,7 +100,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         method: "CARD",
         amount: { currency: "KRW", value: plan.price },
         orderId,
-        orderName: `지원금톡톡 ${plan.name} 플랜`,
+        orderName: `지원금매칭 ${plan.name} 플랜`,
         successUrl: `${window.location.origin}/payment/success?token=${encodeURIComponent(token || "")}&plan=${selectedPlan}`,
         failUrl: `${window.location.origin}/payment/fail`,
       });
@@ -130,7 +134,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
               더 많은 AI 기능을 이용하세요
             </h2>
             <p className="text-slate-500 text-xs font-medium">
-              첫 달 무료 체험 후 결제가 시작됩니다
+              공고별 상담, AI 상담 무제한, 신청서 작성까지
             </p>
           </div>
 
@@ -142,16 +146,18 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 onClick={() => setSelectedPlan(p.id)}
                 className={`relative text-left p-4 rounded-xl border-2 transition-all ${
                   selectedPlan === p.id
-                    ? "border-indigo-500 bg-indigo-50/50 shadow-md"
+                    ? p.id === "biz"
+                      ? "border-violet-500 bg-violet-50/50 shadow-md"
+                      : "border-indigo-500 bg-indigo-50/50 shadow-md"
                     : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
               >
                 {p.popular && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-indigo-600 text-white text-[9px] font-bold rounded-full">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-violet-600 text-white text-[9px] font-bold rounded-full">
                     추천
                   </span>
                 )}
-                <div className="text-xs font-bold text-slate-500 mb-1">{p.name}</div>
+                <div className={`text-xs font-bold mb-1 ${p.id === "biz" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
                 <div className="flex items-end gap-0.5 mb-3">
                   <span className="text-2xl font-bold text-slate-900">{p.priceLabel}</span>
                   <span className="text-[10px] font-semibold text-slate-500 pb-0.5">원/월</span>
@@ -159,10 +165,12 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 <div className="space-y-1.5">
                   {p.features.map((f, i) => (
                     <div key={i} className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <svg className={`w-3.5 h-3.5 flex-shrink-0 ${f.highlight ? "text-violet-500" : "text-indigo-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                      <span className="text-[11px] font-medium text-slate-600">{f}</span>
+                      <span className={`text-[11px] font-medium ${f.highlight ? "text-violet-700 font-bold" : "text-slate-600"}`}>
+                        {f.text} <span className="text-slate-400">{f.desc}</span>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -170,12 +178,23 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
             ))}
           </div>
 
+          {/* Free vs Paid comparison hint */}
+          <div className="text-center mb-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[10px] text-slate-500 font-medium">
+              FREE 플랜 (영구 무료): AI 매칭 무제한 + AI 상담 1회/월 | 추천 보상: BASIC 1개월 무료
+            </p>
+          </div>
+
           {/* Free Trial Button (첫 이용자만) */}
           {isFreePlan && (
             <button
               onClick={handleFreeTrial}
               disabled={loading}
-              className="w-full py-3 rounded-lg font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] mb-3"
+              className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 ${
+                selectedPlan === "biz"
+                  ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
+                  : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
+              }`}
             >
               {loading ? (
                 <span className="animate-pulse">처리 중...</span>
@@ -205,7 +224,9 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 disabled={loading || !agreed}
                 className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] ${
                   agreed
-                    ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
+                    ? selectedPlan === "biz"
+                      ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
                     : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
                 }`}
               >

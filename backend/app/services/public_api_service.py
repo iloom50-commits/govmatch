@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -657,6 +658,246 @@ class GovernmentAPIService:
                 "deadline_date": self._normalize_date(deadline),
             })
         return mapped
+
+    # ─── 보조금24 / 정부24 공공서비스 API (api.odcloud.kr) ───
+
+    # 기업/소상공인 관련 서비스 필터 키워드
+    _GOV24_BIZ_KEYWORDS = [
+        "기업", "소상공인", "창업", "중소", "벤처", "스타트업", "자영업",
+        "사업자", "법인", "R&D", "수출", "고용", "일자리", "채용",
+        "기술개발", "혁신", "디지털", "제조", "상공", "산업",
+    ]
+
+    async def fetch_gov24_services(self, page=1, per_page=100):
+        """보조금24 (정부24) 공공서비스 목록 조회 - 기업/소상공인 관련만 필터링"""
+        api_key = os.getenv("GOV24_API_KEY")
+        if not api_key:
+            print("  [WARN] GOV24_API_KEY not set. Skipping 보조금24.")
+            return []
+
+        all_items = []
+        # 기업 관련 키워드로 검색하여 수집
+        search_terms = ["기업", "소상공인", "창업", "중소기업"]
+
+        for term in search_terms:
+            for pg in range(1, 4):  # 키워드당 최대 3페이지
+                try:
+                    url = "https://api.odcloud.kr/api/gov24/v3/serviceList"
+                    params = {
+                        "page": pg,
+                        "perPage": per_page,
+                        "returnType": "JSON",
+                        "serviceKey": api_key,
+                        "cond[서비스명::LIKE]": term,
+                    }
+
+                    resp = requests.get(url, params=params, timeout=15)
+                    if resp.status_code != 200:
+                        print(f"    [ERR] 보조금24 API Status {resp.status_code} (term={term})")
+                        break
+
+                    data = resp.json()
+                    items = data.get("data", [])
+                    if not items:
+                        break
+
+                    all_items.extend(items)
+                    total = data.get("totalCount", 0)
+                    if pg * per_page >= total:
+                        break
+
+                except Exception as e:
+                    print(f"    [ERR] 보조금24 API Exception (term={term}): {e}")
+                    break
+
+        # 중복 제거 (서비스ID 기준)
+        seen_ids = set()
+        unique = []
+        for item in all_items:
+            sid = item.get("서비스ID", "")
+            if sid and sid not in seen_ids:
+                seen_ids.add(sid)
+                unique.append(item)
+
+        print(f"  [API] 보조금24: {len(unique)} unique services fetched")
+        return self._map_gov24_fields(unique)
+
+    def _map_gov24_fields(self, items):
+        """보조금24 API 응답 → 내부 형식 매핑"""
+        mapped = []
+        for item in items:
+            title = item.get("서비스명", "")
+            detail_url = item.get("상세조회URL", "")
+            if not title:
+                continue
+            if not detail_url:
+                sid = item.get("서비스ID", "")
+                detail_url = f"https://www.gov.kr/portal/rcvfvrSvc/dtlEx/{sid}" if sid else ""
+            if not detail_url:
+                continue
+
+            # 지원대상에서 기업/사업자 관련 키워드 확인하여 eligibility 구성
+            target = item.get("지원대상", "")
+            eligibility = {}
+            if target:
+                eligibility["target_description"] = target[:500]
+
+            support_content = item.get("지원내용", "")
+            summary = item.get("서비스목적요약", "") or support_content[:300]
+
+            deadline_raw = item.get("신청기한", "")
+            deadline = self._normalize_date(deadline_raw) if deadline_raw else None
+
+            dept = item.get("소관기관명", "")
+            category = item.get("서비스분야", "") or "Government Service"
+            org_type = item.get("소관기관유형", "")
+            region = "전국"
+            # 소관기관유형이 지자체면 지역 정보 추출 시도
+            if org_type in ("지방자치단체", "시도", "시군구"):
+                region = dept[:2] if dept else "전국"  # 서울시→서울, 부산시→부산 등
+
+            mapped.append({
+                "title": title,
+                "url": detail_url,
+                "description": summary[:1000],
+                "department": dept,
+                "category": category,
+                "origin_source": "gov24-api",
+                "region": region,
+                "deadline_date": deadline,
+                "eligibility_logic": eligibility,
+            })
+        return mapped
+
+    # ─── 판판대로 (fanfandaero.kr) 스크래핑 ───
+
+    _SCRAPE_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+    }
+
+    async def fetch_fanfandaero_programs(self):
+        """판판대로 판로지원 사업공고 스크래핑"""
+        url = "https://fanfandaero.kr/portal/preSprtBizPbanc.do"
+        try:
+            print("  [SCRAPE] Calling 판판대로...")
+            resp = requests.get(url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            if resp.status_code != 200:
+                print(f"    [ERR] 판판대로 Status {resp.status_code}")
+                return []
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            items = []
+
+            # 공고 목록 링크 탐색 (a 태그에서 sprtBizCd 파라미터 포함된 것)
+            for a_tag in soup.find_all("a", href=True):
+                href = a_tag.get("href", "")
+                if "sprtBizCd" not in href and "preSprtBizPbancDetail" not in href:
+                    continue
+
+                title = a_tag.get_text(strip=True)
+                if not title or len(title) < 5:
+                    # 부모 요소에서 제목 탐색
+                    parent = a_tag.find_parent(["li", "tr", "div"])
+                    if parent:
+                        title = parent.get_text(strip=True)[:200]
+                if not title or len(title) < 5:
+                    continue
+
+                detail_url = href
+                if not detail_url.startswith("http"):
+                    detail_url = f"https://fanfandaero.kr{detail_url}"
+
+                items.append({
+                    "title": title,
+                    "url": detail_url,
+                    "description": "",
+                    "department": "중소벤처기업진흥공단",
+                    "category": "Sales Channel Support",
+                    "origin_source": "fanfandaero-scrape",
+                    "region": "전국",
+                    "deadline_date": None,
+                })
+
+            # 중복 URL 제거
+            seen = set()
+            unique = []
+            for item in items:
+                if item["url"] not in seen:
+                    seen.add(item["url"])
+                    unique.append(item)
+
+            print(f"    [OK] 판판대로: {len(unique)} items scraped")
+            return unique
+
+        except Exception as e:
+            print(f"  [ERR] 판판대로 Exception: {e}")
+            return []
+
+    async def fetch_exportvoucher_programs(self):
+        """수출바우처 (수출지원기반활용사업) 사업공고 스크래핑"""
+        url = "https://www.exportvoucher.com/portal/board/boardList"
+        params = {
+            "bbs_id": "1",
+            "active_menu_cd": "EZ005004000",
+            "pageUnit": "20",
+            "pageNo": "1",
+        }
+        try:
+            print("  [SCRAPE] Calling 수출바우처 포털...")
+            resp = requests.get(url, params=params, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            if resp.status_code != 200:
+                print(f"    [ERR] 수출바우처 Status {resp.status_code}")
+                return []
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            items = []
+
+            # 게시판 목록에서 공고 추출
+            for a_tag in soup.find_all("a", href=True):
+                href = a_tag.get("href", "")
+                if "boardView" not in href and "ntt_id" not in href:
+                    continue
+
+                title = a_tag.get_text(strip=True)
+                if not title or len(title) < 5:
+                    parent = a_tag.find_parent(["li", "tr", "td", "div"])
+                    if parent:
+                        title = parent.get_text(strip=True)[:200]
+                if not title or len(title) < 5:
+                    continue
+
+                detail_url = href
+                if not detail_url.startswith("http"):
+                    detail_url = f"https://www.exportvoucher.com{detail_url}"
+
+                items.append({
+                    "title": title,
+                    "url": detail_url,
+                    "description": "",
+                    "department": "중소벤처기업진흥공단",
+                    "category": "Export Support",
+                    "origin_source": "exportvoucher-scrape",
+                    "region": "전국",
+                    "deadline_date": None,
+                })
+
+            seen = set()
+            unique = []
+            for item in items:
+                if item["url"] not in seen:
+                    seen.add(item["url"])
+                    unique.append(item)
+
+            print(f"    [OK] 수출바우처: {len(unique)} items scraped")
+            return unique
+
+        except Exception as e:
+            print(f"  [ERR] 수출바우처 Exception: {e}")
+            return []
 
 # Global Instance
 gov_api_service = GovernmentAPIService()

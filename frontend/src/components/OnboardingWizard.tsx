@@ -23,7 +23,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
     business_number: initialBusinessNumber,
     business_type: "" as "" | "individual" | "corporation",
     company_name: "",
-    address_city: "전국",
+    address_city: "",
+    address_cities: ["전국"] as string[],
     establishment_date: "",
     interests: "",
     industry_code: "",
@@ -245,8 +246,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
         toast(formData.business_type === "individual" ? "사업자 등록일을 입력해 주세요." : "법인 설립일을 입력해 주세요.", "error");
         return;
       }
-      if (!formData.address_city || formData.address_city === "전국") {
-        toast("소재지를 선택해 주세요.", "error");
+      if (!formData.address_cities || formData.address_cities.length === 0) {
+        toast("관심지역을 선택해 주세요.", "error");
         return;
       }
       setStep(2);
@@ -384,24 +385,42 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
                 </div>
               )}
 
-              {/* City */}
+              {/* City — 복수선택 */}
               {formData.business_type && (
                 <div className="space-y-2 animate-in fade-in duration-300">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">소재지</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">관심지역</label>
+                    <span className="text-[9px] text-slate-400 font-medium">(복수 선택 가능)</span>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {["서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => (
-                      <button
-                        key={city}
-                        onClick={() => setFormData({ ...formData, address_city: city })}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
-                          formData.address_city === city
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
-                            : "bg-white border-slate-100 text-slate-500 hover:border-indigo-200"
-                        }`}
-                      >
-                        {city}
-                      </button>
-                    ))}
+                    {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
+                      const isAll = city === "전국";
+                      const selected = isAll
+                        ? formData.address_cities.includes("전국")
+                        : formData.address_cities.includes(city);
+                      return (
+                        <button
+                          key={city}
+                          onClick={() => {
+                            if (isAll) {
+                              setFormData({ ...formData, address_cities: ["전국"], address_city: "전국" });
+                            } else {
+                              const without = formData.address_cities.filter((c: string) => c !== "전국");
+                              const next = selected ? without.filter((c: string) => c !== city) : [...without, city];
+                              const final = next.length === 0 ? ["전국"] : next;
+                              setFormData({ ...formData, address_cities: final, address_city: final.join(",") });
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
+                            selected
+                              ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
+                              : "bg-white border-slate-100 text-slate-500 hover:border-indigo-200"
+                          }`}
+                        >
+                          {city}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

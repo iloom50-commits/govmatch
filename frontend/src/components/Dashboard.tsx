@@ -73,10 +73,11 @@ interface PlanStatus {
   label: string;
   ai_used?: number;
   ai_limit?: number;
+  consult_limit?: number;
   guide_price?: number | null;
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void }) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("latest");
@@ -202,8 +203,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .slice(0, 3);
   }, [savedItems]);
 
+  // 컨설턴트 결과가 있으면 해당 결과를 우선 표시
+  const displayMatches = consultantResult?.matches ?? matches;
+
   const filteredMatches = useMemo(() => {
-    let result = [...matches];
+    let result = [...displayMatches];
 
     if (activeTab !== "all") {
       const group = TAB_GROUPS.find(t => t.key === activeTab);
@@ -228,23 +232,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [matches, activeTab, sortKey]);
+  }, [displayMatches, activeTab, sortKey]);
 
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: matches.length };
+    const counts: Record<string, number> = { all: displayMatches.length };
     TAB_GROUPS.forEach(g => {
       if (g.key === "all") return;
-      counts[g.key] = matches.filter(m => {
+      counts[g.key] = displayMatches.filter(m => {
         const cat = (m.category || "").trim();
         return g.categories.some(gc => cat.toLowerCase().includes(gc.toLowerCase()));
       }).length;
     });
     return counts;
-  }, [matches]);
+  }, [displayMatches]);
 
   // 사이드바 내용 (모바일 드로어 + 데스크탑 공용)
   const SidebarContent = () => (
-    <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl lg:sticky lg:top-6 lg:self-start border border-white/40 overflow-x-hidden w-full max-w-full box-border">
+    <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
@@ -283,7 +287,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {planStatus && (
         <div className={`relative z-10 p-3 rounded-lg border ${
-          planStatus.plan === "pro"
+          planStatus.plan === "biz"
             ? "bg-violet-50 border-violet-200"
             : planStatus.plan === "basic"
             ? "bg-indigo-50 border-indigo-200"
@@ -293,7 +297,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         }`}>
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-[10px] font-bold uppercase tracking-widest ${
-              planStatus.plan === "pro"
+              planStatus.plan === "biz"
                 ? "text-violet-600"
                 : planStatus.plan === "basic"
                 ? "text-indigo-600"
@@ -307,26 +311,43 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <span className="text-[9px] font-semibold text-slate-400">D-{planStatus.days_left}</span>
             )}
           </div>
-          {/* AI 사용량 바 */}
-          {planStatus.ai_limit && (
+          {/* AI 상담 사용량 */}
+          {planStatus.ai_limit != null && planStatus.ai_limit < 999999 && (
             <div className="mb-2">
               <div className="flex items-center justify-between text-[9px] mb-1">
-                <span className="text-slate-500 font-medium">AI 사용량</span>
-                <span className="font-bold text-slate-600">{planStatus.ai_used || 0}/{planStatus.ai_limit}건</span>
+                <span className="text-slate-500 font-medium">AI 상담 (자유+컨설턴트)</span>
+                <span className="font-bold text-slate-600">{planStatus.ai_used || 0}/{planStatus.ai_limit}회</span>
               </div>
               <div className="w-full h-1.5 bg-slate-200/60 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${
                     ((planStatus.ai_used || 0) / planStatus.ai_limit) > 0.8
                       ? "bg-rose-500"
-                      : planStatus.plan === "pro" ? "bg-violet-500" : "bg-indigo-500"
+                      : planStatus.plan === "biz" ? "bg-violet-500" : "bg-indigo-500"
                   }`}
                   style={{ width: `${Math.min(((planStatus.ai_used || 0) / planStatus.ai_limit) * 100, 100)}%` }}
                 />
               </div>
             </div>
           )}
-          {!["basic", "pro"].includes(planStatus.plan) && onUpgrade && (
+          {planStatus.ai_limit != null && planStatus.ai_limit >= 999999 && (
+            <div className="mb-2">
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="text-slate-500 font-medium">AI 상담</span>
+                <span className="font-bold text-violet-600">무제한</span>
+              </div>
+            </div>
+          )}
+          {/* 공고별 상담 상태 */}
+          <div className="mb-2">
+            <div className="flex items-center justify-between text-[9px]">
+              <span className="text-slate-500 font-medium">공고별 지원대상 상담</span>
+              <span className={`font-bold ${(planStatus.consult_limit || 0) > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                {(planStatus.consult_limit || 0) > 0 ? "무제한" : "BASIC부터"}
+              </span>
+            </div>
+          </div>
+          {!["basic", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
               className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all active:scale-95"
@@ -481,7 +502,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   );
 
   return (
-    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-4 lg:px-0 overflow-x-hidden">
+    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-4 lg:px-0 overflow-x-clip">
 
       {/* 모바일 상단 바 (lg 미만에서만 표시) */}
       <div className="lg:hidden flex items-center justify-between py-3 mb-4 border-b border-slate-200/60">
@@ -490,7 +511,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="min-w-0">
             {planStatus && (
               <p className={`text-[9px] font-bold uppercase tracking-widest ${
-                planStatus.plan === "pro" ? "text-violet-600" :
+                planStatus.plan === "biz" ? "text-violet-600" :
                 planStatus.plan === "basic" ? "text-indigo-600" :
                 planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
               }`}>{planStatus.label}</p>
@@ -532,15 +553,48 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 데스크탑 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
         {/* 데스크탑 사이드바 (lg 이상에서만 표시) */}
-        <aside className="hidden lg:block">
+        <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start">
           <SidebarContent />
         </aside>
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
+          {/* 컨설턴트 매칭 결과 배너 */}
+          {consultantResult && (
+            <div className="p-4 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-xl animate-in slide-in-from-top duration-300 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-violet-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9zm3.75 11.625a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-violet-800">
+                      AI 컨설턴트 매칭 결과 — {consultantResult.profile?.company_name || "고객사"}
+                    </p>
+                    <p className="text-[10px] text-violet-600 font-medium">
+                      {consultantResult.matches.length}건의 맞춤 지원사업 | 소재지: {consultantResult.profile?.address_city || "-"} | 매출: {consultantResult.profile?.revenue_bracket || "-"} | 인원: {consultantResult.profile?.employee_count_bracket || "-"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={onClearConsultant}
+                  className="px-3 py-1.5 bg-white border border-violet-200 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-50 transition-all active:scale-95 flex-shrink-0"
+                >
+                  내 매칭으로 돌아가기
+                </button>
+              </div>
+            </div>
+          )}
+
           <header className="space-y-3">
             <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
-              <span className="text-indigo-600">지원금톡톡</span>
-              <span className="text-[10px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">AI가 찾아주는 맞춤 정부보조금</span>
+              <span className={consultantResult ? "text-violet-600" : "text-indigo-600"}>
+                {consultantResult ? "컨설턴트 매칭" : "지원금톡톡"}
+              </span>
+              <span className="text-[10px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
+                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부보조금"}
+              </span>
             </h2>
 
             {/* 탭 + 정렬 */}
@@ -616,6 +670,34 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 ))}
               </div>
             </div>
+
+            {/* AI 공고 검색 — BIZ 전용 */}
+            {planStatus?.plan === "biz" && (
+              <div className="flex items-center gap-2 bg-violet-50/80 backdrop-blur-md p-2.5 rounded-lg border border-violet-200/60 shadow-sm">
+                <div className="flex items-center gap-1.5 px-2 text-violet-600 flex-shrink-0">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">AI 검색</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="업종, 설립일, 조건 등을 자유롭게 입력하세요 (예: 3년 이내 IT 스타트업, 매출 5억 이하)"
+                  className="flex-1 bg-white/80 border border-violet-100 rounded-lg px-3 py-2 text-xs text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition-all"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                      toast("AI 공고 검색 기능 준비 중입니다.", "info");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => toast("AI 공고 검색 기능 준비 중입니다.", "info")}
+                  className="px-3 py-2 bg-violet-600 text-white rounded-lg text-[10px] font-bold hover:bg-violet-700 transition-all active:scale-95 flex-shrink-0 flex items-center gap-1"
+                >
+                  <span className="animate-sparkle">✨</span> 검색
+                </button>
+              </div>
+            )}
           </header>
 
           {filteredMatches.length === 0 ? (
@@ -658,6 +740,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     res={res}
                     selected={selectedIds.has(res.announcement_id)}
                     onToggle={() => toggleSelect(res.announcement_id)}
+                    planStatus={planStatus}
+                    onUpgrade={onUpgrade}
                   />
                 </div>
               ))}

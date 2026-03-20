@@ -89,9 +89,13 @@ interface CardProps {
   res: Result;
   selected?: boolean;
   onToggle?: () => void;
+  planStatus?: { plan: string; ai_used?: number; ai_limit?: number; consult_limit?: number } | null;
+  onUpgrade?: () => void;
 }
 
-export default function ResultCard({ res, selected, onToggle }: CardProps) {
+export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade }: CardProps) {
+  const isExpired = planStatus?.plan === "expired";
+  const isConsultBlocked = planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
   const { toast } = useToast();
   const dDay = getDDayInfo(res.deadline_date);
   const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
@@ -181,37 +185,64 @@ export default function ResultCard({ res, selected, onToggle }: CardProps) {
               </p>
             )}
           </div>
-          {/* CTA + AI link */}
-          <div className="flex items-center gap-3 mt-2">
-            {res.origin_url || res.url ? (
+          {/* CTA buttons */}
+          <div className="flex flex-col gap-2 mt-2">
+            {/* 상세 공고 이동 — 만료 시 잠금 */}
+            {isExpired ? (
+              <button
+                onClick={() => onUpgrade?.()}
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
+              >
+                🔒 플랜 만료 — 업그레이드 후 이용
+              </button>
+            ) : res.origin_url || res.url ? (
               <a
                 href={res.origin_url || res.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
               >
                 상세 공고 이동 →
               </a>
             ) : (
               <button
                 onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
-                className="flex-1 py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider cursor-not-allowed"
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider cursor-not-allowed"
               >
                 링크 없음
               </button>
             )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (typeof window !== "undefined") {
-                  window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
-                }
-              }}
-              className="shrink-0 text-amber-600 hover:text-amber-700 text-[11px] font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1"
-            >
-              <span className="text-sm animate-sparkle">✨</span>
-              AI 신청서 작성
-            </button>
+            {/* AI 버튼 2개 — 만료 시 전체 잠금, FREE는 한도 내 AI 상담 가능 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isExpired) { onUpgrade?.(); return; }
+                  if (isConsultBlocked) { toast("공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
+                  }
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
+                  bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
+              >
+                <span className="animate-sparkle">{isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isExpired) { onUpgrade?.(); return; }
+                  if (isConsultBlocked) { toast("AI 신청서 작성은 BASIC 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
+                  }
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
+                  bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
+              >
+                <span className="animate-sparkle">{isExpired || isConsultBlocked ? "🔒" : "✨"}</span> AI 신청서 작성
+              </button>
+            </div>
           </div>
         </div>
       </div>

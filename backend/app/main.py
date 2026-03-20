@@ -193,7 +193,7 @@ def health_check():
     return {"status": "ok"}
 
 
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 app.add_middleware(
@@ -282,68 +282,81 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _decode_jwt(token)
 
 
-# 플랜별 월 AI 기능 건수 제한
+# 플랜별 월 AI 상담 (자유Q&A + 컨설턴트) 건수 제한
 PLAN_LIMITS = {
-    "free": 5,
-    "basic": 50,
-    "pro": 200,
+    "free": 1,
+    "basic": 1,
+    "biz": 999999,
 }
 
-# 플랜별 AI 신청 가이드 가격 (원)
-PLAN_GUIDE_PRICE = {
-    "free": None,       # 이용 불가
-    "basic": 14900,
-    "pro": 9900,
+# 플랜별 공고별 지원대상 상담 건수 제한
+CONSULT_LIMITS = {
+    "free": 0,
+    "basic": 999999,
+    "biz": 999999,
 }
+
+# 플랜 가격 (원/월)
+PLAN_PRICES = {"basic": 4900, "biz": 19000}
+
+# AI 신청서 작성 가격 (원)
+AI_GUIDE_PRICE_AUTO = 4900      # 자동 모드
+AI_GUIDE_PRICE_EXPERT = 19000   # 전문가 모드
 
 
 def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int = 0) -> dict:
     """플랜 상태와 남은 일수, 잔여 건수를 계산"""
     now = datetime.datetime.utcnow()
-    limit = PLAN_LIMITS.get(plan, 5)
+
+    # trial/premium → free 마이그레이션
+    if plan in ("trial", "premium"):
+        plan = "free"
+
+    ai_limit = PLAN_LIMITS.get(plan, 1)
+    consult_limit = CONSULT_LIMITS.get(plan, 0)
 
     if plan == "free":
+        # FREE는 영구 무료 — 만료 없음
         return {
             "plan": "free", "active": True, "days_left": None,
             "label": "FREE",
-            "ai_used": ai_usage_month, "ai_limit": limit,
-            "guide_price": None,
+            "ai_used": ai_usage_month, "ai_limit": ai_limit,
+            "consult_limit": consult_limit,
         }
 
-    if plan in ("basic", "pro"):
+    if plan in ("basic", "biz"):
         # 유료 플랜 만료 체크
         if plan_expires_at:
             try:
                 expires = datetime.datetime.fromisoformat(str(plan_expires_at))
                 days_left = (expires - now).days
                 if days_left < 0:
-                    # 만료 → free로 다운그레이드
+                    # 만료 → FREE로 다운그레이드
                     return {
                         "plan": "expired", "active": False, "days_left": 0,
                         "label": "만료됨",
                         "ai_used": ai_usage_month, "ai_limit": PLAN_LIMITS["free"],
-                        "guide_price": None,
+                        "consult_limit": CONSULT_LIMITS["free"],
                     }
-                label = "BASIC" if plan == "basic" else "PRO"
+                label_map = {"basic": "BASIC", "biz": "BIZ"}
                 return {
                     "plan": plan, "active": True, "days_left": days_left,
-                    "label": label,
-                    "ai_used": ai_usage_month, "ai_limit": limit,
-                    "guide_price": PLAN_GUIDE_PRICE.get(plan),
+                    "label": label_map.get(plan, plan.upper()),
+                    "ai_used": ai_usage_month, "ai_limit": ai_limit,
+                    "consult_limit": consult_limit,
                 }
             except ValueError:
                 pass
-        # plan_expires_at 없으면 활성 (영구)
-        label = "BASIC" if plan == "basic" else "PRO"
+        label_map = {"basic": "BASIC", "biz": "BIZ"}
         return {
             "plan": plan, "active": True, "days_left": None,
-            "label": label,
-            "ai_used": ai_usage_month, "ai_limit": limit,
-            "guide_price": PLAN_GUIDE_PRICE.get(plan),
+            "label": label_map.get(plan, plan.upper()),
+            "ai_used": ai_usage_month, "ai_limit": ai_limit,
+            "consult_limit": consult_limit,
         }
 
     return {"plan": "free", "active": True, "days_left": None, "label": "FREE",
-            "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "guide_price": None}
+            "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "consult_limit": CONSULT_LIMITS["free"]}
 
 
 class FindEmailRequest(BaseModel):
@@ -458,26 +471,31 @@ def api_register(req: RegisterRequest):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
-            # 가입 시 추천인 보상 (1회만 — referral_rewarded로 중복 방지)
+            # 가입 시 추천인 보상: BASIC 1개월 무료 (1회만 — referral_rewarded로 중복 방지)
             if req.referred_by:
                 cursor.execute("SELECT user_id, plan, plan_expires_at, merit_months FROM users WHERE referral_code = %s", (req.referred_by,))
                 referrer = cursor.fetchone()
                 if referrer:
                     new_merit = (referrer["merit_months"] or 0) + 1
-                    if referrer["plan"] in ("basic", "pro"):
+                    now_dt = datetime.datetime.utcnow()
+                    if referrer["plan"] in ("basic", "biz"):
                         # 유료 플랜: 만료일 30일 연장
                         try:
                             current_end = datetime.datetime.fromisoformat(str(referrer["plan_expires_at"]))
-                            new_end = (max(current_end, datetime.datetime.utcnow()) + datetime.timedelta(days=30)).isoformat()
+                            new_end = (max(current_end, now_dt) + datetime.timedelta(days=30)).isoformat()
                         except Exception:
-                            new_end = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
+                            new_end = (now_dt + datetime.timedelta(days=30)).isoformat()
                         cursor.execute(
                             "UPDATE users SET merit_months=%s, plan_expires_at=%s WHERE user_id=%s",
                             (new_merit, new_end, referrer["user_id"])
                         )
                     else:
-                        # free 플랜: merit_months만 적립
-                        cursor.execute("UPDATE users SET merit_months=%s WHERE user_id=%s", (new_merit, referrer["user_id"]))
+                        # free 플랜: BASIC 1개월 무료 업그레이드
+                        new_end = (now_dt + datetime.timedelta(days=30)).isoformat()
+                        cursor.execute(
+                            "UPDATE users SET merit_months=%s, plan='basic', plan_started_at=%s, plan_expires_at=%s, ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
+                            (new_merit, now_dt.isoformat(), new_end, now_dt.isoformat(), referrer["user_id"])
+                        )
                     cursor.execute("UPDATE users SET referral_rewarded=TRUE WHERE user_id=%s", (user_id,))
 
         conn.commit()
@@ -600,10 +618,10 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
         if row:
             industry_name = row["name"]
     conn.close()
-    trial_ends = u.get("trial_ends_at")
-    if trial_ends is not None:
-        trial_ends = str(trial_ends)
-    plan_status = _get_plan_status(u.get("plan") or "trial", trial_ends)
+    plan_expires = u.get("plan_expires_at") or u.get("trial_ends_at")
+    if plan_expires is not None:
+        plan_expires = str(plan_expires)
+    plan_status = _get_plan_status(u.get("plan") or "free", plan_expires, u.get("ai_usage_month") or 0)
     return {
         "status": "SUCCESS",
         "user": {
@@ -628,13 +646,13 @@ class UpgradePlanRequest(BaseModel):
     payment_key: Optional[str] = None
     order_id: Optional[str] = None
     amount: Optional[int] = 4900
-    target_plan: Optional[str] = "basic"  # "basic" or "pro"
+    target_plan: Optional[str] = "basic"  # "basic" or "biz"
     free_trial: Optional[bool] = False    # 첫 달 무료 여부
 
 
 TOSS_SECRET_KEY = os.getenv("TOSS_SECRET_KEY", "")
 
-PLAN_PRICES = {"basic": 4900, "pro": 14900}
+# PLAN_PRICES는 상단에 정의됨
 
 
 @app.post("/api/plan/upgrade")
@@ -642,9 +660,9 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """결제 확인 후 플랜을 basic 또는 pro로 업그레이드"""
+    """결제 확인 후 플랜을 basic 또는 biz로 업그레이드"""
     bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("basic", "pro") else "basic"
+    target = req.target_plan if req.target_plan in ("basic", "biz") else "basic"
 
     # 결제 검증 (첫 달 무료가 아닌 경우)
     if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
@@ -680,7 +698,7 @@ def api_plan_upgrade(
         u = cur.fetchone()
         # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
         # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
-        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'pro')", (bn,))
+        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'biz')", (bn,))
         if cur.fetchone():
             conn.close()
             raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
@@ -695,7 +713,7 @@ def api_plan_upgrade(
     conn.close()
 
     plan_status = _get_plan_status(target, expires_at, 0)
-    label = "BASIC" if target == "basic" else "PRO"
+    label = "BASIC" if target == "basic" else "BIZ"
     new_token = _create_jwt(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
@@ -754,9 +772,9 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
 
     u = dict(user)
     plan = u.get("plan") or "free"
-    if plan == "trial":
+    if plan in ("trial", "premium"):
         plan = "free"
-    limit = PLAN_LIMITS.get(plan, 5)
+    limit = PLAN_LIMITS.get(plan, 1)
     usage = u.get("ai_usage_month") or 0
 
     # 월간 리셋 체크
@@ -778,7 +796,7 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
         conn.close()
         raise HTTPException(
             status_code=429,
-            detail=f"이번 달 AI 사용 한도({limit}건)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 건수를 이용할 수 있습니다."
+            detail=f"이번 달 AI 상담 한도({limit}건)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 건수를 이용할 수 있습니다."
         )
 
     cur.execute(
@@ -790,8 +808,420 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
     return {"status": "SUCCESS", "ai_used": usage + 1, "ai_limit": limit}
 
 
+# ── AI 자유 상담 (크로스 공고 검색) ─────────────────────────────
+
+class AiChatRequest(BaseModel):
+    messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+
+
+@app.post("/api/ai/chat")
+def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_user)):
+    """자유 상담: 중소기업 지원사업 전반에 대한 AI 상담"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 사용자 정보 조회
+    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+
+    # 플랜/사용량 체크
+    plan = u.get("plan") or "free"
+    plan_expires = u.get("plan_expires_at")
+    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
+    if not ps.get("active"):
+        conn.close()
+        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
+
+    if plan in ("trial", "premium"):
+        plan = "free"
+    limit = PLAN_LIMITS.get(plan, 1)
+    usage = u.get("ai_usage_month") or 0
+
+    # 월간 리셋
+    now = datetime.datetime.utcnow()
+    reset_at = u.get("ai_usage_reset_at")
+    if reset_at:
+        try:
+            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+            if now.month != reset_dt.month or now.year != reset_dt.year:
+                usage = 0
+                cur.execute(
+                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
+                    (now.isoformat(), bn)
+                )
+        except Exception:
+            pass
+
+    # 첫 메시지일 때만 건수 차감
+    is_first_message = len(req.messages) <= 1
+    if is_first_message:
+        if usage >= limit:
+            conn.close()
+            raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
+        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
+        conn.commit()
+        usage += 1
+
+    # 통합 AI 엔진으로 자유 상담
+    from app.services.ai_consultant import chat_free
+    result = chat_free(req.messages, conn, user_profile=u)
+    conn.close()
+
+    return {
+        "status": "SUCCESS",
+        "reply": result.get("reply", ""),
+        "choices": result.get("choices", []),
+        "announcements": result.get("announcements", []),
+        "done": result.get("done", False),
+        "ai_used": usage,
+        "ai_limit": limit,
+    }
+
+
+# ── AI 공고 특화 상담 (대화형) ───────────────────────────────────
+
+class AiConsultRequest(BaseModel):
+    announcement_id: int
+    messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+
+
+@app.post("/api/ai/consult")
+def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_current_user)):
+    """AI 지원대상 여부 상담 — 대화형 (Gemini)"""
+    import google.generativeai as genai
+
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 1) 사용자 프로필 + 플랜 체크
+    cur.execute(
+        """SELECT plan, ai_usage_month, ai_usage_reset_at, plan_expires_at,
+                  company_name, establishment_date, address_city, industry_code,
+                  revenue_bracket, employee_count_bracket, interests
+           FROM users WHERE business_number = %s""",
+        (bn,)
+    )
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+
+    # 플랜/사용량 체크
+    plan = u.get("plan") or "free"
+    if plan in ("trial", "premium"):
+        plan = "free"
+    plan_expires = u.get("plan_expires_at")
+    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
+    if not ps.get("active"):
+        conn.close()
+        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.")
+
+    # 공고별 지원대상 상담: FREE 차단, BASIC+ 무제한
+    consult_limit = CONSULT_LIMITS.get(plan, 0)
+    if consult_limit == 0:
+        conn.close()
+        raise HTTPException(
+            status_code=403,
+            detail="공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다."
+        )
+
+    # 2) 공고 정보 조회
+    cur.execute(
+        """SELECT announcement_id, title, department, category, support_amount, deadline_date,
+                  summary_text, region, eligibility_logic, origin_url
+           FROM announcements WHERE announcement_id = %s""",
+        (req.announcement_id,)
+    )
+    ann = cur.fetchone()
+    if not ann:
+        conn.close()
+        raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+    a = dict(ann)
+
+    # 2-1) 정밀 분석 데이터 보장 (없으면 실시간 분석)
+    try:
+        from app.services.doc_analysis_service import ensure_analysis
+        deep = ensure_analysis(req.announcement_id, conn)
+    except Exception as e:
+        print(f"[Consult] ensure_analysis error: {e}")
+        import traceback; traceback.print_exc()
+        deep = {}
+
+    # 3) 통합 AI 엔진으로 상담
+    try:
+        from app.services.ai_consultant import chat_consult
+        result = chat_consult(
+            announcement_id=req.announcement_id,
+            messages=req.messages,
+            announcement=a,
+            deep_analysis_data=deep,
+            user_profile=u,
+        )
+    except Exception as e:
+        print(f"[Consult] chat_consult error: {e}")
+        import traceback; traceback.print_exc()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"AI 상담 오류: {str(e)}")
+    conn.close()
+
+    is_done = result.get("done", False)
+    consult_log_id = None
+
+    # 상담 완료 시 로그 저장 (학습 데이터 축적)
+    if is_done:
+        try:
+            all_msgs = req.messages + [{"role": "assistant", "text": result.get("reply", "")}]
+            log_conn = get_db_connection()
+            log_cur = log_conn.cursor()
+            log_cur.execute("""
+                INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
+                VALUES (%s, %s, %s, %s) RETURNING id
+            """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False), result.get("conclusion")))
+            row = log_cur.fetchone()
+            consult_log_id = row["id"] if row else None
+            log_conn.commit()
+            log_conn.close()
+        except Exception as log_err:
+            consult_log_id = None
+            print(f"[ConsultLog] Save error: {log_err}")
+
+    return {
+        "status": "SUCCESS",
+        "reply": result.get("reply", ""),
+        "choices": result.get("choices", []),
+        "done": is_done,
+        "conclusion": result.get("conclusion") if is_done else None,
+        "consult_log_id": consult_log_id if is_done else None,
+        "ai_used": usage,
+        "ai_limit": limit,
+    }
+
+
+# ── AI 컨설턴트 모드 (고객사 조건 수집 대화) ──────────────────
+
+class AiConsultantChatRequest(BaseModel):
+    messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+
+
+@app.post("/api/ai/consultant/chat")
+def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
+    """컨설턴트 모드: 대화형으로 고객사 조건 수집"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+
+    plan = u.get("plan") or "free"
+    if plan in ("trial", "premium"):
+        plan = "free"
+    plan_expires = u.get("plan_expires_at")
+    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
+    if not ps.get("active"):
+        conn.close()
+        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
+
+    conn.close()
+
+    # 조건 수집 대화는 건수 차감 없음 (매칭 실행 시 차감)
+    from app.services.ai_consultant import chat_consultant
+    result = chat_consultant(req.messages)
+
+    return {
+        "status": "SUCCESS",
+        "reply": result.get("reply", ""),
+        "choices": result.get("choices", []),
+        "done": result.get("done", False),
+        "profile": result.get("profile"),
+        "collected": result.get("collected", {}),
+    }
+
+
+# ── AI 컨설턴트 매칭 실행 (가상 프로필 → 매칭) ────────────────
+
+class ConsultantMatchRequest(BaseModel):
+    profile: dict  # 가상 프로필 (company_name, establishment_date, industry_code 등)
+
+
+@app.post("/api/ai/consultant/match")
+def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = Depends(_get_current_user)):
+    """컨설턴트 모드: 가상 프로필로 매칭 실행 (AI 1건 차감)"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+
+    plan = u.get("plan") or "free"
+    if plan in ("trial", "premium"):
+        plan = "free"
+    plan_expires = u.get("plan_expires_at")
+    usage = u.get("ai_usage_month") or 0
+    ps = _get_plan_status(plan, plan_expires, usage)
+    if not ps.get("active"):
+        conn.close()
+        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
+
+    limit = PLAN_LIMITS.get(plan, 1)
+
+    # 월간 리셋
+    now = datetime.datetime.utcnow()
+    reset_at = u.get("ai_usage_reset_at")
+    if reset_at:
+        try:
+            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+            if now.month != reset_dt.month or now.year != reset_dt.year:
+                usage = 0
+                cur.execute(
+                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
+                    (now.isoformat(), bn)
+                )
+        except Exception:
+            pass
+
+    # AI 1건 차감
+    if usage >= limit:
+        conn.close()
+        raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
+
+    cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
+    conn.commit()
+    conn.close()
+    usage += 1
+
+    # 가상 프로필로 매칭 엔진 실행
+    virtual_profile = req.profile
+    matches = get_matches_for_user(virtual_profile)
+
+    # 직렬화 (date 등)
+    for m in matches:
+        for k, v in m.items():
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                m[k] = v.isoformat()
+
+    return {
+        "status": "SUCCESS",
+        "matches": matches,
+        "profile_used": virtual_profile,
+        "ai_used": usage,
+        "ai_limit": limit,
+    }
+
+
+# ── 상담 피드백 ──────────────────────────────────────────
+
+class ConsultFeedbackRequest(BaseModel):
+    consult_log_id: int
+    feedback: str  # 'helpful' | 'inaccurate'
+    detail: Optional[str] = None
+
+
+@app.post("/api/ai/consult/feedback")
+def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depends(_get_current_user)):
+    """상담 결과 피드백 저장"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE ai_consult_logs SET feedback = %s, feedback_detail = %s WHERE id = %s AND business_number = %s",
+        (req.feedback, req.detail, req.consult_log_id, current_user["bn"])
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS"}
+
+
+# ── 공고 원문 정밀 분석 (배치) ─────────────────────────────
+
 class AdminAuthRequest(BaseModel):
     password: str
+
+
+@app.post("/api/admin/analyze-announcements")
+def api_analyze_announcements(req: AdminAuthRequest):
+    """관리자: 기존 공고들의 원문을 정밀 분석하여 학습 데이터 축적"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    from app.services.doc_analysis_service import analyze_and_store
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 아직 분석되지 않은 공고 조회 (최대 20건씩)
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE aa.id IS NULL AND a.origin_url IS NOT NULL
+        ORDER BY a.created_at DESC
+        LIMIT 20
+    """)
+    rows = cur.fetchall()
+
+    results = {"total": len(rows), "success": 0, "failed": 0, "details": []}
+    for row in rows:
+        r = dict(row)
+        res = analyze_and_store(
+            announcement_id=r["announcement_id"],
+            origin_url=r["origin_url"],
+            title=r["title"],
+            db_conn=conn,
+            summary_text=r.get("summary_text") or "",
+        )
+        if res["success"]:
+            results["success"] += 1
+        else:
+            results["failed"] += 1
+        results["details"].append({
+            "id": r["announcement_id"],
+            "title": r["title"][:50],
+            "success": res["success"],
+            "source": res["source_type"],
+            "chars": res["text_length"],
+        })
+
+    conn.close()
+    return {"status": "SUCCESS", **results}
+
+
+@app.get("/api/admin/analysis-stats")
+def api_analysis_stats(req: AdminAuthRequest = Depends()):
+    """관리자: 분석 현황 통계"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as total FROM announcements")
+    total = cur.fetchone()["total"]
+    cur.execute("SELECT COUNT(*) as analyzed FROM announcement_analysis")
+    analyzed = cur.fetchone()["analyzed"]
+    cur.execute("SELECT COUNT(*) as consults FROM ai_consult_logs")
+    consults = cur.fetchone()["consults"]
+    cur.execute("SELECT COUNT(*) as feedback_count FROM ai_consult_logs WHERE feedback IS NOT NULL")
+    feedback_count = cur.fetchone()["feedback_count"]
+    conn.close()
+    return {
+        "total_announcements": total,
+        "analyzed": analyzed,
+        "pending": total - analyzed,
+        "consult_logs": consults,
+        "feedback_collected": feedback_count,
+    }
 
 
 ADMIN_TOKEN_SECRET = os.getenv("ADMIN_PASSWORD", "fallback")

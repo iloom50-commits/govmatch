@@ -7,6 +7,8 @@ import ProfileSettings from "@/components/ProfileSettings";
 import SkeletonLoader from "@/components/ui/SkeletonLoader";
 import AuthPage from "@/components/AuthPage";
 import PaymentModal from "@/components/PaymentModal";
+import AiConsultModal from "@/components/AiConsultModal";
+import AiChatBot from "@/components/AiChatBot";
 import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -68,6 +70,7 @@ export default function Home() {
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [consultantResult, setConsultantResult] = useState<{ matches: any[]; profile: any } | null>(null);
   const { toast } = useToast();
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
@@ -81,6 +84,18 @@ export default function Home() {
       const stored = localStorage.getItem("referral_code");
       if (stored) setReferralCode(stored);
     }
+  }, []);
+
+  // 컨설턴트 매칭 결과 이벤트 수신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.matches) {
+        setConsultantResult({ matches: detail.matches, profile: detail.profile });
+      }
+    };
+    window.addEventListener("consultant-match-result", handler);
+    return () => window.removeEventListener("consultant-match-result", handler);
   }, []);
 
   const getToken = () => localStorage.getItem("auth_token");
@@ -477,6 +492,8 @@ export default function Home() {
             onLogout={handleLogout}
             planStatus={planStatus}
             onUpgrade={() => setShowPayment(true)}
+            consultantResult={consultantResult}
+            onClearConsultant={() => setConsultantResult(null)}
           />
         </div>
       )}
@@ -494,6 +511,9 @@ export default function Home() {
           onClose={() => setShowPayment(false)}
         />
       )}
+
+      <AiConsultModal />
+      <AiChatBot />
 
       {step !== "RESULTS" && (
         <footer className="mt-8 md:mt-10 text-slate-400 text-[9px] font-black tracking-[0.2em] md:tracking-[0.2em] uppercase opacity-40">

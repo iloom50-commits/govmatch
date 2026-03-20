@@ -209,10 +209,10 @@ def get_matches_for_user(user_profile):
     user_emp = employee_map.get(user_profile.get("employee_count_bracket") or user_profile.get("employees"), 0)
 
     # SQL 1차 필터: 마감 공고 제외 + deadline 없는 공고는 최근 60일 이내만
+    # 지역 필터는 Python 단에서 처리 (관심지역 외 지역전용 공고만 제외)
     query = """
     SELECT * FROM announcements
-    WHERE (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region LIKE %s)
-    AND (established_years_limit IS NULL OR established_years_limit >= %s)
+    WHERE (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
     AND (
@@ -220,7 +220,7 @@ def get_matches_for_user(user_profile):
         OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '60 days')
     )
     """
-    cursor.execute(query, (f'%{user_profile.get("address_city", "")}%', company_age, user_rev, user_emp))
+    cursor.execute(query, (company_age, user_rev, user_emp))
     candidates = []
     for row in cursor.fetchall():
         d = dict(row)
@@ -244,7 +244,11 @@ def get_matches_for_user(user_profile):
         interest_keywords.extend(INTEREST_KEYWORD_MAP.get(tag, [tag]))
 
     is_soho = _is_soho(user_profile)
-    user_city = _normalize_region(user_profile.get("address_city", ""))
+    # 관심지역: 쉼표 구분 문자열 → 정규화된 리스트
+    raw_city = user_profile.get("address_city", "")
+    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
+    user_city = user_cities[0] if user_cities else ""
+    is_nationwide = not user_cities or "전국" in user_cities
 
     results = []
 
@@ -262,15 +266,24 @@ def get_matches_for_user(user_profile):
         if not rule_result["is_eligible"]:
             continue
 
-        # 지역 필터: 제목의 [도시명] 패턴으로 지역 특화 공고 판별
+        # 지역 필터: 관심지역이 아닌 곳의 지역 전용 공고만 제외
+        # 지역 미표기/전국 공고는 항상 포함
         title = ad.get("title", "")
+        ad_region = _normalize_region(ad.get("region") or "")
+
+        # DB region 필드 기반 지역 전용 공고 필터
+        if ad_region and ad_region not in ("전국", "", "All") and not is_nationwide:
+            if ad_region not in user_cities:
+                continue
+
+        # 제목의 [도시명] 패턴으로 지역 특화 공고 판별
         bracket_city_match = re.search(
             r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]',
             title
         )
-        if bracket_city_match:
+        if bracket_city_match and not is_nationwide:
             title_city = bracket_city_match.group(1)
-            if user_city and user_city not in ("전국", "") and title_city != user_city:
+            if title_city not in user_cities:
                 continue
 
         # business_type 하드 필터: 배타적 대상 유형이 지정된 경우
@@ -310,9 +323,14 @@ def get_matches_for_user(user_profile):
         score += 30.0
 
         # A-1. 지역 매칭 보너스 (최대 15점)
-        if bracket_city_match and user_city and user_city not in ("전국", ""):
+        matched_city = None
+        if bracket_city_match and not is_nationwide:
+            matched_city = bracket_city_match.group(1)
+        elif ad_region and ad_region not in ("전국", "", "All") and not is_nationwide and ad_region in user_cities:
+            matched_city = ad_region
+        if matched_city:
             score += 15.0
-            reasons.append(f"{user_city} 지역 특화 지원사업")
+            reasons.append(f"{matched_city} 지역 특화 지원사업")
 
         # B. 소상공인 매칭 (최대 20점)
         soho_keywords = ["소상공인", "자영업", "골목상권", "전통시장", "소규모"]

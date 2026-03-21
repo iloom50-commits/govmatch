@@ -77,7 +77,7 @@ interface PlanStatus {
   guide_price?: number | null;
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void }) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("latest");
@@ -246,6 +246,98 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return counts;
   }, [displayMatches]);
 
+  // 비로그인 사이드바 (프로그램 소개 + CTA)
+  const PublicSidebarContent = () => (
+    <div className="glass p-4 md:p-5 rounded-2xl space-y-4 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border relative">
+      <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
+      <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
+
+      {/* 브랜드 */}
+      <div className="relative z-10 text-center py-3">
+        <h2 className="text-xl font-black text-slate-900 tracking-tight mb-1">
+          <span className="text-indigo-600">지원금톡톡</span>
+        </h2>
+        <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+          AI가 매시간 5,000개 이상의<br />정부 공고를 분석합니다
+        </p>
+      </div>
+
+      {/* 핵심 기능 소개 */}
+      <div className="relative z-10 space-y-2.5">
+        {[
+          { icon: "🎯", title: "AI 맞춤 매칭", desc: "기업 조건에 딱 맞는 공고만" },
+          { icon: "💬", title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
+          { icon: "📝", title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
+          { icon: "🔔", title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
+        ].map((item) => (
+          <div key={item.title} className="flex items-start gap-3 p-3 bg-white/60 rounded-xl border border-slate-100/80">
+            <span className="text-lg flex-shrink-0 mt-0.5">{item.icon}</span>
+            <div>
+              <p className="text-[12px] font-bold text-slate-800">{item.title}</p>
+              <p className="text-[10px] text-slate-500 font-medium">{item.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 통계 */}
+      <div className="relative z-10 p-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
+        <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1">실시간 분석 중</p>
+        <p className="text-lg font-black text-indigo-700">{(matches.length || 0).toLocaleString()}건</p>
+        <p className="text-[10px] text-slate-500 font-medium">의 공고를 확인할 수 있습니다</p>
+      </div>
+
+      {/* 구분선 */}
+      <div className="relative z-10 flex items-center gap-3">
+        <div className="flex-1 h-px bg-slate-200/60" />
+        <span className="text-[9px] text-slate-400 font-bold">무료로 시작하기</span>
+        <div className="flex-1 h-px bg-slate-200/60" />
+      </div>
+
+      {/* 소셜 로그인 */}
+      <div className="relative z-10 space-y-2">
+        <button
+          onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
+          className="w-full py-2.5 bg-[#FEE500] text-[#191919] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:brightness-95 transition-all active:scale-[0.98]"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+            <path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" />
+          </svg>
+          카카오로 시작하기
+        </button>
+        <button
+          onClick={() => window.location.href = `${API}/api/auth/social/naver`}
+          className="w-full py-2.5 bg-[#03C75A] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:brightness-95 transition-all active:scale-[0.98]"
+        >
+          <span className="text-sm font-black">N</span>
+          네이버로 시작하기
+        </button>
+        <button
+          onClick={() => window.location.href = `${API}/api/auth/social/google`}
+          className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all active:scale-[0.98]"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+          </svg>
+          Google로 시작하기
+        </button>
+      </div>
+
+      {/* 이메일 가입 */}
+      <div className="relative z-10 text-center">
+        <button
+          onClick={() => onLoginRequired?.()}
+          className="text-[11px] text-slate-400 hover:text-indigo-600 font-bold transition-all"
+        >
+          이메일로 로그인/가입 →
+        </button>
+      </div>
+    </div>
+  );
+
   // 사이드바 내용 (모바일 드로어 + 데스크탑 공용)
   const SidebarContent = () => (
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
@@ -287,7 +379,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {planStatus && (
         <div className={`relative z-10 p-3 rounded-lg border ${
-          planStatus.plan === "biz"
+          planStatus.plan === "pro" || planStatus.plan === "biz"
             ? "bg-violet-50 border-violet-200"
             : planStatus.plan === "basic"
             ? "bg-indigo-50 border-indigo-200"
@@ -297,7 +389,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         }`}>
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-[10px] font-bold uppercase tracking-widest ${
-              planStatus.plan === "biz"
+              planStatus.plan === "pro" || planStatus.plan === "biz"
                 ? "text-violet-600"
                 : planStatus.plan === "basic"
                 ? "text-indigo-600"
@@ -323,7 +415,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   className={`h-full rounded-full transition-all ${
                     ((planStatus.ai_used || 0) / planStatus.ai_limit) > 0.8
                       ? "bg-rose-500"
-                      : planStatus.plan === "biz" ? "bg-violet-500" : "bg-indigo-500"
+                      : planStatus.plan === "pro" || planStatus.plan === "biz" ? "bg-violet-500" : "bg-indigo-500"
                   }`}
                   style={{ width: `${Math.min(((planStatus.ai_used || 0) / planStatus.ai_limit) * 100, 100)}%` }}
                 />
@@ -343,11 +435,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <div className="flex items-center justify-between text-[9px]">
               <span className="text-slate-500 font-medium">공고별 지원대상 상담</span>
               <span className={`font-bold ${(planStatus.consult_limit || 0) > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                {(planStatus.consult_limit || 0) > 0 ? "무제한" : "BASIC부터"}
+                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.consult_limit}회 무료` : "BASIC부터"}
               </span>
             </div>
           </div>
-          {!["basic", "biz"].includes(planStatus.plan) && onUpgrade && (
+          {!["basic", "pro", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
               className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all active:scale-95"
@@ -505,29 +597,43 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-4 lg:px-0 overflow-x-clip">
 
       {/* 모바일 상단 바 (lg 미만에서만 표시) */}
-      <div className="lg:hidden flex items-center justify-between py-3 mb-4 border-b border-slate-200/60">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
-          <div className="min-w-0">
-            {planStatus && (
-              <p className={`text-[9px] font-bold uppercase tracking-widest ${
-                planStatus.plan === "biz" ? "text-violet-600" :
-                planStatus.plan === "basic" ? "text-indigo-600" :
-                planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
-              }`}>{planStatus.label}</p>
-            )}
+      {isPublic ? (
+        <div className="lg:hidden py-3 mb-4 border-b border-slate-200/60">
+          <div className="flex items-center justify-between">
+            <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
+            <button
+              onClick={() => onLoginRequired?.()}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-indigo-600 transition-all active:scale-95"
+            >
+              로그인
+            </button>
           </div>
         </div>
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-all active:scale-95 flex-shrink-0"
-        >
-          <span>☰</span> 메뉴
-        </button>
-      </div>
+      ) : (
+        <div className="lg:hidden flex items-center justify-between py-3 mb-4 border-b border-slate-200/60">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
+            <div className="min-w-0">
+              {planStatus && (
+                <p className={`text-[9px] font-bold uppercase tracking-widest ${
+                  planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
+                  planStatus.plan === "basic" ? "text-indigo-600" :
+                  planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
+                }`}>{planStatus.label}</p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-all active:scale-95 flex-shrink-0"
+          >
+            <span>☰</span> 메뉴
+          </button>
+        </div>
+      )}
 
       {/* 모바일 드로어 오버레이 */}
-      {sidebarOpen && (
+      {!isPublic && sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
@@ -535,29 +641,60 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       )}
 
       {/* 모바일 드로어 패널 */}
-      <div className={`fixed top-0 right-0 h-full w-[85vw] max-w-sm z-50 bg-white/95 backdrop-blur-xl shadow-2xl overflow-y-auto transition-transform duration-300 lg:hidden ${sidebarOpen ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">메뉴</span>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
-            >
-              ✕
-            </button>
+      {!isPublic && (
+        <div className={`fixed top-0 right-0 h-full w-[85vw] max-w-sm z-50 bg-white/95 backdrop-blur-xl shadow-2xl overflow-y-auto transition-transform duration-300 lg:hidden ${sidebarOpen ? "translate-x-0" : "translate-x-full"}`}>
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">메뉴</span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+              >
+                ✕
+              </button>
+            </div>
+            <SidebarContent />
           </div>
-          <SidebarContent />
         </div>
-      </div>
+      )}
 
       {/* 데스크탑 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
-        {/* 데스크탑 사이드바 (lg 이상에서만 표시) */}
+        {/* 데스크탑 사이드바 */}
         <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start">
-          <SidebarContent />
+          {isPublic ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
+          {/* 모바일 비로그인 CTA 배너 (lg 미만) */}
+          {isPublic && (
+            <div className="lg:hidden p-4 bg-white/70 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm animate-in fade-in duration-500">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-lg">🎯</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-bold text-slate-800">AI 맞춤 매칭 · 지원대상 판별 · 신청서 자동작성</p>
+                  <p className="text-[10px] text-slate-500 font-medium">로그인하면 모든 기능을 무료로 시작할 수 있어요</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
+                  className="py-2 bg-[#FEE500] text-[#191919] rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
+                >
+                  💬 카카오 시작
+                </button>
+                <button
+                  onClick={() => onLoginRequired?.()}
+                  className="py-2 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-600 transition-all active:scale-[0.98]"
+                >
+                  로그인/가입 →
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 컨설턴트 매칭 결과 배너 */}
           {consultantResult && (
             <div className="p-4 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-xl animate-in slide-in-from-top duration-300 shadow-sm">
@@ -672,7 +809,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
 
             {/* AI 공고 검색 — BIZ 전용 */}
-            {planStatus?.plan === "biz" && (
+            {(planStatus?.plan === "pro" || planStatus?.plan === "biz") && (
               <div className="flex items-center gap-2 bg-violet-50/80 backdrop-blur-md p-2.5 rounded-lg border border-violet-200/60 shadow-sm">
                 <div className="flex items-center gap-1.5 px-2 text-violet-600 flex-shrink-0">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -738,10 +875,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 >
                   <ResultCard
                     res={res}
-                    selected={selectedIds.has(res.announcement_id)}
-                    onToggle={() => toggleSelect(res.announcement_id)}
-                    planStatus={planStatus}
-                    onUpgrade={onUpgrade}
+                    selected={isPublic ? false : selectedIds.has(res.announcement_id)}
+                    onToggle={isPublic ? undefined : () => toggleSelect(res.announcement_id)}
+                    planStatus={isPublic ? null : planStatus}
+                    onUpgrade={isPublic ? undefined : onUpgrade}
+                    onLoginRequired={isPublic ? onLoginRequired : undefined}
                   />
                 </div>
               ))}

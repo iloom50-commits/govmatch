@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import LoginModal from "@/components/LoginModal";
 import Dashboard from "@/components/Dashboard";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import ProfileSettings from "@/components/ProfileSettings";
 import SkeletonLoader from "@/components/ui/SkeletonLoader";
-import AuthPage from "@/components/AuthPage";
 import PaymentModal from "@/components/PaymentModal";
 import AiConsultModal from "@/components/AiConsultModal";
 import AiChatBot from "@/components/AiChatBot";
@@ -60,18 +60,38 @@ interface PlanStatus {
   label: string;
 }
 
+// Steps:
+// BROWSE   = 비로그인 공고 리스트 (첫 화면)
+// LOGIN    = 기존 로그인 페이지 (풀스크린, 비밀번호 찾기 등)
+// LOADING  = 로딩
+// ONBOARDING = 온보딩 위자드
+// PROFILE  = 프로필 설정
+// RESULTS  = 매칭 결과 대시보드
+type Step = "BROWSE" | "LOGIN" | "LOADING" | "ONBOARDING" | "PROFILE" | "RESULTS";
+
 export default function Home() {
-  // IDLE = first visit (onboarding), LOGIN = returning user login screen
-  const [step, setStep] = useState<"IDLE" | "LOGIN" | "LOADING" | "PROFILE" | "RESULTS" | "ONBOARDING">("LOADING");
+  const [step, setStep] = useState<Step>("LOADING");
   const [businessNumber, setBusinessNumber] = useState("");
   const [profileData, setProfileData] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
   const [updateRequired, setUpdateRequired] = useState(false);
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [consultantResult, setConsultantResult] = useState<{ matches: any[]; profile: any } | null>(null);
+  const [publicMatches, setPublicMatches] = useState<any[]>([]);
   const { toast } = useToast();
+
+  // 비로그인 공고 로드
+  useEffect(() => {
+    fetch(`${API}/api/announcements/public?page=1&size=40`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === "SUCCESS") setPublicMatches(data.data);
+      })
+      .catch(() => {});
+  }, []);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
   useEffect(() => {
@@ -126,7 +146,7 @@ export default function Home() {
       }
     } catch {
       toast("매칭 수행 중 오류가 발생했습니다.", "error");
-      setStep("IDLE");
+      setStep("BROWSE");
     }
   }, [toast, authHeaders]);
 
@@ -134,8 +154,8 @@ export default function Home() {
   const loadUserAndMatch = useCallback(async () => {
     const token = getToken();
     if (!token) {
-      // No token → show login (user can navigate to register from there)
-      setStep("LOGIN");
+      // No token → show public announcement list
+      setStep("BROWSE");
       return;
     }
 
@@ -147,8 +167,7 @@ export default function Home() {
 
       if (!res.ok) {
         localStorage.removeItem("auth_token");
-        // Token invalid → show login (returning user with expired token)
-        setStep("LOGIN");
+        setStep("BROWSE");
         return;
       }
 
@@ -159,6 +178,7 @@ export default function Home() {
       setProfileData(user);
 
       if (!user.interests && !user.industry_code) {
+        localStorage.removeItem("needs_onboarding");
         setStep("ONBOARDING");
         return;
       }
@@ -172,7 +192,7 @@ export default function Home() {
       await performMatching(user.business_number);
     } catch {
       localStorage.removeItem("auth_token");
-      setStep("LOGIN");
+      setStep("BROWSE");
     }
   }, [performMatching]);
 
@@ -180,12 +200,13 @@ export default function Home() {
     loadUserAndMatch();
   }, [loadUserAndMatch]);
 
-  // Login success (returning user)
+  // Login success (from modal or full login page)
   const handleLoginSuccess = async (token: string, user: any, plan: any) => {
     localStorage.setItem("auth_token", token);
     if (user.email) localStorage.setItem("last_email", user.email);
     setPlanStatus(plan);
     setBusinessNumber(user.business_number);
+    setShowLoginModal(false);
 
     setStep("LOADING");
     try {
@@ -194,6 +215,11 @@ export default function Home() {
       });
       const meData = await meRes.json();
       setProfileData(meData.user);
+
+      if (!meData.user.interests && !meData.user.industry_code) {
+        setStep("ONBOARDING");
+        return;
+      }
 
       if (plan.plan === "expired") {
         setStep("RESULTS");
@@ -204,7 +230,7 @@ export default function Home() {
       await performMatching(user.business_number);
     } catch {
       toast("프로필 로딩 중 오류가 발생했습니다.", "error");
-      setStep("LOGIN");
+      setStep("BROWSE");
     }
   };
 
@@ -216,7 +242,6 @@ export default function Home() {
     setBusinessNumber(bn);
 
     try {
-      // 1. Register account (email + password from Step 5)
       const regRes = await fetch(`${API}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +257,6 @@ export default function Home() {
 
       if (!regRes.ok) {
         if (regRes.status === 409) {
-          // Already registered → try login automatically
           const loginRes = await fetch(`${API}/api/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -246,7 +270,6 @@ export default function Home() {
             if (data.email) localStorage.setItem("last_email", data.email);
             setPlanStatus(loginData.plan);
             setBusinessNumber(loginData.user.business_number);
-            // 온보딩 재시도 시 프로파일 업데이트
             await fetch(`${API}/api/save-profile`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${loginData.token}` },
@@ -281,7 +304,6 @@ export default function Home() {
       setReferralCode(null);
       setPlanStatus(regData.plan);
 
-      // 2. Save full profile
       const profilePayload = {
         business_number: bn,
         company_name: data.company_name,
@@ -302,7 +324,6 @@ export default function Home() {
         body: JSON.stringify(profilePayload),
       });
 
-      // 3. Save notification settings
       await fetch(`${API}/api/notification-settings`, {
         method: "POST",
         headers: {
@@ -317,14 +338,12 @@ export default function Home() {
         }),
       });
 
-      // 4. Subscribe to push if enabled
       if (data.push_enabled) {
         subscribePush(bn);
       }
 
-      // 5. Run matching
       setProfileData(profilePayload);
-      toast("30일 무료체험이 시작되었습니다!", "success");
+      toast("가입이 완료되었습니다! AI 매칭을 시작합니다.", "success");
       await performMatching(bn);
     } catch {
       toast("처리 중 오류가 발생했습니다.", "error");
@@ -353,7 +372,6 @@ export default function Home() {
         return;
       }
       if (result.status === "SUCCESS") {
-        // Reload profile from server to get industry_name and latest data
         const meRes = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
         if (meRes.ok) {
           const meData = await meRes.json();
@@ -373,7 +391,7 @@ export default function Home() {
   const handleLogout = () => {
     localStorage.removeItem("auth_token");
     setBusinessNumber("");
-    setStep("LOGIN");
+    setStep("BROWSE");
     setMatches([]);
     setProfileData(null);
     setPlanStatus(null);
@@ -384,9 +402,37 @@ export default function Home() {
       className={`min-h-screen flex flex-col ${
         step === "RESULTS"
           ? "items-stretch pt-4 md:pt-6 px-4 md:px-12 lg:px-20 pb-12 md:pb-20"
+          : step === "BROWSE"
+          ? "items-stretch pt-4 md:pt-8 px-4 md:px-12 lg:px-20 pb-12"
           : "items-center justify-center p-6"
       }`}
     >
+      {/* 비로그인: 기존 대시보드와 동일한 레이아웃 (사이드바 없음) */}
+      {step === "BROWSE" && (
+        <div className="flex justify-center">
+          <Dashboard
+            matches={publicMatches}
+            profile={null}
+            onEditProfile={() => setShowLoginModal(true)}
+            onLogout={() => {}}
+            isPublic={true}
+            onLoginRequired={() => setShowLoginModal(true)}
+          />
+        </div>
+      )}
+
+      {/* 로그인 모달 (공고 클릭 시 오버레이) */}
+      {showLoginModal && (
+        <LoginModal
+          onLoginSuccess={handleLoginSuccess}
+          onClose={() => setShowLoginModal(false)}
+          onGoToRegister={() => {
+            setShowLoginModal(false);
+            setStep("ONBOARDING");
+          }}
+        />
+      )}
+
       {updateRequired && step === "RESULTS" && (
         <div className="w-full max-w-[1600px] mx-auto mb-6 md:mb-8 p-4 md:p-6 bg-amber-50 border border-amber-200 rounded-3xl md:rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0 animate-in slide-in-from-top duration-500 shadow-sm">
           <div className="flex items-center gap-3 md:gap-4">
@@ -437,8 +483,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Hero Header for onboarding & login */}
-      {(step === "IDLE" || step === "ONBOARDING" || step === "LOGIN") && (
+      {/* Hero Header for onboarding & full login */}
+      {(step === "LOGIN" || step === "ONBOARDING") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-2 tracking-tighter">
             <span className="text-indigo-600">지원금톡톡</span>
@@ -450,10 +496,14 @@ export default function Home() {
         </div>
       )}
 
-      {/* First visit: straight to onboarding */}
-      {step === "IDLE" && (
+      {/* Onboarding (신규 가입) */}
+      {step === "ONBOARDING" && (
         <>
-          <OnboardingWizard onComplete={handleOnboardingComplete} />
+          <OnboardingWizard
+            initialBusinessNumber={businessNumber || undefined}
+            onComplete={handleOnboardingComplete}
+            onLogout={businessNumber ? handleLogout : undefined}
+          />
           <button
             onClick={() => setStep("LOGIN")}
             className="mt-4 text-slate-400 hover:text-indigo-600 text-xs font-black transition-all"
@@ -463,18 +513,15 @@ export default function Home() {
         </>
       )}
 
-      {/* Continuing onboarding (e.g. after login found incomplete profile) */}
-      {step === "ONBOARDING" && (
-        <OnboardingWizard
-          initialBusinessNumber={businessNumber}
-          onComplete={handleOnboardingComplete}
-          onLogout={handleLogout}
-        />
-      )}
-
-      {/* Returning user login */}
+      {/* Full login page (비밀번호 찾기 등 풀 기능) */}
       {step === "LOGIN" && (
-        <AuthPage onLoginSuccess={handleLoginSuccess} onGoToRegister={() => setStep("IDLE")} initialEmail={typeof window !== "undefined" ? localStorage.getItem("last_email") || "" : ""} />
+        <>
+          {/* Import AuthPage inline to avoid circular deps */}
+          <AuthPageWrapper
+            onLoginSuccess={handleLoginSuccess}
+            onGoToRegister={() => setStep("ONBOARDING")}
+          />
+        </>
       )}
 
       {step === "LOADING" && <SkeletonLoader />}
@@ -515,11 +562,22 @@ export default function Home() {
       <AiConsultModal />
       <AiChatBot />
 
-      {step !== "RESULTS" && (
-        <footer className="mt-8 md:mt-10 text-slate-400 text-[9px] font-black tracking-[0.2em] md:tracking-[0.2em] uppercase opacity-40">
-          &copy; 2026 지원금톡톡
-        </footer>
-      )}
     </main>
+  );
+}
+
+// Wrapper to lazy-import AuthPage (avoid removing the component)
+import AuthPage from "@/components/AuthPage";
+
+function AuthPageWrapper({ onLoginSuccess, onGoToRegister }: {
+  onLoginSuccess: (token: string, user: any, plan: any) => void;
+  onGoToRegister: () => void;
+}) {
+  return (
+    <AuthPage
+      onLoginSuccess={onLoginSuccess}
+      onGoToRegister={onGoToRegister}
+      initialEmail={typeof window !== "undefined" ? localStorage.getItem("last_email") || "" : ""}
+    />
   );
 }

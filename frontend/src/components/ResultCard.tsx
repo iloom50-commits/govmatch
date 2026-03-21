@@ -91,11 +91,13 @@ interface CardProps {
   onToggle?: () => void;
   planStatus?: { plan: string; ai_used?: number; ai_limit?: number; consult_limit?: number } | null;
   onUpgrade?: () => void;
+  onLoginRequired?: () => void;
 }
 
-export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade }: CardProps) {
-  const isExpired = planStatus?.plan === "expired";
-  const isConsultBlocked = planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
+export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade, onLoginRequired }: CardProps) {
+  const isPublic = !!onLoginRequired;
+  const isExpired = !isPublic && planStatus?.plan === "expired";
+  const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
   const { toast } = useToast();
   const dDay = getDDayInfo(res.deadline_date);
   const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
@@ -187,8 +189,15 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </div>
           {/* CTA buttons */}
           <div className="flex flex-col gap-2 mt-2">
-            {/* 상세 공고 이동 — 만료 시 잠금 */}
-            {isExpired ? (
+            {/* 상세 공고 이동 */}
+            {isPublic ? (
+              <button
+                onClick={() => onLoginRequired?.()}
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
+              >
+                상세 공고 이동 →
+              </button>
+            ) : isExpired ? (
               <button
                 onClick={() => onUpgrade?.()}
                 className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
@@ -212,11 +221,12 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 링크 없음
               </button>
             )}
-            {/* AI 버튼 2개 — 만료 시 전체 잠금, FREE는 한도 내 AI 상담 가능 */}
+            {/* AI 버튼 2개 */}
             <div className="flex items-center gap-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isPublic) { onLoginRequired?.(); return; }
                   if (isExpired) { onUpgrade?.(); return; }
                   if (isConsultBlocked) { toast("공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
                   if (typeof window !== "undefined") {
@@ -226,13 +236,13 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-sparkle">{isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
+                <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isPublic) { onLoginRequired?.(); return; }
                   if (isExpired) { onUpgrade?.(); return; }
-                  if (isConsultBlocked) { toast("AI 신청서 작성은 BASIC 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
                   if (typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
                   }
@@ -240,7 +250,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-sparkle">{isExpired || isConsultBlocked ? "🔒" : "✨"}</span> AI 신청서 작성
+                <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
           </div>

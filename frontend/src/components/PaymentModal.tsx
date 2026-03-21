@@ -16,25 +16,23 @@ const PLANS = [
     color: "indigo",
     features: [
       { text: "AI 맞춤 매칭", desc: "무제한", highlight: false },
-      { text: "맞춤 알림", desc: "무제한", highlight: false },
-      { text: "공고별 지원대상 상담", desc: "무제한", highlight: true },
-      { text: "AI 상담 (자유+컨설턴트)", desc: "1회/월", highlight: false },
-      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩19,000", highlight: false },
+      { text: "맞춤 매칭 알림", desc: "무제한", highlight: false },
+      { text: "AI 지원대상 판별", desc: "무제한", highlight: true },
+      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩14,900", highlight: false },
     ],
   },
   {
-    id: "biz",
-    name: "BIZ",
+    id: "pro",
+    name: "PRO",
     price: 19000,
     priceLabel: "19,000",
     popular: true,
     color: "violet",
     features: [
-      { text: "AI 맞춤 매칭", desc: "무제한", highlight: false },
-      { text: "맞춤 알림", desc: "무제한", highlight: false },
-      { text: "공고별 지원대상 상담", desc: "무제한", highlight: false },
-      { text: "AI 상담 (자유+컨설턴트)", desc: "무제한", highlight: true },
-      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩19,000", highlight: false },
+      { text: "BASIC 기능 전부 포함", desc: "", highlight: false },
+      { text: "자유 상담 (지원사업 Q&A)", desc: "무제한", highlight: true },
+      { text: "AI 컨설턴트 (맞춤 매칭)", desc: "무제한", highlight: true },
+      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩14,900", highlight: false },
     ],
   },
 ];
@@ -49,7 +47,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("biz");
+  const [selectedPlan, setSelectedPlan] = useState("pro");
 
   const plan = PLANS.find((p) => p.id === selectedPlan)!;
 
@@ -100,7 +98,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         method: "CARD",
         amount: { currency: "KRW", value: plan.price },
         orderId,
-        orderName: `지원금매칭 ${plan.name} 플랜`,
+        orderName: `지원금톡톡 ${plan.name} 플랜`,
         successUrl: `${window.location.origin}/payment/success?token=${encodeURIComponent(token || "")}&plan=${selectedPlan}`,
         failUrl: `${window.location.origin}/payment/fail`,
       });
@@ -146,7 +144,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 onClick={() => setSelectedPlan(p.id)}
                 className={`relative text-left p-4 rounded-xl border-2 transition-all ${
                   selectedPlan === p.id
-                    ? p.id === "biz"
+                    ? p.id === "pro"
                       ? "border-violet-500 bg-violet-50/50 shadow-md"
                       : "border-indigo-500 bg-indigo-50/50 shadow-md"
                     : "border-slate-200 bg-white hover:border-slate-300"
@@ -157,7 +155,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                     추천
                   </span>
                 )}
-                <div className={`text-xs font-bold mb-1 ${p.id === "biz" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
+                <div className={`text-xs font-bold mb-1 ${p.id === "pro" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
                 <div className="flex items-end gap-0.5 mb-3">
                   <span className="text-2xl font-bold text-slate-900">{p.priceLabel}</span>
                   <span className="text-[10px] font-semibold text-slate-500 pb-0.5">원/월</span>
@@ -181,7 +179,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
           {/* Free vs Paid comparison hint */}
           <div className="text-center mb-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
             <p className="text-[10px] text-slate-500 font-medium">
-              FREE 플랜 (영구 무료): AI 매칭 무제한 + AI 상담 1회/월 | 추천 보상: BASIC 1개월 무료
+              FREE 플랜 (영구 무료): AI 매칭 + 지원대상 판별 1회 무료 | 추천 보상: BASIC 1개월 무료
             </p>
           </div>
 
@@ -191,7 +189,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
               onClick={handleFreeTrial}
               disabled={loading}
               className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 ${
-                selectedPlan === "biz"
+                selectedPlan === "pro"
                   ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
                   : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
               }`}
@@ -224,7 +222,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 disabled={loading || !agreed}
                 className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] ${
                   agreed
-                    ? selectedPlan === "biz"
+                    ? selectedPlan === "pro"
                       ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
                       : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
                     : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"

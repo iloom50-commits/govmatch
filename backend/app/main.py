@@ -283,25 +283,29 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 
 
 # 플랜별 월 AI 상담 (자유Q&A + 컨설턴트) 건수 제한
+# free: 차단, basic: 차단, pro: 무제한
 PLAN_LIMITS = {
-    "free": 1,
-    "basic": 1,
-    "biz": 999999,
+    "free": 0,
+    "basic": 0,
+    "biz": 999999,   # legacy
+    "pro": 999999,
 }
 
 # 플랜별 공고별 지원대상 상담 건수 제한
+# free: 1회 무료, basic: 무제한, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 0,
+    "free": 1,
     "basic": 999999,
-    "biz": 999999,
+    "biz": 999999,   # legacy
+    "pro": 999999,
 }
 
 # 플랜 가격 (원/월)
-PLAN_PRICES = {"basic": 4900, "biz": 19000}
+PLAN_PRICES = {"basic": 4900, "biz": 19000, "pro": 19000}
 
-# AI 신청서 작성 가격 (원)
+# AI 신청서 작성 가격 (원/건)
 AI_GUIDE_PRICE_AUTO = 4900      # 자동 모드
-AI_GUIDE_PRICE_EXPERT = 19000   # 전문가 모드
+AI_GUIDE_PRICE_EXPERT = 14900   # 전문가 모드
 
 
 def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int = 0) -> dict:
@@ -324,7 +328,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "consult_limit": consult_limit,
         }
 
-    if plan in ("basic", "biz"):
+    if plan in ("basic", "biz", "pro"):
         # 유료 플랜 만료 체크
         if plan_expires_at:
             try:
@@ -338,7 +342,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                         "ai_used": ai_usage_month, "ai_limit": PLAN_LIMITS["free"],
                         "consult_limit": CONSULT_LIMITS["free"],
                     }
-                label_map = {"basic": "BASIC", "biz": "BIZ"}
+                label_map = {"basic": "BASIC", "biz": "PRO", "pro": "PRO"}
                 return {
                     "plan": plan, "active": True, "days_left": days_left,
                     "label": label_map.get(plan, plan.upper()),
@@ -347,7 +351,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                 }
             except ValueError:
                 pass
-        label_map = {"basic": "BASIC", "biz": "BIZ"}
+        label_map = {"basic": "BASIC", "biz": "PRO", "pro": "PRO"}
         return {
             "plan": plan, "active": True, "days_left": None,
             "label": label_map.get(plan, plan.upper()),
@@ -357,6 +361,92 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
 
     return {"plan": "free", "active": True, "days_left": None, "label": "FREE",
             "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "consult_limit": CONSULT_LIMITS["free"]}
+
+
+# ─── 비로그인 공고 리스트 API ───────────────────────────────────────
+@app.get("/api/announcements/public")
+def api_announcements_public(
+    page: int = 1,
+    size: int = 20,
+    region: Optional[str] = None,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
+    if size > 50:
+        size = 50
+    offset = (max(1, page) - 1) * size
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    where_clauses = ["(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)"]
+    params: list = []
+
+    if region:
+        where_clauses.append("region = %s")
+        params.append(region)
+    if category:
+        where_clauses.append("category = %s")
+        params.append(category)
+    if search:
+        where_clauses.append("(title ILIKE %s OR summary_text ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    where_sql = " AND ".join(where_clauses)
+
+    # 총 개수
+    cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
+    total = cursor.fetchone()["cnt"]
+
+    # 공고 리스트
+    cursor.execute(
+        f"""SELECT announcement_id, title, region, category, department,
+                   support_amount, deadline_date, origin_source, created_at
+            FROM announcements
+            WHERE {where_sql}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s""",
+        params + [size, offset],
+    )
+    rows = cursor.fetchall()
+
+    # 필터용 메타: 지역/카테고리 목록
+    cursor.execute("SELECT DISTINCT region FROM announcements WHERE region IS NOT NULL ORDER BY region")
+    regions = [r["region"] for r in cursor.fetchall()]
+    cursor.execute("SELECT DISTINCT category FROM announcements WHERE category IS NOT NULL ORDER BY category")
+    categories = [r["category"] for r in cursor.fetchall()]
+
+    conn.close()
+
+    return {
+        "status": "SUCCESS",
+        "data": rows,
+        "total": total,
+        "page": page,
+        "size": size,
+        "regions": regions,
+        "categories": categories,
+    }
+
+
+@app.get("/api/announcements/{announcement_id}/detail")
+def api_announcement_detail(announcement_id: int):
+    """공고 상세 (비로그인 접근 가능 — 기본 정보만)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT a.*, aa.deep_analysis
+           FROM announcements a
+           LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+           WHERE a.announcement_id = %s""",
+        (announcement_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "data": row}
 
 
 class FindEmailRequest(BaseModel):
@@ -478,7 +568,7 @@ def api_register(req: RegisterRequest):
                 if referrer:
                     new_merit = (referrer["merit_months"] or 0) + 1
                     now_dt = datetime.datetime.utcnow()
-                    if referrer["plan"] in ("basic", "biz"):
+                    if referrer["plan"] in ("basic", "pro", "biz"):
                         # 유료 플랜: 만료일 30일 연장
                         try:
                             current_end = datetime.datetime.fromisoformat(str(referrer["plan_expires_at"]))
@@ -600,6 +690,208 @@ def api_login(req: LoginRequest):
     }
 
 
+# ─── 소셜 로그인 (OAuth2) ───────────────────────────────────────────
+import secrets
+import urllib.parse
+
+KAKAO_CLIENT_ID = os.getenv("KAKAO_CLIENT_ID", "")
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
+def _social_login_or_register(provider: str, social_id: str, email: str, name: str):
+    """소셜 로그인: 기존 사용자면 로그인, 신규면 자동 가입"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 1. 이미 같은 이메일로 가입된 사용자 확인
+    cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+
+    now_iso = datetime.datetime.utcnow().isoformat()
+
+    if user:
+        u = dict(user)
+        # kakao_id 컬럼에 소셜 provider:id 저장 (기존 호환)
+        if not u.get("kakao_id"):
+            cursor.execute("UPDATE users SET kakao_id = %s WHERE user_id = %s",
+                           (f"{provider}:{social_id}", u["user_id"]))
+            conn.commit()
+    else:
+        # 신규 가입
+        bn = f"U{int(datetime.datetime.utcnow().timestamp())}"[-10:]
+        import hashlib as _hashlib
+        cursor.execute(
+            """INSERT INTO users (business_number, company_name, email, password_hash, plan,
+               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id)
+               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s)
+               RETURNING user_id, business_number""",
+            (bn, name or "", email, "", now_iso, now_iso, f"{provider}:{social_id}")
+        )
+        row = cursor.fetchone()
+        ref_code = _hashlib.md5(f'{bn}{row["user_id"]}'.encode()).hexdigest()[:8].upper()
+        cursor.execute("UPDATE users SET referral_code=%s WHERE user_id=%s", (ref_code, row["user_id"]))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM users WHERE user_id = %s", (row["user_id"],))
+        user = cursor.fetchone()
+        u = dict(user)
+
+    conn.close()
+
+    plan = u.get("plan") or "free"
+    if plan in ("trial", "premium"):
+        plan = "free"
+    plan_expires = str(u["plan_expires_at"]) if u.get("plan_expires_at") else None
+    ai_usage = u.get("ai_usage_month") or 0
+    plan_status = _get_plan_status(plan, plan_expires, ai_usage)
+
+    token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, plan_expires)
+
+    is_new = not u.get("interests") and not u.get("industry_code")
+    return token, plan_status, u, is_new
+
+
+@app.get("/api/auth/social/{provider}")
+def api_social_auth_redirect(provider: str):
+    """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""
+    redirect_uri = f"{FRONTEND_URL}/api/auth/callback/{provider}"
+    state = secrets.token_urlsafe(16)
+
+    if provider == "kakao":
+        if not KAKAO_CLIENT_ID:
+            raise HTTPException(status_code=501, detail="카카오 로그인이 아직 설정되지 않았습니다.")
+        url = (f"https://kauth.kakao.com/oauth/authorize"
+               f"?client_id={KAKAO_CLIENT_ID}"
+               f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+               f"&response_type=code&state={state}")
+    elif provider == "naver":
+        if not NAVER_CLIENT_ID:
+            raise HTTPException(status_code=501, detail="네이버 로그인이 아직 설정되지 않았습니다.")
+        url = (f"https://nid.naver.com/oauth2.0/authorize"
+               f"?client_id={NAVER_CLIENT_ID}"
+               f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+               f"&response_type=code&state={state}")
+    elif provider == "google":
+        if not GOOGLE_CLIENT_ID:
+            raise HTTPException(status_code=501, detail="Google 로그인이 아직 설정되지 않았습니다.")
+        url = (f"https://accounts.google.com/o/oauth2/v2/auth"
+               f"?client_id={GOOGLE_CLIENT_ID}"
+               f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+               f"&response_type=code&scope=email+profile&state={state}")
+    else:
+        raise HTTPException(status_code=400, detail="지원하지 않는 로그인 방식입니다.")
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url)
+
+
+class SocialCallbackRequest(BaseModel):
+    code: str
+    provider: str
+
+
+@app.post("/api/auth/social/callback")
+async def api_social_callback(req: SocialCallbackRequest):
+    """소셜 로그인 콜백: authorization code → 토큰 교환 → 사용자 정보 → JWT 발급"""
+    import httpx
+
+    redirect_uri = f"{FRONTEND_URL}/api/auth/callback/{req.provider}"
+
+    if req.provider == "kakao":
+        # 1. code → access_token
+        async with httpx.AsyncClient() as client:
+            token_res = await client.post("https://kauth.kakao.com/oauth/token", data={
+                "grant_type": "authorization_code",
+                "client_id": KAKAO_CLIENT_ID,
+                "client_secret": KAKAO_CLIENT_SECRET,
+                "code": req.code,
+                "redirect_uri": redirect_uri,
+            })
+            token_data = token_res.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=400, detail="카카오 인증 실패")
+
+            # 2. access_token → user info
+            user_res = await client.get("https://kapi.kakao.com/v2/user/me",
+                                        headers={"Authorization": f"Bearer {access_token}"})
+            user_data = user_res.json()
+
+        kakao_id = str(user_data.get("id", ""))
+        account = user_data.get("kakao_account", {})
+        email = account.get("email", f"kakao_{kakao_id}@kakao.local")
+        name = account.get("profile", {}).get("nickname", "")
+
+        token, plan_status, u, is_new = _social_login_or_register("kakao", kakao_id, email, name)
+
+    elif req.provider == "naver":
+        async with httpx.AsyncClient() as client:
+            token_res = await client.post("https://nid.naver.com/oauth2.0/token", data={
+                "grant_type": "authorization_code",
+                "client_id": NAVER_CLIENT_ID,
+                "client_secret": NAVER_CLIENT_SECRET,
+                "code": req.code,
+            })
+            token_data = token_res.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=400, detail="네이버 인증 실패")
+
+            user_res = await client.get("https://openapi.naver.com/v1/nid/me",
+                                        headers={"Authorization": f"Bearer {access_token}"})
+            user_data = user_res.json().get("response", {})
+
+        naver_id = user_data.get("id", "")
+        email = user_data.get("email", f"naver_{naver_id}@naver.local")
+        name = user_data.get("name", user_data.get("nickname", ""))
+
+        token, plan_status, u, is_new = _social_login_or_register("naver", naver_id, email, name)
+
+    elif req.provider == "google":
+        async with httpx.AsyncClient() as client:
+            token_res = await client.post("https://oauth2.googleapis.com/token", data={
+                "grant_type": "authorization_code",
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "code": req.code,
+                "redirect_uri": redirect_uri,
+            })
+            token_data = token_res.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=400, detail="Google 인증 실패")
+
+            user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo",
+                                        headers={"Authorization": f"Bearer {access_token}"})
+            user_data = user_res.json()
+
+        google_id = user_data.get("id", "")
+        email = user_data.get("email", "")
+        name = user_data.get("name", "")
+
+        token, plan_status, u, is_new = _social_login_or_register("google", google_id, email, name)
+    else:
+        raise HTTPException(status_code=400, detail="지원하지 않는 로그인 방식입니다.")
+
+    return {
+        "status": "SUCCESS",
+        "token": token,
+        "user": {
+            "business_number": u.get("business_number", ""),
+            "company_name": u.get("company_name", ""),
+            "email": u.get("email", ""),
+        },
+        "plan": plan_status,
+        "is_new_user": is_new,
+    }
+
+
 @app.get("/api/auth/me")
 def api_auth_me(current_user: dict = Depends(_get_current_user)):
     conn = get_db_connection()
@@ -646,7 +938,7 @@ class UpgradePlanRequest(BaseModel):
     payment_key: Optional[str] = None
     order_id: Optional[str] = None
     amount: Optional[int] = 4900
-    target_plan: Optional[str] = "basic"  # "basic" or "biz"
+    target_plan: Optional[str] = "basic"  # "basic" or "pro"
     free_trial: Optional[bool] = False    # 첫 달 무료 여부
 
 
@@ -660,9 +952,9 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """결제 확인 후 플랜을 basic 또는 biz로 업그레이드"""
+    """결제 확인 후 플랜을 basic 또는 pro로 업그레이드"""
     bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("basic", "biz") else "basic"
+    target = req.target_plan if req.target_plan in ("basic", "pro", "biz") else "basic"
 
     # 결제 검증 (첫 달 무료가 아닌 경우)
     if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
@@ -698,7 +990,7 @@ def api_plan_upgrade(
         u = cur.fetchone()
         # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
         # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
-        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'biz')", (bn,))
+        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'pro', 'biz')", (bn,))
         if cur.fetchone():
             conn.close()
             raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
@@ -713,7 +1005,7 @@ def api_plan_upgrade(
     conn.close()
 
     plan_status = _get_plan_status(target, expires_at, 0)
-    label = "BASIC" if target == "basic" else "BIZ"
+    label = "BASIC" if target == "basic" else "PRO"
     new_token = _create_jwt(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
@@ -923,14 +1215,46 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         conn.close()
         raise HTTPException(status_code=403, detail="플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.")
 
-    # 공고별 지원대상 상담: FREE 차단, BASIC+ 무제한
+    # 공고별 지원대상 상담 제한 체크
     consult_limit = CONSULT_LIMITS.get(plan, 0)
+    ai_usage = u.get("ai_usage_month") or 0
+
+    # 월간 리셋 체크
+    now = datetime.datetime.utcnow()
+    reset_at = u.get("ai_usage_reset_at")
+    if reset_at:
+        try:
+            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+            if now.month != reset_dt.month or now.year != reset_dt.year:
+                ai_usage = 0
+                cur.execute(
+                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
+                    (now.isoformat(), bn)
+                )
+        except Exception:
+            pass
+
     if consult_limit == 0:
         conn.close()
         raise HTTPException(
             status_code=403,
             detail="공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다."
         )
+
+    # FREE 플랜: 1회 무료 제한 (consult_limit=1)
+    if plan == "free" and consult_limit < 999999:
+        # consult 사용량은 ai_usage_month로 추적
+        if ai_usage >= consult_limit:
+            conn.close()
+            raise HTTPException(
+                status_code=429,
+                detail=f"무료 체험 상담({consult_limit}회)을 모두 사용했습니다. BASIC 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
+            )
+        # 첫 메시지일 때만 건수 차감
+        if len(req.messages) <= 1:
+            cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
+            conn.commit()
+            ai_usage += 1
 
     # 2) 공고 정보 조회
     cur.execute(
@@ -999,8 +1323,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         "done": is_done,
         "conclusion": result.get("conclusion") if is_done else None,
         "consult_log_id": consult_log_id if is_done else None,
-        "ai_used": usage,
-        "ai_limit": limit,
+        "ai_used": ai_usage,
+        "ai_limit": consult_limit,
     }
 
 

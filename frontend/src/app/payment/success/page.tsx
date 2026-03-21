@@ -44,7 +44,7 @@ function PaymentSuccessContent() {
           localStorage.setItem("auth_token", data.token);
         }
         setStatus("success");
-        const label = targetPlan === "biz" ? "BIZ" : "BASIC";
+        const label = targetPlan === "pro" || targetPlan === "biz" ? "PRO" : "BASIC";
         setMessage(`${label} 플랜으로 업그레이드되었습니다!`);
         setTimeout(() => router.push("/"), 2500);
       })

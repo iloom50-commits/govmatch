@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Users/osung/miniconda3/envs/gov-ai/python.exe tests/evaluate.py)",
+      "WebFetch(domain:infuser.odcloud.kr)",
+      "Bash(./venv/Scripts/pip install:*)",
+      "Bash(taskkill //F //IM uvicorn.exe)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq uvicorn*\")",
+      "Bash(curl -s http://localhost:3001)",
+      "Bash(curl -s http://localhost:8000/api/announcements)",
+      "Bash(curl -s http://localhost:8000/docs)",
+      "Bash(curl -s http://localhost:8000/api/dashboard)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(taskkill //PID 59428 //F)",
+      "Bash(taskkill //PID 286468 //F)",
+      "Bash(taskkill //PID 71412 //F)",
+      "Bash(taskkill //PID 286960 //F)",
+      "Bash(./venv/Scripts/python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/login -H \"Content-Type: application/json\" -d '{\"\"\"\"email\"\"\"\":\"\"\"\"demo@test.com\"\"\"\",\"\"\"\"password\"\"\"\":\"\"\"\"test1234\"\"\"\"}')",
+      "Bash(npx vercel:*)",
+      "Bash(curl -s \"http://localhost:8000/api/announcements/public?page=1&size=5\")"
+    ],
+    "additionalDirectories": [
+      "C:\\DevLogs\\Auto_Gov_Macting"
+    ]
+  }
+}

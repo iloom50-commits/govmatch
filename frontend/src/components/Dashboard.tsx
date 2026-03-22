@@ -773,22 +773,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   );
 
   return (
-    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-4 lg:px-0 overflow-x-clip">
+    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
-      {/* 모바일 상단 바 (lg 미만에서만 표시) */}
-      {isPublic ? (
-        <div className="lg:hidden py-3 mb-4 border-b border-slate-200/60">
-          <div className="flex items-center justify-between">
-            <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
-            <button
-              onClick={() => onLoginRequired?.()}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-indigo-600 transition-all active:scale-95"
-            >
-              로그인
-            </button>
-          </div>
-        </div>
-      ) : (
+      {/* 모바일 상단 바 (lg 미만에서만 표시) — 로그인 사용자만 */}
+      {isPublic ? null : (
         <div className="lg:hidden flex items-center justify-between py-3 mb-4 border-b border-slate-200/60">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
@@ -845,46 +833,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </aside>
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
-          {/* 모바일 비로그인 CTA 배너 (lg 미만) */}
-          {isPublic && (
-            <div className="lg:hidden p-4 bg-white/70 backdrop-blur-sm rounded-2xl border border-white/60 shadow-sm animate-in fade-in duration-500">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg">🎯</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-bold text-slate-800">AI 맞춤 매칭 · 지원대상 판별 · 신청서 자동작성</p>
-                  <p className="text-[11px] text-slate-500 font-medium">로그인하면 모든 기능을 무료로 시작할 수 있어요</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
-                  className="py-2 bg-[#FEE500] text-[#191919] rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
-                >
-                  💬 카카오
-                </button>
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/naver`}
-                  className="py-2 bg-[#03C75A] text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
-                >
-                  N 네이버
-                </button>
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/google`}
-                  className="py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:bg-slate-50 transition-all active:scale-[0.98]"
-                >
-                  G Google
-                </button>
-                <button
-                  onClick={() => onLoginRequired?.()}
-                  className="py-2 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-600 transition-all active:scale-[0.98]"
-                >
-                  이메일 가입 →
-                </button>
-              </div>
-            </div>
-          )}
+          {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
           {/* 컨설턴트 매칭 결과 배너 */}
           {consultantResult && (
@@ -963,7 +912,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="공고명, 부서, 키워드로 검색 (예: 창업, R&D, 수출)"
+                placeholder={majorTab === "business" ? "공고명, 키워드 검색 (예: 창업, R&D, 수출)" : "공고명, 키워드 검색 (예: 복지, 육아, 주거, 취업)"}
                 className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
               />
               {searchQuery && (
@@ -1099,7 +1048,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 pb-20">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-20">
               {filteredMatches.map((res, idx) => (
                 <div
                   key={res.announcement_id ?? idx}
@@ -1140,6 +1089,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           )}
         </main>
       </div>
+
+      {/* 하단 플로팅 로그인 바 (비로그인 모바일) */}
+      {isPublic && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-in slide-in-from-bottom duration-500">
+          <div className="bg-white/95 backdrop-blur-xl border-t border-slate-200/80 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-3 py-2.5 safe-bottom">
+            <div className="flex items-center gap-2 max-w-lg mx-auto">
+              <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap flex-shrink-0">무료 시작</span>
+              <button
+                onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
+                className="flex-1 py-2 bg-[#FEE500] text-[#191919] rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
+              >
+                💬 카카오
+              </button>
+              <button
+                onClick={() => window.location.href = `${API}/api/auth/social/naver`}
+                className="flex-1 py-2 bg-[#03C75A] text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
+              >
+                N 네이버
+              </button>
+              <button
+                onClick={() => onLoginRequired?.()}
+                className="py-2 px-3 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-600 transition-all active:scale-[0.98] flex-shrink-0"
+              >
+                가입
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <NotificationModal
         isOpen={isNotifyOpen}

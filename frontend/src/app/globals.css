@@ -45,10 +45,32 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.02),
     0 2px 4px -1px rgba(0, 0, 0, 0.01),
     inset 0 0 40px rgba(255, 255, 255, 0.3);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.glass-card[data-urgency="critical"]:hover {
+  box-shadow: 0 0 24px rgba(244, 63, 94, 0.3), 0 8px 24px -4px rgba(0,0,0,0.08);
+  transform: scale(1.01);
+}
+.glass-card[data-urgency="warning"]:hover {
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.3), 0 8px 24px -4px rgba(0,0,0,0.08);
+  transform: scale(1.01);
+}
+.glass-card[data-urgency="normal"]:hover {
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.3), 0 8px 24px -4px rgba(0,0,0,0.08);
+  transform: scale(1.01);
+}
+.glass-card[data-urgency="open"]:hover {
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.3), 0 8px 24px -4px rgba(0,0,0,0.08);
+  transform: scale(1.01);
+}
+.glass-card[data-urgency="expired"]:hover {
+  box-shadow: 0 0 24px rgba(148, 163, 184, 0.3), 0 8px 24px -4px rgba(0,0,0,0.08);
+  transform: scale(1.01);
 }
 
 .glass-dark {

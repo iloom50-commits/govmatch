@@ -61,6 +61,8 @@ const SOURCE_KR: Record<string, string> = {
   "admin-manual": "수동등록",
   "sbc": "중진공",
   "sbc-scraper": "중진공",
+  "gov24-individual-api": "정부24",
+  "gov24-api": "정부24",
 };
 
 function getDDayInfo(dateStr?: string): { text: string; days: number | null; urgency: "expired" | "critical" | "warning" | "normal" | "open" } {
@@ -84,6 +86,15 @@ const URGENCY_STYLES: Record<string, string> = {
   normal: "bg-emerald-50 text-emerald-600 border-emerald-100",
   open: "bg-sky-50 text-sky-600 border-sky-100",
 };
+
+const URGENCY_BAR: Record<string, string> = {
+  expired: "bg-slate-300",
+  critical: "bg-rose-500",
+  warning: "bg-amber-400",
+  normal: "bg-emerald-400",
+  open: "bg-sky-400",
+};
+
 
 interface CardProps {
   res: Result;
@@ -109,25 +120,15 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
   return (
-    <div className={`group relative glass-card p-4 md:p-5 rounded-xl transition-all duration-300 hover:shadow-[0_16px_32px_-8px_rgba(79,70,229,0.12)] flex flex-col h-full overflow-hidden ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""}`}>
+    <div data-urgency={dDay.urgency} className={`group relative glass-card p-3 md:p-5 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""}`}>
+      {/* 좌측 긴급도 컬러바 */}
+      <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
-
-      {/* Deadline badge — top-right */}
-      <div className={`absolute top-3 right-3 z-10 px-2.5 py-1.5 rounded-lg border text-center ${URGENCY_STYLES[dDay.urgency]} ${dDay.urgency === "critical" ? "animate-pulse shadow-lg" : "shadow-sm"}`}>
-        <span className="block text-[11px] font-bold leading-tight">
-          {dDay.text}
-        </span>
-        {res.deadline_date && (
-          <span className="block text-[11px] font-medium leading-tight mt-0.5 opacity-70">
-            ~{res.deadline_date.slice(5)}
-          </span>
-        )}
-      </div>
 
       <div className="flex flex-col gap-4 h-full relative z-[1]">
 
-        {/* Tags */}
-        <div className="flex items-center gap-1.5 flex-wrap pr-[72px]">
+        {/* Tags + Deadline inline */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           {onToggle && (
             <button
               type="button"
@@ -164,6 +165,10 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               {sourceKr}
             </span>
           )}
+          {/* D-day 뱃지 — 인라인 */}
+          <span className={`ml-auto px-2 py-0.5 rounded-full border text-[11px] font-bold whitespace-nowrap ${URGENCY_STYLES[dDay.urgency]}`}>
+            {dDay.text}{res.deadline_date ? ` ~${res.deadline_date.slice(5)}` : ""}
+          </span>
         </div>
 
         {/* Title */}

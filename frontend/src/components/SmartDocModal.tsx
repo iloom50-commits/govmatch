@@ -50,7 +50,7 @@ export default function SmartDocModal() {
 
           {/* 공고 정보 */}
           <div className="bg-slate-50 rounded-xl p-4 mb-5 border border-slate-100">
-            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">대상 공고</span>
+            <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">대상 공고</span>
             <p className="text-sm font-bold text-slate-900 mt-1 leading-snug">{announcement.title}</p>
           </div>
 
@@ -63,12 +63,12 @@ export default function SmartDocModal() {
               { icon: "4", label: "DOCX 다운로드", desc: "수정 가능한 문서 파일로 바로 제출" },
             ].map((step) => (
               <div key={step.icon} className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5">
                   {step.icon}
                 </div>
                 <div>
                   <p className="text-xs font-black text-slate-900">{step.label}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">{step.desc}</p>
+                  <p className="text-[11px] text-slate-500 font-medium">{step.desc}</p>
                 </div>
               </div>
             ))}
@@ -85,7 +85,7 @@ export default function SmartDocModal() {
             곧 출시 예정
           </button>
 
-          <p className="text-[10px] text-slate-500 text-center mt-3 font-bold">
+          <p className="text-[11px] text-slate-500 text-center mt-3 font-bold">
             SmartDoc 엔진 연동 후 서비스가 시작됩니다.
           </p>
 

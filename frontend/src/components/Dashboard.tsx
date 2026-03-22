@@ -400,6 +400,53 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </button>
       </div>
 
+      {/* PWA 앱 설치 유도 — Android/Chrome (비로그인) */}
+      {!isPwaInstalled && deferredPrompt && (
+        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="text-lg">📲</span>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800">앱으로 설치하기</p>
+              <p className="text-[11px] text-slate-500">홈 화면에서 바로 실행할 수 있어요</p>
+            </div>
+          </div>
+          <button
+            onClick={handlePwaInstall}
+            className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
+          >
+            <span className="text-xs">⬇️</span>
+            지원금톡톡 설치
+          </button>
+        </div>
+      )}
+
+      {/* PWA 설치 안내 — iOS Safari (비로그인) */}
+      {!isPwaInstalled && isIos && !deferredPrompt && !iosBannerDismissed && (
+        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
+          <button
+            onClick={() => { setIosBannerDismissed(true); sessionStorage.setItem("ios_pwa_dismissed", "1"); }}
+            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
+            aria-label="닫기"
+          >✕</button>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="text-lg">📲</span>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800">홈 화면에 추가하기</p>
+              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
+              <span className="text-sm">□↑</span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+              Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
+              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 서비스 공유 */}
       <div className="relative z-10 pt-2">
         <div className="flex items-center gap-3 mb-2">
@@ -713,7 +760,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="tracking-tight">일정 관리</span>
           </a>
         </div>
-        {onLogout && (
+        {!isPublic && onLogout && (
           <button
             onClick={() => { onLogout(); setSidebarOpen(false); }}
             className="w-full py-2 text-slate-400 hover:text-rose-500 rounded-lg text-xs font-medium transition-all"
@@ -815,13 +862,25 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
                   className="py-2 bg-[#FEE500] text-[#191919] rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
                 >
-                  💬 카카오 시작
+                  💬 카카오
+                </button>
+                <button
+                  onClick={() => window.location.href = `${API}/api/auth/social/naver`}
+                  className="py-2 bg-[#03C75A] text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
+                >
+                  N 네이버
+                </button>
+                <button
+                  onClick={() => window.location.href = `${API}/api/auth/social/google`}
+                  className="py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:bg-slate-50 transition-all active:scale-[0.98]"
+                >
+                  G Google
                 </button>
                 <button
                   onClick={() => onLoginRequired?.()}
                   className="py-2 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-600 transition-all active:scale-[0.98]"
                 >
-                  로그인/가입 →
+                  이메일 가입 →
                 </button>
               </div>
             </div>

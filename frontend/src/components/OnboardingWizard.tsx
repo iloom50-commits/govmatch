@@ -154,10 +154,10 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
         {/* Progress bar */}
         <div className="mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-indigo-600 tracking-wide">
+            <span className="text-[11px] font-bold text-indigo-600 tracking-wide">
               {step + 1} / {TOTAL_STEPS} 단계
             </span>
-            <span className="text-[10px] font-bold text-slate-400">
+            <span className="text-[11px] font-bold text-slate-400">
               {Math.round(((step + 1) / TOTAL_STEPS) * 100)}%
             </span>
           </div>
@@ -236,8 +236,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
             <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
               {/* 나이대 — 필수 */}
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  나이대 <span className="text-rose-400 text-[10px]">*</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  나이대 <span className="text-rose-400 text-[11px]">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {["20대", "30대", "40대", "50대", "60대 이상"].map(v => (
@@ -258,8 +258,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
 
               {/* 소득 수준 — 선택 */}
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  소득 수준 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  소득 수준 <span className="text-[11px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
@@ -292,8 +292,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
             <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
               {/* 가구 형태 — 선택 */}
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  가구 형태 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  가구 형태 <span className="text-[11px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -321,8 +321,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
 
               {/* 취업 상태 — 선택 */}
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  취업 상태 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  취업 상태 <span className="text-[11px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -351,8 +351,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
               {/* 관심지역 (개인전용) */}
               {isIndividualOnly && (
                 <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                    관심지역 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
+                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                    관심지역 <span className="text-[11px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
@@ -393,8 +393,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
           {stepType === "business_info" && (
             <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  사업자 유형 <span className="text-rose-400 text-[10px]">*</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  사업자 유형 <span className="text-rose-400 text-[11px]">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
@@ -419,8 +419,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
 
               {formData.business_type && (
                 <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80 animate-in fade-in duration-300">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                    {formData.business_type === "individual" ? "사업자 등록일 (개업일)" : "법인 설립일"} <span className="text-rose-400 text-[10px]">*</span>
+                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                    {formData.business_type === "individual" ? "사업자 등록일 (개업일)" : "법인 설립일"} <span className="text-rose-400 text-[11px]">*</span>
                   </label>
                   <input
                     type="date"
@@ -438,8 +438,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
           {stepType === "business_region" && (
             <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
               <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
-                  관심지역 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  관심지역 <span className="text-[11px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
@@ -509,12 +509,12 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
                     }
                   }}
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">Enter로 추가</span>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 font-bold">Enter로 추가</span>
               </div>
               {formData.interests && (
                 <div className="flex flex-wrap gap-1.5 px-1">
                   {formData.interests.split(',').filter(i => i.trim()).map((tag, i) => (
-                    <span key={i} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-full flex items-center gap-1">
+                    <span key={i} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-[11px] font-black rounded-full flex items-center gap-1">
                       {tag}
                       <button onClick={() => toggleInterest(tag)} className="hover:text-rose-500 transition-colors">×</button>
                     </span>
@@ -528,7 +528,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
           {stepType === "company_size" && (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">연간 매출 규모</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">연간 매출 규모</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { value: "1억 미만", label: "1억 미만" },
@@ -552,7 +552,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">직원 수</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">직원 수</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { value: "5인 미만", label: "5인 미만" },
@@ -583,7 +583,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
             <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
               {initialEmail ? (
                 <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 mb-2.5 block">
+                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-0.5 mb-2.5 block">
                     로그인 계정
                   </label>
                   <div className="w-full p-4 rounded-2xl bg-white/50 border border-white/80 text-sm font-bold text-slate-700">
@@ -621,7 +621,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
                     onChange={(e) => setFormData({ ...formData, push_enabled: e.target.checked })}
                   />
                 </div>
-                <p className="text-[10px] text-slate-400 font-medium">
+                <p className="text-[11px] text-slate-400 font-medium">
                   매일 오전 10시, AI가 분석한 맞춤 리포트를 보내드립니다
                 </p>
               </div>
@@ -654,7 +654,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
           {onLogout && (
             <button 
               onClick={onLogout}
-              className="w-full py-2 text-slate-400 hover:text-rose-500 text-[10px] font-black uppercase tracking-widest transition-all opacity-60"
+              className="w-full py-2 text-slate-400 hover:text-rose-500 text-[11px] font-black uppercase tracking-widest transition-all opacity-60"
             >
               처음으로 돌아가기
             </button>

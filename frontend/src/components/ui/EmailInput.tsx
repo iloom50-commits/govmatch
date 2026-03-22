@@ -51,7 +51,7 @@ export default function EmailInput({ value, onChange, label = "매칭 리포트 
 
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
+      <label className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
         {label}
       </label>
       <div className="flex items-center gap-1.5">
@@ -102,7 +102,7 @@ export default function EmailInput({ value, onChange, label = "매칭 리포트 
             setDomain("naver.com");
             updateEmail(emailId, "naver.com", "");
           }}
-          className="text-[10px] text-indigo-500 font-black ml-2 hover:text-indigo-700 transition-colors"
+          className="text-[11px] text-indigo-500 font-black ml-2 hover:text-indigo-700 transition-colors"
         >
           목록에서 선택
         </button>

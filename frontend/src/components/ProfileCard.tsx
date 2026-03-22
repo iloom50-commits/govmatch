@@ -118,15 +118,15 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
       {currentRefImage && (
         <div className="md:w-1/2 bg-slate-100/50 p-6 border-r border-slate-200 flex flex-col border-white/40">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
               {activeRef === "REG" ? "Business Registration Reference" : "Financial Statement Reference"}
             </h3>
             <div className="flex gap-2">
               {regImage && activeRef !== "REG" && (
-                <button onClick={() => setActiveRef("REG")} className="text-[9px] font-bold text-indigo-600 hover:underline">등록증 보기</button>
+                <button onClick={() => setActiveRef("REG")} className="text-[11px] font-bold text-indigo-600 hover:underline">등록증 보기</button>
               )}
               {finImage && activeRef !== "FIN" && (
-                <button onClick={() => setActiveRef("FIN")} className="text-[9px] font-bold text-indigo-600 hover:underline">재무제표 보기</button>
+                <button onClick={() => setActiveRef("FIN")} className="text-[11px] font-bold text-indigo-600 hover:underline">재무제표 보기</button>
               )}
               <button onClick={() => setActiveRef(null)} className="text-slate-400 hover:text-rose-500 transition-colors ml-2">
                 <span className="text-xl">×</span>
@@ -136,7 +136,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           <div className="flex-1 bg-white rounded-2xl overflow-hidden shadow-inner flex items-center justify-center p-4">
             <img src={currentRefImage} alt="Reference" className="max-w-full max-h-full object-contain" />
           </div>
-          <p className="mt-4 text-[10px] text-slate-400 text-center font-medium leading-relaxed">
+          <p className="mt-4 text-[11px] text-slate-400 text-center font-medium leading-relaxed">
             이미지를 참고하여 정보를 입력해 주세요.<br/>입력하신 정보는 AI 추출 없이 그대로 활용됩니다.
           </p>
         </div>
@@ -179,10 +179,10 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {step === 1 && (
             <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">입력된 사업자 번호</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">입력된 사업자 번호</label>
                 <div className="bg-slate-50/50 p-8 rounded-3xl border border-slate-100 text-center">
                   <p className="text-3xl font-black text-indigo-900 tracking-tighter">{formData.business_number}</p>
-                  <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">신규 기업 등록을 시작합니다</p>
+                  <p className="text-[11px] text-slate-400 font-bold mt-2 font-mono">신규 기업 등록을 시작합니다</p>
                 </div>
               </div>
 
@@ -203,7 +203,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-lg">✅</div>
                   <div className="flex-1">
                     <p className="text-xs font-black text-emerald-900">등록증 업로드 완료</p>
-                    <p className="text-[10px] text-emerald-600">왼쪽 화면을 참고하여 정보를 입력할 수 있습니다.</p>
+                    <p className="text-[11px] text-emerald-600">왼쪽 화면을 참고하여 정보를 입력할 수 있습니다.</p>
                   </div>
                   <button onClick={() => {setRegImage(null); if(activeRef==="REG") setActiveRef(null);}} className="text-rose-500 text-xs font-bold px-3 py-1 bg-white rounded-xl shadow-sm">교체</button>
                 </div>
@@ -215,7 +215,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">상호명</p>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">상호명</p>
                   <input 
                     type="text" 
                     className="w-full p-5 border border-slate-200 rounded-2xl bg-slate-50/50 focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-lg font-black outline-none"
@@ -226,13 +226,13 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">소재지 (매칭 필수 정보)</p>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">소재지 (매칭 필수 정보)</p>
                   <div className="grid grid-cols-4 gap-1.5 md:grid-cols-6 max-h-[140px] overflow-y-auto p-1 scrollbar-hide">
                     {["전국", "서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"].map((city) => (
                       <button
                         key={city}
                         onClick={() => setFormData({ ...formData, address_city: city })}
-                        className={`py-2 rounded-lg text-[10px] font-black border-2 transition-all ${
+                        className={`py-2 rounded-lg text-[11px] font-black border-2 transition-all ${
                           formData.address_city === city 
                             ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
                             : "bg-white border-slate-100 text-slate-500 hover:border-indigo-100"
@@ -245,7 +245,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                 </div>
               
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일 (숫자 8자리 혹은 달력 선택)</p>
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일 (숫자 8자리 혹은 달력 선택)</p>
                   <div className="relative group">
                     <input 
                       type="text"
@@ -276,7 +276,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {step === 3 && (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
               <div className="flex justify-between items-end px-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">사업내용 키워드 검색</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">사업내용 키워드 검색</label>
                 <button 
                   onClick={() => handleRecommendIndustry(false)}
                   disabled={isRecommending}
@@ -305,7 +305,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
 
                 {candidates.length > 0 && (
                   <div className="space-y-3 mt-4 overflow-y-auto max-h-[180px] pr-2">
-                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest px-1">DB 검색 결과 (하나를 선택하세요)</span>
+                    <span className="text-[11px] font-black text-indigo-600 uppercase tracking-widest px-1">DB 검색 결과 (하나를 선택하세요)</span>
                     {candidates.map((cand, idx) => (
                       <button
                         key={idx}
@@ -317,7 +317,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                         }`}
                       >
                         <div className="flex justify-between items-center mb-1">
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>
+                          <span className={`text-[11px] font-black uppercase tracking-widest ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>
                             KSIC {cand.code}
                           </span>
                         </div>
@@ -333,7 +333,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {/* STEP 4: Revenue & Financials */}
           {step === 4 && (
             <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">최근 1년 매출 규모</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">최근 1년 매출 규모</label>
               
               <div className="grid gap-2">
                 {revenueOptions.map((opt) => (
@@ -343,7 +343,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                     className={`p-5 rounded-[2rem] text-left border-2 transition-all duration-300 flex justify-between items-center ${formData.revenue === opt ? 'border-indigo-600 bg-indigo-50/50 scale-[1.02]' : 'border-slate-100 hover:border-indigo-200 bg-slate-50/30'}`}
                   >
                     <span className={`text-sm font-black ${formData.revenue === opt ? 'text-indigo-900' : 'text-slate-600'}`}>{opt}</span>
-                    {formData.revenue === opt && <div className="w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center"><span className="text-white text-[8px]">✓</span></div>}
+                    {formData.revenue === opt && <div className="w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center"><span className="text-white text-[11px]">✓</span></div>}
                   </button>
                 ))}
               </div>
@@ -357,16 +357,16 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                     accept="image/*,application/pdf"
                   />
                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-lg shadow-sm mb-2">📊</div>
-                  <p className="text-[10px] font-black text-indigo-600 mb-1">재무제표 또는 부가세증명 업로드 (선택)</p>
-                  <p className="text-[9px] text-slate-400 font-medium">서류를 보며 매출액을 정확히 선택할 수 있습니다.</p>
+                  <p className="text-[11px] font-black text-indigo-600 mb-1">재무제표 또는 부가세증명 업로드 (선택)</p>
+                  <p className="text-[11px] text-slate-400 font-medium">서류를 보며 매출액을 정확히 선택할 수 있습니다.</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-4 p-4 bg-indigo-50 border border-indigo-100 rounded-3xl">
                   <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-md">📑</div>
                   <div className="flex-1">
-                    <p className="text-[10px] font-black text-indigo-900">재무제표 참조 활성화</p>
+                    <p className="text-[11px] font-black text-indigo-900">재무제표 참조 활성화</p>
                   </div>
-                  <button onClick={() => {setFinImage(null); if(activeRef==="FIN") setActiveRef(null);}} className="text-rose-500 text-[10px] font-black px-3 py-1 bg-white rounded-xl shadow-sm">교체</button>
+                  <button onClick={() => {setFinImage(null); if(activeRef==="FIN") setActiveRef(null);}} className="text-rose-500 text-[11px] font-black px-3 py-1 bg-white rounded-xl shadow-sm">교체</button>
                 </div>
               )}
             </div>
@@ -375,7 +375,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {/* STEP 5: Workforce & Final Confirmation */}
           {step === 5 && (
             <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">상시 근로자 수</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">상시 근로자 수</label>
               <div className="grid gap-3">
                 {employeeOptions.map((opt) => (
                   <button
@@ -384,11 +384,11 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
                     className={`p-6 rounded-[2.5rem] text-left border-2 transition-all duration-300 flex justify-between items-center ${formData.employees === opt ? 'border-indigo-600 bg-indigo-50/50 scale-[1.02]' : 'border-slate-100 hover:border-indigo-200 bg-slate-50/30'}`}
                   >
                     <span className={`text-sm font-black ${formData.employees === opt ? 'text-indigo-900' : 'text-slate-600'}`}>{opt}</span>
-                    {formData.employees === opt && <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center"><span className="text-white text-[10px]">✓</span></div>}
+                    {formData.employees === opt && <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center"><span className="text-white text-[11px]">✓</span></div>}
                   </button>
                 ))}
               </div>
-              <p className="text-center text-[10px] text-slate-400 font-medium leading-relaxed px-10">
+              <p className="text-center text-[11px] text-slate-400 font-medium leading-relaxed px-10">
                 마지막 단계입니다. 정보를 저장하면<br/>귀사에게 꼭 맞는 지원사업을 실시간 매칭합니다.
               </p>
             </div>
@@ -439,7 +439,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
           {onLogout && step === 1 && (
             <button 
               onClick={onLogout}
-              className="w-full py-4 text-slate-400 hover:text-rose-500 text-[10px] font-black uppercase tracking-widest transition-all mt-2"
+              className="w-full py-4 text-slate-400 hover:text-rose-500 text-[11px] font-black uppercase tracking-widest transition-all mt-2"
             >
               계정 로그아웃
             </button>

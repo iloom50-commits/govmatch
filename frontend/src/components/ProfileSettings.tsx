@@ -123,8 +123,8 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           {/* Location — 복수선택 */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">관심지역</label>
-              <span className="text-[9px] text-slate-400 font-medium">(복수 선택 가능 · 관심지역 외 지역 전용 공고는 제외됩니다)</span>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">관심지역</label>
+              <span className="text-[11px] text-slate-400 font-medium">(복수 선택 가능 · 관심지역 외 지역 전용 공고는 제외됩니다)</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {cities.map(city => {
@@ -157,7 +157,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Revenue */}
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">매출액 (연)</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">매출액 (연)</label>
               <div className="space-y-2">
                 {revenueOptions.map(opt => (
                   <button
@@ -174,7 +174,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
 
             {/* Employees */}
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">직원 수</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">직원 수</label>
               <div className="space-y-2">
                 {employeeOptions.map(opt => (
                   <button
@@ -194,19 +194,19 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Establishment Date */}
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일</label>
               <input
                 type="date"
                 className="w-full p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
                 value={formData.establishment_date || ""}
                 onChange={(e) => setFormData({ ...formData, establishment_date: e.target.value })}
               />
-              <p className="text-[10px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
+              <p className="text-[11px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
             </div>
 
             {/* Password Confirmation */}
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
               <input
                 type="password"
                 placeholder="현재 비밀번호를 입력해 주세요"
@@ -217,15 +217,15 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
               {passwordError && (
                 <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
               )}
-              <p className="text-[10px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
+              <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
             </div>
 
             {/* Industry / KSIC */}
             <div className="space-y-3">
               <div className="flex justify-between items-end">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">업종 (KSIC)</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">업종 (KSIC)</label>
                 {formData.industry_code && (
-                  <span className="text-[10px] font-black text-indigo-600 tracking-widest">
+                  <span className="text-[11px] font-black text-indigo-600 tracking-widest">
                     KSIC {formData.industry_code}{industryName ? ` · ${industryName}` : ""}
                   </span>
                 )}
@@ -264,7 +264,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
                           : "bg-white border-slate-100 text-slate-700 hover:border-indigo-200"
                       }`}
                     >
-                      <span className={`text-[9px] ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>KSIC {cand.code}</span>
+                      <span className={`text-[11px] ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>KSIC {cand.code}</span>
                       <span className="ml-2">{cand.name}</span>
                     </button>
                   ))}

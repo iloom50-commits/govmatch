@@ -98,7 +98,7 @@ export default function AuthPage({ onLoginSuccess, onGoToRegister, initialEmail 
               />
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
+                <label className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
                   비밀번호
                 </label>
                 <input
@@ -142,7 +142,7 @@ export default function AuthPage({ onLoginSuccess, onGoToRegister, initialEmail 
             {process.env.NEXT_PUBLIC_DEV_MODE === "true" && (
               <button
                 onClick={() => setForm({ email: "demo@test.com", password: "test1234" })}
-                className="w-full mt-2 py-2 text-orange-400 hover:text-orange-600 text-[10px] font-bold transition-all text-center border border-dashed border-orange-200 rounded-xl"
+                className="w-full mt-2 py-2 text-orange-400 hover:text-orange-600 text-[11px] font-bold transition-all text-center border border-dashed border-orange-200 rounded-xl"
               >
                 [DEV] 테스트 계정 자동입력
               </button>
@@ -167,7 +167,7 @@ export default function AuthPage({ onLoginSuccess, onGoToRegister, initialEmail 
               />
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
+                <label className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
                   회사명
                 </label>
                 <input
@@ -181,7 +181,7 @@ export default function AuthPage({ onLoginSuccess, onGoToRegister, initialEmail 
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
+                <label className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
                   새 비밀번호
                 </label>
                 <input

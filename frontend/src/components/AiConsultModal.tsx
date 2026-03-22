@@ -173,7 +173,7 @@ export default function AiConsultModal() {
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-indigo-700 truncate">AI 지원대상 상담</p>
-                <p className="text-[9px] text-slate-500 font-medium truncate">{announcement.title}</p>
+                <p className="text-[11px] text-slate-500 font-medium truncate">{announcement.title}</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-1.5 hover:bg-white/60 rounded-lg transition-all flex-shrink-0">
@@ -217,7 +217,7 @@ export default function AiConsultModal() {
                 {/* Done indicator */}
                 {msg.role === "assistant" && msg.done && (
                   <div className="mt-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <p className="text-[10px] font-bold text-emerald-700">상담 완료</p>
+                    <p className="text-[11px] font-bold text-emerald-700">상담 완료</p>
                   </div>
                 )}
               </div>
@@ -234,7 +234,7 @@ export default function AiConsultModal() {
                       <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
                       <p className="text-[12px] font-semibold text-indigo-600">공고문 분석 중...</p>
                     </div>
-                    <p className="text-[10px] text-slate-400">첨부파일을 수집하고 정밀 분석하고 있습니다</p>
+                    <p className="text-[11px] text-slate-400">첨부파일을 수집하고 정밀 분석하고 있습니다</p>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5">

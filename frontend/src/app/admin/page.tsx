@@ -576,9 +576,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         <td className="px-5 py-3 text-slate-600 text-xs">{u.email || '-'}</td>
                         <td className="px-5 py-3">
                           {u.notify_active === 1 ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">ON</span>
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">ON</span>
                           ) : u.email ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-slate-100 text-slate-500 border-slate-200">OFF</span>
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-bold border bg-slate-100 text-slate-500 border-slate-200">OFF</span>
                           ) : (
                             <span className="text-slate-300 text-xs">-</span>
                           )}
@@ -614,7 +614,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <div key={source.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="font-bold text-slate-800 text-sm">{source.name}</h3>
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${STATUS_BADGE[source.status] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${STATUS_BADGE[source.status] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                     {STATUS_LABEL[source.status] || source.status}
                   </span>
                 </div>
@@ -638,7 +638,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <div key={source.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="font-bold text-slate-800 text-sm">{source.name}</h3>
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${STATUS_BADGE[source.status] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${STATUS_BADGE[source.status] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                     {STATUS_LABEL[source.status] || source.status}
                   </span>
                 </div>
@@ -724,7 +724,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         </a>
                       </div>
                       <div className="text-xs text-slate-400 truncate max-w-md">{item.url}</div>
-                      <div className="text-[10px] text-slate-300 mt-1 font-mono">
+                      <div className="text-[11px] text-slate-300 mt-1 font-mono">
                         최종 수집: {item.last_scraped || '없음'}
                       </div>
                     </div>

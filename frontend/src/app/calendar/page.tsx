@@ -154,15 +154,15 @@ export default function CalendarPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                 <p className="text-2xl font-black text-indigo-600">{items.length}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">전체 저장</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1">전체 저장</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                 <p className="text-2xl font-black text-emerald-600">{withDate.length}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">마감일 있음</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1">마감일 있음</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                 <p className="text-2xl font-black text-sky-600">{noDate.length}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">상시모집</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1">상시모집</p>
               </div>
             </div>
           );
@@ -186,7 +186,7 @@ export default function CalendarPage() {
           {/* Weekday headers */}
           <div className="grid grid-cols-7 border-b border-slate-100">
             {WEEKDAYS.map((d, i) => (
-              <div key={d} className={`py-2.5 text-center text-[10px] font-black uppercase tracking-wider ${i === 0 ? "text-rose-400" : i === 6 ? "text-blue-400" : "text-slate-400"}`}>
+              <div key={d} className={`py-2.5 text-center text-[11px] font-black uppercase tracking-wider ${i === 0 ? "text-rose-400" : i === 6 ? "text-blue-400" : "text-slate-400"}`}>
                 {d}
               </div>
             ))}
@@ -224,7 +224,7 @@ export default function CalendarPage() {
                   {hasSaved && (
                     <div className="flex items-center gap-0.5">
                       <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                      {count > 1 && <span className="text-[8px] font-black text-indigo-500">{count}</span>}
+                      {count > 1 && <span className="text-[11px] font-black text-indigo-500">{count}</span>}
                     </div>
                   )}
                 </button>
@@ -237,20 +237,20 @@ export default function CalendarPage() {
         {deadlineMap["상시"] && deadlineMap["상시"].length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-black text-slate-800 px-1 flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[10px] font-black">상시</span>
+              <span className="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[11px] font-black">상시</span>
               상시모집 공고 <span className="text-slate-400 font-bold">— {deadlineMap["상시"].length}건</span>
             </h3>
             {deadlineMap["상시"].map(item => (
               <div key={item.id} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-sky-50 text-sky-600">상시</span>
+                    <span className="px-2 py-0.5 text-[11px] font-black rounded-full bg-sky-50 text-sky-600">상시</span>
                     {item.department && (
-                      <span className="text-[9px] font-bold text-slate-400">{item.department}</span>
+                      <span className="text-[11px] font-bold text-slate-400">{item.department}</span>
                     )}
                   </div>
                   <h4 className="font-bold text-slate-900 text-sm leading-snug mb-1">{item.title}</h4>
-                  <p className="text-[10px] text-slate-400">{item.support_amount || "지원 규모 미정"}</p>
+                  <p className="text-[11px] text-slate-400">{item.support_amount || "지원 규모 미정"}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {item.origin_url && (
@@ -290,7 +290,7 @@ export default function CalendarPage() {
                 <div key={item.id} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className={`px-2 py-0.5 text-[9px] font-black rounded-full ${
+                      <span className={`px-2 py-0.5 text-[11px] font-black rounded-full ${
                         getDDay(item.deadline_date).startsWith("D-") && parseInt(getDDay(item.deadline_date).slice(2)) <= 3
                           ? "bg-rose-100 text-rose-700"
                           : "bg-indigo-50 text-indigo-600"
@@ -298,11 +298,11 @@ export default function CalendarPage() {
                         {getDDay(item.deadline_date)}
                       </span>
                       {item.department && (
-                        <span className="text-[9px] font-bold text-slate-400">{item.department}</span>
+                        <span className="text-[11px] font-bold text-slate-400">{item.department}</span>
                       )}
                     </div>
                     <h4 className="font-bold text-slate-900 text-sm leading-snug mb-1">{item.title}</h4>
-                    <p className="text-[10px] text-slate-400">{item.support_amount || "지원 규모 미정"}</p>
+                    <p className="text-[11px] text-slate-400">{item.support_amount || "지원 규모 미정"}</p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {item.origin_url && (

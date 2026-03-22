@@ -186,7 +186,7 @@ export default function NotificationModal({
         <div className="p-8 space-y-7">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Settings</p>
+              <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest">Settings</p>
               <h2 className="text-2xl font-black text-slate-900 tracking-tighter italic">알림 설정 <span className="text-indigo-600">Beta</span></h2>
             </div>
             <button
@@ -201,7 +201,7 @@ export default function NotificationModal({
             {/* Email Section */}
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email Alert</label>
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Email Alert</label>
                 <input
                   type="checkbox"
                   checked={settings.channel === "EMAIL" || settings.channel === "BOTH"}
@@ -230,9 +230,9 @@ export default function NotificationModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Browser Push</label>
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Browser Push</label>
                   {"Notification" in window && Notification.permission === "denied" && (
-                    <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded italic">BLOCKED</span>
+                    <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[11px] font-black rounded italic">BLOCKED</span>
                   )}
                 </div>
                 <button
@@ -249,7 +249,7 @@ export default function NotificationModal({
                   />
                 </button>
               </div>
-              <p className="text-[9px] text-slate-400 font-medium px-1 leading-relaxed">
+              <p className="text-[11px] text-slate-400 font-medium px-1 leading-relaxed">
                 * 이 브라우저/기기에서 새 공고 알림을 즉시 받습니다. iOS는 홈화면 추가(PWA) 후 사용 가능합니다.
               </p>
             </div>
@@ -258,8 +258,8 @@ export default function NotificationModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">KakaoTalk Alert</label>
-                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded italic">PREP</span>
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">KakaoTalk Alert</label>
+                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[11px] font-black rounded italic">PREP</span>
                 </div>
                 <input
                   type="checkbox"
@@ -283,7 +283,7 @@ export default function NotificationModal({
                 onChange={(e) => setSettings({...settings, phone_number: e.target.value.replace(/[^0-9-]/g, "")})}
                 className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all outline-none"
               />
-              <p className="text-[9px] text-slate-400 font-medium px-1 leading-relaxed">
+              <p className="text-[11px] text-slate-400 font-medium px-1 leading-relaxed">
                 * 카카오톡 알림은 현재 기술 검토 중이며, 번호를 등록해 두시면 서비스 개시 시 가장 먼저 알려드립니다.
               </p>
             </div>

@@ -500,7 +500,7 @@ export default function AiChatBot() {
               </div>
               <div className="min-w-0">
                 <p className="text-[13px] font-bold text-white">{headerTitle}</p>
-                <p className="text-[10px] text-white/70 font-medium">{headerSub}</p>
+                <p className="text-[11px] text-white/70 font-medium">{headerSub}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -565,7 +565,7 @@ export default function AiChatBot() {
                 고객사의 기업 조건을 입력하면<br />맞춤 지원사업을 매칭해 드립니다.
               </p>
               <div className="mt-2 px-2 py-1 bg-violet-100 rounded-lg inline-block">
-                <span className="text-[9px] font-bold text-violet-700">매칭 실행 시 AI 1건 차감</span>
+                <span className="text-[11px] font-bold text-violet-700">매칭 실행 시 AI 1건 차감</span>
               </div>
             </button>
           </div>
@@ -733,7 +733,7 @@ export default function AiChatBot() {
                 </svg>
                 맞춤 지원사업 매칭 실행
               </button>
-              <p className="text-center text-[9px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>
+              <p className="text-center text-[11px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>
             </div>
           </>
         ) : (
@@ -783,7 +783,7 @@ export default function AiChatBot() {
                     {/* Related announcements (free mode only) */}
                     {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
                       <div className="mt-2 space-y-1.5">
-                        <p className="text-[10px] font-semibold text-indigo-600 px-1">관련 공고</p>
+                        <p className="text-[11px] font-semibold text-indigo-600 px-1">관련 공고</p>
                         {msg.announcements.map((ann) => (
                           <button
                             key={ann.announcement_id}
@@ -795,13 +795,13 @@ export default function AiChatBot() {
                             </p>
                             <div className="flex items-center gap-2 mt-0.5">
                               {ann.support_amount && (
-                                <span className="text-[9px] text-indigo-600 font-medium">{ann.support_amount}</span>
+                                <span className="text-[11px] text-indigo-600 font-medium">{ann.support_amount}</span>
                               )}
                               {ann.deadline_date && (
-                                <span className="text-[9px] text-slate-500">마감: {ann.deadline_date}</span>
+                                <span className="text-[11px] text-slate-500">마감: {ann.deadline_date}</span>
                               )}
                             </div>
-                            <p className="text-[9px] text-indigo-500 mt-0.5">상세 상담 &rarr;</p>
+                            <p className="text-[11px] text-indigo-500 mt-0.5">상세 상담 &rarr;</p>
                           </button>
                         ))}
                       </div>
@@ -842,7 +842,7 @@ export default function AiChatBot() {
                         {matchingInProgress ? "맞춤 지원사업 매칭 중..." : mode === "consultant" ? "조건을 분석하고 있습니다..." : "지원사업 검색 중..."}
                       </p>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
+                    <p className="text-[11px] text-slate-400 mt-1">
                       {matchingInProgress ? "수집한 조건으로 매칭 엔진을 실행하고 있습니다" : "AI가 응답을 생성하고 있습니다"}
                     </p>
                   </div>

@@ -17,6 +17,18 @@ class GovernmentAPIService:
         if not raw:
             return None
         s = str(raw).strip().replace("/", "-").replace(".", "-")
+        # "~" 포함 시 기간 형식 → 무시
+        if "~" in s:
+            return None
+        # 공백 포함 날짜 정규화 ("2025- 3- 3" → "2025-03-03")
+        import re
+        m = re.match(r"(\d{4})-\s*(\d{1,2})-\s*(\d{1,2})", s)
+        if m:
+            day = int(m.group(3))
+            month = int(m.group(2))
+            if day == 0 or month == 0:
+                return None
+            return f"{m.group(1)}-{month:02d}-{day:02d}"
         if len(s) == 8 and s.isdigit():
             return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
         if len(s) >= 10 and s[4] == "-" and s[7] == "-":
@@ -768,6 +780,442 @@ class GovernmentAPIService:
                 "eligibility_logic": eligibility,
             })
         return mapped
+
+    # ─── 지자체 복지서비스 API (data.go.kr / 한국사회보장정보원) ───
+
+    async def fetch_local_gov_welfare(self, page=1, per_page=100):
+        """지자체복지서비스 목록 조회 (한국사회보장정보원 API, XML 응답)"""
+        api_key = os.getenv("LOCAL_WELFARE_API_KEY") or self._get_api_key()
+        if not api_key:
+            print("  [WARN] LOCAL_WELFARE_API_KEY not set. Skipping 지자체복지서비스.")
+            return []
+
+        import xml.etree.ElementTree as ET
+
+        all_items = []
+        for pg in range(1, 47):  # 최대 46페이지 (4,600건 — 총 4,561건 커버)
+            try:
+                url = (
+                    f"https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LcgvWelfarelist"
+                    f"?serviceKey={api_key}&pageNo={pg}&numOfRows={per_page}"
+                )
+                print(f"  [API] 지자체복지서비스 page {pg}...")
+                resp = requests.get(url, timeout=15)
+
+                if resp.status_code != 200:
+                    print(f"    [ERR] 지자체복지 API Status {resp.status_code}")
+                    break
+
+                resp.encoding = "utf-8"
+                root = ET.fromstring(resp.text)
+
+                # 에러 체크 (성공: "0" 또는 "00")
+                result_code = root.findtext(".//resultCode")
+                if result_code and result_code not in ("0", "00"):
+                    msg = root.findtext(".//resultMsg", "")
+                    print(f"    [ERR] 지자체복지 API: {result_code} - {msg}")
+                    break
+
+                items = root.findall(".//servList")
+                if not items:
+                    # 다른 구조일 수 있음
+                    items = root.findall(".//item")
+                if not items:
+                    break
+
+                for item in items:
+                    entry = {}
+                    for child in item:
+                        entry[child.tag] = child.text or ""
+                    all_items.append(entry)
+
+                total = root.findtext(".//totalCount") or root.findtext(".//totalCnt")
+                if total and pg * per_page >= int(total):
+                    break
+
+            except Exception as e:
+                print(f"    [ERR] 지자체복지 Exception: {e}")
+                break
+
+        print(f"  [API] 지자체복지서비스: {len(all_items)} items fetched")
+        return self._map_local_welfare_fields(all_items)
+
+    def _map_local_welfare_fields(self, items):
+        """지자체복지서비스 XML 응답 매핑 → target_type='individual'"""
+        mapped = []
+        for item in items:
+            title = item.get("servNm") or item.get("wlfareInfoNm") or ""
+            if not title:
+                continue
+
+            # 상세 URL 구성
+            serv_id = item.get("servId") or item.get("wlfareInfoId") or ""
+            detail_url = item.get("servDtlLink") or item.get("detailUrl") or ""
+            if not detail_url and serv_id:
+                detail_url = f"https://www.bokjiro.go.kr/ssis-teu/twataa/wlfareInfo/moveTWAT52011M.do?wlfareInfoId={serv_id}"
+            if not detail_url:
+                continue
+
+            target = item.get("trgterIndvdlNm") or item.get("sprtTrgtCn") or ""
+            support = item.get("servDgst") or item.get("alwServCn") or ""
+            dept = item.get("bizChrDeptNm") or item.get("inqplCtadrList") or item.get("jurMnofNm") or item.get("jurOrgNm") or ""
+            field = item.get("servDgst") or ""
+
+            # 지역 추출 (ctpvNm 우선, 없으면 관할기관명에서)
+            region = item.get("ctpvNm") or ""
+            if not region:
+                org = item.get("jurOrgNm") or item.get("jurMnofNm") or ""
+                region = org[:2] if org and len(org) >= 2 else "전국"
+
+            category = self._map_individual_category(item.get("intrsThemaNmArray") or field)
+
+            eligibility = {}
+            if target:
+                eligibility["target_description"] = target[:500]
+            life_stage = item.get("lifeNmArray") or ""
+            if life_stage:
+                eligibility["life_stage"] = life_stage
+            theme = item.get("intrsThemaNmArray") or ""
+            if theme:
+                eligibility["theme"] = theme
+            sel = item.get("slctCritCn") or ""
+            if sel:
+                eligibility["selection_criteria"] = sel[:500]
+
+            mapped.append({
+                "title": title,
+                "url": detail_url,
+                "description": (support or target)[:1000],
+                "department": dept or org,
+                "category": category,
+                "origin_source": "local-welfare-api",
+                "region": region,
+                "deadline_date": None,
+                "eligibility_logic": eligibility,
+                "target_type": "individual",
+            })
+        return mapped
+
+    async def enrich_local_welfare_details(self, batch_size=100):
+        """지자체복지서비스 상세 API 호출하여 마감일·지원내용 보강 (배치)
+
+        보강 완료 표시: summary_text 앞에 '[상세보강]' 마커 추가.
+        다음 배치에서 미보강 건만 선택하여 중복 호출 방지.
+        """
+        import xml.etree.ElementTree as ET
+        import re
+        import time
+        api_key = os.getenv("LOCAL_WELFARE_API_KEY") or self._get_api_key()
+        if not api_key:
+            return {"updated": 0, "skipped": 0, "errors": 0}
+
+        import psycopg2, psycopg2.extras
+        from app.config import DATABASE_URL
+        db_url = DATABASE_URL.replace(":6543/", ":5432/")
+        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        # 아직 보강 안 된 건만 대상 (summary_text에 '[상세보강]' 마커 없는 건)
+        cur.execute("""
+            SELECT announcement_id, origin_url FROM announcements
+            WHERE origin_source = 'local-welfare-api'
+              AND (summary_text IS NULL OR summary_text NOT LIKE '%%[상세보강]%%')
+            ORDER BY announcement_id
+            LIMIT %s
+        """, (batch_size,))
+        rows = cur.fetchall()
+        if not rows:
+            print("  [Enrich] 모든 지자체복지 항목이 이미 보강 완료됨")
+            conn.close()
+            return {"updated": 0, "skipped": 0, "errors": 0}
+        print(f"  [Enrich] {len(rows)} local-welfare items to enrich")
+
+        updated, skipped, errors = 0, 0, 0
+        for i, row in enumerate(rows):
+            try:
+                url = row["origin_url"]
+                m = re.search(r"wlfareInfoId=([A-Z0-9]+)", url)
+                if not m:
+                    # servId 없으면 마커만 추가하여 다음에 건너뜀
+                    cur.execute(
+                        "UPDATE announcements SET summary_text = '[상세보강]' || COALESCE(summary_text,'') WHERE announcement_id = %s",
+                        (row["announcement_id"],),
+                    )
+                    skipped += 1
+                    continue
+                serv_id = m.group(1)
+
+                resp = requests.get(
+                    f"https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LcgvWelfaredetailed"
+                    f"?serviceKey={api_key}&servId={serv_id}",
+                    timeout=10,
+                )
+                resp.encoding = "utf-8"
+
+                # API 한도 초과 시 즉시 중단
+                if resp.status_code == 429:
+                    print(f"  [Enrich] API quota exceeded after {i} calls. Stopping batch.")
+                    break
+                if resp.status_code != 200:
+                    errors += 1
+                    continue
+
+                root = ET.fromstring(resp.text)
+
+                enfc_end = root.findtext("enfcEndYmd", "")
+                deadline = None
+                if enfc_end and enfc_end != "99991231" and len(enfc_end) == 8:
+                    deadline = self._normalize_date(enfc_end)
+
+                # 지원내용 보강
+                support = root.findtext("alwServCn", "") or ""
+                target_desc = root.findtext("sprtTrgtCn", "") or ""
+                method = root.findtext("aplyMtdCn", "") or ""
+                sel_crit = root.findtext("slctCritCn", "") or ""
+
+                # 풍부한 summary 구성
+                parts = []
+                if support:
+                    parts.append(support)
+                if target_desc:
+                    parts.append(f"[대상] {target_desc}")
+                if method:
+                    parts.append(f"[신청] {method}")
+                enriched_summary = "\n".join(parts)[:1000] if parts else ""
+                # 마커 추가
+                enriched_summary = "[상세보강]" + (enriched_summary or row.get("summary_text", "") or "")
+
+                update_parts = ["summary_text = %s"]
+                params = [enriched_summary[:1000]]
+
+                if deadline:
+                    update_parts.append("deadline_date = %s")
+                    params.append(deadline)
+
+                # eligibility 보강 (선정기준)
+                if sel_crit and len(sel_crit) > 20:
+                    import json as _json
+                    cur.execute("SELECT eligibility_logic FROM announcements WHERE announcement_id = %s", (row["announcement_id"],))
+                    elig_row = cur.fetchone()
+                    elig = {}
+                    if elig_row and elig_row.get("eligibility_logic"):
+                        try:
+                            elig = _json.loads(elig_row["eligibility_logic"]) if isinstance(elig_row["eligibility_logic"], str) else elig_row["eligibility_logic"]
+                        except Exception:
+                            pass
+                    if not isinstance(elig, dict):
+                        elig = {}
+                    elig["selection_criteria"] = sel_crit[:500]
+                    update_parts.append("eligibility_logic = %s")
+                    params.append(_json.dumps(elig, ensure_ascii=False))
+
+                params.append(row["announcement_id"])
+                cur.execute(f"UPDATE announcements SET {', '.join(update_parts)} WHERE announcement_id = %s", params)
+                updated += 1
+
+                if (i + 1) % 50 == 0:
+                    print(f"    ... {i+1}/{len(rows)} processed ({updated} updated)")
+                    time.sleep(0.3)
+
+            except Exception as e:
+                errors += 1
+                if errors <= 3:
+                    print(f"    [ERR] Enrich {row.get('announcement_id')}: {e}")
+                # XML 파싱 에러 등은 마커만 추가하여 다음에 건너뜀
+                try:
+                    cur.execute(
+                        "UPDATE announcements SET summary_text = '[상세보강]' || COALESCE(summary_text,'') WHERE announcement_id = %s",
+                        (row["announcement_id"],),
+                    )
+                except Exception:
+                    pass
+
+        conn.close()
+        result = {"updated": updated, "skipped": skipped, "errors": errors}
+        print(f"  [Enrich] Done: {result}")
+        return result
+
+    # ─── 보조금24 / 정부24 개인 복지서비스 API ───
+
+    # 개인 복지 관련 서비스 분야 키워드
+    _GOV24_INDIVIDUAL_SEARCH_TERMS = [
+        "복지", "생활안정", "의료", "교육", "장학", "주거", "주택",
+        "고용", "취업", "출산", "육아", "보육", "금융", "세제",
+        "청년", "노인", "장애인", "한부모", "기초생활",
+    ]
+
+    async def fetch_gov24_individual_services(self, per_page=100):
+        """정부24 공공서비스 전체 수집 (10,918건 페이지네이션)
+
+        기존: 19개 키워드 검색 → 2,380건만 수집
+        변경: 전체 페이지네이션으로 10,918건 전부 수집, 사용자구분=개인/가구 필터
+        """
+        api_key = os.getenv("GOV24_API_KEY")
+        if not api_key:
+            print("  [WARN] GOV24_API_KEY not set. Skipping 개인 복지서비스.")
+            return []
+
+        all_items = []
+        url = "https://api.odcloud.kr/api/gov24/v3/serviceList"
+
+        # 전체 건수 확인
+        try:
+            resp = requests.get(url, params={
+                "page": 1, "perPage": 1, "returnType": "JSON", "serviceKey": api_key,
+            }, timeout=15)
+            total_count = resp.json().get("totalCount", 0)
+            total_pages = (total_count + per_page - 1) // per_page
+            print(f"  [API] GOV24 전체 서비스: {total_count}건 ({total_pages}페이지)")
+        except Exception as e:
+            print(f"    [ERR] GOV24 total count: {e}")
+            total_pages = 110  # fallback
+
+        for pg in range(1, total_pages + 1):
+            try:
+                resp = requests.get(url, params={
+                    "page": pg, "perPage": per_page, "returnType": "JSON", "serviceKey": api_key,
+                }, timeout=15)
+                if resp.status_code == 429:
+                    print(f"    [WARN] GOV24 API quota exceeded at page {pg}. Stopping.")
+                    break
+                if resp.status_code != 200:
+                    print(f"    [ERR] GOV24 API Status {resp.status_code} at page {pg}")
+                    break
+
+                data = resp.json()
+                items = data.get("data", [])
+                if not items:
+                    break
+                all_items.extend(items)
+
+                if pg % 20 == 0:
+                    print(f"    ... page {pg}/{total_pages} ({len(all_items)} items)")
+
+            except Exception as e:
+                print(f"    [ERR] GOV24 page {pg}: {e}")
+                break
+
+        # 중복 제거 + 개인 서비스 필터 + 현재 신청 가능한 것만
+        import re as _re
+        from datetime import date as _date
+        today_str = _date.today().strftime("%Y%m%d")
+
+        seen_ids = set()
+        individual = []
+        expired_count = 0
+        business_kw = ("기업", "법인", "사업자", "중소기업", "소상공인", "벤처")
+        # 상시접수 키워드
+        always_open_kw = ("상시", "수시", "연중", "해당시", "매월", "매년", "사유발생", "기간없음")
+
+        for item in all_items:
+            sid = item.get("서비스ID", "")
+            if sid and sid not in seen_ids:
+                seen_ids.add(sid)
+
+                # 1) 신청기한 체크 — 명확히 만료된 건 제외
+                deadline_text = item.get("신청기한", "") or ""
+                if deadline_text:
+                    # 상시접수 키워드면 통과
+                    if not any(k in deadline_text for k in always_open_kw):
+                        # 날짜 패턴 추출하여 만료 체크 (YYYY.M.D 또는 YYYY-MM-DD)
+                        dates = _re.findall(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", deadline_text)
+                        if dates:
+                            # 마지막 날짜(종료일)가 오늘 이전이면 만료
+                            last = dates[-1]
+                            end_str = f"{last[0]}{int(last[1]):02d}{int(last[2]):02d}"
+                            if end_str < today_str:
+                                expired_count += 1
+                                continue
+
+                # 2) 기업 전용 서비스 제외
+                user_type = item.get("사용자구분코드", "") or item.get("사용자구분", "") or ""
+                target = item.get("지원대상", "") or ""
+                if any(k in str(user_type) for k in ("기업", "법인")):
+                    if not any(k in str(user_type) for k in ("개인", "가구")):
+                        continue
+                if target and all(k in target for k in ("기업",)) and not any(k in target for k in ("개인", "국민", "주민")):
+                    if any(k in target[:30] for k in business_kw):
+                        continue
+
+                individual.append(item)
+
+        print(f"  [API] GOV24 개인복지: {len(all_items)}건 수집 → {len(individual)}건 (만료 {expired_count}건 제외)")
+        return self._map_gov24_individual_fields(individual)
+
+    def _map_gov24_individual_fields(self, items):
+        """개인 복지서비스 API 응답 → 내부 형식 매핑 (target_type='individual')"""
+        mapped = []
+        for item in items:
+            title = item.get("서비스명", "")
+            detail_url = item.get("상세조회URL", "")
+            if not title:
+                continue
+            if not detail_url:
+                sid = item.get("서비스ID", "")
+                detail_url = f"https://www.gov.kr/portal/rcvfvrSvc/dtlEx/{sid}" if sid else ""
+            if not detail_url:
+                continue
+
+            target = item.get("지원대상", "")
+            selection = item.get("선정기준", "")
+            support_content = item.get("지원내용", "")
+            summary = item.get("서비스목적요약", "") or support_content[:300]
+
+            eligibility = {}
+            if target:
+                eligibility["target_description"] = target[:500]
+            if selection:
+                eligibility["selection_criteria"] = selection[:500]
+
+            deadline_raw = item.get("신청기한", "")
+            deadline = self._normalize_date(deadline_raw) if deadline_raw else None
+
+            dept = item.get("소관기관명", "")
+            field = item.get("서비스분야", "")
+
+            # 서비스분야 → 카테고리 매핑
+            category = self._map_individual_category(field)
+
+            org_type = item.get("소관기관유형", "")
+            region = "전국"
+            if org_type in ("지방자치단체", "시도", "시군구"):
+                region = dept[:2] if dept else "전국"
+
+            mapped.append({
+                "title": title,
+                "url": detail_url,
+                "description": summary[:1000],
+                "department": dept,
+                "category": category,
+                "origin_source": "gov24-individual-api",
+                "region": region,
+                "deadline_date": deadline,
+                "eligibility_logic": eligibility,
+                "target_type": "individual",
+            })
+        return mapped
+
+    @staticmethod
+    def _map_individual_category(field: str) -> str:
+        """서비스분야 텍스트 → 개인 카테고리 매핑"""
+        if not field:
+            return "복지"
+        field_lower = field.lower()
+        mapping = {
+            "복지": "복지", "생활안정": "복지", "보건": "의료", "의료": "의료",
+            "교육": "교육", "장학": "교육", "훈련": "교육",
+            "주거": "주거", "주택": "주거", "임대": "주거",
+            "고용": "고용", "취업": "고용", "일자리": "고용",
+            "출산": "출산", "육아": "출산", "보육": "출산", "양육": "출산", "임신": "출산",
+            "금융": "금융", "세제": "금융", "감면": "금융", "대출": "금융", "서민금융": "금융",
+            "소상공인": "금융", "창업": "금융", "자영업": "금융",
+            "안전": "복지", "재난": "복지", "긴급": "복지",
+        }
+        for keyword, cat in mapping.items():
+            if keyword in field_lower:
+                return cat
+        return "복지"
 
     # ─── 판판대로 (fanfandaero.kr) 스크래핑 ───
 

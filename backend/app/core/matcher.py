@@ -38,76 +38,6 @@ INTEREST_KEYWORD_MAP = {
     "R&D":        ["R&D", "연구개발", "기술개발", "혁신", "연구", "AI", "인공지능"],
 }
 
-# KSIC 대분류 → 매칭 키워드 맵
-KSIC_KEYWORD_MAP = {
-    "58": ["IT", "정보통신", "소프트웨어", "디지털", "콘텐츠", "ICT", "AI"],
-    "61": ["IT", "정보통신", "소프트웨어", "디지털", "통신", "ICT"],
-    "62": ["IT", "정보통신", "소프트웨어", "디지털", "프로그래밍", "AI", "인공지능", "ICT", "SW"],
-    "63": ["IT", "정보통신", "소프트웨어", "디지털", "데이터", "ICT", "AI"],
-    "10": ["제조", "식품", "식품제조", "가공"],
-    "20": ["제조", "화학", "화장품"],
-    "26": ["제조", "반도체", "전자"],
-    "29": ["제조", "자동차", "부품"],
-    "33": ["제조", "가구", "인테리어"],
-    "34": ["제조", "공장", "설비", "기계"],
-    "25": ["제조", "금속", "부품", "가공"],
-    "70": ["서비스", "컨설팅", "전문", "회계"],
-    "71": ["서비스", "컨설팅", "광고", "마케팅", "디자인"],
-    "72": ["연구", "연구개발", "R&D"],
-    "74": ["디자인", "전문서비스"],
-    "56": ["음식", "외식", "식당", "요식", "배달", "소상공인", "자영업"],
-    "47": ["소매", "판매", "상점", "유통", "소상공인", "자영업"],
-    "46": ["도매", "유통", "무역"],
-    "55": ["숙박", "호텔", "관광", "펜션", "소상공인", "여행", "관광업"],
-    "96": ["미용", "뷰티", "세탁", "생활서비스", "소상공인", "자영업"],
-    "95": ["수리", "정비", "AS"],
-    "85": ["교육", "학원", "강의", "훈련", "직업훈련"],
-    "68": ["부동산", "임대", "중개"],
-    "45": ["자동차", "차량", "정비", "세차", "소상공인"],
-    "49": ["운송", "물류", "택배", "화물"],
-    "52": ["창고", "물류", "보관"],
-    "41": ["건설", "건축", "시공"],
-    "42": ["토목", "건설"],
-    "75": ["수의", "동물병원"],
-    "86": ["의료", "병원", "치과", "한의원"],
-    "91": ["스포츠", "체육", "헬스", "레저"],
-    "90": ["공연", "문화", "예술"],
-    "81": ["청소", "방역", "시설관리"],
-}
-
-# KSIC 대분류 → 업종 한글명 (target_industries 매칭용)
-KSIC_INDUSTRY_NAMES = {
-    "58": ["IT", "소프트웨어", "콘텐츠", "정보통신", "ICT", "AI"],
-    "61": ["통신", "IT", "ICT", "정보통신"],
-    "62": ["소프트웨어", "IT", "SW", "ICT", "AI", "인공지능", "컴퓨터 프로그래밍"],
-    "63": ["IT", "데이터", "정보서비스", "데이터처리", "ICT", "AI"],
-    "10": ["식품", "식품제조", "식품가공", "제조"],
-    "20": ["화학", "화장품", "뷰티", "제조"],
-    "26": ["전자", "반도체", "전기전자", "제조"],
-    "29": ["자동차", "운송장비", "제조"],
-    "33": ["가구", "제조"],
-    "34": ["기계", "설비", "제조"],
-    "25": ["금속", "금속가공", "제조"],
-    "70": ["전문서비스", "컨설팅"],
-    "71": ["마케팅", "광고", "디자인", "전문서비스"],
-    "72": ["연구개발", "R&D"],
-    "74": ["디자인", "전문서비스"],
-    "56": ["음식", "외식", "요식"],
-    "47": ["소매", "유통", "전자상거래"],
-    "46": ["도매", "무역", "유통"],
-    "55": ["숙박", "관광", "호텔"],
-    "96": ["미용", "뷰티", "생활서비스"],
-    "85": ["교육", "훈련"],
-    "86": ["의료", "헬스케어"],
-    "41": ["건설", "건축"],
-    "45": ["자동차", "차량관리"],
-    "49": ["물류", "운송"],
-    "81": ["시설관리", "청소"],
-}
-
-# 소상공인 해당 KSIC 대분류 코드
-SOHO_KSIC_PREFIXES = {"56", "47", "55", "96", "95", "45", "68", "46", "85", "90", "91", "81"}
-
 # 지원 대상 기업 유형 분류
 EXCLUSIVE_BIZ_TYPES = {"소상공인", "예비창업자", "사회적기업", "예비사회적기업", "마을기업", "자활기업", "수출기업"}
 
@@ -150,23 +80,35 @@ INTEREST_CATEGORY_MAP = {
     "시설개선":   ["경영"],
 }
 
+# 단어 단위 유의어 확장 맵 (커스텀 입력 키워드 → 유사 표현)
+# 태그 단위가 아닌 개별 키워드 단위로 확장하여 정밀도 유지
+SYNONYM_MAP = {
+    "컨설팅":   ["컨설팅", "자문", "경영지도", "경영컨설팅", "진단"],
+    "전문가":   ["전문가", "멘토", "전문인력", "자문위원", "코치"],
+    "수행기관": ["수행기관", "용역", "위탁", "대행", "수탁기관"],
+    "용역기관": ["용역기관", "용역", "수행기관", "위탁", "대행"],
+    "인증":     ["인증", "인증서", "ISO", "품질인증", "기술인증", "인정"],
+    "특허":     ["특허", "지식재산", "IP", "실용신안", "지재권"],
+    "바우처":   ["바우처", "쿠폰", "이용권", "지원권"],
+    "사업화":   ["사업화", "상용화", "제품화", "양산", "시제품"],
+    "입주":     ["입주", "센터입주", "보육", "인큐베이팅", "창업공간"],
+    "해외":     ["해외", "수출", "글로벌", "해외진출", "해외시장"],
+    "디자인":   ["디자인", "브랜딩", "패키지디자인", "BI", "CI"],
+    "홍보":     ["홍보", "마케팅", "광고", "프로모션", "SNS마케팅"],
+    "네트워킹": ["네트워킹", "네트워크", "교류", "매칭", "협업"],
+}
+
 # 카테고리별 결과 최대 건수 (다양성 보장)
 CATEGORY_CAP = 8
 
 
 def _is_soho(user_profile: dict) -> bool:
+    """매출·인원 기준으로 소상공인 여부 판별"""
     rev_bracket = user_profile.get("revenue_bracket") or user_profile.get("revenue", "")
     emp_bracket = user_profile.get("employee_count_bracket") or user_profile.get("employees", "")
     small_rev = rev_bracket in ("1억 미만", "1억~5억", "UNDER_1B", "1B_TO_5B")
     small_emp = emp_bracket in ("5인 미만", "5인~10인", "UNDER_5", "5_TO_10")
-    if not (small_rev and small_emp):
-        return False
-    ksic = str(user_profile.get("industry_code", "")).strip()
-    prefix = ksic[:2] if ksic else ""
-    non_soho_prefixes = {"58", "61", "62", "63", "72", "26", "29", "10", "20", "25", "34", "41", "42"}
-    if prefix in non_soho_prefixes:
-        return False
-    return True
+    return small_rev and small_emp
 
 
 def _get_biz_types(eligibility_logic: dict) -> list:
@@ -231,17 +173,21 @@ def get_matches_for_user(user_profile):
         return []
 
     # 사용자 정보 준비
-    user_ksic = str(user_profile.get("industry_code", "")).strip()
     user_interests_raw = user_profile.get("interests") or ""
     user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
-    ksic_prefix = user_ksic[:2] if user_ksic else ""
-    ksic_keywords = KSIC_KEYWORD_MAP.get(ksic_prefix, [])
-    ksic_industry_names = KSIC_INDUSTRY_NAMES.get(ksic_prefix, [])
 
     # 관심분야 → 확장 키워드
     interest_keywords = []
     for tag in user_interest_tags:
-        interest_keywords.extend(INTEREST_KEYWORD_MAP.get(tag, [tag]))
+        if tag in INTEREST_KEYWORD_MAP:
+            # 프리셋 태그 → 해당 태그의 키워드 전체 확장
+            interest_keywords.extend(INTEREST_KEYWORD_MAP[tag])
+        elif tag in SYNONYM_MAP:
+            # 커스텀 입력이 유의어맵에 있으면 → 유의어로 확장
+            interest_keywords.extend(SYNONYM_MAP[tag])
+        else:
+            # 완전 커스텀 입력 → 그대로 키워드로 사용
+            interest_keywords.append(tag)
 
     is_soho = _is_soho(user_profile)
     # 관심지역: 쉼표 구분 문자열 → 정규화된 리스트
@@ -357,40 +303,7 @@ def get_matches_for_user(user_profile):
                         reasons.append(f'"{tag}" 관심분야 부합')
                         break
 
-        # D. KSIC 업종 매칭 (최대 20점)
-        if user_ksic and user_ksic != "00000":
-            # D-1. target_industries 직접 매칭 (최대 20점, 가장 정확)
-            ad_target_industries = [i.lower() for i in eligibility_logic.get("target_industries", [])]
-            def _ind_match(ind: str, ad_ind: str) -> bool:
-                # 3자 이하 단어는 단어 경계 매칭만 허용 (부분 매칭 오탐 방지)
-                if len(ind) <= 3:
-                    return bool(re.search(r'(?<![가-힣a-zA-Z])' + re.escape(ind) + r'(?![가-힣a-zA-Z])', ad_ind))
-                return ind in ad_ind or ad_ind in ind
-
-            ad_target_industries = [i.lower() for i in eligibility_logic.get("target_industries", [])]
-            industry_match = False
-            if ad_target_industries and ksic_industry_names:
-                industry_match = any(
-                    _ind_match(ind, ad_ind)
-                    for ind in [n.lower() for n in ksic_industry_names]
-                    for ad_ind in ad_target_industries
-                )
-            # D-1. target_industries 직접 매칭 (최대 20점)
-            if industry_match:
-                score += 20.0
-                reasons.append("업종 직접 매칭")
-            # D-2. KSIC 키워드 기반 매칭 (최대 15점) — D-1 실패해도 독립적으로 실행
-            elif ksic_prefix in SOHO_KSIC_PREFIXES and ad_targets_soho:
-                score += 10.0
-                if not any("소상공인" in r for r in reasons):
-                    reasons.append("업종 기반 소상공인 매칭")
-            elif ksic_keywords:
-                matched_ksic = [kw for kw in ksic_keywords if kw.lower() in search_text]
-                if matched_ksic:
-                    score += 15.0
-                    reasons.append(f"업종({ksic_prefix}계열) 부합")
-
-        # E. business_type 보너스 매칭 (최대 10점)
+        # D. business_type 보너스 매칭 (최대 10점)
         if ad_biz_types and not ad_targets_soho:
             if "중소기업" in ad_biz_types and not is_soho:
                 score += 5.0
@@ -468,6 +381,251 @@ def get_matches_for_user(user_profile):
                 final[-1] = candidate  # 가장 낮은 점수 결과와 교체
 
     # 임시 필드 제거 후 반환
+    for r in final:
+        r.pop("_category", None)
+    return final
+
+
+# ───────────────────────────────────────────────────────────
+# 개인 매칭 엔진
+# ───────────────────────────────────────────────────────────
+
+# 연령대 → 매칭 키워드 맵
+AGE_KEYWORD_MAP = {
+    "20대": ["청년", "20대", "만 19세", "만 18세", "만 34세", "만 39세", "19세~", "18세~", "대학생", "청소년"],
+    "30대": ["청년", "30대", "만 34세", "만 39세", "중장년", "장년"],
+    "40대": ["중장년", "40대", "중년", "장년"],
+    "50대": ["중장년", "50대", "중년", "장년", "노인", "신중년", "5060"],
+    "60대 이상": ["노인", "어르신", "60대", "65세", "고령자", "장년", "시니어", "5060", "경로"],
+}
+
+# 소득수준 → 매칭 키워드 맵 (우선순위: 기초생활 > 차상위 > 중위50%)
+INCOME_KEYWORD_MAP = {
+    "기초생활": ["기초생활", "기초수급", "수급자", "국민기초", "생활보장", "저소득"],
+    "차상위": ["차상위", "저소득", "기초생활", "수급자"],
+    "중위50%이하": ["저소득", "중위소득", "중위 50%", "기준중위소득"],
+    "중위75%이하": ["중위소득", "중위 75%", "기준중위소득"],
+    "중위100%이하": ["중위소득", "기준중위소득"],
+    "해당없음": [],
+}
+
+# 가구유형 → 매칭 키워드 맵
+FAMILY_KEYWORD_MAP = {
+    "1인가구": ["1인가구", "1인 가구", "단독가구", "독거"],
+    "다자녀": ["다자녀", "다둥이", "셋째", "3자녀", "2자녀", "다자녀가구"],
+    "한부모": ["한부모", "한부모가정", "한부모가족", "모자가정", "부자가정"],
+    "신혼부부": ["신혼", "신혼부부", "결혼", "혼인"],
+    "다문화": ["다문화", "다문화가정", "다문화가족", "이주민", "외국인"],
+    "일반": [],
+    "해당없음": [],
+}
+
+# 취업상태 → 매칭 키워드 맵
+EMPLOYMENT_KEYWORD_MAP = {
+    "재직자": ["재직자", "재직", "근로자", "직장인", "피보험자", "고용보험"],
+    "구직자": ["구직자", "구직", "실업", "미취업", "취업준비", "취업지원", "실직", "취업활동"],
+    "자영업": ["자영업", "소상공인", "자영업자", "사업자", "소규모사업"],
+    "프리랜서": ["프리랜서", "특수고용", "플랫폼노동", "특수형태", "긱워커"],
+    "학생": ["학생", "대학생", "대학원생", "재학", "휴학"],
+    "해당없음": [],
+}
+
+# 연령대 → 생애주기(life_stage) 매핑
+AGE_LIFE_STAGE_MAP = {
+    "20대": ["청년", "영유아", "아동·청소년"],
+    "30대": ["청년", "중장년"],
+    "40대": ["중장년"],
+    "50대": ["중장년", "노년"],
+    "60대 이상": ["노년"],
+}
+
+# 개인 카테고리별 결과 최대 건수
+INDIVIDUAL_CATEGORY_CAP = 6
+
+
+def get_individual_matches_for_user(user_profile: dict) -> list:
+    """개인 사용자 프로필 기반 복지/지원서비스 매칭"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # SQL: 개인 대상 서비스만 조회 (individual + both), 마감 전 또는 상시모집
+    query = """
+    SELECT * FROM announcements
+    WHERE target_type IN ('individual', 'both')
+    AND (
+        (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
+        OR deadline_date IS NULL
+    )
+    """
+    cursor.execute(query)
+    candidates = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    if not candidates:
+        return []
+
+    # 사용자 프로필 추출
+    user_age = user_profile.get("age_range") or "해당없음"
+    user_income = user_profile.get("income_level") or "해당없음"
+    user_family = user_profile.get("family_type") or "해당없음"
+    user_employment = user_profile.get("employment_status") or "해당없음"
+    raw_city = user_profile.get("address_city") or ""
+    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
+    is_nationwide = not user_cities or "전국" in user_cities
+    user_interests_raw = user_profile.get("interests") or ""
+    user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
+
+    # 키워드 리스트 준비
+    age_keywords = AGE_KEYWORD_MAP.get(user_age, [])
+    income_keywords = INCOME_KEYWORD_MAP.get(user_income, [])
+    family_keywords = FAMILY_KEYWORD_MAP.get(user_family, [])
+    employment_keywords = EMPLOYMENT_KEYWORD_MAP.get(user_employment, [])
+    age_life_stages = AGE_LIFE_STAGE_MAP.get(user_age, [])
+
+    today = datetime.date.today()
+    results = []
+
+    for ad in candidates:
+        # eligibility_logic 파싱
+        eligibility = {}
+        if ad.get("eligibility_logic"):
+            try:
+                eligibility = json.loads(ad["eligibility_logic"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        target_desc = (eligibility.get("target_description") or "").lower()
+        life_stage = (eligibility.get("life_stage") or "").lower()
+        theme = (eligibility.get("theme") or "").lower()
+        sel_criteria = (eligibility.get("selection_criteria") or "").lower()
+        title = (ad.get("title") or "").lower()
+        raw_summary = ad.get("summary_text") or ""
+        clean_summary = _strip_html(raw_summary).lower()
+
+        # 통합 검색 텍스트
+        search_text = f"{title} {target_desc} {clean_summary} {sel_criteria}"
+
+        # 지역 필터
+        ad_region = _normalize_region(ad.get("region") or "")
+        if ad_region and ad_region not in ("전국", "", "All") and not is_nationwide:
+            if ad_region not in user_cities:
+                continue
+
+        score = 0.0
+        reasons = []
+
+        # A. 기본 자격 (20점)
+        score += 20.0
+
+        # B. 연령대 매칭 (최대 20점)
+        if age_keywords and target_desc:
+            age_matched = [kw for kw in age_keywords if kw in search_text]
+            if age_matched:
+                score += 20.0
+                reasons.append(f"{user_age} 대상")
+            elif not target_desc or "누구나" in target_desc or "전 국민" in target_desc or "제한없음" in target_desc:
+                score += 5.0  # 대상 제한 없는 서비스
+
+        # B-2. 연령대 역필터: 명시적으로 다른 연령대 전용인 경우 감점
+        if target_desc:
+            age_exclusive_penalty = False
+            if user_age in ("50대", "60대 이상"):
+                if any(kw in target_desc for kw in ["청년", "20대", "대학생"]) and not any(kw in target_desc for kw in ["중장년", "노인", "어르신", "시니어"]):
+                    age_exclusive_penalty = True
+            elif user_age in ("20대", "30대"):
+                if any(kw in target_desc for kw in ["노인", "어르신", "65세 이상", "고령자"]) and not any(kw in target_desc for kw in ["청년", "청소년"]):
+                    age_exclusive_penalty = True
+            if age_exclusive_penalty:
+                score -= 30.0  # 자격 미달 수준으로 감점
+
+        # C. 소득수준 매칭 (최대 20점)
+        if income_keywords and user_income != "해당없음":
+            income_matched = [kw for kw in income_keywords if kw in search_text]
+            if income_matched:
+                # 기초생활/차상위는 더 높은 점수 (전용 프로그램이 많음)
+                if user_income in ("기초생활", "차상위"):
+                    score += 20.0
+                    reasons.append(f"{user_income} 대상 지원")
+                else:
+                    score += 15.0
+                    reasons.append("소득기준 충족")
+
+        # D. 가구유형 매칭 (최대 15점)
+        if family_keywords and user_family not in ("일반", "해당없음"):
+            family_matched = [kw for kw in family_keywords if kw in search_text]
+            if family_matched:
+                score += 15.0
+                reasons.append(f"{user_family} 대상")
+
+        # E. 취업상태 매칭 (최대 15점)
+        if employment_keywords and user_employment != "해당없음":
+            emp_matched = [kw for kw in employment_keywords if kw in search_text]
+            if emp_matched:
+                score += 15.0
+                reasons.append(f"{user_employment} 대상")
+
+        # F. 지역 매칭 보너스 (최대 10점)
+        if ad_region and ad_region not in ("전국", "", "All") and not is_nationwide and ad_region in user_cities:
+            score += 10.0
+            reasons.append(f"{ad_region} 지역 서비스")
+
+        # G. 생애주기(life_stage) 매칭 (최대 5점)
+        if life_stage and age_life_stages:
+            if any(ls.lower() in life_stage for ls in age_life_stages):
+                score += 5.0
+
+        # H. 관심주제(theme) 매칭 (최대 5점)
+        if theme and user_interest_tags:
+            for tag in user_interest_tags:
+                if tag.lower() in theme:
+                    score += 5.0
+                    break
+
+        # I. 마감일 가중치 (최대 5점) — 상시모집이 대부분이므로 마감 있는 건 부스트
+        if ad.get("deadline_date"):
+            try:
+                deadline_val = ad["deadline_date"]
+                if isinstance(deadline_val, (datetime.date, datetime.datetime)):
+                    deadline = deadline_val if isinstance(deadline_val, datetime.date) else deadline_val.date()
+                else:
+                    deadline = datetime.datetime.strptime(str(deadline_val), "%Y-%m-%d").date()
+                days_left = (deadline - today).days
+                if days_left < 0:
+                    continue  # 만료 제외
+                if days_left <= 14:
+                    score += 5.0
+                    reasons.append(f"마감 D-{days_left}")
+                elif days_left <= 30:
+                    score += 3.0
+            except (ValueError, TypeError):
+                pass
+
+        # 최소 점수 미달 → 제외 (기본 20점만 받은 경우)
+        if score <= 20.0:
+            continue
+
+        ad["match_score"] = round(score, 1)
+        meaningful_reasons = reasons[:3]
+        ad["recommendation_reason"] = " / ".join(meaningful_reasons) if meaningful_reasons else "지원 자격 충족"
+
+        # 카테고리 (다양성 보장용)
+        ad["_category"] = ad.get("category") or ""
+        results.append(ad)
+
+    # 점수 순 정렬
+    results.sort(key=lambda x: x["match_score"], reverse=True)
+
+    # 카테고리 다양성: 카테고리별 최대 INDIVIDUAL_CATEGORY_CAP건, 전체 상위 30건
+    final = []
+    cat_counts: dict = {}
+    for r in results:
+        cat = r.get("_category", "")
+        if cat_counts.get(cat, 0) < INDIVIDUAL_CATEGORY_CAP:
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+            final.append(r)
+        if len(final) >= 30:
+            break
+
     for r in final:
         r.pop("_category", None)
     return final

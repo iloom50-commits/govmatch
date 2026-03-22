@@ -16,7 +16,7 @@ import hashlib
 import jwt
 import bcrypt
 from app.core.url_checker import check_duplicate_url
-from app.core.matcher import get_matches_for_user
+from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
 from app.config import DATABASE_URL
 
 # Admin Scraper Import for Manual Sync
@@ -119,17 +119,25 @@ async def _daily_sync_loop():
         print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
-            # Step 1: API 공고 수집 + Admin 크롤링 + Scrapers
-            print("[Scheduler] Step 1/2: 공고 수집 시작...")
+            # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
+            print("[Scheduler] Step 1/3: 공고 수집 시작...")
             await sync_service.sync_all()
-            print("[Scheduler] Step 1/2: 공고 수집 완료")
+            print("[Scheduler] Step 1/3: 공고 수집 완료")
 
-            # Step 2: AI 재분석 (미분석 공고만 대상 — 중복 분석 방지)
-            print("[Scheduler] Step 2/2: AI 재분석 시작 (미분석 건만)...")
+            # Step 2: 지자체복지 상세 보강 (매일 100건씩 점진적)
+            print("[Scheduler] Step 2/3: 지자체복지 상세 보강...")
+            try:
+                from app.services.public_api_service import gov_api_service
+                await gov_api_service.enrich_local_welfare_details(batch_size=100)
+            except Exception as enrich_err:
+                print(f"[Scheduler] enrich error: {enrich_err}")
+
+            # Step 3: AI 재분석 — 기업 공고만 (개인 복지는 API 데이터 충분)
+            print("[Scheduler] Step 3/3: AI 재분석 시작 (미분석 기업 공고)...")
             import threading
             t = threading.Thread(target=_run_reanalyze_in_thread, args=(300,), daemon=True)
             t.start()
-            print("[Scheduler] Step 2/2: AI 재분석 백그라운드 실행 중")
+            print("[Scheduler] Step 3/3: AI 재분석 백그라운드 실행 중")
         except Exception as e:
             print(f"[Scheduler] sync error: {e}")
 
@@ -209,14 +217,21 @@ class BusinessNumberRequest(BaseModel):
 
 class UserProfile(BaseModel):
     business_number: str
-    company_name: str
-    establishment_date: str
-    address_city: str
-    industry_code: str
+    company_name: Optional[str] = None
+    establishment_date: Optional[str] = None
+    address_city: Optional[str] = None
+    industry_code: Optional[str] = None
     revenue_bracket: Optional[str] = None
     employee_count_bracket: Optional[str] = None
     interests: Optional[str] = None
     password: Optional[str] = None
+    # 개인/기업 구분
+    user_type: Optional[str] = "business"
+    # 개인 프로필 필드
+    age_range: Optional[str] = None
+    income_level: Optional[str] = None
+    family_type: Optional[str] = None
+    employment_status: Optional[str] = None
 
 class CompanyNameRequest(BaseModel):
     company_name: str
@@ -371,10 +386,11 @@ def api_announcements_public(
     region: Optional[str] = None,
     category: Optional[str] = None,
     search: Optional[str] = None,
+    target_type: Optional[str] = None,
 ):
     """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
-    if size > 50:
-        size = 50
+    if size > 200:
+        size = 200
     offset = (max(1, page) - 1) * size
 
     conn = get_db_connection()
@@ -392,6 +408,9 @@ def api_announcements_public(
     if search:
         where_clauses.append("(title ILIKE %s OR summary_text ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%"])
+    if target_type:
+        where_clauses.append("(target_type = %s OR target_type = 'both')")
+        params.append(target_type)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -402,10 +421,14 @@ def api_announcements_public(
     # 공고 리스트
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
-                   support_amount, deadline_date, origin_source, created_at
+                   support_amount, deadline_date, origin_source, created_at,
+                   COALESCE(target_type, 'business') AS target_type
             FROM announcements
             WHERE {where_sql}
-            ORDER BY created_at DESC
+            ORDER BY
+                CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
+                deadline_date ASC NULLS LAST,
+                created_at DESC
             LIMIT %s OFFSET %s""",
         params + [size, offset],
     )
@@ -753,7 +776,7 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
 
     token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, plan_expires)
 
-    is_new = not u.get("interests") and not u.get("industry_code")
+    is_new = not u.get("user_type")
     return token, plan_status, u, is_new
 
 
@@ -2034,21 +2057,28 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
                 raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
 
         query = """
-        INSERT INTO users (business_number, company_name, establishment_date, address_city, industry_code, revenue_bracket, employee_count_bracket, interests)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO users (business_number, company_name, establishment_date, address_city, industry_code, revenue_bracket, employee_count_bracket, interests, user_type, age_range, income_level, family_type, employment_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT(business_number) DO UPDATE SET
-            company_name=EXCLUDED.company_name,
-            establishment_date=EXCLUDED.establishment_date,
-            address_city=EXCLUDED.address_city,
-            industry_code=EXCLUDED.industry_code,
-            revenue_bracket=EXCLUDED.revenue_bracket,
-            employee_count_bracket=EXCLUDED.employee_count_bracket,
-            interests=EXCLUDED.interests
+            company_name=COALESCE(EXCLUDED.company_name, users.company_name),
+            establishment_date=COALESCE(EXCLUDED.establishment_date, users.establishment_date),
+            address_city=COALESCE(EXCLUDED.address_city, users.address_city),
+            industry_code=COALESCE(EXCLUDED.industry_code, users.industry_code),
+            revenue_bracket=COALESCE(EXCLUDED.revenue_bracket, users.revenue_bracket),
+            employee_count_bracket=COALESCE(EXCLUDED.employee_count_bracket, users.employee_count_bracket),
+            interests=COALESCE(EXCLUDED.interests, users.interests),
+            user_type=COALESCE(EXCLUDED.user_type, users.user_type),
+            age_range=COALESCE(EXCLUDED.age_range, users.age_range),
+            income_level=COALESCE(EXCLUDED.income_level, users.income_level),
+            family_type=COALESCE(EXCLUDED.family_type, users.family_type),
+            employment_status=COALESCE(EXCLUDED.employment_status, users.employment_status)
         """
         cursor.execute(query, (
             profile.business_number, profile.company_name, profile.establishment_date,
             profile.address_city, profile.industry_code, profile.revenue_bracket,
-            profile.employee_count_bracket, profile.interests
+            profile.employee_count_bracket, profile.interests,
+            profile.user_type, profile.age_range, profile.income_level,
+            profile.family_type, profile.employment_status
         ))
         conn.commit()
         return {"status": "SUCCESS", "message": "프로필이 저장되었습니다."}
@@ -2187,7 +2217,20 @@ def api_match_programs(request: BusinessNumberRequest):
         raise HTTPException(status_code=404, detail="사용자 정보를 찾을 수 없습니다.")
 
     user_dict = dict(user)
-    matches = get_matches_for_user(user_dict)
+
+    # user_type에 따라 매칭 엔진 분기
+    user_type = user_dict.get("user_type", "business")
+    if user_type == "individual":
+        matches = get_individual_matches_for_user(user_dict)
+    elif user_type == "both":
+        # 기업+개인 모두 매칭하여 합산
+        biz_matches = get_matches_for_user(user_dict)
+        ind_matches = get_individual_matches_for_user(user_dict)
+        matches = biz_matches + ind_matches
+        matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        matches = matches[:30]
+    else:
+        matches = get_matches_for_user(user_dict)
 
     # AI 추출 데이터 보완 (프론트엔드 대응)
     for match in matches:

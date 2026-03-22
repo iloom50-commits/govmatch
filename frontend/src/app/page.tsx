@@ -83,14 +83,16 @@ export default function Home() {
   const [publicMatches, setPublicMatches] = useState<any[]>([]);
   const { toast } = useToast();
 
-  // 비로그인 공고 로드
+  // 비로그인 공고 로드 (기업 + 개인 각각 fetch하여 합침)
   useEffect(() => {
-    fetch(`${API}/api/announcements/public?page=1&size=40`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.status === "SUCCESS") setPublicMatches(data.data);
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch(`${API}/api/announcements/public?page=1&size=100&target_type=business`).then(r => r.json()),
+      fetch(`${API}/api/announcements/public?page=1&size=100&target_type=individual`).then(r => r.json()),
+    ]).then(([bizData, indData]) => {
+      const biz = bizData.status === "SUCCESS" ? bizData.data : [];
+      const ind = indData.status === "SUCCESS" ? indData.data : [];
+      setPublicMatches([...biz, ...ind]);
+    }).catch(() => {});
   }, []);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
@@ -177,7 +179,7 @@ export default function Home() {
       setBusinessNumber(user.business_number);
       setProfileData(user);
 
-      if (!user.interests && !user.industry_code) {
+      if (!user.user_type) {
         localStorage.removeItem("needs_onboarding");
         setStep("ONBOARDING");
         return;
@@ -238,88 +240,63 @@ export default function Home() {
   const handleOnboardingComplete = async (data: any) => {
     setStep("LOADING");
 
-    const bn = data.business_number || `U${Date.now().toString().slice(-9)}`;
+    const existingToken = getToken();
+    const bn = data.business_number || businessNumber || `U${Date.now().toString().slice(-9)}`;
     setBusinessNumber(bn);
 
     try {
-      const regRes = await fetch(`${API}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          business_number: bn,
-          company_name: data.company_name,
-          referred_by: referralCode || undefined,
-        }),
-      });
-      const regData = await regRes.json();
+      let token = existingToken;
 
-      if (!regRes.ok) {
-        if (regRes.status === 409) {
-          const loginRes = await fetch(`${API}/api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: data.email, password: data.password }),
-          });
-          const loginData = await loginRes.json();
+      // 소셜 로그인으로 이미 토큰이 있으면 등록 스킵, 없으면 신규 등록
+      if (!token) {
+        const regRes = await fetch(`${API}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: data.email,
+            password: `social_${Date.now()}`,
+            business_number: bn,
+            company_name: data.company_name,
+            referred_by: referralCode || undefined,
+          }),
+        });
+        const regData = await regRes.json();
 
-          if (loginRes.ok) {
-            toast("기존 계정으로 로그인되었습니다.", "success");
-            localStorage.setItem("auth_token", loginData.token);
-            if (data.email) localStorage.setItem("last_email", data.email);
-            setPlanStatus(loginData.plan);
-            setBusinessNumber(loginData.user.business_number);
-            await fetch(`${API}/api/save-profile`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${loginData.token}` },
-              body: JSON.stringify({
-                business_number: bn,
-                company_name: data.company_name,
-                establishment_date: data.establishment_date || new Date().toISOString().split("T")[0],
-                address_city: data.address_city,
-                industry_code: data.industry_code || "00000",
-                revenue_bracket: data.revenue_bracket || "1억 미만",
-                employee_count_bracket: data.employee_count_bracket || "5인 미만",
-                interests: data.interests,
-              }),
-            });
-            const meRes = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${loginData.token}` } });
-            if (meRes.ok) setProfileData((await meRes.json()).user);
-            await performMatching(bn);
-            return;
-          }
-          toast("이미 가입된 이메일입니다. 비밀번호를 확인해 주세요.", "error");
-          setStep("LOGIN");
+        if (!regRes.ok) {
+          toast(regData.detail || "계정 생성 중 오류가 발생했습니다.", "error");
+          setStep("ONBOARDING");
           return;
         }
-        toast(regData.detail || "계정 생성 중 오류가 발생했습니다.", "error");
-        setStep("ONBOARDING");
-        return;
-      }
 
-      localStorage.setItem("auth_token", regData.token);
-      if (data.email) localStorage.setItem("last_email", data.email);
-      localStorage.removeItem("referral_code");
-      setReferralCode(null);
-      setPlanStatus(regData.plan);
+        token = regData.token;
+        localStorage.setItem("auth_token", token!);
+        if (data.email) localStorage.setItem("last_email", data.email);
+        localStorage.removeItem("referral_code");
+        setReferralCode(null);
+        setPlanStatus(regData.plan);
+      }
 
       const profilePayload = {
         business_number: bn,
         company_name: data.company_name,
-        establishment_date: data.establishment_date || new Date().toISOString().split("T")[0],
+        establishment_date: data.establishment_date || (data.user_type === "individual" ? null : new Date().toISOString().split("T")[0]),
         address_city: data.address_city,
-        industry_code: data.industry_code || "00000",
-        revenue_bracket: data.revenue_bracket || "1억 미만",
-        employee_count_bracket: data.employee_count_bracket || "5인 미만",
+        industry_code: data.user_type === "individual" ? null : "00000",
+        revenue_bracket: data.revenue_bracket || (data.user_type === "individual" ? null : "1억 미만"),
+        employee_count_bracket: data.employee_count_bracket || (data.user_type === "individual" ? null : "5인 미만"),
         interests: data.interests,
+        user_type: data.user_type || "business",
+        age_range: data.age_range || null,
+        income_level: data.income_level || null,
+        family_type: data.family_type || null,
+        employment_status: data.employment_status || null,
       };
 
       await fetch(`${API}/api/save-profile`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${regData.token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(profilePayload),
       });
@@ -328,7 +305,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${regData.token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           business_number: bn,
@@ -342,8 +319,10 @@ export default function Home() {
         subscribePush(bn);
       }
 
-      setProfileData(profilePayload);
-      toast("가입이 완료되었습니다! AI 매칭을 시작합니다.", "success");
+      const meRes = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (meRes.ok) setProfileData((await meRes.json()).user);
+
+      toast("프로필 설정이 완료되었습니다! AI 매칭을 시작합니다.", "success");
       await performMatching(bn);
     } catch {
       toast("처리 중 오류가 발생했습니다.", "error");
@@ -501,6 +480,7 @@ export default function Home() {
         <>
           <OnboardingWizard
             initialBusinessNumber={businessNumber || undefined}
+            initialEmail={profileData?.email || ""}
             onComplete={handleOnboardingComplete}
             onLogout={businessNumber ? handleLogout : undefined}
           />

@@ -19,10 +19,11 @@ CREATE TABLE IF NOT EXISTS announcements (
     department VARCHAR(255),
     category VARCHAR(100),
     origin_source VARCHAR(100),
+    target_type VARCHAR(20) DEFAULT 'business',   -- 'business' | 'individual' | 'both'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. 사용자(기업) 프로필 테이블
+-- 2. 사용자 프로필 테이블 (기업 + 개인 통합)
 CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
     business_number VARCHAR(20) UNIQUE,
@@ -45,7 +46,14 @@ CREATE TABLE IF NOT EXISTS users (
     referral_code VARCHAR(20),
     referred_by VARCHAR(20),
     referral_rewarded BOOLEAN DEFAULT FALSE,
-    merit_months INT DEFAULT 0
+    merit_months INT DEFAULT 0,
+    -- 개인/기업 구분
+    user_type VARCHAR(20) DEFAULT 'business',   -- 'individual' | 'business' | 'both'
+    -- 개인 프로필 필드
+    age_range VARCHAR(20),                       -- '20대', '30대', '40대', '50대', '60대 이상'
+    income_level VARCHAR(30),                    -- '기초생활', '차상위', '중위50%이하', '중위75%이하', '중위100%이하', '해당없음'
+    family_type VARCHAR(30),                     -- '1인가구', '다자녀', '한부모', '신혼부부', '다문화', '일반', '해당없음'
+    employment_status VARCHAR(30)                -- '재직자', '구직자', '자영업', '프리랜서', '학생', '해당없음'
 );
 
 -- 3. 관리자 수동 수집 URL 테이블

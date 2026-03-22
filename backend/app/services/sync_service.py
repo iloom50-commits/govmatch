@@ -5,10 +5,21 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from app.services.scrapers.sbc import SBCScraper
-from app.services.public_api_service import gov_api_service
+from app.services.public_api_service import gov_api_service, GovernmentAPIService
 from app.services.admin_scraper import admin_scraper
 from app.services.ai_service import ai_service
 from app.config import DATABASE_URL
+
+import re as _re
+
+def _normalize_title(title: str) -> str:
+    """제목 정규화: 미세한 표기 차이를 통일하여 중복 비교에 사용."""
+    t = title.strip()
+    t = t.replace("년도", "년").replace("　", " ")  # 전각 공백 → 반각
+    t = _re.sub(r'\s+', '', t)  # 모든 공백 제거
+    t = _re.sub(r'[\[\]()（）【】]', '', t)  # 괄호류 제거
+    return t.lower()
+
 
 DOMAIN_ONLY_BLOCKLIST = {
     "https://www.k-startup.go.kr",
@@ -113,6 +124,18 @@ class SyncService:
             # 수출바우처 (수출지원기반활용사업)
             export_results = await gov_api_service.fetch_exportvoucher_programs()
             all_results.extend(export_results)
+
+            # 개인 복지서비스: 주 1회(월요일)만 전체 동기화, 나머지 날은 스킵
+            import datetime as _dt
+            if _dt.date.today().weekday() == 0:  # 0 = Monday
+                print("  [Weekly] 개인 복지서비스 전체 동기화 (월요일)...")
+                individual_results = await gov_api_service.fetch_gov24_individual_services()
+                all_results.extend(individual_results)
+
+                local_welfare_results = await gov_api_service.fetch_local_gov_welfare()
+                all_results.extend(local_welfare_results)
+            else:
+                print("  [Skip] 개인 복지서비스 — 주 1회(월요일)만 전체 동기화")
         except Exception as e:
             print(f"  Government API error: {e}")
 
@@ -144,6 +167,18 @@ class SyncService:
         cursor = conn.cursor()
         cursor.execute("SET statement_timeout = '60000'")  # 60초
         saved, skipped, errors = 0, 0, 0
+
+        # 기존 제목 정규화 캐시 로드 (중복 방지용)
+        cursor.execute("SELECT title, region, target_type, origin_source FROM announcements")
+        existing_titles: set[str] = set()
+        for row in cursor.fetchall():
+            nt = _normalize_title(row['title'])
+            is_ind = row.get('target_type') in ('individual', 'both') or row.get('origin_source', '') in ('gov24-individual-api', 'local-welfare-api', 'gov24-api')
+            if is_ind:
+                existing_titles.add(f"{nt}|{row.get('region') or 'All'}")
+            else:
+                existing_titles.add(nt)
+        print(f"    Loaded {len(existing_titles)} existing title keys for dedup")
 
         for item in results:
             try:
@@ -200,9 +235,33 @@ class SyncService:
                 if isinstance(industry_codes, list):
                     industry_codes = ",".join(str(c) for c in industry_codes)
 
+                target_type = item.get('target_type', 'business')
+
+                # 제목 정규화 기반 중복 방지
+                norm_title = _normalize_title(item['title'])
+                region_val = item.get('region', 'All') or 'All'
+                is_individual = target_type in ('individual', 'both') or item.get('origin_source', '') in ('gov24-individual-api', 'local-welfare-api', 'gov24-api')
+
+                if is_individual:
+                    dedup_key = f"{norm_title}|{region_val}"
+                else:
+                    dedup_key = norm_title
+
+                if dedup_key in existing_titles:
+                    skipped += 1
+                    continue
+                existing_titles.add(dedup_key)
+
+                # 날짜 안전 정규화 (공백, day=0 등 처리)
+                raw_deadline = item.get('deadline_date')
+                deadline_safe = GovernmentAPIService._normalize_date(raw_deadline) if raw_deadline else None
+                # day=00 같은 비정상 날짜 최종 방어
+                if deadline_safe and deadline_safe.endswith("-00"):
+                    deadline_safe = None
+
                 query = """
-                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (origin_url) DO UPDATE SET
                     deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
                     established_years_limit = COALESCE(EXCLUDED.established_years_limit, announcements.established_years_limit),
@@ -217,13 +276,14 @@ class SyncService:
                         WHEN announcements.summary_text IS NULL OR announcements.summary_text = ''
                         THEN EXCLUDED.summary_text
                         ELSE announcements.summary_text
-                    END
+                    END,
+                    target_type = COALESCE(EXCLUDED.target_type, announcements.target_type)
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,
                     item.get('department', ''), item.get('category', ''), item.get('origin_source', ''),
-                    item.get('region', 'All'), item.get('deadline_date'),
-                    years_limit, revenue_limit, employee_limit, industry_codes
+                    item.get('region', 'All'), deadline_safe,
+                    years_limit, revenue_limit, employee_limit, industry_codes, target_type
                 ))
                 saved += 1
                 if saved % 100 == 0:

@@ -52,10 +52,10 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
         <div className="relative z-10 p-6 sm:p-8">
           <div className="text-center mb-6">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
-              로그인이 필요합니다
+              무료 가입으로 시작하세요
             </h2>
             <p className="text-slate-500 text-xs font-medium">
-              상세보기, AI 상담 등을 이용하려면 로그인하세요
+              내 조건에 딱 맞는 지원금 매칭 + 새 공고 알림까지, 무료!
             </p>
           </div>
 
@@ -128,7 +128,7 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
               onClick={onGoToRegister}
               className="text-xs text-slate-400 hover:text-indigo-600 font-bold transition-all"
             >
-              처음이신가요? 무료 가입
+              처음이신가요? 30초 무료가입
             </button>
             <button
               onClick={onClose}

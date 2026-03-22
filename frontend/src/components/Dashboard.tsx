@@ -43,15 +43,29 @@ interface MatchItem {
     category?: string;
     department?: string;
     origin_source?: string;
+    target_type?: string;
 }
 
-const TAB_GROUPS: { label: string; key: string; categories: string[] }[] = [
+// 대분류
+type MajorTab = "business" | "individual";
+
+const BUSINESS_TABS: { label: string; key: string; categories: string[] }[] = [
   { label: "전체", key: "all", categories: [] },
   { label: "소상공인", key: "small_biz", categories: ["Small Business/Startup", "SME Support", "General Business Support", "General", "Food Industry", "소상공인", "내수"] },
   { label: "창업", key: "startup", categories: ["Entrepreneurship", "Small Business/Startup", "창업"] },
   { label: "R&D/기술", key: "rnd", categories: ["R&D", "R&D/Digital", "기술", "기술개발", "스마트공장", "정보"] },
   { label: "자금/융자", key: "loan", categories: ["Loan/Investment", "금융"] },
   { label: "경영/수출/인력", key: "biz", categories: ["Marketing", "General Business Support", "경영", "수출", "수출지원", "인력", "인력지원", "기타"] },
+];
+
+const INDIVIDUAL_TABS: { label: string; key: string; categories: string[] }[] = [
+  { label: "전체", key: "all", categories: [] },
+  { label: "복지", key: "welfare", categories: ["복지", "생활안정", "의료"] },
+  { label: "교육", key: "education", categories: ["교육", "장학", "훈련"] },
+  { label: "주거", key: "housing", categories: ["주거", "주택", "임대"] },
+  { label: "고용", key: "employment", categories: ["고용", "취업", "일자리", "채용"] },
+  { label: "출산/육아", key: "parenting", categories: ["출산", "육아", "보육", "양육"] },
+  { label: "금융/세제", key: "finance", categories: ["금융", "세제", "감면", "대출"] },
 ];
 
 type SortKey = "latest" | "deadline";
@@ -79,7 +93,16 @@ interface PlanStatus {
 
 export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void }) {
   const { toast } = useToast();
+  // 사용자 유형에 따라 초기 대분류 탭 결정
+  const userType = profile?.user_type || "business";
+  const initialMajor: MajorTab = userType === "individual" ? "individual" : "business";
+  const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   const [activeTab, setActiveTab] = useState("all");
+  const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
+
+  // 탭 노출 제어: 비로그인=둘다, individual=개인만, business=기업만, both=둘다
+  const showBusinessTab = isPublic || userType === "business" || userType === "both";
+  const showIndividualTab = isPublic || userType === "individual" || userType === "both";
   const [sortKey, setSortKey] = useState<SortKey>("latest");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -88,6 +111,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     // 이미 PWA로 실행 중이면 설치 버튼 숨김
@@ -204,17 +228,37 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [savedItems]);
 
   // 컨설턴트 결과가 있으면 해당 결과를 우선 표시
-  const displayMatches = consultantResult?.matches ?? matches;
+  const rawMatches = consultantResult?.matches ?? matches;
+
+  // majorTab에 따라 target_type 필터링
+  const displayMatches = useMemo(() => {
+    return rawMatches.filter((m: any) => {
+      const tt = m.target_type || "business";
+      if (majorTab === "business") return tt === "business" || tt === "both";
+      if (majorTab === "individual") return tt === "individual" || tt === "both";
+      return true;
+    });
+  }, [rawMatches, majorTab]);
 
   const filteredMatches = useMemo(() => {
     let result = [...displayMatches];
 
+    // 키워드 검색 필터
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(m =>
+        (m.title || "").toLowerCase().includes(q) ||
+        (m.summary_text || "").toLowerCase().includes(q) ||
+        (m.department || "").toLowerCase().includes(q)
+      );
+    }
+
     if (activeTab !== "all") {
-      const group = TAB_GROUPS.find(t => t.key === activeTab);
+      const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
       if (group) {
         result = result.filter(m => {
           const cat = (m.category || "").trim();
-          return group.categories.some(gc =>
+          return group.categories.some((gc: string) =>
             cat.toLowerCase().includes(gc.toLowerCase())
           );
         });
@@ -232,19 +276,29 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [displayMatches, activeTab, sortKey]);
+  }, [displayMatches, activeTab, sortKey, searchQuery]);
+
+  const searchedMatches = useMemo(() => {
+    if (!searchQuery.trim()) return displayMatches;
+    const q = searchQuery.trim().toLowerCase();
+    return displayMatches.filter(m =>
+      (m.title || "").toLowerCase().includes(q) ||
+      (m.summary_text || "").toLowerCase().includes(q) ||
+      (m.department || "").toLowerCase().includes(q)
+    );
+  }, [displayMatches, searchQuery]);
 
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: displayMatches.length };
-    TAB_GROUPS.forEach(g => {
+    const counts: Record<string, number> = { all: searchedMatches.length };
+    currentTabs.forEach((g: { key: string; categories: string[] }) => {
       if (g.key === "all") return;
-      counts[g.key] = displayMatches.filter(m => {
+      counts[g.key] = searchedMatches.filter(m => {
         const cat = (m.category || "").trim();
-        return g.categories.some(gc => cat.toLowerCase().includes(gc.toLowerCase()));
+        return g.categories.some((gc: string) => cat.toLowerCase().includes(gc.toLowerCase()));
       }).length;
     });
     return counts;
-  }, [displayMatches]);
+  }, [searchedMatches, currentTabs]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
@@ -734,16 +788,72 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </span>
             </h2>
 
-            {/* 탭 + 정렬 */}
+            {/* 대분류 탭 */}
+            <div className="flex items-center gap-2 mb-2">
+              {([
+                { key: "business" as MajorTab, label: "기업지원 매칭", icon: "🏢", show: showBusinessTab },
+                { key: "individual" as MajorTab, label: "개인지원 매칭", icon: "👤", show: showIndividualTab },
+              ]).map((tab) => {
+                if (!tab.show) return null;
+                // 비활성 상태 (상대 탭이 미등록인 경우) — 현재는 show=false로 처리하므로 여기 도달하면 활성
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setMajorTab(tab.key); setActiveTab("all"); }}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                      majorTab === tab.key
+                        ? tab.key === "business"
+                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
+                          : "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
+                        : "bg-white/80 text-slate-500 hover:bg-slate-50 border border-slate-200"
+                    }`}
+                  >
+                    <span className="text-sm">{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 키워드 검색 */}
+            <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 rounded-lg border border-slate-200/60 shadow-sm">
+              <div className="flex items-center gap-1.5 px-2 text-slate-400 flex-shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="공고명, 부서, 키워드로 검색 (예: 창업, R&D, 수출)"
+                className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="p-1 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
+                  aria-label="검색어 초기화"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* 하위 카테고리 탭 + 정렬 */}
             <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-lg border border-white/80 shadow-sm">
               {/* Mobile: 드롭다운 */}
               <div className="relative sm:hidden flex-1">
                 <select
                   value={activeTab}
                   onChange={(e) => setActiveTab(e.target.value)}
-                  className="w-full appearance-none bg-slate-950 text-white px-3 py-2 pr-8 rounded-lg text-[11px] font-bold outline-none cursor-pointer"
+                  className={`w-full appearance-none text-white px-3 py-2 pr-8 rounded-lg text-[11px] font-bold outline-none cursor-pointer ${
+                    majorTab === "business" ? "bg-slate-950" : "bg-emerald-700"
+                  }`}
                 >
-                  {TAB_GROUPS.map((tab) => {
+                  {currentTabs.map((tab) => {
                     const count = tabCounts[tab.key] || 0;
                     if (tab.key !== "all" && count === 0) return null;
                     return (
@@ -758,9 +868,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </svg>
               </div>
 
-              {/* Desktop: 기존 탭 버튼 */}
+              {/* Desktop: 하위 카테고리 탭 버튼 */}
               <div className="hidden sm:flex items-center gap-1">
-                {TAB_GROUPS.map((tab) => {
+                {currentTabs.map((tab) => {
                   const count = tabCounts[tab.key] || 0;
                   if (tab.key !== "all" && count === 0) return null;
                   return (
@@ -769,7 +879,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       onClick={() => setActiveTab(tab.key)}
                       className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-bold transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
                         activeTab === tab.key
-                          ? "bg-slate-950 text-white shadow-md"
+                          ? majorTab === "business"
+                            ? "bg-slate-950 text-white shadow-md"
+                            : "bg-emerald-700 text-white shadow-md"
                           : "text-slate-500 hover:bg-slate-50"
                       }`}
                     >
@@ -808,48 +920,32 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             </div>
 
-            {/* AI 공고 검색 — BIZ 전용 */}
-            {(planStatus?.plan === "pro" || planStatus?.plan === "biz") && (
-              <div className="flex items-center gap-2 bg-violet-50/80 backdrop-blur-md p-2.5 rounded-lg border border-violet-200/60 shadow-sm">
-                <div className="flex items-center gap-1.5 px-2 text-violet-600 flex-shrink-0">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">AI 검색</span>
-                </div>
-                <input
-                  type="text"
-                  placeholder="업종, 설립일, 조건 등을 자유롭게 입력하세요 (예: 3년 이내 IT 스타트업, 매출 5억 이하)"
-                  className="flex-1 bg-white/80 border border-violet-100 rounded-lg px-3 py-2 text-xs text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300 transition-all"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                      toast("AI 공고 검색 기능 준비 중입니다.", "info");
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => toast("AI 공고 검색 기능 준비 중입니다.", "info")}
-                  className="px-3 py-2 bg-violet-600 text-white rounded-lg text-[10px] font-bold hover:bg-violet-700 transition-all active:scale-95 flex-shrink-0 flex items-center gap-1"
-                >
-                  <span className="animate-sparkle">✨</span> 검색
-                </button>
-              </div>
-            )}
           </header>
 
           {filteredMatches.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-3xl mb-5 animate-pulse">🔍</div>
               <h2 className="text-lg md:text-2xl font-bold text-slate-900 mb-3">
-                {matches.length === 0 ? "맞춤형 공고가 아직 없습니다" : "조건에 맞는 공고가 없습니다"}
+                {searchQuery.trim()
+                  ? `"${searchQuery.trim()}" 검색 결과가 없습니다`
+                  : matches.length === 0 ? "맞춤형 공고가 아직 없습니다" : "조건에 맞는 공고가 없습니다"}
               </h2>
               <p className="text-xs md:text-base text-slate-500 max-w-lg mx-auto mb-6 font-medium leading-relaxed">
-                {matches.length === 0
+                {searchQuery.trim()
+                  ? "다른 키워드로 검색하거나 검색어를 초기화해 보세요."
+                  : matches.length === 0
                   ? "국가기관의 최신 공고 데이터를 실시간으로 분석하고 있습니다. 잠시 후 다시 시도하시거나 알림 설정을 켜주세요."
                   : "다른 카테고리 탭을 선택해 보세요."
                 }
               </p>
-              {matches.length === 0 ? (
+              {searchQuery.trim() ? (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+                >
+                  검색어 초기화
+                </button>
+              ) : matches.length === 0 ? (
                 <button
                   onClick={() => setIsNotifyOpen(true)}
                   className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"

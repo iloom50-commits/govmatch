@@ -129,7 +129,7 @@ export default function AuthPage({ onLoginSuccess, onGoToRegister, initialEmail 
                 onClick={onGoToRegister}
                 className="py-2 text-slate-400 hover:text-indigo-600 text-xs font-black transition-all"
               >
-                처음이신가요? 무료체험 시작하기
+                처음이신가요? 30초 무료가입
               </button>
               <button
                 onClick={() => { setResetForm({ ...resetForm, email: form.email }); setMode("reset"); }}

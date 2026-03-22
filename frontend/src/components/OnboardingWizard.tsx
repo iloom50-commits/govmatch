@@ -1,197 +1,42 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import EmailInput from "@/components/ui/EmailInput";
 
 interface OnboardingWizardProps {
   initialBusinessNumber?: string;
+  initialEmail?: string;
   onComplete: (data: any) => void;
   onLogout?: () => void;
 }
 
-export default function OnboardingWizard({ initialBusinessNumber = "", onComplete, onLogout }: OnboardingWizardProps) {
+export default function OnboardingWizard({ initialBusinessNumber = "", initialEmail = "", onComplete, onLogout }: OnboardingWizardProps) {
   const { toast } = useToast();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [industryQuery, setIndustryQuery] = useState("");
-  const [industryCandidates, setIndustryCandidates] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [dateText, setDateText] = useState("");
   
   const [formData, setFormData] = useState({
     business_number: initialBusinessNumber,
+    user_type: "" as "" | "individual" | "business" | "both",
     business_type: "" as "" | "individual" | "corporation",
     company_name: "",
     address_city: "",
     address_cities: ["전국"] as string[],
     establishment_date: "",
     interests: "",
-    industry_code: "",
+
     revenue_bracket: "",
     employee_count_bracket: "",
     notification_enabled: true,
-    email: "",
-    password: "",
+    email: initialEmail,
     push_enabled: false,
+    // 개인 프로필 필드
+    age_range: "",
+    income_level: "",
+    family_type: "",
+    employment_status: "",
   });
-
-  const INTEREST_BY_INDUSTRY: Record<string, { id: string; label: string; tag: string; icon: string }[]> = {
-    "56": [
-      { id: "facility", label: "인테리어/시설 개선", tag: "시설개선", icon: "🏗️" },
-      { id: "sales", label: "배달/온라인 판로", tag: "판로개척", icon: "📦" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "hygiene", label: "위생/안전 설비", tag: "위생안전", icon: "🛡️" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "47": [
-      { id: "facility", label: "매장 개선/리모델링", tag: "시설개선", icon: "🏗️" },
-      { id: "digital", label: "온라인 쇼핑몰/디지털 전환", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "marketing", label: "마케팅/홍보 지원", tag: "판로개척", icon: "📢" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "96": [
-      { id: "facility", label: "매장 리모델링", tag: "시설개선", icon: "🏗️" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "marketing", label: "온라인 마케팅/홍보", tag: "판로개척", icon: "📢" },
-      { id: "training", label: "기술 교육/자격증", tag: "직업훈련", icon: "🎓" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "55": [
-      { id: "facility", label: "시설 개선/리모델링", tag: "시설개선", icon: "🏗️" },
-      { id: "marketing", label: "온라인 예약/홍보", tag: "판로개척", icon: "📢" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "eco", label: "친환경/에너지 전환", tag: "에너지절감", icon: "🌿" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "85": [
-      { id: "facility", label: "교육 시설/장비 개선", tag: "시설개선", icon: "🏗️" },
-      { id: "digital", label: "디지털 교육 전환", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "강사 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "training", label: "직업훈련 프로그램", tag: "직업훈련", icon: "🎓" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "62": [
-      { id: "tech", label: "기술개발(R&D)", tag: "기술개발", icon: "🚀" },
-      { id: "export", label: "해외 수출/글로벌", tag: "수출마케팅", icon: "🌐" },
-      { id: "hiring", label: "인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "ip", label: "특허/지식재산권", tag: "지식재산", icon: "📜" },
-      { id: "infra", label: "클라우드/인프라", tag: "디지털전환", icon: "☁️" },
-    ],
-    "58": [
-      { id: "tech", label: "기술개발(R&D)", tag: "기술개발", icon: "🚀" },
-      { id: "export", label: "해외 수출/글로벌", tag: "수출마케팅", icon: "🌐" },
-      { id: "hiring", label: "인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "ip", label: "특허/지식재산권", tag: "지식재산", icon: "📜" },
-      { id: "startup", label: "창업/사업화 지원", tag: "창업지원", icon: "🌱" },
-    ],
-    "63": [
-      { id: "tech", label: "기술개발(R&D)", tag: "기술개발", icon: "🚀" },
-      { id: "export", label: "해외 수출/글로벌", tag: "수출마케팅", icon: "🌐" },
-      { id: "hiring", label: "인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "data", label: "데이터/AI 인프라", tag: "디지털전환", icon: "🤖" },
-      { id: "startup", label: "창업/사업화 지원", tag: "창업지원", icon: "🌱" },
-    ],
-    "10": [
-      { id: "tech", label: "기술개발(R&D)", tag: "기술개발", icon: "🚀" },
-      { id: "facility", label: "설비 투자/자동화", tag: "시설개선", icon: "🏭" },
-      { id: "export", label: "수출/판로 개척", tag: "수출마케팅", icon: "🌐" },
-      { id: "hiring", label: "인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "eco", label: "친환경/탄소중립", tag: "에너지절감", icon: "🌿" },
-    ],
-    "45": [
-      { id: "facility", label: "정비 시설/장비", tag: "시설개선", icon: "🔧" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "digital", label: "디지털 전환/예약시스템", tag: "디지털전환", icon: "💻" },
-      { id: "eco", label: "친환경 차량/설비", tag: "에너지절감", icon: "🌿" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "68": [
-      { id: "digital", label: "프롭테크/디지털 전환", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "marketing", label: "마케팅/홍보 지원", tag: "판로개척", icon: "📢" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-      { id: "startup", label: "창업/사업화 지원", tag: "창업지원", icon: "🌱" },
-    ],
-    "46": [
-      { id: "export", label: "수출/해외 판로", tag: "수출마케팅", icon: "🌐" },
-      { id: "digital", label: "온라인 유통/디지털 전환", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "logistics", label: "물류/창고 개선", tag: "시설개선", icon: "📦" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "49": [
-      { id: "facility", label: "차량/장비 도입", tag: "시설개선", icon: "🚛" },
-      { id: "digital", label: "배차/물류 시스템", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "운전기사/직원 채용", tag: "고용지원", icon: "👥" },
-      { id: "eco", label: "친환경 차량 전환", tag: "에너지절감", icon: "🌿" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "52": [
-      { id: "facility", label: "창고/물류센터 개선", tag: "시설개선", icon: "🏭" },
-      { id: "digital", label: "재고관리/자동화 시스템", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "eco", label: "에너지 절감/친환경", tag: "에너지절감", icon: "🌿" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "41": [
-      { id: "tech", label: "스마트 건설/기술개발", tag: "기술개발", icon: "🚀" },
-      { id: "facility", label: "장비/설비 투자", tag: "시설개선", icon: "🏗️" },
-      { id: "hiring", label: "기능인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "safety", label: "안전관리/인증", tag: "위생안전", icon: "🛡️" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "42": [
-      { id: "tech", label: "스마트 건설/기술개발", tag: "기술개발", icon: "🚀" },
-      { id: "facility", label: "중장비/설비 투자", tag: "시설개선", icon: "🏗️" },
-      { id: "hiring", label: "기능인력 채용/교육", tag: "고용지원", icon: "👥" },
-      { id: "safety", label: "안전관리/인증", tag: "위생안전", icon: "🛡️" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "75": [
-      { id: "facility", label: "의료 장비/시설 개선", tag: "시설개선", icon: "🏥" },
-      { id: "digital", label: "예약/관리 시스템", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "수의사/직원 채용", tag: "고용지원", icon: "👥" },
-      { id: "training", label: "전문 교육/자격", tag: "직업훈련", icon: "🎓" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "86": [
-      { id: "facility", label: "의료기기/시설 투자", tag: "시설개선", icon: "🏥" },
-      { id: "digital", label: "전자차트/디지털 전환", tag: "디지털전환", icon: "💻" },
-      { id: "hiring", label: "의료진/직원 채용", tag: "고용지원", icon: "👥" },
-      { id: "tech", label: "의료 R&D/신기술", tag: "기술개발", icon: "🚀" },
-      { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
-    ],
-    "91": [
-      { id: "facility", label: "체육시설/장비 개선", tag: "시설개선", icon: "🏟️" },
-      { id: "hiring", label: "강사/직원 채용", tag: "고용지원", icon: "👥" },
-      { id: "marketing", label: "온라인 마케팅/회원관리", tag: "판로개척", icon: "📢" },
-      { id: "digital", label: "예약/결제 시스템", tag: "디지털전환", icon: "💻" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "90": [
-      { id: "facility", label: "공연장/작업공간 개선", tag: "시설개선", icon: "🎭" },
-      { id: "hiring", label: "예술인/스태프 채용", tag: "고용지원", icon: "👥" },
-      { id: "marketing", label: "홍보/관객 개발", tag: "판로개척", icon: "📢" },
-      { id: "export", label: "해외 진출/교류", tag: "수출마케팅", icon: "🌐" },
-      { id: "fund", label: "문화예술 지원금", tag: "정책자금", icon: "💰" },
-    ],
-    "81": [
-      { id: "facility", label: "장비/차량 도입", tag: "시설개선", icon: "🧹" },
-      { id: "hiring", label: "직원 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "safety", label: "안전/방역 인증", tag: "위생안전", icon: "🛡️" },
-      { id: "digital", label: "관리 시스템/앱", tag: "디지털전환", icon: "💻" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-    "95": [
-      { id: "facility", label: "수리 장비/공구 투자", tag: "시설개선", icon: "🔧" },
-      { id: "hiring", label: "기술자 채용/인건비", tag: "고용지원", icon: "👥" },
-      { id: "training", label: "기술 교육/자격증", tag: "직업훈련", icon: "🎓" },
-      { id: "digital", label: "예약/관리 시스템", tag: "디지털전환", icon: "💻" },
-      { id: "fund", label: "소상공인 정책자금", tag: "정책자금", icon: "💰" },
-    ],
-  };
 
   const DEFAULT_INTERESTS = [
     { id: "tech", label: "기술개발(R&D)", tag: "기술개발", icon: "🚀" },
@@ -201,43 +46,26 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
     { id: "fund", label: "정책자금/대출", tag: "정책자금", icon: "💰" },
   ];
 
-  const ksicPrefix = formData.industry_code?.substring(0, 2) || "";
-  const interestOptions = INTEREST_BY_INDUSTRY[ksicPrefix] || DEFAULT_INTERESTS;
-
-  useEffect(() => {
-    if (industryQuery.length < 2) {
-      if (industryQuery.length === 0) setIndustryCandidates([]);
-      return;
-    }
-    const timer = setTimeout(() => searchIndustry(true), 600);
-    return () => clearTimeout(timer);
-  }, [industryQuery]);
-
-  const searchIndustry = async (silent = false) => {
-    if (!industryQuery && !formData.company_name) return;
-    if (!silent) setIsSearching(true);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/industry-recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_name: formData.company_name,
-          business_content: industryQuery
-        })
-      });
-      const result = await res.json();
-      if (result.status === "SUCCESS" && result.data.candidates) {
-        setIndustryCandidates(result.data.candidates);
-      }
-    } catch (err) {
-      console.error("Industry search failed", err);
-    } finally {
-      if (!silent) setIsSearching(false);
-    }
-  };
+  const interestOptions = DEFAULT_INTERESTS;
 
   const handleNext = async () => {
-    if (step === 1) {
+    const st = stepType;
+
+    if (st === "user_type") {
+      if (!formData.user_type) {
+        toast("지원금 유형을 선택해 주세요.", "error");
+        return;
+      }
+      setStep(1);
+    } else if (st === "personal_info_1") {
+      if (!formData.age_range) {
+        toast("나이대를 선택해 주세요.", "error");
+        return;
+      }
+      setStep(step + 1);
+    } else if (st === "personal_info_2") {
+      setStep(step + 1);
+    } else if (st === "business_info") {
       if (!formData.business_type) {
         toast("개인사업자 또는 법인을 선택해 주세요.", "error");
         return;
@@ -246,32 +74,28 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
         toast(formData.business_type === "individual" ? "사업자 등록일을 입력해 주세요." : "법인 설립일을 입력해 주세요.", "error");
         return;
       }
+      setStep(step + 1);
+    } else if (st === "business_region") {
       if (!formData.address_cities || formData.address_cities.length === 0) {
         toast("관심지역을 선택해 주세요.", "error");
         return;
       }
-      setStep(2);
-    } else if (step === 2) {
+      setStep(step + 1);
+    } else if (st === "interests") {
       if (!formData.interests) {
         toast("관심 분야를 하나 이상 선택해주세요.", "error");
         return;
       }
-      setStep(3);
-    } else if (step === 3) {
+      setStep(step + 1);
+    } else if (st === "company_size") {
       if (!formData.revenue_bracket || !formData.employee_count_bracket) {
         toast("매출 규모와 직원 수를 선택해주세요.", "error");
         return;
       }
-      setStep(4);
-    } else if (step === 4) {
-      setStep(5);
-    } else if (step === 5) {
+      setStep(step + 1);
+    } else if (st === "account") {
       if (!formData.email || !formData.email.includes("@")) {
         toast("매칭 결과를 받을 이메일을 입력해 주세요.", "error");
-        return;
-      }
-      if (!formData.password || formData.password.length < 6) {
-        toast("비밀번호는 6자 이상 입력해 주세요.", "error");
         return;
       }
       onComplete(formData);
@@ -287,46 +111,291 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
     }
   };
 
-  const TOTAL_STEPS = 5;
+  // 개인: step 0(유형) → 1(개인1) → 2(개인2) → 3(계정) = 4단계
+  // 기업: step 0(유형) → 1(사업자) → 2(지역) → 3(관심) → 4(규모) → 5(계정) = 6단계
+  // 둘다: step 0(유형) → 1(개인1) → 2(개인2) → 3(사업자) → 4(지역) → 5(관심) → 6(규모) → 7(계정) = 8단계
+  const isIndividualOnly = formData.user_type === "individual";
+  const isBoth = formData.user_type === "both";
+  const TOTAL_STEPS = isIndividualOnly ? 4 : isBoth ? 8 : 6;
+
+  // step 번호를 논리적 단계로 매핑
+  const getStepType = (s: number): string => {
+    if (s === 0) return "user_type";
+    if (isIndividualOnly) {
+      if (s === 1) return "personal_info_1";
+      if (s === 2) return "personal_info_2";
+      if (s === 3) return "account";
+    } else if (isBoth) {
+      if (s === 1) return "personal_info_1";
+      if (s === 2) return "personal_info_2";
+      if (s === 3) return "business_info";
+      if (s === 4) return "business_region";
+      if (s === 5) return "interests";
+      if (s === 6) return "company_size";
+      if (s === 7) return "account";
+    } else {
+      // business
+      if (s === 1) return "business_info";
+      if (s === 2) return "business_region";
+      if (s === 3) return "interests";
+      if (s === 4) return "company_size";
+      if (s === 5) return "account";
+    }
+    return "unknown";
+  };
+
+  const stepType = getStepType(step);
 
   return (
     <div className="w-full max-w-xl bg-white/70 backdrop-blur-3xl rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-8 md:p-12 shadow-2xl border border-white/60 animate-in zoom-in-95 duration-500 relative overflow-hidden">
       <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 blur-[80px] rounded-full pointer-events-none" />
       
       <div className="relative z-10">
-        <div className="flex justify-center gap-2 mb-5 sm:mb-8">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(s => (
-            <div 
-              key={s} 
-              className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-indigo-600' : s < step ? 'w-4 bg-indigo-300' : 'w-2 bg-slate-200'}`} 
+        {/* Progress bar */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-indigo-600 tracking-wide">
+              {step + 1} / {TOTAL_STEPS} 단계
+            </span>
+            <span className="text-[10px] font-bold text-slate-400">
+              {Math.round(((step + 1) / TOTAL_STEPS) * 100)}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
             />
-          ))}
+          </div>
         </div>
 
-        <div className="text-center mb-6 sm:mb-10">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-2">
-            {step === 1 && "기업 기본정보를 알려주세요"}
-            {step === 2 && "관심 분야를 알려주세요"}
-            {step === 3 && "기업 규모를 알려주세요"}
-            {step === 4 && "업종을 선택해 주세요"}
-            {step === 5 && "맞춤 매칭 결과를 받아보세요"}
-          </h2>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest opacity-60">
-            {step === 1 && "업력 기반 맞춤 매칭을 위한 핵심 정보입니다"}
-            {step === 2 && (ksicPrefix ? "업종에 맞는 관심 분야를 선택하세요" : "가장 필요한 지원금을 골라주세요")}
-            {step === 3 && "매출과 직원 수에 맞는 지원금을 찾습니다"}
-            {step === 4 && "정확한 매칭을 위한 핵심 정보입니다"}
-            {step === 5 && "새로운 맞춤 공고가 뜨면 바로 알려드립니다"}
+        <div className="text-center mb-5 sm:mb-7">
+          {stepType !== "personal_info_1" && stepType !== "personal_info_2" && stepType !== "business_region" && (
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-2">
+              {stepType === "user_type" && "어떤 지원금을 찾으세요?"}
+              {stepType === "business_info" && "사업자 정보를 알려주세요"}
+              {stepType === "interests" && "관심 분야를 알려주세요"}
+              {stepType === "company_size" && "기업 규모를 알려주세요"}
+              {stepType === "account" && "맞춤 매칭 결과를 받아보세요"}
+            </h2>
+          )}
+          <p className={`text-slate-400 font-semibold tracking-wide ${
+            stepType === "personal_info_1" || stepType === "personal_info_2" || stepType === "business_region"
+              ? "text-sm sm:text-base text-slate-500" : "text-xs"
+          }`}>
+            {stepType === "user_type" && "개인·기업 유형에 따라 매칭 가능한 지원금이 달라요"}
+            {stepType === "personal_info_1" && "나이·소득 조건에 맞는 지원금을 걸러드려요"}
+            {stepType === "personal_info_2" && "가구·취업 상황별 맞춤 지원금을 찾아드려요"}
+            {stepType === "business_info" && "업력에 따라 신청 가능 여부가 결정돼요"}
+            {stepType === "business_region" && "지역별로 다른 지원금이 있어요"}
+            {stepType === "interests" && "관심 분야를 선택하면 우선순위를 높여 매칭해요"}
+            {stepType === "company_size" && "지원금마다 매출·인원 기준이 달라 정확한 필터링이 필요해요"}
+            {stepType === "account" && "새 공고가 뜨면 이메일로 바로 알려드려요"}
           </p>
         </div>
 
         <div className="min-h-[220px]">
-          {/* STEP 1: Business Type + Date + City */}
-          {step === 1 && (
+          {/* STEP 0: 개인 / 기업 / 둘 다 선택 */}
+          {stepType === "user_type" && (
             <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
-              {/* Business Type */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">사업자 유형</label>
+              <div className="grid grid-cols-1 gap-3">
+                {[
+                  { value: "individual" as const, label: "개인 지원금", desc: "복지, 교육, 주거, 고용 등 개인 보조금", icon: "👤", color: "emerald" },
+                  { value: "business" as const, label: "기업 지원금", desc: "소상공인, 창업, R&D 등 사업자 지원금", icon: "🏢", color: "indigo" },
+                  { value: "both" as const, label: "둘 다", desc: "개인 보조금 + 기업 지원금 모두 매칭", icon: "🔄", color: "violet" },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setFormData({ ...formData, user_type: opt.value });
+                      setStep(1);
+                    }}
+                    className={`p-5 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${
+                      formData.user_type === opt.value
+                        ? opt.color === "emerald"
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-lg"
+                          : opt.color === "indigo"
+                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                          : "bg-violet-600 border-violet-600 text-white shadow-lg"
+                        : "bg-white border-slate-100 text-slate-600 hover:border-slate-300 hover:shadow-md"
+                    }`}
+                  >
+                    <span className="text-2xl">{opt.icon}</span>
+                    <div>
+                      <span className="text-sm font-black block">{opt.label}</span>
+                      <span className={`text-xs font-medium ${formData.user_type === opt.value ? "text-white/80" : "text-slate-400"}`}>{opt.desc}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 개인 정보 1단계: 나이대 + 소득 수준 */}
+          {stepType === "personal_info_1" && (
+            <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+              {/* 나이대 — 필수 */}
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  나이대 <span className="text-rose-400 text-[10px]">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {["20대", "30대", "40대", "50대", "60대 이상"].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setFormData({ ...formData, age_range: v })}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        formData.age_range === v
+                          ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-600/20"
+                          : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/30"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 소득 수준 — 선택 */}
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  소득 수준 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { value: "기초생활", label: "기초생활수급" },
+                    { value: "차상위", label: "차상위계층" },
+                    { value: "중위50%이하", label: "중위 50% 이하" },
+                    { value: "중위75%이하", label: "중위 75% 이하" },
+                    { value: "중위100%이하", label: "중위 100% 이하" },
+                    { value: "해당없음", label: "해당없음/모름" },
+                  ].map(v => (
+                    <button
+                      key={v.value}
+                      onClick={() => setFormData({ ...formData, income_level: v.value })}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-center ${
+                        formData.income_level === v.value
+                          ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-600/20"
+                          : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/30"
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 개인 정보 2단계: 가구 형태 + 취업 상태 + 관심지역 */}
+          {stepType === "personal_info_2" && (
+            <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+              {/* 가구 형태 — 선택 */}
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  가구 형태 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "1인가구", label: "1인 가구" },
+                    { value: "다자녀", label: "다자녀" },
+                    { value: "한부모", label: "한부모" },
+                    { value: "신혼부부", label: "신혼부부" },
+                    { value: "다문화", label: "다문화" },
+                    { value: "일반", label: "일반" },
+                  ].map(v => (
+                    <button
+                      key={v.value}
+                      onClick={() => setFormData({ ...formData, family_type: v.value })}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        formData.family_type === v.value
+                          ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-600/20"
+                          : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/30"
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 취업 상태 — 선택 */}
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  취업 상태 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(선택)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "재직자", label: "재직자" },
+                    { value: "구직자", label: "구직자" },
+                    { value: "자영업", label: "자영업" },
+                    { value: "프리랜서", label: "프리랜서" },
+                    { value: "학생", label: "학생" },
+                    { value: "해당없음", label: "해당없음" },
+                  ].map(v => (
+                    <button
+                      key={v.value}
+                      onClick={() => setFormData({ ...formData, employment_status: v.value })}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        formData.employment_status === v.value
+                          ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-600/20"
+                          : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/30"
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 관심지역 (개인전용) */}
+              {isIndividualOnly && (
+                <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                    관심지역 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
+                      const isAll = city === "전국";
+                      const selected = isAll
+                        ? formData.address_cities.includes("전국")
+                        : formData.address_cities.includes(city);
+                      return (
+                        <button
+                          key={city}
+                          onClick={() => {
+                            if (isAll) {
+                              setFormData({ ...formData, address_cities: ["전국"], address_city: "전국" });
+                            } else {
+                              const without = formData.address_cities.filter(c => c !== "전국" && c !== city);
+                              const next = selected ? without : [...without, city];
+                              const final = next.length ? next : ["전국"];
+                              setFormData({ ...formData, address_cities: final, address_city: final.join(",") });
+                            }
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                            selected
+                              ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-600/20"
+                              : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50/30"
+                          }`}
+                        >
+                          {city}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP: 사업자 유형 + 등록일 */}
+          {stepType === "business_info" && (
+            <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  사업자 유형 <span className="text-rose-400 text-[10px]">*</span>
+                </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     { value: "individual" as const, label: "개인사업자", icon: "👤" },
@@ -348,87 +417,66 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
                 </div>
               </div>
 
-              {/* Establishment Date */}
               {formData.business_type && (
-                <div className="space-y-2 animate-in fade-in duration-300">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    {formData.business_type === "individual" ? "사업자 등록일 (개업일)" : "법인 설립일"}
+                <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80 animate-in fade-in duration-300">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                    {formData.business_type === "individual" ? "사업자 등록일 (개업일)" : "법인 설립일"} <span className="text-rose-400 text-[10px]">*</span>
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      max={new Date().toISOString().split("T")[0]}
-                      className="flex-1 p-4 border border-white/80 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm font-bold outline-none shadow-inner"
-                      value={formData.establishment_date}
-                      onChange={(e) => {
-                        setFormData({ ...formData, establishment_date: e.target.value });
-                        setDateText(e.target.value);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="YYYY-MM-DD"
-                      maxLength={10}
-                      className="w-28 sm:w-36 p-3 sm:p-4 border border-white/80 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm font-bold outline-none text-center tracking-wider shadow-inner"
-                      value={dateText}
-                      onChange={(e) => {
-                        let v = e.target.value.replace(/[^0-9-]/g, "");
-                        if (v.length === 4 && !v.includes("-")) v += "-";
-                        if (v.length === 7 && v.split("-").length === 2) v += "-";
-                        setDateText(v);
-                        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-                          setFormData({ ...formData, establishment_date: v });
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* City — 복수선택 */}
-              {formData.business_type && (
-                <div className="space-y-2 animate-in fade-in duration-300">
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">관심지역</label>
-                    <span className="text-[9px] text-slate-400 font-medium">(복수 선택 가능)</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
-                      const isAll = city === "전국";
-                      const selected = isAll
-                        ? formData.address_cities.includes("전국")
-                        : formData.address_cities.includes(city);
-                      return (
-                        <button
-                          key={city}
-                          onClick={() => {
-                            if (isAll) {
-                              setFormData({ ...formData, address_cities: ["전국"], address_city: "전국" });
-                            } else {
-                              const without = formData.address_cities.filter((c: string) => c !== "전국");
-                              const next = selected ? without.filter((c: string) => c !== city) : [...without, city];
-                              const final = next.length === 0 ? ["전국"] : next;
-                              setFormData({ ...formData, address_cities: final, address_city: final.join(",") });
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
-                            selected
-                              ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
-                              : "bg-white border-slate-100 text-slate-500 hover:border-indigo-200"
-                          }`}
-                        >
-                          {city}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <input
+                    type="date"
+                    max={new Date().toISOString().split("T")[0]}
+                    className="w-full p-4 border border-white/80 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm font-bold outline-none shadow-inner"
+                    value={formData.establishment_date}
+                    onChange={(e) => setFormData({ ...formData, establishment_date: e.target.value })}
+                  />
                 </div>
               )}
             </div>
           )}
 
-          {/* STEP 2: Interests */}
-          {step === 2 && (
+          {/* STEP: 관심지역 */}
+          {stepType === "business_region" && (
+            <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 flex items-center gap-1 mb-2.5">
+                  관심지역 <span className="text-[9px] text-slate-300 font-semibold normal-case tracking-normal">(복수 선택 가능)</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["전국","서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"].map(city => {
+                    const isAll = city === "전국";
+                    const selected = isAll
+                      ? formData.address_cities.includes("전국")
+                      : formData.address_cities.includes(city);
+                    return (
+                      <button
+                        key={city}
+                        onClick={() => {
+                          if (isAll) {
+                            setFormData({ ...formData, address_cities: ["전국"], address_city: "전국" });
+                          } else {
+                            const without = formData.address_cities.filter((c: string) => c !== "전국");
+                            const next = selected ? without.filter((c: string) => c !== city) : [...without, city];
+                            const final = next.length === 0 ? ["전국"] : next;
+                            setFormData({ ...formData, address_cities: final, address_city: final.join(",") });
+                          }
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                          selected
+                            ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-600/20"
+                            : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50/30"
+                        }`}
+                      >
+                        {city}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP: Interests */}
+          {stepType === "interests" && (
             <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
               <div className="grid grid-cols-2 gap-2">
                 {interestOptions.map(opt => (
@@ -476,8 +524,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
             </div>
           )}
 
-          {/* STEP 3: Company Size */}
-          {step === 3 && (
+          {/* STEP: Company Size */}
+          {stepType === "company_size" && (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">연간 매출 규모</label>
@@ -530,88 +578,25 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
             </div>
           )}
 
-          {/* STEP 4: Industry Selection */}
-          {step === 4 && (
-            <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
-              <div className="flex justify-between items-end px-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">사업 내용으로 검색</label>
-                <button 
-                  onClick={() => searchIndustry(false)}
-                  disabled={isSearching}
-                  className="text-indigo-600 text-[10px] font-black flex items-center gap-1 hover:text-indigo-800 transition-colors"
-                >
-                  {isSearching ? '분석 중...' : '✨ AI 추천'}
-                </button>
-              </div>
-
-              <textarea 
-                placeholder="예: 화장품 온라인 쇼핑몰 및 SNS 광고 대행"
-                className="w-full p-4 border border-slate-200 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-sm font-medium outline-none min-h-[80px]"
-                value={industryQuery}
-                onChange={(e) => setIndustryQuery(e.target.value)}
-              />
-
-              <input 
-                type="text"
-                placeholder="업종 코드 직접 입력 (5자리)"
-                maxLength={5}
-                className="w-full p-4 border border-slate-200 rounded-2xl bg-white focus:ring-4 focus:ring-indigo-100 transition-all text-lg font-black outline-none text-center tracking-widest"
-                value={formData.industry_code}
-                onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
-              />
-
-              {industryCandidates.length > 0 && (
-                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                  <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest px-1">검색 결과 (하나를 선택하세요)</span>
-                  {industryCandidates.map((cand, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setFormData({ ...formData, industry_code: cand.code })}
-                      className={`w-full p-4 rounded-2xl text-left border-2 transition-all block ${
-                        formData.industry_code === cand.code
-                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg scale-[1.02]"
-                          : "bg-white border-slate-100 text-slate-900 hover:border-indigo-200"
-                      }`}
-                    >
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>
-                        KSIC {cand.code}
-                      </span>
-                      <p className="text-sm font-black mt-0.5">{cand.name}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {!formData.industry_code && industryCandidates.length === 0 && (
-                <p className="text-[10px] text-slate-400 text-center font-medium leading-relaxed">
-                  사업 내용을 입력하면 AI가 업종을 추천합니다.<br/>건너뛰기도 가능합니다.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* STEP 5: Email + Password + Notification */}
-          {step === 5 && (
+          {/* STEP: Email + Notification */}
+          {stepType === "account" && (
             <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
-              <EmailInput
-                value={formData.email}
-                onChange={(email) => setFormData({ ...formData, email })}
-              />
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] ml-2">
-                  다음 접속 시 사용할 비밀번호
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="6자 이상"
-                  className="w-full p-4 border border-white/80 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-sm font-bold outline-none shadow-inner"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              {initialEmail ? (
+                <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-0.5 mb-2.5 block">
+                    로그인 계정
+                  </label>
+                  <div className="w-full p-4 rounded-2xl bg-white/50 border border-white/80 text-sm font-bold text-slate-700">
+                    {initialEmail}
+                  </div>
+                </div>
+              ) : (
+                <EmailInput
+                  value={formData.email}
+                  onChange={(email) => setFormData({ ...formData, email })}
                 />
-              </div>
-              <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-3">
+              )}
+              <div className="bg-slate-50/60 rounded-2xl p-4 border border-slate-100/80 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-base">📧</span>
@@ -640,16 +625,13 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
                   매일 오전 10시, AI가 분석한 맞춤 리포트를 보내드립니다
                 </p>
               </div>
-              <p className="text-[10px] text-slate-400 text-center font-medium leading-relaxed">
-                30일 무료체험이 시작됩니다.
-              </p>
             </div>
           )}
         </div>
 
         <div className="mt-6 sm:mt-10 space-y-4">
           <div className="flex gap-3">
-            {step > 1 && (
+            {step > 0 && stepType !== "user_type" && (
               <button
                 onClick={() => setStep(step - 1)}
                 className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all active:scale-95"
@@ -657,14 +639,16 @@ export default function OnboardingWizard({ initialBusinessNumber = "", onComplet
                 ← 이전
               </button>
             )}
-            <button 
-              onClick={handleNext}
-              disabled={loading}
-              className={`${step > 1 ? 'flex-[2]' : 'w-full'} py-5 bg-slate-900 text-white rounded-2xl font-black text-base shadow-xl shadow-indigo-100 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center group`}
-            >
-              {loading ? "분석 중..." : step === TOTAL_STEPS ? "30일 무료 매칭 시작하기" : "다음 단계로"}
-              {!loading && <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>}
-            </button>
+            {stepType !== "user_type" && (
+              <button
+                onClick={handleNext}
+                disabled={loading}
+                className={`${step > 0 ? 'flex-[2]' : 'w-full'} py-5 bg-slate-900 text-white rounded-2xl font-black text-base shadow-xl shadow-indigo-100 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center group`}
+              >
+                {loading ? "분석 중..." : stepType === "account" ? "무료 매칭 시작하기" : "다음 단계로"}
+                {!loading && <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>}
+              </button>
+            )}
           </div>
           
           {onLogout && (

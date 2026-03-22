@@ -93,7 +93,7 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
 
           <div className="flex items-center gap-3 mb-5">
             <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-[10px] text-slate-400 font-bold">또는 이메일로 로그인</span>
+            <span className="text-[11px] text-slate-400 font-bold">또는 이메일로 로그인</span>
             <div className="flex-1 h-px bg-slate-200" />
           </div>
 
@@ -104,7 +104,7 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
               label="이메일"
             />
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider ml-1">비밀번호</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">비밀번호</label>
               <input
                 type="password"
                 required

@@ -5,7 +5,7 @@ import { useToast } from "@/components/ui/Toast";
 import { loadTossPayments, ANONYMOUS } from "@tosspayments/tosspayments-sdk";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
-const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "test_ck_D5GePWvyJnrK0W0k6q8gLzN97Emo";
+const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "test_ck_jExPeJWYVQ1RJDzyR6GxV49R5gvN";
 
 const PLANS = [
   {
@@ -125,7 +125,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         <div className="relative z-10 p-6 sm:p-8">
           {/* Header */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-bold uppercase tracking-widest mb-3">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-[11px] font-bold uppercase tracking-widest mb-3">
               플랜 선택
             </div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
@@ -151,14 +151,14 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                 }`}
               >
                 {p.popular && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-violet-600 text-white text-[9px] font-bold rounded-full">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-violet-600 text-white text-[11px] font-bold rounded-full">
                     추천
                   </span>
                 )}
                 <div className={`text-xs font-bold mb-1 ${p.id === "pro" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
                 <div className="flex items-end gap-0.5 mb-3">
                   <span className="text-2xl font-bold text-slate-900">{p.priceLabel}</span>
-                  <span className="text-[10px] font-semibold text-slate-500 pb-0.5">원/월</span>
+                  <span className="text-[11px] font-semibold text-slate-500 pb-0.5">원/월</span>
                 </div>
                 <div className="space-y-1.5">
                   {p.features.map((f, i) => (
@@ -178,7 +178,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
 
           {/* Free vs Paid comparison hint */}
           <div className="text-center mb-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[10px] text-slate-500 font-medium">
+            <p className="text-[11px] text-slate-500 font-medium">
               FREE 플랜 (영구 무료): AI 매칭 + 지원대상 판별 1회 무료 | 추천 보상: BASIC 1개월 무료
             </p>
           </div>
@@ -244,7 +244,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
             나중에 하기
           </button>
 
-          <p className="text-[9px] text-slate-400 text-center mt-3 font-medium leading-relaxed">
+          <p className="text-[11px] text-slate-400 text-center mt-3 font-medium leading-relaxed">
             결제는 토스페이먼츠를 통해 안전하게 처리됩니다. VAT 포함 가격입니다.
           </p>
         </div>

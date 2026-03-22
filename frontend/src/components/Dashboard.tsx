@@ -328,7 +328,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="text-lg flex-shrink-0 mt-0.5">{item.icon}</span>
             <div>
               <p className="text-[12px] font-bold text-slate-800">{item.title}</p>
-              <p className="text-[10px] text-slate-500 font-medium">{item.desc}</p>
+              <p className="text-[11px] text-slate-500 font-medium">{item.desc}</p>
             </div>
           </div>
         ))}
@@ -336,15 +336,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {/* 통계 */}
       <div className="relative z-10 p-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
-        <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1">실시간 분석 중</p>
+        <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">실시간 분석 중</p>
         <p className="text-lg font-black text-indigo-700">{(matches.length || 0).toLocaleString()}건</p>
-        <p className="text-[10px] text-slate-500 font-medium">의 공고를 확인할 수 있습니다</p>
+        <p className="text-[11px] text-slate-500 font-medium">의 공고를 확인할 수 있습니다</p>
       </div>
 
       {/* 구분선 */}
       <div className="relative z-10 flex items-center gap-3">
         <div className="flex-1 h-px bg-slate-200/60" />
-        <span className="text-[9px] text-slate-400 font-bold">무료로 시작하기</span>
+        <span className="text-[11px] text-slate-400 font-bold">무료로 시작하기</span>
         <div className="flex-1 h-px bg-slate-200/60" />
       </div>
 
@@ -389,6 +389,39 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           이메일로 로그인/가입 →
         </button>
       </div>
+
+      {/* 서비스 공유 */}
+      <div className="relative z-10 pt-2">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="flex-1 h-px bg-slate-200/60" />
+          <span className="text-[11px] text-slate-400 font-bold">친구에게 알려주기</span>
+          <div className="flex-1 h-px bg-slate-200/60" />
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => {
+              const url = window.location.origin;
+              const text = "AI가 나에게 맞는 정부지원금을 찾아줘요! 지원금톡톡에서 확인해보세요.";
+              if (navigator.share) {
+                navigator.share({ title: "지원금톡톡", text, url });
+              } else {
+                navigator.clipboard.writeText(`${text} ${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all active:scale-95 border border-blue-200/60 text-xs font-bold text-blue-700"
+          >
+            <span>📤</span> 공유하기
+          </button>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.origin).then(() => toast("링크가 복사되었습니다!", "success"));
+            }}
+            className="flex items-center justify-center gap-1.5 py-2 bg-violet-50 rounded-lg hover:bg-violet-100 transition-all active:scale-95 border border-violet-200/60 text-xs font-bold text-violet-700"
+          >
+            <span>🔗</span> 링크복사
+          </button>
+        </div>
+      </div>
     </div>
   );
 
@@ -403,7 +436,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">🏢</div>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || "기업명 미등록"}</p>
-            <span className="px-1.5 py-px bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded flex items-center gap-1 border border-emerald-100/50 mt-0.5 w-fit">
+            <span className="px-1.5 py-px bg-emerald-50 text-emerald-600 text-[11px] font-bold rounded flex items-center gap-1 border border-emerald-100/50 mt-0.5 w-fit">
               <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
               {(() => {
                 const emp = profile?.employee_count_bracket || "";
@@ -442,7 +475,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             : "bg-slate-50 border-slate-200"
         }`}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-[10px] font-bold uppercase tracking-widest ${
+            <span className={`text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz"
                 ? "text-violet-600"
                 : planStatus.plan === "basic"
@@ -454,13 +487,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {planStatus.label}
             </span>
             {planStatus.days_left != null && planStatus.days_left > 0 && (
-              <span className="text-[9px] font-semibold text-slate-400">D-{planStatus.days_left}</span>
+              <span className="text-[11px] font-semibold text-slate-400">D-{planStatus.days_left}</span>
             )}
           </div>
           {/* AI 상담 사용량 */}
           {planStatus.ai_limit != null && planStatus.ai_limit < 999999 && (
             <div className="mb-2">
-              <div className="flex items-center justify-between text-[9px] mb-1">
+              <div className="flex items-center justify-between text-[11px] mb-1">
                 <span className="text-slate-500 font-medium">AI 상담 (자유+컨설턴트)</span>
                 <span className="font-bold text-slate-600">{planStatus.ai_used || 0}/{planStatus.ai_limit}회</span>
               </div>
@@ -478,7 +511,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           )}
           {planStatus.ai_limit != null && planStatus.ai_limit >= 999999 && (
             <div className="mb-2">
-              <div className="flex items-center justify-between text-[9px]">
+              <div className="flex items-center justify-between text-[11px]">
                 <span className="text-slate-500 font-medium">AI 상담</span>
                 <span className="font-bold text-violet-600">무제한</span>
               </div>
@@ -486,7 +519,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           )}
           {/* 공고별 상담 상태 */}
           <div className="mb-2">
-            <div className="flex items-center justify-between text-[9px]">
+            <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-500 font-medium">공고별 지원대상 상담</span>
               <span className={`font-bold ${(planStatus.consult_limit || 0) > 0 ? "text-emerald-600" : "text-slate-400"}`}>
                 {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.consult_limit}회 무료` : "BASIC부터"}
@@ -496,7 +529,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {!["basic", "pro", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
-              className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[10px] font-bold hover:bg-amber-600 transition-all active:scale-95"
+              className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold hover:bg-amber-600 transition-all active:scale-95"
             >
               {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
             </button>
@@ -506,7 +539,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {profile?.referral_code && (
         <div className="relative z-10 space-y-2">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">친구에게 추천하기</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">친구에게 추천하기</p>
           <div className="grid grid-cols-3 gap-1.5">
             <button
               onClick={() => {
@@ -530,7 +563,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               className="flex flex-col items-center gap-1 py-2 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-all active:scale-95 border border-yellow-200/60"
             >
               <span className="text-base">💬</span>
-              <span className="text-[9px] font-semibold text-yellow-800">카카오톡</span>
+              <span className="text-[11px] font-semibold text-yellow-800">카카오톡</span>
             </button>
             <button
               onClick={() => {
@@ -545,7 +578,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               className="flex flex-col items-center gap-1 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all active:scale-95 border border-blue-200/60"
             >
               <span className="text-base">📤</span>
-              <span className="text-[9px] font-semibold text-blue-800">공유</span>
+              <span className="text-[11px] font-semibold text-blue-800">공유</span>
             </button>
             <button
               onClick={() => {
@@ -555,11 +588,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               className="flex flex-col items-center gap-1 py-2 bg-violet-50 rounded-lg hover:bg-violet-100 transition-all active:scale-95 border border-violet-200/60"
             >
               <span className="text-base">🔗</span>
-              <span className="text-[9px] font-semibold text-violet-800">링크복사</span>
+              <span className="text-[11px] font-semibold text-violet-800">링크복사</span>
             </button>
           </div>
           {(profile?.merit_months || 0) > 0 && (
-            <p className="text-center text-[10px] text-violet-500 font-bold">
+            <p className="text-center text-[11px] text-violet-500 font-bold">
               추천 적립 {profile.merit_months}개월
             </p>
           )}
@@ -583,7 +616,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="text-lg">📲</span>
             <div>
               <p className="text-[11px] font-bold text-slate-800">앱으로 설치하기</p>
-              <p className="text-[9px] text-slate-500">홈 화면에서 바로 실행할 수 있어요</p>
+              <p className="text-[11px] text-slate-500">홈 화면에서 바로 실행할 수 있어요</p>
             </div>
           </div>
           <button
@@ -600,8 +633,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className="space-y-3 relative z-10">
           <div className="h-px bg-slate-200/60" />
           <div className="flex items-center justify-between px-1 pt-1">
-            <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">다가오는 일정</h4>
-            <a href="/calendar" className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">다가오는 일정</h4>
+            <a href="/calendar" className="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">
               전체 보기 →
             </a>
           </div>
@@ -621,7 +654,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               })}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-400 px-1">저장된 일정이 없습니다.</p>
+            <p className="text-[11px] text-slate-400 px-1">저장된 일정이 없습니다.</p>
           )}
         </div>
       )}
@@ -643,6 +676,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="tracking-tight">일정 관리</span>
           </a>
         </div>
+        {onLogout && (
+          <button
+            onClick={() => { onLogout(); setSidebarOpen(false); }}
+            className="w-full py-2 text-slate-400 hover:text-rose-500 rounded-lg text-xs font-medium transition-all"
+          >
+            로그아웃
+          </button>
+        )}
       </div>
     </div>
   );
@@ -669,7 +710,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
             <div className="min-w-0">
               {planStatus && (
-                <p className={`text-[9px] font-bold uppercase tracking-widest ${
+                <p className={`text-[11px] font-bold uppercase tracking-widest ${
                   planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
                   planStatus.plan === "basic" ? "text-indigo-600" :
                   planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
@@ -729,7 +770,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-bold text-slate-800">AI 맞춤 매칭 · 지원대상 판별 · 신청서 자동작성</p>
-                  <p className="text-[10px] text-slate-500 font-medium">로그인하면 모든 기능을 무료로 시작할 수 있어요</p>
+                  <p className="text-[11px] text-slate-500 font-medium">로그인하면 모든 기능을 무료로 시작할 수 있어요</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -763,7 +804,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <p className="text-[13px] font-bold text-violet-800">
                       AI 컨설턴트 매칭 결과 — {consultantResult.profile?.company_name || "고객사"}
                     </p>
-                    <p className="text-[10px] text-violet-600 font-medium">
+                    <p className="text-[11px] text-violet-600 font-medium">
                       {consultantResult.matches.length}건의 맞춤 지원사업 | 소재지: {consultantResult.profile?.address_city || "-"} | 매출: {consultantResult.profile?.revenue_bracket || "-"} | 인원: {consultantResult.profile?.employee_count_bracket || "-"}
                     </p>
                   </div>
@@ -783,7 +824,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <span className={consultantResult ? "text-violet-600" : "text-indigo-600"}>
                 {consultantResult ? "컨설턴트 매칭" : "지원금톡톡"}
               </span>
-              <span className="text-[10px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
+              <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
                 {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부보조금"}
               </span>
             </h2>
@@ -877,7 +918,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <button
                       key={tab.key}
                       onClick={() => setActiveTab(tab.key)}
-                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[10px] font-bold transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
+                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[11px] font-bold transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
                         activeTab === tab.key
                           ? majorTab === "business"
                             ? "bg-slate-950 text-white shadow-md"
@@ -886,7 +927,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       }`}
                     >
                       {tab.label}
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
                         activeTab === tab.key
                           ? "bg-white/20 text-white/80"
                           : "bg-slate-100 text-slate-400"
@@ -908,7 +949,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={s.key}
                     onClick={() => setSortKey(s.key)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all duration-300 whitespace-nowrap ${
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-300 whitespace-nowrap ${
                       sortKey === s.key
                         ? "bg-indigo-600 text-white shadow-sm"
                         : "text-slate-400 hover:bg-slate-50"

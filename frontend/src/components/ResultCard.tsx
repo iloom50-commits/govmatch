@@ -118,7 +118,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           {dDay.text}
         </span>
         {res.deadline_date && (
-          <span className="block text-[8px] font-medium leading-tight mt-0.5 opacity-70">
+          <span className="block text-[11px] font-medium leading-tight mt-0.5 opacity-70">
             ~{res.deadline_date.slice(5)}
           </span>
         )}
@@ -145,22 +145,22 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             </button>
           )}
           {res.support_amount && (
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[8px] font-semibold rounded-full border border-indigo-100">
+            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-semibold rounded-full border border-indigo-100">
               {res.support_amount}
             </span>
           )}
           {res.department && (
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-bold rounded-full border border-blue-100">
+            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[11px] font-bold rounded-full border border-blue-100">
               {res.department}
             </span>
           )}
           {categoryKr && (
-            <span className="px-2 py-0.5 bg-violet-50 text-violet-600 text-[8px] font-bold rounded-full border border-violet-100">
+            <span className="px-2 py-0.5 bg-violet-50 text-violet-600 text-[11px] font-bold rounded-full border border-violet-100">
               {categoryKr}
             </span>
           )}
           {sourceKr && (
-            <span className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[8px] font-bold rounded-full border border-slate-200">
+            <span className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[11px] font-bold rounded-full border border-slate-200">
               {sourceKr}
             </span>
           )}
@@ -174,13 +174,13 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
         {/* Info & Buttons */}
         <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-5">
-            <p className="text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+            <p className="text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
               <span className="text-slate-400">대상 :</span>
               <span className="text-slate-900">{targetText}{res.established_years_limit ? ` · ${res.established_years_limit}년 이내` : ""}</span>
             </p>
             {(res.revenue_limit || res.employee_limit) && (
-              <p className="text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+              <p className="text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
                 <span className="w-1 h-1 bg-emerald-400 rounded-full shrink-0" />
                 <span className="text-slate-400">요건 :</span>
                 <span className="text-slate-900">{res.revenue_limit ? `매출 ${Math.floor(res.revenue_limit / 100000000)}억↑` : ""}{res.employee_limit ? `${res.revenue_limit ? " · " : ""}${res.employee_limit}인↑` : ""}</span>
@@ -193,14 +193,14 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             {isPublic ? (
               <button
                 onClick={() => onLoginRequired?.()}
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[11px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
               >
                 상세 공고 이동 →
               </button>
             ) : isExpired ? (
               <button
                 onClick={() => onUpgrade?.()}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[11px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
               >
                 🔒 플랜 만료 — 업그레이드 후 이용
               </button>
@@ -209,14 +209,14 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 href={res.origin_url || res.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[11px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
               >
                 상세 공고 이동 →
               </a>
             ) : (
               <button
                 onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[10px] uppercase tracking-wider cursor-not-allowed"
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[11px] uppercase tracking-wider cursor-not-allowed"
               >
                 링크 없음
               </button>
@@ -233,7 +233,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
               >
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
@@ -247,12 +247,28 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
               >
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
+            {/* 공유 버튼 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const url = res.origin_url || res.url || window.location.origin;
+                const text = `[지원금톡톡] ${res.title}`;
+                if (navigator.share) {
+                  navigator.share({ title: res.title, text, url });
+                } else {
+                  navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공고 링크가 복사되었습니다!", "success"));
+                }
+              }}
+              className="w-full py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 active:scale-[0.98]"
+            >
+              <span>📤</span> 이 공고 공유하기
+            </button>
           </div>
         </div>
       </div>

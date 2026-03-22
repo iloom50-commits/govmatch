@@ -1090,33 +1090,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </main>
       </div>
 
-      {/* 하단 플로팅 로그인 바 (비로그인 모바일) */}
+      {/* 플로팅 무료시작 버튼 (비로그인 모바일) — 좌측 하단 */}
       {isPublic && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden animate-in slide-in-from-bottom duration-500">
-          <div className="bg-white/95 backdrop-blur-xl border-t border-slate-200/80 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-3 py-2.5 safe-bottom">
-            <div className="flex items-center gap-2 max-w-lg mx-auto">
-              <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap flex-shrink-0">무료 시작</span>
-              <button
-                onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
-                className="flex-1 py-2 bg-[#FEE500] text-[#191919] rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
-              >
-                💬 카카오
-              </button>
-              <button
-                onClick={() => window.location.href = `${API}/api/auth/social/naver`}
-                className="flex-1 py-2 bg-[#03C75A] text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 hover:brightness-95 transition-all active:scale-[0.98]"
-              >
-                N 네이버
-              </button>
-              <button
-                onClick={() => onLoginRequired?.()}
-                className="py-2 px-3 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-600 transition-all active:scale-[0.98] flex-shrink-0"
-              >
-                가입
-              </button>
-            </div>
-          </div>
-        </div>
+        <button
+          onClick={() => onLoginRequired?.()}
+          className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+        >
+          <span className="text-base">🚀</span>
+          <span className="text-xs font-bold">무료 시작</span>
+        </button>
       )}
 
       <NotificationModal

@@ -112,7 +112,9 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
   const { toast } = useToast();
   const dDay = getDDayInfo(res.deadline_date);
   const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
-  const sourceKr = SOURCE_KR[(res.origin_source || "").trim()] || res.origin_source || "";
+  const rawSource = (res.origin_source || "").trim();
+  const sourceKey = rawSource.includes(":") ? rawSource.split(":")[0] : rawSource;
+  const sourceKr = SOURCE_KR[sourceKey] || SOURCE_KR[rawSource] || "";
   const elig = res.eligibility_logic || {};
   const bizTypes = (elig.business_type || []).slice(0, 3);
   const targetText = bizTypes.length > 0

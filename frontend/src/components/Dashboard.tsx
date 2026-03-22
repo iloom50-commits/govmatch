@@ -111,13 +111,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+  const [isIos, setIsIos] = useState(false);
+  const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     // 이미 PWA로 실행 중이면 설치 버튼 숨김
-    if (window.matchMedia("(display-mode: standalone)").matches) {
+    if (window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone) {
       setIsPwaInstalled(true);
       return;
+    }
+    // iOS 감지 (Safari에서는 beforeinstallprompt 미지원)
+    const ua = window.navigator.userAgent;
+    const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isiOS) {
+      setIsIos(true);
+      const dismissed = sessionStorage.getItem("ios_pwa_dismissed");
+      if (dismissed) setIosBannerDismissed(true);
     }
     // 글로벌로 캡처된 프롬프트 확인 (컴포넌트 마운트 전 이벤트 대비)
     if ((window as any).__pwaPrompt) {
@@ -609,7 +619,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </button>
       </div>
 
-      {/* PWA 앱 설치 유도 */}
+      {/* PWA 앱 설치 유도 — Android/Chrome */}
       {!isPwaInstalled && deferredPrompt && (
         <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
           <div className="flex items-center gap-2.5 mb-2">
@@ -626,6 +636,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="text-xs">⬇️</span>
             지원금톡톡 설치
           </button>
+        </div>
+      )}
+
+      {/* PWA 설치 안내 — iOS Safari */}
+      {!isPwaInstalled && isIos && !deferredPrompt && !iosBannerDismissed && (
+        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
+          <button
+            onClick={() => { setIosBannerDismissed(true); sessionStorage.setItem("ios_pwa_dismissed", "1"); }}
+            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
+            aria-label="닫기"
+          >✕</button>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="text-lg">📲</span>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800">홈 화면에 추가하기</p>
+              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
+              <span className="text-sm">□↑</span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+              Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
+              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+            </p>
+          </div>
         </div>
       )}
 

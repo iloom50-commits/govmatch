@@ -200,7 +200,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             {isPublic ? (
               <button
                 onClick={() => onLoginRequired?.()}
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
+                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:from-indigo-700 hover:to-blue-600 transition-all active:scale-[0.98] shadow-md text-center"
               >
                 상세 공고 이동 →
               </button>
@@ -216,7 +216,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 href={res.origin_url || res.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
+                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:from-indigo-700 hover:to-blue-600 transition-all active:scale-[0.98] shadow-md text-center block"
               >
                 상세 공고 이동 →
               </a>

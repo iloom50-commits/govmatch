@@ -975,8 +975,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 <select
                   value={activeTab}
                   onChange={(e) => setActiveTab(e.target.value)}
-                  className={`w-full appearance-none text-white px-3 py-2 pr-8 rounded-lg text-[11px] font-bold outline-none cursor-pointer ${
-                    majorTab === "business" ? "bg-slate-950" : "bg-emerald-700"
+                  className={`w-full appearance-none px-3 py-2 pr-8 rounded-lg text-[11px] font-bold outline-none cursor-pointer border-2 ${
+                    majorTab === "business"
+                      ? "bg-white text-slate-800 border-slate-300"
+                      : "bg-white text-emerald-800 border-emerald-300"
                   }`}
                 >
                   {currentTabs.map((tab) => {
@@ -989,7 +991,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     );
                   })}
                 </select>
-                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/70 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </div>

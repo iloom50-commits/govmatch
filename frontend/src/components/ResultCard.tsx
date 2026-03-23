@@ -260,34 +260,8 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 버튼 */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const url = res.origin_url || res.url || window.location.origin;
-                  const K = (window as any).Kakao;
-                  if (K && K.isInitialized()) {
-                    K.Share.sendDefault({
-                      objectType: "feed",
-                      content: {
-                        title: res.title,
-                        description: `대상: ${targetText} | ${dDay.text}`,
-                        imageUrl: "https://govmatch.kr/icon-512.png",
-                        link: { mobileWebUrl: url, webUrl: url },
-                      },
-                      buttons: [{ title: "공고 보기", link: { mobileWebUrl: url, webUrl: url } }],
-                    });
-                  } else {
-                    const text = `[지원금톡톡] ${res.title}\n${url}`;
-                    navigator.clipboard.writeText(text).then(() => toast("링크가 복사되었습니다!", "success"));
-                  }
-                }}
-                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-[#FEE500]/20 text-[#191919] border-[#FEE500]/40 hover:bg-[#FEE500]/40 active:scale-[0.98]"
-              >
-                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor"><path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" /></svg>
-                카톡 공유
-              </button>
+            {/* 공유 아이콘 */}
+            <div className="flex justify-end">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -299,9 +273,13 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공고 링크가 복사되었습니다!", "success"));
                   }
                 }}
-                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 active:scale-[0.98]"
+                className="p-1.5 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-90"
+                aria-label="공유하기"
+                title="공유하기"
               >
-                📤 공유하기
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5m0 0l5 5m-5-5v12" />
+                </svg>
               </button>
             </div>
           </div>

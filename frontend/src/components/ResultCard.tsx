@@ -147,11 +147,6 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               </svg>
             </button>
           )}
-          {res.support_amount && (
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[12px] font-semibold rounded-full border border-indigo-100">
-              {res.support_amount}
-            </span>
-          )}
           {res.department && (
             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[12px] font-bold rounded-full border border-blue-100">
               {res.department}
@@ -173,8 +168,13 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </span>
         </div>
 
-        {/* Title */}
+        {/* Title + Amount */}
         <h3 className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[2lh]" title={res.title}>
+          {res.support_amount && (
+            <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap">
+              {res.support_amount}
+            </span>
+          )}
           {res.title}
         </h3>
 

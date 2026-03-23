@@ -112,7 +112,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
+  const [androidBannerDismissed, setAndroidBannerDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -131,6 +133,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       setIsIos(true);
       const dismissed = sessionStorage.getItem("ios_pwa_dismissed");
       if (dismissed) setIosBannerDismissed(true);
+    } else if (/Android/i.test(ua)) {
+      setIsAndroid(true);
+      const dismissed = sessionStorage.getItem("android_pwa_dismissed");
+      if (dismissed) setAndroidBannerDismissed(true);
     }
     // 글로벌로 캡처된 프롬프트 확인 (컴포넌트 마운트 전 이벤트 대비)
     if ((window as any).__pwaPrompt) {
@@ -478,6 +484,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </div>
       )}
 
+      {/* PWA 설치 안내 — Android Chrome 수동 (beforeinstallprompt 미발생 시) */}
+      {!isPwaInstalled && isAndroid && !deferredPrompt && !androidBannerDismissed && (
+        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
+          <button
+            onClick={() => { setAndroidBannerDismissed(true); sessionStorage.setItem("android_pwa_dismissed", "1"); }}
+            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
+            aria-label="닫기"
+          >✕</button>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="text-lg">📲</span>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800">홈 화면에 설치하기</p>
+              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
+              <span className="text-sm font-bold">⋮</span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+              Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
+              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 서비스 공유 */}
       <div className="relative z-10 pt-2">
         <div className="flex items-center gap-3 mb-2">
@@ -739,6 +772,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
               Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
               <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* PWA 설치 안내 — Android Chrome 수동 (로그인 후) */}
+      {!isPwaInstalled && isAndroid && !deferredPrompt && !androidBannerDismissed && (
+        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
+          <button
+            onClick={() => { setAndroidBannerDismissed(true); sessionStorage.setItem("android_pwa_dismissed", "1"); }}
+            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
+            aria-label="닫기"
+          >✕</button>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="text-lg">📲</span>
+            <div>
+              <p className="text-[11px] font-bold text-slate-800">홈 화면에 설치하기</p>
+              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
+              <span className="text-sm font-bold">⋮</span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+              Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
+              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
             </p>
           </div>
         </div>

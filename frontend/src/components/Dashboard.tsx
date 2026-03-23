@@ -971,7 +971,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             {/* 하위 카테고리 탭 + 정렬 */}
             <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-lg border border-white/80 shadow-sm">
               {/* Mobile: 드롭다운 */}
-              <div className="relative sm:hidden flex-1">
+              <div className="relative sm:hidden">
                 <select
                   value={activeTab}
                   onChange={(e) => setActiveTab(e.target.value)}

@@ -783,7 +783,7 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""
-    redirect_uri = f"{FRONTEND_URL}/api/auth/callback/{provider}"
+    redirect_uri = f"{FRONTEND_URL}/auth/callback/{provider}"
     state = secrets.token_urlsafe(16)
 
     if provider == "kakao":
@@ -824,7 +824,7 @@ async def api_social_callback(req: SocialCallbackRequest):
     """소셜 로그인 콜백: authorization code → 토큰 교환 → 사용자 정보 → JWT 발급"""
     import httpx
 
-    redirect_uri = f"{FRONTEND_URL}/api/auth/callback/{req.provider}"
+    redirect_uri = f"{FRONTEND_URL}/auth/callback/{req.provider}"
 
     if req.provider == "kakao":
         # 1. code → access_token

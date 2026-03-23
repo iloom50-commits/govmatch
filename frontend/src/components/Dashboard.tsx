@@ -985,6 +985,29 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
+              {/* PWA 설치 — 탭 라인 우측 */}
+              {!isPwaInstalled && !deferredPrompt && (isAndroid || isIos) && (
+                <button
+                  onClick={() => {
+                    if (isIos) {
+                      alert("Safari 하단 공유 버튼(□↑)을 누른 뒤\n\"홈 화면에 추가\"를 선택하세요");
+                    } else {
+                      alert("Chrome 우측 상단 메뉴(⋮)를 누른 뒤\n\"홈 화면에 추가\" 또는 \"앱 설치\"를 선택하세요");
+                    }
+                  }}
+                  className="ml-auto flex items-center gap-1 pb-3 pt-1 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-all whitespace-nowrap"
+                >
+                  <span>📲</span> 앱 설치
+                </button>
+              )}
+              {!isPwaInstalled && deferredPrompt && (
+                <button
+                  onClick={handlePwaInstall}
+                  className="ml-auto flex items-center gap-1 pb-3 pt-1 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-all whitespace-nowrap"
+                >
+                  <span>📲</span> 앱 설치
+                </button>
+              )}
             </div>
           </div>
 

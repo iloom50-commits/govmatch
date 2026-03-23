@@ -260,25 +260,35 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 아이콘 */}
+            {/* 공유 아이콘 (3점 메뉴) */}
             <div className="flex justify-end">
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
                   const url = res.origin_url || res.url || window.location.origin;
-                  const text = `[지원금톡톡] ${res.title}`;
-                  if (navigator.share) {
-                    navigator.share({ title: res.title, text, url });
+                  const shareData = { title: res.title, url };
+                  if (typeof navigator !== "undefined" && navigator.share) {
+                    try {
+                      await navigator.share(shareData);
+                    } catch (err: unknown) {
+                      if (err instanceof Error && err.name !== "AbortError") {
+                        await navigator.clipboard.writeText(`${res.title}\n${url}`);
+                        toast("링크가 복사되었습니다!", "success");
+                      }
+                    }
                   } else {
-                    navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공고 링크가 복사되었습니다!", "success"));
+                    await navigator.clipboard.writeText(`${res.title}\n${url}`);
+                    toast("링크가 복사되었습니다!", "success");
                   }
                 }}
                 className="p-1.5 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-90"
                 aria-label="공유하기"
                 title="공유하기"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5m0 0l5 5m-5-5v12" />
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <circle cx="12" cy="19" r="2" />
                 </svg>
               </button>
             </div>

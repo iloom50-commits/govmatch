@@ -869,25 +869,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {/* 모바일 상단 바 (lg 미만에서만 표시) — 로그인 사용자만 */}
       {isPublic ? null : (
-        <div className="lg:hidden flex items-center justify-between py-3 mb-4 border-b border-slate-200/60">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
-            <div className="min-w-0">
-              {planStatus && (
-                <p className={`text-[11px] font-bold uppercase tracking-widest ${
-                  planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
-                  planStatus.plan === "basic" ? "text-indigo-600" :
-                  planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
-                }`}>{planStatus.label}</p>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-200 transition-all active:scale-95 flex-shrink-0"
-          >
-            <span>☰</span> 메뉴
-          </button>
+        <div className="lg:hidden flex items-center py-3 mb-4 border-b border-slate-200/60">
+          <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
+          {planStatus && (
+            <span className={`ml-2 text-[11px] font-bold uppercase tracking-widest ${
+              planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
+              planStatus.plan === "basic" ? "text-indigo-600" :
+              planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
+            }`}>{planStatus.label}</span>
+          )}
         </div>
       )}
 
@@ -1208,14 +1198,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </main>
       </div>
 
-      {/* 플로팅 무료시작 버튼 (비로그인 모바일) — 좌측 하단 */}
-      {isPublic && (
+      {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
+      {isPublic ? (
         <button
           onClick={() => onLoginRequired?.()}
           className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
         >
           <span className="text-base">🚀</span>
-          <span className="text-xs font-bold">무료 시작</span>
+          <span className="text-xs font-bold">무료 가입</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+        >
+          <span className="text-base">👤</span>
+          <span className="text-xs font-bold">내 정보</span>
         </button>
       )}
 

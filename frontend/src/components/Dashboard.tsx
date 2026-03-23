@@ -115,6 +115,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isAndroid, setIsAndroid] = useState(false);
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [androidBannerDismissed, setAndroidBannerDismissed] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -986,23 +987,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 );
               })}
               {/* PWA 설치 — 탭 라인 우측 */}
-              {!isPwaInstalled && !deferredPrompt && (isAndroid || isIos) && (
+              {!isPwaInstalled && (
                 <button
-                  onClick={() => {
-                    if (isIos) {
-                      alert("Safari 하단 공유 버튼(□↑)을 누른 뒤\n\"홈 화면에 추가\"를 선택하세요");
-                    } else {
-                      alert("Chrome 우측 상단 메뉴(⋮)를 누른 뒤\n\"홈 화면에 추가\" 또는 \"앱 설치\"를 선택하세요");
-                    }
-                  }}
-                  className="ml-auto flex items-center gap-1 pb-3 pt-1 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-all whitespace-nowrap"
-                >
-                  <span>📲</span> 앱 설치
-                </button>
-              )}
-              {!isPwaInstalled && deferredPrompt && (
-                <button
-                  onClick={handlePwaInstall}
+                  onClick={() => deferredPrompt ? handlePwaInstall() : setShowInstallGuide(true)}
                   className="ml-auto flex items-center gap-1 pb-3 pt-1 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-all whitespace-nowrap"
                 >
                   <span>📲</span> 앱 설치
@@ -1239,6 +1226,78 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         onSave={() => {}}
       />
       <SmartDocModal />
+
+      {/* 앱 설치 안내 모달 */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 pb-8 sm:pb-5 shadow-2xl animate-[slideUp_0.3s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 핸들바 (모바일) */}
+            <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4" />
+            <button
+              onClick={() => setShowInstallGuide(false)}
+              className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 text-sm"
+            >✕</button>
+
+            <div className="text-center mb-4">
+              <span className="text-3xl">📲</span>
+              <h3 className="text-base font-black text-slate-900 mt-2">앱으로 설치하면 더 편해요</h3>
+            </div>
+
+            <div className="space-y-2.5 mb-5">
+              <div className="flex items-start gap-2.5 p-2.5 bg-indigo-50 rounded-lg">
+                <span className="text-lg mt-0.5">🔔</span>
+                <div>
+                  <p className="text-[12px] font-bold text-slate-800">맞춤 알림 수신</p>
+                  <p className="text-[11px] text-slate-500">새 지원금 공고가 등록되면 즉시 알려드려요</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 p-2.5 bg-emerald-50 rounded-lg">
+                <span className="text-lg mt-0.5">⚡</span>
+                <div>
+                  <p className="text-[12px] font-bold text-slate-800">빠른 실행</p>
+                  <p className="text-[11px] text-slate-500">홈 화면에서 한 번 터치로 바로 접속</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 p-2.5 bg-amber-50 rounded-lg">
+                <span className="text-lg mt-0.5">📱</span>
+                <div>
+                  <p className="text-[12px] font-bold text-slate-800">앱처럼 사용</p>
+                  <p className="text-[11px] text-slate-500">주소창 없이 전체 화면으로 깔끔하게</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <p className="text-[11px] font-bold text-slate-700 mb-2">설치 방법</p>
+              {isIos ? (
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
+                    <span className="text-base">□↑</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
+                    <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
+                    <span className="text-base font-bold">⋮</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
+                    <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

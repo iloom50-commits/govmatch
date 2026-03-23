@@ -45,6 +45,9 @@ export default function RootLayout({
                 e.preventDefault();
                 window.__pwaPrompt = e;
               });
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(function(){});
+              }
             `,
           }}
         />

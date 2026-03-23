@@ -1,7 +1,7 @@
 "use client";
 
 import ResultCard from "./ResultCard";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import NotificationModal from "./NotificationModal";
 import SmartDocModal from "./SmartDocModal";
 import { useToast } from "@/components/ui/Toast";
@@ -114,6 +114,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isIos, setIsIos] = useState(false);
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // 이미 PWA로 실행 중이면 설치 버튼 숨김
@@ -153,6 +156,31 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
     setDeferredPrompt(null);
   };
+
+  // 백엔드 검색 API 호출 (debounce 500ms)
+  const doSearch = useCallback((q: string, tab: MajorTab) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearchResults(null); setSearchLoading(false); return; }
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API}/api/announcements/public?page=1&size=50&search=${encodeURIComponent(q.trim())}&target_type=${tab}`
+        );
+        const data = await res.json();
+        if (data.status === "SUCCESS") {
+          setSearchResults(data.data ?? []);
+        }
+      } catch { /* ignore */ }
+      setSearchLoading(false);
+    }, 500);
+  }, []);
+
+  // searchQuery 또는 majorTab 변경 시 검색 실행
+  useEffect(() => {
+    doSearch(searchQuery, majorTab);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [searchQuery, majorTab, doSearch]);
 
   const bn = profile?.business_number || "";
   const [industryDisplayName, setIndustryDisplayName] = useState<string>("");
@@ -250,18 +278,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     });
   }, [rawMatches, majorTab]);
 
-  const filteredMatches = useMemo(() => {
-    let result = [...displayMatches];
+  // 검색어가 있으면 백엔드 결과 사용, 없으면 기존 로컬 데이터
+  const baseMatches = useMemo(() => {
+    return searchQuery.trim() && searchResults ? searchResults : displayMatches;
+  }, [searchQuery, searchResults, displayMatches]);
 
-    // 키워드 검색 필터
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      result = result.filter(m =>
-        (m.title || "").toLowerCase().includes(q) ||
-        (m.summary_text || "").toLowerCase().includes(q) ||
-        (m.department || "").toLowerCase().includes(q)
-      );
-    }
+  const filteredMatches = useMemo(() => {
+    let result = [...baseMatches];
 
     if (activeTab !== "all") {
       const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
@@ -286,17 +309,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [displayMatches, activeTab, sortKey, searchQuery]);
+  }, [baseMatches, activeTab, sortKey, currentTabs]);
 
-  const searchedMatches = useMemo(() => {
-    if (!searchQuery.trim()) return displayMatches;
-    const q = searchQuery.trim().toLowerCase();
-    return displayMatches.filter(m =>
-      (m.title || "").toLowerCase().includes(q) ||
-      (m.summary_text || "").toLowerCase().includes(q) ||
-      (m.department || "").toLowerCase().includes(q)
-    );
-  }, [displayMatches, searchQuery]);
+  const searchedMatches = baseMatches;
 
   const tabCounts = useMemo(() => {
     const counts: Record<string, number> = { all: searchedMatches.length };
@@ -864,6 +879,37 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
+          {/* 대분류 탭 바 — 콘텐츠 영역과 시각적으로 분리 */}
+          <div className={`-mx-3 md:-mx-6 px-3 md:px-6 py-3 mb-4 border-b-2 ${
+            majorTab === "business" ? "bg-indigo-50/60 border-indigo-200" : "bg-emerald-50/60 border-emerald-200"
+          }`}>
+            <div className="flex items-center gap-1">
+              {([
+                { key: "business" as MajorTab, label: "기업지원", icon: "🏢", show: showBusinessTab },
+                { key: "individual" as MajorTab, label: "개인지원", icon: "👤", show: showIndividualTab },
+              ]).map((tab) => {
+                if (!tab.show) return null;
+                const isActive = majorTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setMajorTab(tab.key); setActiveTab("all"); }}
+                    className={`relative flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold transition-all duration-300 rounded-t-lg ${
+                      isActive
+                        ? tab.key === "business"
+                          ? "bg-white text-indigo-700 shadow-sm border border-indigo-200 border-b-white -mb-[2px]"
+                          : "bg-white text-emerald-700 shadow-sm border border-emerald-200 border-b-white -mb-[2px]"
+                        : "text-slate-400 hover:text-slate-600 hover:bg-white/50"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <header className="space-y-3">
             <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
               <span className={consultantResult ? "text-violet-600" : "text-indigo-600"}>
@@ -873,33 +919,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부보조금"}
               </span>
             </h2>
-
-            {/* 대분류 탭 */}
-            <div className="flex items-center gap-2 mb-2">
-              {([
-                { key: "business" as MajorTab, label: "기업지원 매칭", icon: "🏢", show: showBusinessTab },
-                { key: "individual" as MajorTab, label: "개인지원 매칭", icon: "👤", show: showIndividualTab },
-              ]).map((tab) => {
-                if (!tab.show) return null;
-                // 비활성 상태 (상대 탭이 미등록인 경우) — 현재는 show=false로 처리하므로 여기 도달하면 활성
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => { setMajorTab(tab.key); setActiveTab("all"); }}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                      majorTab === tab.key
-                        ? tab.key === "business"
-                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                          : "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
-                        : "bg-white/80 text-slate-500 hover:bg-slate-50 border border-slate-200"
-                    }`}
-                  >
-                    <span className="text-sm">{tab.icon}</span>
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
 
             {/* 키워드 검색 */}
             <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 rounded-lg border border-slate-200/60 shadow-sm">
@@ -915,7 +934,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 placeholder={majorTab === "business" ? "공고명, 키워드 검색 (예: 창업, R&D, 수출)" : "공고명, 키워드 검색 (예: 복지, 육아, 주거, 취업)"}
                 className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
               />
-              {searchQuery && (
+              {searchLoading && (
+                <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              )}
+              {searchQuery && !searchLoading && (
                 <button
                   onClick={() => setSearchQuery("")}
                   className="p-1 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
@@ -1008,7 +1030,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           </header>
 
-          {filteredMatches.length === 0 ? (
+          {searchQuery.trim() && !searchLoading && searchResults && (
+            <p className="text-xs text-slate-500 font-medium mb-2 px-1">
+              &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>
+            </p>
+          )}
+
+          {filteredMatches.length === 0 && !searchLoading ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-3xl mb-5 animate-pulse">🔍</div>
               <h2 className="text-lg md:text-2xl font-bold text-slate-900 mb-3">

@@ -406,8 +406,13 @@ def api_announcements_public(
         where_clauses.append("category = %s")
         params.append(category)
     if search:
-        where_clauses.append("(title ILIKE %s OR summary_text ILIKE %s)")
-        params.extend([f"%{search}%", f"%{search}%"])
+        where_clauses.append(
+            "(title ILIKE %s OR summary_text ILIKE %s OR department ILIKE %s"
+            " OR region ILIKE %s OR category ILIKE %s"
+            " OR COALESCE(eligibility_logic::text, '') ILIKE %s)"
+        )
+        s = f"%{search}%"
+        params.extend([s, s, s, s, s, s])
     if target_type:
         where_clauses.append("(target_type = %s OR target_type = 'both')")
         params.append(target_type)
@@ -422,7 +427,9 @@ def api_announcements_public(
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
                    support_amount, deadline_date, origin_source, created_at,
-                   COALESCE(target_type, 'business') AS target_type
+                   COALESCE(target_type, 'business') AS target_type,
+                   origin_url, summary_text, eligibility_logic,
+                   established_years_limit, revenue_limit, employee_limit
             FROM announcements
             WHERE {where_sql}
             ORDER BY

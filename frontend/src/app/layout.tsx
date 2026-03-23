@@ -48,6 +48,18 @@ export default function RootLayout({
             `,
           }}
         />
+        <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js" crossOrigin="anonymous" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              document.addEventListener('DOMContentLoaded', function() {
+                if (window.Kakao && !window.Kakao.isInitialized()) {
+                  window.Kakao.init('832265e411dd686c3fcf925f3558d8f0');
+                }
+              });
+            `,
+          }}
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

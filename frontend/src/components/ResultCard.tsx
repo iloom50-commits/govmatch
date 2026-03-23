@@ -148,46 +148,46 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             </button>
           )}
           {res.support_amount && (
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-semibold rounded-full border border-indigo-100">
+            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[12px] font-semibold rounded-full border border-indigo-100">
               {res.support_amount}
             </span>
           )}
           {res.department && (
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[11px] font-bold rounded-full border border-blue-100">
+            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[12px] font-bold rounded-full border border-blue-100">
               {res.department}
             </span>
           )}
           {categoryKr && (
-            <span className="px-2 py-0.5 bg-violet-50 text-violet-600 text-[11px] font-bold rounded-full border border-violet-100">
+            <span className="px-2 py-0.5 bg-violet-50 text-violet-600 text-[12px] font-bold rounded-full border border-violet-100">
               {categoryKr}
             </span>
           )}
           {sourceKr && (
-            <span className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[11px] font-bold rounded-full border border-slate-200">
+            <span className="px-2 py-0.5 bg-slate-50 text-slate-500 text-[12px] font-bold rounded-full border border-slate-200">
               {sourceKr}
             </span>
           )}
           {/* D-day 뱃지 — 인라인 */}
-          <span className={`ml-auto px-2 py-0.5 rounded-full border text-[11px] font-bold whitespace-nowrap ${URGENCY_STYLES[dDay.urgency]}`}>
+          <span className={`ml-auto px-2 py-0.5 rounded-full border text-[12px] font-bold whitespace-nowrap ${URGENCY_STYLES[dDay.urgency]}`}>
             {dDay.text}{res.deadline_date ? ` ~${res.deadline_date.slice(5)}` : ""}
           </span>
         </div>
 
         {/* Title */}
-        <h3 className="font-bold text-slate-900 text-sm md:text-base leading-snug tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[2lh]" title={res.title}>
+        <h3 className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[2lh]" title={res.title}>
           {res.title}
         </h3>
 
         {/* Info & Buttons */}
         <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-5">
-            <p className="text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
+            <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
               <span className="text-slate-400">대상 :</span>
               <span className="text-slate-900">{targetText}{res.established_years_limit ? ` · ${res.established_years_limit}년 이내` : ""}</span>
             </p>
             {(res.revenue_limit || res.employee_limit) && (
-              <p className="text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
+              <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
                 <span className="w-1 h-1 bg-emerald-400 rounded-full shrink-0" />
                 <span className="text-slate-400">요건 :</span>
                 <span className="text-slate-900">{res.revenue_limit ? `매출 ${Math.floor(res.revenue_limit / 100000000)}억↑` : ""}{res.employee_limit ? `${res.revenue_limit ? " · " : ""}${res.employee_limit}인↑` : ""}</span>
@@ -200,14 +200,14 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             {isPublic ? (
               <button
                 onClick={() => onLoginRequired?.()}
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[11px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center"
               >
                 상세 공고 이동 →
               </button>
             ) : isExpired ? (
               <button
                 onClick={() => onUpgrade?.()}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[11px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[12px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
               >
                 🔒 플랜 만료 — 업그레이드 후 이용
               </button>
@@ -216,14 +216,14 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 href={res.origin_url || res.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[11px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
+                className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:bg-indigo-600 transition-all active:scale-[0.98] shadow-md text-center block"
               >
                 상세 공고 이동 →
               </a>
             ) : (
               <button
                 onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[11px] uppercase tracking-wider cursor-not-allowed"
+                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[12px] uppercase tracking-wider cursor-not-allowed"
               >
                 링크 없음
               </button>
@@ -240,7 +240,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border
+                className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
               >
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
@@ -254,28 +254,56 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border
+                className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
               >
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
             {/* 공유 버튼 */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const url = res.origin_url || res.url || window.location.origin;
-                const text = `[지원금톡톡] ${res.title}`;
-                if (navigator.share) {
-                  navigator.share({ title: res.title, text, url });
-                } else {
-                  navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공고 링크가 복사되었습니다!", "success"));
-                }
-              }}
-              className="w-full py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 border bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 active:scale-[0.98]"
-            >
-              <span>📤</span> 이 공고 공유하기
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = res.origin_url || res.url || window.location.origin;
+                  const K = (window as any).Kakao;
+                  if (K && K.isInitialized()) {
+                    K.Share.sendDefault({
+                      objectType: "feed",
+                      content: {
+                        title: res.title,
+                        description: `대상: ${targetText} | ${dDay.text}`,
+                        imageUrl: "https://govmatch.kr/icon-512.png",
+                        link: { mobileWebUrl: url, webUrl: url },
+                      },
+                      buttons: [{ title: "공고 보기", link: { mobileWebUrl: url, webUrl: url } }],
+                    });
+                  } else {
+                    const text = `[지원금톡톡] ${res.title}\n${url}`;
+                    navigator.clipboard.writeText(text).then(() => toast("링크가 복사되었습니다!", "success"));
+                  }
+                }}
+                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-[#FEE500]/20 text-[#191919] border-[#FEE500]/40 hover:bg-[#FEE500]/40 active:scale-[0.98]"
+              >
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor"><path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" /></svg>
+                카톡 공유
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = res.origin_url || res.url || window.location.origin;
+                  const text = `[지원금톡톡] ${res.title}`;
+                  if (navigator.share) {
+                    navigator.share({ title: res.title, text, url });
+                  } else {
+                    navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공고 링크가 복사되었습니다!", "success"));
+                  }
+                }}
+                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 active:scale-[0.98]"
+              >
+                📤 공유하기
+              </button>
+            </div>
           </div>
         </div>
       </div>

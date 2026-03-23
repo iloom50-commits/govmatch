@@ -155,7 +155,16 @@ CREATE TABLE IF NOT EXISTS announcement_analysis (
     UNIQUE(announcement_id)
 );
 
--- 9. AI 상담 로그 (학습 데이터 축적 + 피드백)
+-- 9. 검색 동의어 풀 (키워드 확장)
+CREATE TABLE IF NOT EXISTS keyword_synonyms (
+    id SERIAL PRIMARY KEY,
+    group_name TEXT NOT NULL,          -- 대표 키워드 ('수출', '다자녀')
+    keyword TEXT NOT NULL,             -- 동의어/유사어 ('해외진출', '다둥이')
+    target_type VARCHAR(20) DEFAULT 'both',  -- 'business' | 'individual' | 'both'
+    UNIQUE(group_name, keyword)
+);
+
+-- 10. AI 상담 로그 (학습 데이터 축적 + 피드백)
 CREATE TABLE IF NOT EXISTS ai_consult_logs (
     id SERIAL PRIMARY KEY,
     announcement_id INTEGER REFERENCES announcements(announcement_id),

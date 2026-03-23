@@ -165,13 +165,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     searchTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `${API}/api/announcements/public?page=1&size=50&search=${encodeURIComponent(q.trim())}&target_type=${tab}`
+          `${API}/api/announcements/public?page=1&size=100&search=${encodeURIComponent(q.trim())}&target_type=${tab}`
         );
         const data = await res.json();
-        if (data.status === "SUCCESS") {
-          setSearchResults(data.data ?? []);
+        if (data.status === "SUCCESS" && data.data?.length > 0) {
+          setSearchResults(data.data);
+        } else {
+          setSearchResults(null); // fallback to local filter
         }
-      } catch { /* ignore */ }
+      } catch {
+        setSearchResults(null); // fallback to local filter
+      }
       setSearchLoading(false);
     }, 500);
   }, []);
@@ -278,9 +282,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     });
   }, [rawMatches, majorTab]);
 
-  // 검색어가 있으면 백엔드 결과 사용, 없으면 기존 로컬 데이터
+  // 검색어가 있으면 백엔드 결과 사용, 없으면 로컬 필터링 fallback
   const baseMatches = useMemo(() => {
-    return searchQuery.trim() && searchResults ? searchResults : displayMatches;
+    if (!searchQuery.trim()) return displayMatches;
+    if (searchResults) return searchResults;
+    // fallback: 백엔드 결과 없으면 로컬 필터링
+    const q = searchQuery.trim().toLowerCase();
+    return displayMatches.filter(m =>
+      (m.title || "").toLowerCase().includes(q) ||
+      (m.summary_text || "").toLowerCase().includes(q) ||
+      (m.department || "").toLowerCase().includes(q) ||
+      (m.category || "").toLowerCase().includes(q)
+    );
   }, [searchQuery, searchResults, displayMatches]);
 
   const filteredMatches = useMemo(() => {
@@ -298,18 +311,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       }
     }
 
-    if (sortKey === "latest") {
-      result.sort((a, b) => b.announcement_id - a.announcement_id);
-    } else if (sortKey === "deadline") {
-      result.sort((a, b) => {
-        if (!a.deadline_date) return 1;
-        if (!b.deadline_date) return -1;
-        return new Date(a.deadline_date).getTime() - new Date(b.deadline_date).getTime();
-      });
+    // 검색 중이면 백엔드 관련성 정렬 유지, 아닐 때만 프론트 정렬
+    if (!searchQuery.trim()) {
+      if (sortKey === "latest") {
+        result.sort((a, b) => b.announcement_id - a.announcement_id);
+      } else if (sortKey === "deadline") {
+        result.sort((a, b) => {
+          if (!a.deadline_date) return 1;
+          if (!b.deadline_date) return -1;
+          return new Date(a.deadline_date).getTime() - new Date(b.deadline_date).getTime();
+        });
+      }
     }
 
     return result;
-  }, [baseMatches, activeTab, sortKey, currentTabs]);
+  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery]);
 
   const searchedMatches = baseMatches;
 
@@ -879,14 +895,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
-          {/* 대분류 탭 바 — 콘텐츠 영역과 시각적으로 분리 */}
-          <div className={`-mx-3 md:-mx-6 px-3 md:px-6 py-3 mb-4 border-b-2 ${
-            majorTab === "business" ? "bg-indigo-50/60 border-indigo-200" : "bg-emerald-50/60 border-emerald-200"
-          }`}>
-            <div className="flex items-center gap-1">
+          {/* 대분류 탭 — 밑줄(underline) 스타일 */}
+          <div className="-mx-3 md:-mx-6 px-3 md:px-6 mb-5 border-b border-slate-200">
+            <div className="flex items-center gap-6">
               {([
-                { key: "business" as MajorTab, label: "기업지원", icon: "🏢", show: showBusinessTab },
-                { key: "individual" as MajorTab, label: "개인지원", icon: "👤", show: showIndividualTab },
+                { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab, color: "indigo" },
+                { key: "individual" as MajorTab, label: "개인 지원금", icon: "👤", show: showIndividualTab, color: "emerald" },
               ]).map((tab) => {
                 if (!tab.show) return null;
                 const isActive = majorTab === tab.key;
@@ -894,16 +908,20 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={tab.key}
                     onClick={() => { setMajorTab(tab.key); setActiveTab("all"); }}
-                    className={`relative flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold transition-all duration-300 rounded-t-lg ${
+                    className={`relative flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold transition-all duration-200 ${
                       isActive
-                        ? tab.key === "business"
-                          ? "bg-white text-indigo-700 shadow-sm border border-indigo-200 border-b-white -mb-[2px]"
-                          : "bg-white text-emerald-700 shadow-sm border border-emerald-200 border-b-white -mb-[2px]"
-                        : "text-slate-400 hover:text-slate-600 hover:bg-white/50"
+                        ? "text-slate-900"
+                        : "text-slate-400 hover:text-slate-600"
                     }`}
                   >
                     <span>{tab.icon}</span>
                     {tab.label}
+                    {/* 활성 밑줄 */}
+                    {isActive && (
+                      <span className={`absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full ${
+                        tab.color === "indigo" ? "bg-indigo-600" : "bg-emerald-600"
+                      }`} />
+                    )}
                   </button>
                 );
               })}

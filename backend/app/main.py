@@ -91,11 +91,77 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # keyword_synonyms 테이블 생성 + 초기 데이터
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_synonyms (
+                id SERIAL PRIMARY KEY,
+                group_name TEXT NOT NULL,
+                keyword TEXT NOT NULL,
+                target_type VARCHAR(20) DEFAULT 'both',
+                UNIQUE(group_name, keyword)
+            )
+        """)
+        conn.commit()
+        _seed_keyword_synonyms(conn)
+
         conn.commit()
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
     except Exception as e:
         print(f"  DB connection error (app will continue): {e}")
+
+
+def _seed_keyword_synonyms(conn):
+    """동의어 풀 초기 데이터 (이미 있으면 스킵)"""
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) AS cnt FROM keyword_synonyms")
+    if cursor.fetchone()["cnt"] > 0:
+        return  # 이미 시드 완료
+
+    seeds = [
+        # ── 기업 ──
+        ("수출", ["해외진출", "해외인증", "글로벌", "무역", "수출바우처", "해외시장", "통상"], "business"),
+        ("창업", ["스타트업", "예비창업", "초기창업", "벤처", "창업지원", "창업보육"], "business"),
+        ("스마트", ["스마트공장", "스마트제조", "디지털전환", "DX", "스마트센서"], "business"),
+        ("고용", ["채용", "일자리", "인력", "고용장려금", "고용지원", "인력양성"], "business"),
+        ("R&D", ["연구개발", "기술개발", "기술혁신", "연구비", "과제"], "business"),
+        ("친환경", ["탄소중립", "ESG", "녹색", "에너지절감", "그린", "환경"], "business"),
+        ("자금", ["융자", "대출", "보증", "정책자금", "운전자금", "시설자금"], "business"),
+        ("마케팅", ["홍보", "판로", "브랜드", "전시회", "박람회", "판매"], "business"),
+        ("특허", ["지식재산", "IP", "지재권", "특허출원", "상표"], "business"),
+        ("인증", ["ISO", "KC인증", "품질인증", "GMP", "HACCP", "인허가"], "business"),
+        ("디지털", ["IT", "소프트웨어", "AI", "빅데이터", "클라우드", "ICT"], "business"),
+        ("제조", ["생산", "공장", "제조업", "생산기반", "설비"], "business"),
+        ("컨설팅", ["경영컨설팅", "기술컨설팅", "자문", "진단", "멘토링"], "business"),
+        # ── 개인 ──
+        ("다자녀", ["다둥이", "셋째아이", "3자녀", "다자녀가정", "다자녀가구"], "individual"),
+        ("출산", ["임신", "산모", "산후", "분만", "출산장려금", "출산축하금", "출생"], "individual"),
+        ("육아", ["보육", "어린이집", "유아", "영아", "아이돌봄", "양육", "돌봄"], "individual"),
+        ("장학금", ["학비", "등록금", "학자금", "교육비", "학업장려금"], "individual"),
+        ("취업", ["구직", "일자리", "직업훈련", "취준", "직업교육", "취업지원"], "individual"),
+        ("주거", ["전세", "임대", "주택", "월세", "주거급여", "주거지원", "임대주택"], "individual"),
+        ("노인", ["어르신", "경로", "고령자", "실버", "노후", "연금"], "individual"),
+        ("장애", ["장애인", "복지카드", "활동지원", "장애수당", "보조기기"], "individual"),
+        ("저소득", ["기초생활", "차상위", "기초수급", "한부모", "긴급복지", "생계급여"], "individual"),
+        ("청년", ["청년지원", "청년수당", "청년정책", "MZ", "청년월세"], "individual"),
+        ("의료", ["건강", "치료", "병원비", "의료비", "건강검진", "진료비"], "individual"),
+        ("교육", ["평생교육", "학습", "훈련", "교육바우처", "배움카드"], "individual"),
+        ("문화", ["문화바우처", "여가", "체육", "관광", "문화생활", "공연"], "individual"),
+    ]
+
+    for group_name, keywords, target_type in seeds:
+        # 대표 키워드도 자기 자신을 포함
+        all_kw = [group_name] + keywords
+        for kw in all_kw:
+            try:
+                cursor.execute(
+                    "INSERT INTO keyword_synonyms (group_name, keyword, target_type) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                    (group_name, kw, target_type),
+                )
+            except Exception:
+                pass
+    conn.commit()
+    print("  [Seed] keyword_synonyms 초기 데이터 삽입 완료")
 
 
 init_database()
@@ -406,13 +472,27 @@ def api_announcements_public(
         where_clauses.append("category = %s")
         params.append(category)
     if search:
-        where_clauses.append(
-            "(title ILIKE %s OR summary_text ILIKE %s OR department ILIKE %s"
-            " OR region ILIKE %s OR category ILIKE %s"
-            " OR COALESCE(eligibility_logic::text, '') ILIKE %s)"
+        # 동의어 확장: 검색어가 동의어 그룹에 속하면 관련 키워드 모두 검색
+        cursor.execute(
+            "SELECT DISTINCT keyword FROM keyword_synonyms WHERE group_name = ("
+            "  SELECT group_name FROM keyword_synonyms WHERE keyword = %s LIMIT 1"
+            ")",
+            (search,),
         )
-        s = f"%{search}%"
-        params.extend([s, s, s, s, s, s])
+        synonym_rows = cursor.fetchall()
+        search_terms = [r["keyword"] for r in synonym_rows] if synonym_rows else [search]
+
+        # OR 조건으로 모든 동의어 검색
+        term_conditions = []
+        for term in search_terms:
+            term_conditions.append(
+                "(title ILIKE %s OR summary_text ILIKE %s OR department ILIKE %s"
+                " OR region ILIKE %s OR category ILIKE %s)"
+            )
+            t = f"%{term}%"
+            params.extend([t, t, t, t, t])
+        where_clauses.append("(" + " OR ".join(term_conditions) + ")")
+        s = f"%{search}%"  # 관련성 정렬용 원본 검색어
     if target_type:
         where_clauses.append("(target_type = %s OR target_type = 'both')")
         params.append(target_type)
@@ -423,7 +503,22 @@ def api_announcements_public(
     cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
     total = cursor.fetchone()["cnt"]
 
-    # 공고 리스트
+    # 공고 리스트 — 검색 시 관련성 정렬 (원본 제목 > 동의어 제목 > 요약 > 기타)
+    if search:
+        # 동의어 중 하나라도 제목에 있으면 높은 순위
+        title_or_parts = " OR ".join(["title ILIKE %s"] * len(search_terms))
+        summary_or_parts = " OR ".join(["summary_text ILIKE %s"] * len(search_terms))
+        relevance_order = f"""
+                CASE WHEN title ILIKE %s THEN 0
+                     WHEN ({title_or_parts}) THEN 1
+                     WHEN ({summary_or_parts}) THEN 2
+                     ELSE 3 END,
+"""
+        relevance_params = [s] + [f"%{t}%" for t in search_terms] + [f"%{t}%" for t in search_terms]
+    else:
+        relevance_order = ""
+        relevance_params = []
+
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
                    support_amount, deadline_date, origin_source, created_at,
@@ -433,11 +528,12 @@ def api_announcements_public(
             FROM announcements
             WHERE {where_sql}
             ORDER BY
+                {relevance_order}
                 CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
                 deadline_date ASC NULLS LAST,
                 created_at DESC
             LIMIT %s OFFSET %s""",
-        params + [size, offset],
+        params + relevance_params + [size, offset],
     )
     rows = cursor.fetchall()
 

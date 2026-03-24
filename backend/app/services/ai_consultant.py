@@ -201,12 +201,7 @@ def _extract_search_params(query: str, user_profile: dict = None) -> Dict[str, A
 
     try:
         response = model.generate_content(prompt)
-        text = response.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[-1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        return json.loads(text)
+        return _parse_gemini_json(response.text)
     except Exception:
         return {"keywords": _simple_keyword_extract(query)}
 
@@ -487,13 +482,7 @@ def chat_free(
         ])
         response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
-        text = response.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[-1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(text)
+        result = _parse_gemini_json(response.text)
 
         # 관련 공고 정보 첨부
         ann_ids = result.get("announcement_ids", [])
@@ -662,17 +651,21 @@ def chat_consult(
 {form_info}
 {company_info}
 
-[핵심 규칙 — 할루시네이션 방지]
+[핵심 규칙 — 할루시네이션 방지 & 응답 품질]
 1. **오직 위에 제공된 공고 분석 데이터에 명시된 내용만으로 답변하세요.** 공고 데이터에 없는 금액, 조건, 일정, 서류를 절대 추측하거나 지어내지 마세요.
 2. 답변의 각 핵심 정보에 **출처를 명시**하세요. 예: "공고 원문에 따르면...", "자격요건 항목에 명시된 바와 같이..."
-3. 사용자가 처음 대화를 시작하면 이 공고의 핵심 내용(지원대상, 지원금액, 마감일)을 간단히 안내하고 어떤 점이 궁금한지 물어보세요.
-4. 항상 **추천 선택지 2~4개**를 제시하세요.
-5. 기업 정보와 공고 자격요건을 비교하여 지원 가능 여부를 판단하되, 불확실한 부분은 반드시 추가 질문하세요.
-6. **예외조항과 제외대상을 반드시 체크하세요.** 예외조항이 있으면 해당 여부를 질문하세요.
-7. 최종 판단 시 "지원 가능", "조건부 가능", "지원 불가" 중 하나로 명확히 결론 + 근거 설명.
-8. **공고 데이터에 해당 정보가 없거나 판단이 어려운 경우**, 절대 추측하지 말고 솔직하게 "이 내용은 공고문에 명시되어 있지 않아 정확한 답변이 어렵습니다."라고 답변한 뒤, 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}
-9. 가점 항목이 있으면 해당 여부도 안내하세요.
-10. 제출 서류와 신청 방법을 상세히 안내하세요.
+3. **첫 응답(대화 시작)**: 반드시 아래 3가지 핵심 정보를 구조화하여 한 번에 제공하세요:
+   - **📋 지원요건**: 지원 대상(업종, 기업규모, 설립연수, 지역 등), 제외대상
+   - **💰 지원내용**: 지원금액/방식, 지원분야/트랙
+   - **📝 신청방법**: 온라인/오프라인 접수처, 주요 제출서류, 마감일
+   사용자가 별도로 물어보지 않아도 이 정보를 먼저 제공하세요.
+4. **사용자가 이미 기업 정보를 제공한 경우** (대화 중 또는 [기업 정보] 섹션에 있는 경우): 일반 안내를 생략하고, 해당 기업의 자격 충족 여부를 즉시 판단하여 답변하세요. 충족/미충족/불확실 각 항목을 구체적으로 근거와 함께 설명하세요.
+5. 항상 **추천 선택지 2~4개**를 제시하세요.
+6. 기업 정보와 공고 자격요건을 비교하여 지원 가능 여부를 판단하되, 불확실한 부분은 반드시 추가 질문하세요.
+7. **예외조항과 제외대상을 반드시 체크하세요.** 예외조항이 있으면 해당 여부를 질문하세요.
+8. 최종 판단 시 "지원 가능", "조건부 가능", "지원 불가" 중 하나로 명확히 결론 + 근거 설명.
+9. **공고 데이터에 해당 정보가 없거나 판단이 어려운 경우**, 절대 추측하지 말고 솔직하게 "이 내용은 공고문에 명시되어 있지 않아 정확한 답변이 어렵습니다."라고 답변한 뒤, 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}
+10. 가점 항목이 있으면 해당 여부도 안내하세요.
 11. 심사기준/배점이 있으면 합격 가능성을 높이는 팁을 제공하세요.
 12. 신청서 양식 정보가 있으면 작성 시 핵심 포인트를 안내하세요.
 13. 한국어로, 친절하고 전문적인 톤. **답변은 충분히 상세하게** 작성하세요.
@@ -707,13 +700,7 @@ def chat_consult(
         ])
         response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
-        text = response.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[-1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(text)
+        result = _parse_gemini_json(response.text)
 
         # 교차 검증: Gemini 응답을 DB 데이터와 대조
         verified_reply = _verify_response(
@@ -848,13 +835,7 @@ done=true일 때 (모든 정보 수집 + 사용자 확인 완료):
         ])
         response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
-        text = response.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[-1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(text)
+        result = _parse_gemini_json(response.text)
 
         return {
             "reply": result.get("message", ""),
@@ -873,6 +854,35 @@ done=true일 때 (모든 정보 수집 + 사용자 확인 완료):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 유틸리티
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _parse_gemini_json(text: str) -> dict:
+    """Gemini 응답에서 JSON을 안전하게 추출. 코드블록, 앞뒤 텍스트 등 모두 처리."""
+    text = text.strip()
+
+    # 1) ```json ... ``` 블록 추출
+    if "```json" in text:
+        text = text.split("```json")[-1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0].strip()
+
+    # 2) 바로 파싱 시도
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 3) 첫 번째 { ... 마지막 } 추출
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(text[first_brace:last_brace + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # 4) 실패 — 원문 텍스트를 message로 감싸서 반환
+    return {"message": text, "choices": [], "done": False, "conclusion": None}
+
 
 def _verify_response(reply_text: str, announcement: Dict, deep_analysis_data: Dict) -> str:
     """

@@ -356,20 +356,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
 
-      {/* 브랜드 */}
-      <div className="relative z-10 text-center py-3">
-        <h2 className="text-base font-black tracking-tight mb-1">
-          <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
-        </h2>
-        <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-          AI가 매시간 5,000개 이상의<br />정부 공고를 분석합니다
-        </p>
-      </div>
-
       {/* 핵심 기능 소개 */}
-      <div className="relative z-10 space-y-2.5">
+      <div className="relative z-10 space-y-2.5 pt-3">
         {[
-          { icon: "🎯", title: "AI 맞춤 매칭", desc: "기업 조건에 딱 맞는 공고만" },
+          { icon: "🎯", title: "AI 맞춤 매칭", desc: "내 조건에 딱 맞는 공고만" },
           { icon: "💬", title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
           { icon: "📝", title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
           { icon: "🔔", title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
@@ -981,15 +971,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
-              {/* PWA 설치 — 탭 라인 우측 */}
-              {!isPwaInstalled && (
-                <button
-                  onClick={() => deferredPrompt ? handlePwaInstall() : setShowInstallGuide(true)}
-                  className="ml-auto flex items-center gap-1 pb-3 pt-1 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-all whitespace-nowrap"
-                >
-                  <span>📲</span> 앱 설치
-                </button>
-              )}
+              {/* AI 맞춤 정보 알림 — 앱 설치 + 푸시 알림 */}
+              <button
+                onClick={() => {
+                  if (deferredPrompt) handlePwaInstall();
+                  else if (!isPwaInstalled) setShowInstallGuide(true);
+                  setIsNotifyOpen(true);
+                }}
+                className="ml-auto flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold text-slate-400 hover:text-indigo-600 transition-all whitespace-nowrap"
+              >
+                <span>🔔</span> AI 맞춤 정보 알림
+              </button>
             </div>
           </div>
 

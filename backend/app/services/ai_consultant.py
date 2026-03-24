@@ -456,21 +456,25 @@ def chat_free(
 8. 답변에 관련 공고의 announcement_id를 포함하여 사용자가 상세 상담으로 이동할 수 있게 하세요.
 9. **법적 효력이 있는 판단(지원금 확정, 선정 보장 등)은 하지 마세요.** "최종 판단은 주관기관의 심사에 따릅니다"를 안내하세요.
 
-[응답 형식 — 반드시 이 JSON 형식으로만 응답]
+[응답 형식 — 반드시 이 JSON 형식으로만 응답. 필드 순서를 지키세요.]
 {{
-  "message": "AI의 답변 텍스트 (마크다운 사용 가능, 충분히 상세하게)",
-  "choices": ["후속 질문 선택지1", "선택지2"],
+  "done": false,
   "announcement_ids": [관련 공고 ID 배열],
-  "done": false
+  "choices": ["후속 질문 선택지1", "선택지2"],
+  "message": "AI의 답변 텍스트 (마크다운 사용 가능, 충분히 상세하게)"
 }}
-- choices: 사용자에게 제시할 추천 후속 질문 (2~4개)
-- announcement_ids: 답변에서 언급한 공고들의 ID
 - done: 상담 종료 시 true
+- announcement_ids: 답변에서 언급한 공고들의 ID
+- choices: 사용자에게 제시할 추천 후속 질문 (2~4개)
+- message: 답변 텍스트 (가장 마지막 필드로 배치)
 
-반드시 순수 JSON만 반환하세요."""
+반드시 순수 JSON만 반환하세요. JSON 외의 텍스트를 포함하지 마세요."""
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.0-flash")
+    model = genai.GenerativeModel(
+        "models/gemini-2.0-flash",
+        generation_config={"max_output_tokens": 4096}
+    )
 
     # 대화 히스토리 구성
     gemini_messages = []
@@ -678,29 +682,35 @@ def chat_consult(
 5. 항상 **추천 선택지 2~4개**를 제시하세요.
 6. 기업 정보와 공고 자격요건을 비교하여 지원 가능 여부를 판단하되, 불확실한 부분은 반드시 추가 질문하세요.
 7. **예외조항과 제외대상을 반드시 체크하세요.** 예외조항이 있으면 해당 여부를 질문하세요.
-8. 최종 판단 시 "지원 가능", "조건부 가능", "지원 불가" 중 하나로 명확히 결론 + 근거 설명.
-9. **공고 데이터에 해당 정보가 없거나 판단이 어려운 경우**, 절대 추측하지 말고 솔직하게 "이 내용은 공고문에 명시되어 있지 않아 정확한 답변이 어렵습니다."라고 답변한 뒤, 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}
-10. 가점 항목이 있으면 해당 여부도 안내하세요.
-11. 심사기준/배점이 있으면 합격 가능성을 높이는 팁을 제공하세요.
-12. 신청서 양식 정보가 있으면 작성 시 핵심 포인트를 안내하세요.
-13. 한국어로, 친절하고 전문적인 톤. **답변은 충분히 상세하게** 작성하세요.
-14. **법적 효력이 있는 판단(선정 보장, 지원금 확정)은 하지 마세요.** "최종 결과는 주관기관의 심사에 따릅니다"를 안내하세요.
+8. 최종 판단 시 "지원 가능", "조건부 가능", "지원 불가" 중 하나로 명확히 결론 + 근거 설명. **반드시 done=true, conclusion 값을 설정하세요.**
+9. **사용자가 기업 정보(업종, 설립연수, 매출, 직원수 등)를 제공하고 자격 판단을 요청하면, 2~3턴 이내에 결론을 내리세요.** 모든 정보가 100% 확인되지 않더라도, 확인된 항목 기반으로 "조건부 가능(conditional)" 등의 결론을 내리고 done=true로 설정하세요. 무한히 추가 질문만 하지 마세요.
+10. **공고 데이터에 해당 정보가 없거나 판단이 어려운 경우**, 절대 추측하지 말고 솔직하게 "이 내용은 공고문에 명시되어 있지 않아 정확한 답변이 어렵습니다."라고 답변한 뒤, 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}
+11. 가점 항목이 있으면 해당 여부도 안내하세요.
+12. 심사기준/배점이 있으면 합격 가능성을 높이는 팁을 제공하세요.
+13. 신청서 양식 정보가 있으면 작성 시 핵심 포인트를 안내하세요.
+14. 한국어로, 친절하고 전문적인 톤. **답변은 충분히 상세하게** 작성하세요.
+15. **법적 효력이 있는 판단(선정 보장, 지원금 확정)은 하지 마세요.** "최종 결과는 주관기관의 심사에 따릅니다"를 안내하세요.
 
 [응답 형식 — 반드시 이 JSON 형식으로만 응답]
+**중요: 아래 필드 순서를 반드시 지키세요 (done → conclusion → choices → message 순서)**
 {{
-  "message": "AI의 답변 텍스트 (충분히 상세하게, 마크다운 사용 가능)",
-  "choices": ["선택지1", "선택지2", "선택지3"],
   "done": false,
-  "conclusion": null
+  "conclusion": null,
+  "choices": ["선택지1", "선택지2", "선택지3"],
+  "message": "AI의 답변 텍스트 (충분히 상세하게, 마크다운 사용 가능)"
 }}
-- choices: 사용자에게 제시할 추천 선택지 (2~4개). 대화 종료 시 빈 배열 [].
-- done: 최종 결론을 내렸으면 true.
-- conclusion: done이 true일 때만 "eligible" | "conditional" | "ineligible" 중 하나.
+- done: **중요!! 사용자가 기업 정보(업종, 매출, 직원수 등)를 제공하고 "지원 가능한가요?" 또는 자격 판단을 요청하면, 해당 응답에서 반드시 done=true로 설정하세요.** "조건부 가능"이어도 done=true입니다. 추가 정보가 필요하더라도 일단 결론을 내리세요.
+- conclusion: done=true일 때 반드시 설정. "eligible"(지원 가능) | "conditional"(조건부 가능) | "ineligible"(지원 불가). **불확실한 부분이 있으면 "conditional"로 설정하고, 확인이 필요한 부분은 message에서 안내하세요.**
+- choices: 사용자에게 제시할 추천 선택지 (2~4개). **done=true여도 빈 배열이 아닌 후속 안내 선택지를 제공하세요.**
+- message: 답변 텍스트. **이 필드를 가장 마지막에 배치하세요.**
 
-반드시 순수 JSON만 반환하세요."""
+반드시 순수 JSON만 반환하세요. JSON 외의 텍스트를 포함하지 마세요."""
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.0-flash")
+    model = genai.GenerativeModel(
+        "models/gemini-2.0-flash",
+        generation_config={"max_output_tokens": 4096}
+    )
 
     gemini_messages = []
     for msg in messages:
@@ -710,11 +720,12 @@ def chat_consult(
     try:
         chat = model.start_chat(history=[
             {"role": "user", "parts": [system_prompt]},
-            {"role": "model", "parts": ['{"message": "understood", "choices": [], "done": false, "conclusion": null}']},
+            {"role": "model", "parts": ['{"done": false, "conclusion": null, "choices": [], "message": "understood"}']},
             *gemini_messages[:-1]
         ])
         response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
+        logger.info(f"[Gemini raw response length] {len(response.text)} chars")
         result = _parse_gemini_json(response.text)
 
         # 교차 검증: Gemini 응답을 DB 데이터와 대조
@@ -722,11 +733,37 @@ def chat_consult(
             result.get("message", ""), announcement, deep_analysis_data
         )
 
+        done = result.get("done", False)
+        conclusion = result.get("conclusion")
+
+        # 후처리: AI가 텍스트에서 결론을 내렸지만 done/conclusion JSON 필드를 안 쓴 경우 자동 감지
+        if not done and verified_reply:
+            reply_lower = verified_reply.lower()
+            # 마크다운 제거 후 매칭
+            clean_reply = re.sub(r'[*_`#]', '', reply_lower)
+            conclusion_keywords = {
+                "conditional": ["조건부 가능", "조건부 지원 가능", "조건부로 가능", "조건부로 지원",
+                                "조건부", "추가 확인이 필요", "일부 충족"],
+                "eligible": ["지원 가능합니다", "지원 가능으로 판단", "자격을 충족합니다",
+                             "지원이 가능합니다", "지원 자격을 충족", "지원 가능 여부: 가능",
+                             "충족합니다", "해당됩니다"],
+                "ineligible": ["지원 불가", "지원이 어렵", "자격을 충족하지 못",
+                               "지원 대상이 아닙니다", "지원이 불가", "해당되지 않습니다"],
+            }
+            for conc_value, patterns in conclusion_keywords.items():
+                if any(p in clean_reply for p in patterns):
+                    logger.info(f"[Auto-detect] Found conclusion '{conc_value}' in reply text")
+                    done = True
+                    conclusion = conc_value
+                    break
+            if not done:
+                logger.debug(f"[Auto-detect] No conclusion keywords found in reply (first 200 chars): {clean_reply[:200]}")
+
         response_data = {
             "reply": verified_reply,
             "choices": result.get("choices", []),
-            "done": result.get("done", False),
-            "conclusion": result.get("conclusion"),
+            "done": done,
+            "conclusion": conclusion,
         }
 
         # Gemini 응답도 캐시에 저장 (단일 질문일 때)
@@ -835,7 +872,10 @@ done=true일 때 (모든 정보 수집 + 사용자 확인 완료):
 반드시 순수 JSON만 반환하세요."""
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.0-flash")
+    model = genai.GenerativeModel(
+        "models/gemini-2.0-flash",
+        generation_config={"max_output_tokens": 4096}
+    )
 
     gemini_messages = []
     for msg in messages:
@@ -895,7 +935,48 @@ def _parse_gemini_json(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 4) 실패 — 원문 텍스트를 message로 감싸서 반환
+    # 4) 잘린 JSON 복구 시도 — Gemini가 긴 응답에서 JSON을 완성하지 못한 경우
+    if first_brace != -1:
+        partial = text[first_brace:]
+        logger.warning(f"[_parse_gemini_json] Truncated JSON detected, length={len(partial)}")
+
+        # done 추출 (새 순서에서는 맨 앞에 위치)
+        done_match = re.search(r'"done"\s*:\s*(true|false)', partial)
+        done = done_match.group(1) == "true" if done_match else False
+        # conclusion 추출
+        conc_match = re.search(r'"conclusion"\s*:\s*"(\w+)"', partial)
+        conclusion = conc_match.group(1) if conc_match else None
+        # choices 추출 시도 — 중첩 대괄호 없는 단순 문자열 배열
+        choices_match = re.search(r'"choices"\s*:\s*\[(.*?)\]', partial, re.DOTALL)
+        choices = []
+        if choices_match:
+            try:
+                choices = json.loads("[" + choices_match.group(1) + "]")
+            except Exception:
+                pass
+        # message 필드 추출 — "message": " 이후 마지막 " 까지 (잘린 경우도 최대한 복구)
+        msg_match = re.search(r'"message"\s*:\s*"', partial)
+        message_text = ""
+        if msg_match:
+            msg_start = msg_match.end()
+            # message 내용 끝: 마지막 닫는 따옴표 찾기 (이스케이프된 따옴표 스킵)
+            remaining = partial[msg_start:]
+            # 정상 종료: "로 끝나는 경우
+            end_match = re.search(r'(?<!\\)"', remaining)
+            if end_match:
+                message_text = remaining[:end_match.start()]
+            else:
+                # 잘린 경우: 남은 텍스트 전체를 message로 사용
+                message_text = remaining.rstrip().rstrip('}').rstrip(',').rstrip()
+            # JSON 이스케이프 해제
+            message_text = message_text.replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
+        else:
+            message_text = text
+
+        logger.info(f"[_parse_gemini_json] Recovered: done={done}, conclusion={conclusion}, choices_count={len(choices)}, msg_len={len(message_text)}")
+        return {"message": message_text, "choices": choices, "done": done, "conclusion": conclusion}
+
+    # 5) 완전 실패 — 원문 텍스트를 message로 감싸서 반환
     return {"message": text, "choices": [], "done": False, "conclusion": None}
 
 

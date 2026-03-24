@@ -458,72 +458,369 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     }));
   };
 
-  // AI봇 간헐적 등장 애니메이션
-  const [botVisible, setBotVisible] = useState(false);
+  // AI봇: 브랜드 알에서 깨고 등장 → 오른쪽으로 걸어감 → 책상 작업 → 왼쪽 복귀
+  const [botPhase, setBotPhase] = useState<"idle" | "crack" | "emerge" | "walk" | "work" | "return">("idle");
   useEffect(() => {
-    if (open) return;
-    // 첫 등장: 3초 후, 이후 25~40초 랜덤 간격
-    const firstTimer = setTimeout(() => {
-      setBotVisible(true);
-      setTimeout(() => setBotVisible(false), 6000);
-    }, 3000);
-    const interval = setInterval(() => {
-      setBotVisible(true);
-      setTimeout(() => setBotVisible(false), 6000);
-    }, 25000 + Math.random() * 15000);
-    return () => { clearTimeout(firstTimer); clearInterval(interval); };
+    if (open) { setBotPhase("idle"); return; }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const startBot = () => {
+      // 1. 브랜드 알이 흔들리며 금이 감 (0~1.5s)
+      setBotPhase("crack");
+      // 2. 봇 알에서 등장 (1.5~2.5s)
+      timers.push(setTimeout(() => setBotPhase("emerge"), 1500));
+      // 3. 오른쪽으로 천천히 걸어감 (2.5~8s)
+      timers.push(setTimeout(() => setBotPhase("walk"), 2500));
+      // 4. 책상에 앉아서 오래 작업 (8~28s)
+      timers.push(setTimeout(() => setBotPhase("work"), 8000));
+      // 5. 플로팅 버튼으로 걸어가서 흡수 (28~31s)
+      timers.push(setTimeout(() => setBotPhase("return"), 28000));
+      // 6. 완료
+      timers.push(setTimeout(() => setBotPhase("idle"), 31500));
+    };
+    timers.push(setTimeout(startBot, 4000));
+    const interval = setInterval(startBot, 60000 + Math.random() * 30000);
+    return () => { timers.forEach(clearTimeout); clearInterval(interval); };
   }, [open]);
 
+  /* 하이테크 미래형 SVG 미니 AI봇 — 정면 서 있는 상태 */
+  const MiniBot = ({ waving = false }: { waving?: boolean }) => (
+    <svg width="40" height="62" viewBox="0 0 40 62" fill="none" style={{ overflow: "visible", filter: "drop-shadow(0 4px 6px rgba(0,0,0,0.25))" }}>
+      {/* 안테나 */}
+      <line x1="20" y1="2" x2="20" y2="8" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="20" cy="2" r="3" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 4px #22D3EE)" }} className="animate-pulse" />
+
+      {/* 머리 */}
+      <path d="M10 16 C 10 10, 30 10, 30 16 L 32 24 C 32 28, 28 30, 20 30 C 12 30, 8 28, 8 24 Z" fill="#1E293B" stroke="#334155" strokeWidth="1" />
+      <rect x="6" y="16" width="3" height="8" rx="1.5" fill="#38BDF8" />
+      <rect x="31" y="16" width="3" height="8" rx="1.5" fill="#38BDF8" />
+
+      {/* Visor */}
+      <path d="M12 18 C 12 16, 28 16, 28 18 L 28 22 C 28 24, 12 24, 12 22 Z" fill="#0F172A" />
+      <path d="M14 19 C 14 18, 26 18, 26 19 L 26 21 C 26 22, 14 22, 14 21 Z" fill="#22D3EE" opacity="0.8" style={{ filter: "drop-shadow(0 0 6px #06B6D4)" }} />
+      <line x1="16" y1="20" x2="24" y2="20" stroke="white" strokeWidth="2" strokeDasharray="2 2" strokeLinecap="round" opacity="0.9" style={{ animation: "particleFade 1.5s infinite alternate" }} />
+
+      {/* 목 */}
+      <rect x="18" y="30" width="4" height="4" fill="#334155" />
+
+      {/* 몸통 */}
+      <path d="M14 34 L 26 34 L 28 42 C 28 44, 24 46, 20 46 C 16 46, 12 44, 12 42 Z" fill="#334155" stroke="#475569" strokeWidth="1" />
+      <path d="M16 34 L 24 34 L 25 38 L 15 38 Z" fill="#1E293B" />
+      <circle cx="20" cy="42" r="2" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+
+      {/* 왼팔 */}
+      <g style={{ transformOrigin: "14px 36px", animation: waving ? "armSwing 0.6s ease-in-out infinite alternate" : undefined }}>
+        <path d="M14 36 C 8 36, 6 40, 6 44" stroke="#64748B" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <circle cx="6" cy="44" r="2" fill="#22D3EE" />
+      </g>
+      {/* 오른팔 */}
+      <g style={{ transformOrigin: "26px 36px" }}>
+        <path d="M26 36 C 32 36, 34 40, 34 44" stroke="#64748B" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <circle cx="34" cy="44" r="2" fill="#22D3EE" />
+      </g>
+
+      {/* 왼다리 */}
+      <g>
+        <path d="M16 46 L 14 54" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+        <ellipse cx="13" cy="56" rx="4" ry="2" fill="#334155" stroke="#475569" strokeWidth="0.5" />
+      </g>
+      {/* 오른다리 */}
+      <g>
+        <path d="M24 46 L 26 54" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+        <ellipse cx="27" cy="56" rx="4" ry="2" fill="#334155" stroke="#475569" strokeWidth="0.5" />
+      </g>
+
+      {/* 바닥 떠있는 효과 */}
+      <circle cx="20" cy="58" r="10" fill="#22D3EE" opacity="0.15" className="animate-pulse" style={{ filter: "blur(4px)" }} />
+    </svg>
+  );
+
+  /* 하이테크 미래형 SVG 미니 AI봇 — 옆모습 걷기 */
+  const MiniBotWalking = () => (
+    <svg width="36" height="62" viewBox="0 0 36 62" fill="none" style={{ overflow: "visible", filter: "drop-shadow(0 4px 6px rgba(0,0,0,0.25))" }}>
+      {/* 안테나 */}
+      <line x1="20" y1="2" x2="20" y2="7" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="20" cy="2" r="2.5" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 4px #22D3EE)" }} className="animate-pulse" />
+
+      {/* 머리 — 옆모습 (오른쪽 향함) */}
+      <path d="M10 12 C 10 7, 28 7, 28 12 L 30 20 C 30 24, 26 26, 18 26 C 12 26, 8 24, 8 20 Z" fill="#1E293B" stroke="#334155" strokeWidth="1" />
+      {/* 센서/귀 (뒷쪽) */}
+      <rect x="7" y="14" width="2.5" height="6" rx="1.2" fill="#38BDF8" />
+      {/* 바이저 — 오른쪽으로 약간 돌출 */}
+      <path d="M14 15 C 14 13, 30 13, 30 15 L 30 19 C 30 21, 14 21, 14 19 Z" fill="#0F172A" />
+      <path d="M16 16 C 16 15, 28 15, 28 16 L 28 18 C 28 19, 16 19, 16 18 Z" fill="#22D3EE" opacity="0.8" style={{ filter: "drop-shadow(0 0 6px #06B6D4)" }} />
+      <line x1="18" y1="17" x2="26" y2="17" stroke="white" strokeWidth="1.5" strokeDasharray="2 2" strokeLinecap="round" opacity="0.9" style={{ animation: "particleFade 1.5s infinite alternate" }} />
+
+      {/* 목 */}
+      <rect x="16" y="26" width="5" height="3" rx="1" fill="#334155" />
+
+      {/* 몸통 — 옆모습 (좁음) */}
+      <path d="M12 29 L 25 29 L 27 40 C 27 42, 23 43, 18 43 C 13 43, 10 42, 10 40 Z" fill="#334155" stroke="#475569" strokeWidth="1" />
+      <path d="M14 29 L 23 29 L 24 33 L 13 33 Z" fill="#1E293B" />
+      <circle cx="18" cy="38" r="1.5" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+
+      {/* 뒷팔 (왼팔, 뒤쪽 — 약간 어둡게) */}
+      <g style={{ transformOrigin: "18px 30px", animation: "sideArmBack 1.2s ease-in-out infinite alternate" }}>
+        <path d="M18 30 L 18 40" stroke="#475569" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="18" cy="40" r="1.5" fill="#0891B2" />
+      </g>
+
+      {/* 뒷다리 (왼다리, 뒤쪽) — 허벅지 + 종아리 */}
+      <g style={{ transformOrigin: "18px 42px", animation: "sideLegBack 1.2s ease-in-out infinite alternate" }}>
+        <path d="M18 42 L 18 50" stroke="#475569" strokeWidth="3" strokeLinecap="round" />
+        <g style={{ transformOrigin: "18px 50px", animation: "sideKneeBack 1.2s ease-in-out infinite alternate" }}>
+          <path d="M18 50 L 18 56" stroke="#475569" strokeWidth="2.5" strokeLinecap="round" />
+          <ellipse cx="18" cy="57" rx="3" ry="1.5" fill="#2D3748" />
+        </g>
+      </g>
+
+      {/* 앞다리 (오른다리) — 허벅지 + 종아리 */}
+      <g style={{ transformOrigin: "18px 42px", animation: "sideLegFront 1.2s ease-in-out infinite alternate" }}>
+        <path d="M18 42 L 18 50" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+        <g style={{ transformOrigin: "18px 50px", animation: "sideKneeFront 1.2s ease-in-out infinite alternate" }}>
+          <path d="M18 50 L 18 56" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" />
+          <ellipse cx="18" cy="57" rx="3" ry="1.5" fill="#334155" stroke="#475569" strokeWidth="0.5" />
+          <ellipse cx="18" cy="57" rx="1.8" ry="0.8" fill="#22D3EE" opacity="0.3" />
+        </g>
+      </g>
+
+      {/* 앞팔 (오른팔, 앞쪽) */}
+      <g style={{ transformOrigin: "18px 30px", animation: "sideArmFront 1.2s ease-in-out infinite alternate" }}>
+        <path d="M18 30 L 18 40" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="18" cy="40" r="1.5" fill="#22D3EE" />
+      </g>
+    </svg>
+  );
+
+  /* 하이테크 미래형 터미널에서 작업하는 봇 */
+  const MiniBotWorking = () => (
+    <svg width="70" height="60" viewBox="0 0 70 60" fill="none" style={{ overflow: "visible", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>
+      {/* Holographic Desk */}
+      <path d="M 5 50 L 65 50" stroke="#06B6D4" strokeWidth="2" opacity="0.6" style={{ filter: "drop-shadow(0 0 4px #22D3EE)" }} />
+      <path d="M 10 54 L 60 54" stroke="#06B6D4" strokeWidth="1" opacity="0.3" />
+      <path d="M 15 50 L 5 60 M 55 50 L 65 60" stroke="#06B6D4" strokeWidth="1" opacity="0.3" />
+
+      {/* Hover chair base */}
+      <ellipse cx="20" cy="46" rx="10" ry="2" fill="#22D3EE" opacity="0.1" style={{ filter: "blur(2px)" }} />
+
+      {/* 미래형 디스플레이 (Hologram Screen) */}
+      <path d="M 40 48 L 46 22 L 66 22 L 60 48 Z" fill="#0EA5E9" opacity="0.1" />
+      <path d="M 40 48 L 46 22 L 66 22 L 60 48 Z" stroke="#22D3EE" strokeWidth="1" opacity="0.8" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+      
+      {/* 데이터 코드 라인들 */}
+      <g style={{ transform: "skewX(-13deg)" }}>
+        <rect x="52" y="26" width="10" height="2" rx="1" fill="#22D3EE" opacity="0.9" style={{ animation: "codeLine 1.5s ease-in-out infinite" }} />
+        <rect x="52" y="30" width="14" height="2" rx="1" fill="#67E8F9" opacity="0.7" style={{ animation: "codeLine 1.5s 0.3s ease-in-out infinite" }} />
+        <rect x="52" y="34" width="8" height="2" rx="1" fill="#22D3EE" opacity="0.8" style={{ animation: "codeLine 1.5s 0.6s ease-in-out infinite" }} />
+        <rect x="52" y="38" width="12" height="2" rx="1" fill="#BAE6FD" opacity="0.6" style={{ animation: "codeLine 1.5s 0.9s ease-in-out infinite" }} />
+      </g>
+
+      {/* 안테나 */}
+      <line x1="22" y1="6" x2="22" y2="12" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="22" cy="6" r="3" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 4px #22D3EE)" }} className="animate-pulse" />
+
+      {/* 머리 — 약간 기울임 */}
+      <g style={{ transformOrigin: "22px 24px", animation: "headBob 2s ease-in-out infinite" }}>
+        <path d="M12 20 C 12 14, 32 14, 32 20 L 34 28 C 34 32, 30 34, 22 34 C 14 34, 10 32, 10 28 Z" fill="#1E293B" stroke="#334155" strokeWidth="1" />
+        
+        {/* 센서 디테일 */}
+        <rect x="8" y="20" width="3" height="8" rx="1.5" fill="#38BDF8" transform="rotate(-15 8 20)" />
+
+        {/* Visor */}
+        <path d="M14 22 C 14 20, 30 20, 30 22 L 30 26 C 30 28, 14 28, 14 26 Z" fill="#0F172A" />
+        <path d="M16 23 C 16 22, 28 22, 28 23 L 28 25 C 28 26, 16 26, 16 25 Z" fill="#22D3EE" opacity="0.8" style={{ filter: "drop-shadow(0 0 6px #06B6D4)" }} />
+        <line x1="18" y1="24" x2="26" y2="24" stroke="white" strokeWidth="2" strokeDasharray="3 2" strokeLinecap="round" opacity="0.9" style={{ animation: "particleFade 1s infinite alternate" }} />
+      </g>
+
+      {/* 몸통 */}
+      <path d="M16 38 L 28 38 L 30 46 C 30 48, 26 50, 22 50 C 18 50, 14 48, 14 46 Z" fill="#334155" stroke="#475569" strokeWidth="1" />
+      <path d="M18 38 L 26 38 L 27 42 L 17 42 Z" fill="#1E293B" />
+      <circle cx="22" cy="46" r="2" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+
+      {/* Holographic Keyboard Arc */}
+      <path d="M 28 48 Q 36 46 44 48" stroke="#06B6D4" strokeWidth="2" fill="none" opacity="0.6" style={{ filter: "drop-shadow(0 0 3px #06B6D4)" }} />
+
+      {/* 왼팔 */}
+      <g style={{ transformOrigin: "16px 40px", animation: "typingLeft 0.3s ease-in-out infinite alternate" }}>
+        <path d="M16 40 C 12 40, 14 46, 28 47" stroke="#64748B" strokeWidth="3" fill="none" strokeLinecap="round" />
+        <circle cx="28" cy="47" r="2" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+      </g>
+      {/* 오른팔 */}
+      <g style={{ transformOrigin: "28px 40px", animation: "typingRight 0.3s ease-in-out infinite alternate-reverse" }}>
+        <path d="M28 40 C 32 40, 34 46, 40 47" stroke="#64748B" strokeWidth="3" fill="none" strokeLinecap="round" />
+        <circle cx="40" cy="47" r="2" fill="#22D3EE" style={{ filter: "drop-shadow(0 0 2px #22D3EE)" }} />
+      </g>
+    </svg>
+  );
+
+  /* 미니 브랜드 알 (좌하단) — 봇이 여기서 깨고 나옴 */
+  const BrandEgg = ({ shaking, cracking }: { shaking?: boolean; cracking?: boolean }) => (
+    <div className="relative" style={shaking ? { animation: "brandEggShake 1.2s ease-in-out forwards" } : undefined}>
+      {/* 알 본체: 네이비 배지 + 금빛 GO */}
+      <div
+        className="w-11 h-11 rounded-full flex items-center justify-center"
+        style={{
+          background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 50%, #1a2744 100%)",
+          boxShadow: "0 2px 8px rgba(26, 39, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            background: "linear-gradient(180deg, #D4A853 0%, #F5D78E 30%, #FFF1C9 50%, #F5D78E 70%, #B8862D 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            filter: "drop-shadow(0 1px 2px rgba(184,134,45,0.3))",
+          }}
+        >
+          GO
+        </span>
+      </div>
+
+      {/* 금이 가는 SVG */}
+      {cracking && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 44 44" style={{ zIndex: 10 }}>
+          <path d="M22 3 L20 13 L24 18 L20 26 L23 34 L22 41" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeDasharray="30" style={{ animation: "brandCrackLine 1s ease-out forwards" }} />
+          <path d="M20 13 L14 16" stroke="rgba(255,255,255,0.6)" strokeWidth="1" fill="none" strokeLinecap="round" strokeDasharray="8" style={{ animation: "brandCrackLine 0.6s 0.3s ease-out forwards", strokeDashoffset: 8 }} />
+        </svg>
+      )}
+    </div>
+  );
+
   if (!open) {
-    // 플로팅 버튼 + AI봇 애니메이션
     return (
       <>
-        {/* AI봇 캐릭터 — 하단 라인에서 간헐적 등장 */}
-        {botVisible && (
-          <div
-            className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none overflow-hidden h-12"
-            style={{ animation: "botFadeIn 0.7s ease-out" }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                bottom: 2,
-                display: "flex",
-                alignItems: "flex-end",
-                gap: 2,
-                animation: "botRun 5s linear forwards",
-              }}
-            >
-              <span
-                className="text-2xl select-none"
-                style={{ display: "inline-block", animation: "botBounce 0.35s ease-in-out infinite alternate" }}
-              >
-                🤖
-              </span>
-              <span
+        {/* 봇 애니메이션 영역 — 화면 하단 전체 */}
+        {botPhase !== "idle" && (
+          <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none overflow-hidden h-20">
+            {/* Phase: emerge — 하단 중앙에서 봇 등장 */}
+            {botPhase === "emerge" && (
+              <div
+                className="absolute"
                 style={{
-                  fontSize: 10,
-                  marginLeft: -4,
-                  alignSelf: "center",
-                  animation: "particleFade 0.6s ease-in-out infinite alternate",
+                  left: "50%",
+                  marginLeft: -20,
+                  bottom: 0,
+                  animation: "botEmergeFromBrand 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
                 }}
               >
-                ✨
-              </span>
-            </div>
+                <MiniBot waving />
+                <div style={{ position: "absolute", top: -8, right: -12, animation: "particleFade 0.4s ease-in-out infinite alternate" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#FDE047"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" /></svg>
+                </div>
+              </div>
+            )}
+
+            {/* Phase: walk — 중앙에서 오른쪽으로 천천히 걸어감 (옆모습) */}
+            {botPhase === "walk" && (
+              <div
+                className="absolute"
+                style={{
+                  bottom: 0,
+                  animation: "botWalkCenterToRight 5.5s ease-in-out forwards",
+                }}
+              >
+                <div style={{ animation: "botWalkBob 0.7s ease-in-out infinite" }}>
+                  <MiniBotWalking />
+                </div>
+              </div>
+            )}
+
+            {/* Phase: work — 우측에서 책상 작업 */}
+            {botPhase === "work" && (
+              <div
+                className="absolute"
+                style={{
+                  bottom: 0,
+                  animation: "botSettleToWork 0.5s ease-out forwards",
+                }}
+              >
+                <MiniBotWorking />
+                <div style={{ position: "absolute", top: -14, left: 18, animation: "ideaPop 4s ease-in-out infinite" }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="#FBBF24"><path d="M9 21H15V22H9V21ZM12 2C8.13 2 5 5.13 5 9C5 11.38 6.19 13.47 8 14.74V17C8 17.55 8.45 18 9 18H15C15.55 18 16 17.55 16 17V14.74C17.81 13.47 19 11.38 19 9C19 5.13 15.87 2 12 2Z" /><circle cx="12" cy="10" r="4" fill="#FEF08A" /></svg>
+                </div>
+                <div style={{ position: "absolute", top: -4, left: 44, animation: "particleFade 3s ease-in-out infinite alternate" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#FDE047"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" /></svg>
+                </div>
+              </div>
+            )}
+
+            {/* Phase: return — 플로팅 버튼 쪽으로 걸어가서 흡수됨 (옆모습) */}
+            {botPhase === "return" && (
+              <div
+                className="absolute"
+                style={{
+                  bottom: 0,
+                  animation: "botWalkToBtn 3s ease-in-out forwards",
+                }}
+              >
+                <div style={{ animation: "botWalkBob 0.7s ease-in-out infinite" }}>
+                  <MiniBotWalking />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center group"
-          title="AI 상담"
-        >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
-        </button>
+        {/* 하단 중앙 브랜드 알 — 봇이 여기서 깨고 나옴 */}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+          {/* 깨진 껍데기 (emerge 이후 표시) */}
+          {(botPhase === "emerge" || botPhase === "walk") && (
+            <>
+              <div
+                className="absolute w-6 h-6 rounded-full overflow-hidden pointer-events-none"
+                style={{
+                  top: 2, left: 0,
+                  background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 100%)",
+                  clipPath: "polygon(0 0, 55% 0, 40% 50%, 10% 100%, 0 100%)",
+                  animation: "brandEggCrackLeft 0.8s ease-out forwards",
+                  zIndex: 50,
+                }}
+              />
+              <div
+                className="absolute w-6 h-6 rounded-full overflow-hidden pointer-events-none"
+                style={{
+                  top: 2, right: 0,
+                  background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 100%)",
+                  clipPath: "polygon(45% 0, 100% 0, 100% 100%, 60% 100%, 40% 50%)",
+                  animation: "brandEggCrackRight 0.8s ease-out forwards",
+                  zIndex: 50,
+                }}
+              />
+            </>
+          )}
+
+          {/* 브랜드 알 — crack 단계에서 흔들림, emerge~work에서 안 보임, return에서 재등장 */}
+          <div style={
+            botPhase === "crack"
+              ? undefined
+              : botPhase === "emerge" || botPhase === "walk" || botPhase === "work"
+                ? { opacity: 0, pointerEvents: "none" as const }
+                : botPhase === "return"
+                  ? { animation: "brandEggReappear 1s ease-out forwards" }
+                  : undefined
+          }>
+            <BrandEgg
+              shaking={botPhase === "crack"}
+              cracking={botPhase === "crack"}
+            />
+          </div>
+        </div>
+
+        {/* 플로팅 상담 버튼 — 항상 보이고 클릭 가능, return 시 흡수 효과 */}
+        <div className="fixed bottom-6 right-6 z-40">
+          <button
+            onClick={() => setOpen(true)}
+            className="relative w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center group"
+            style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
+            title="AI 상담"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
+          </button>
+        </div>
       </>
     );
   }

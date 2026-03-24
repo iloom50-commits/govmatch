@@ -681,45 +681,65 @@ class GovernmentAPIService:
     ]
 
     async def fetch_gov24_services(self, page=1, per_page=100):
-        """보조금24 (정부24) 공공서비스 목록 조회 - 기업/소상공인 관련만 필터링"""
+        """보조금24 (정부24) 공공서비스 목록 조회 - 기업/소상공인 + 부처별 확장"""
         api_key = os.getenv("GOV24_API_KEY")
         if not api_key:
             print("  [WARN] GOV24_API_KEY not set. Skipping 보조금24.")
             return []
 
         all_items = []
-        # 기업 관련 키워드로 검색하여 수집
-        search_terms = ["기업", "소상공인", "창업", "중소기업"]
+        url = "https://api.odcloud.kr/api/gov24/v3/serviceList"
 
+        # 1단계: 기업 관련 키워드 검색 (기존)
+        search_terms = ["기업", "소상공인", "창업", "중소기업"]
         for term in search_terms:
-            for pg in range(1, 4):  # 키워드당 최대 3페이지
+            for pg in range(1, 4):
                 try:
-                    url = "https://api.odcloud.kr/api/gov24/v3/serviceList"
                     params = {
-                        "page": pg,
-                        "perPage": per_page,
-                        "returnType": "JSON",
-                        "serviceKey": api_key,
+                        "page": pg, "perPage": per_page,
+                        "returnType": "JSON", "serviceKey": api_key,
                         "cond[서비스명::LIKE]": term,
                     }
-
                     resp = requests.get(url, params=params, timeout=15)
                     if resp.status_code != 200:
-                        print(f"    [ERR] 보조금24 API Status {resp.status_code} (term={term})")
                         break
-
                     data = resp.json()
                     items = data.get("data", [])
                     if not items:
                         break
-
                     all_items.extend(items)
-                    total = data.get("totalCount", 0)
-                    if pg * per_page >= total:
+                    if pg * per_page >= data.get("totalCount", 0):
                         break
-
                 except Exception as e:
-                    print(f"    [ERR] 보조금24 API Exception (term={term}): {e}")
+                    print(f"    [ERR] 보조금24 keyword({term}): {e}")
+                    break
+
+        # 2단계: 부처명으로 추가 검색 (신규 — 구석구석 확장)
+        ministry_terms = [
+            "고용노동부", "산림청", "해양수산부",
+            "국토교통부", "환경부", "여성가족부",
+            "농림축산식품부", "문화체육관광부",
+        ]
+        for dept in ministry_terms:
+            for pg in range(1, 3):  # 부처당 최대 2페이지
+                try:
+                    params = {
+                        "page": pg, "perPage": per_page,
+                        "returnType": "JSON", "serviceKey": api_key,
+                        "cond[소관기관명::LIKE]": dept,
+                    }
+                    resp = requests.get(url, params=params, timeout=15)
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                    items = data.get("data", [])
+                    if not items:
+                        break
+                    all_items.extend(items)
+                    if pg * per_page >= data.get("totalCount", 0):
+                        break
+                except Exception as e:
+                    print(f"    [ERR] 보조금24 dept({dept}): {e}")
                     break
 
         # 중복 제거 (서비스ID 기준)
@@ -731,7 +751,7 @@ class GovernmentAPIService:
                 seen_ids.add(sid)
                 unique.append(item)
 
-        print(f"  [API] 보조금24: {len(unique)} unique services fetched")
+        print(f"  [API] 보조금24: {len(unique)} unique services fetched (keyword+ministry)")
         return self._map_gov24_fields(unique)
 
     def _map_gov24_fields(self, items):

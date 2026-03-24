@@ -356,8 +356,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {/* 브랜드 */}
       <div className="relative z-10 text-center py-3">
-        <h2 className="text-xl font-black text-slate-900 tracking-tight mb-1">
-          <span className="text-indigo-600">지원금톡톡</span>
+        <h2 className="text-base font-black tracking-tight mb-1">
+          <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
         </h2>
         <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
           AI가 매시간 5,000개 이상의<br />정부 공고를 분석합니다
@@ -453,7 +453,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
           >
             <span className="text-xs">⬇️</span>
-            지원금톡톡 설치
+            지원금GO 설치
           </button>
         </div>
       )}
@@ -523,9 +523,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <button
             onClick={() => {
               const url = window.location.origin;
-              const text = "AI가 나에게 맞는 정부지원금을 찾아줘요! 지원금톡톡에서 확인해보세요.";
+              const text = "AI가 나에게 맞는 정부지원금을 찾아줘요! 지원금GO에서 확인해보세요.";
               if (navigator.share) {
-                navigator.share({ title: "지원금톡톡", text, url });
+                navigator.share({ title: "지원금GO", text, url });
               } else {
                 navigator.clipboard.writeText(`${text} ${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
               }
@@ -666,12 +666,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <button
               onClick={() => {
                 const url = `${window.location.origin}?ref=${profile.referral_code}`;
-                const text = `AI가 우리 기업에 맞는 정부지원금을 찾아줘요! 지원금톡톡에서 확인해보세요.`;
+                const text = `AI가 우리 기업에 맞는 정부지원금을 찾아줘요! 지원금GO에서 확인해보세요.`;
                 if (typeof window !== "undefined" && (window as any).Kakao?.Share) {
                   (window as any).Kakao.Share.sendDefault({
                     objectType: "feed",
                     content: {
-                      title: "지원금톡톡",
+                      title: "지원금GO",
                       description: text,
                       imageUrl: `${window.location.origin}/icon-512.png`,
                       link: { mobileWebUrl: url, webUrl: url },
@@ -692,7 +692,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 const url = `${window.location.origin}?ref=${profile.referral_code}`;
                 const text = `AI가 우리 기업에 맞는 정부지원금을 찾아줘요!`;
                 if (navigator.share) {
-                  navigator.share({ title: "지원금톡톡", text, url });
+                  navigator.share({ title: "지원금GO", text, url });
                 } else {
                   navigator.clipboard.writeText(`${text} ${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
                 }
@@ -746,7 +746,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
           >
             <span className="text-xs">⬇️</span>
-            지원금톡톡 설치
+            지원금GO 설치
           </button>
         </div>
       )}
@@ -870,7 +870,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 모바일 상단 바 (lg 미만에서만 표시) — 로그인 사용자만 */}
       {isPublic ? null : (
         <div className="lg:hidden flex items-center py-3 mb-4 border-b border-slate-200/60">
-          <span className="text-base font-bold text-indigo-600 tracking-tight">지원금톡톡</span>
+          <span className="text-base font-bold tracking-tight brand-badge-sm brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
           {planStatus && (
             <span className={`ml-2 text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
@@ -989,12 +989,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
 
           <header className="space-y-3">
-            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
-              <span className={consultantResult ? "text-violet-600" : "text-indigo-600"}>
-                {consultantResult ? "컨설턴트 매칭" : "지원금톡톡"}
-              </span>
+            <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
+              {consultantResult ? (
+                <span className="text-violet-600">컨설턴트 매칭</span>
+              ) : (
+                <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
+              )}
               <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부보조금"}
+                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부지원금"}
               </span>
             </h2>
 

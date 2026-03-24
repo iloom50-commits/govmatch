@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "지원금톡톡 — AI가 찾아주는 맞춤 정부지원금",
-  "short_name": "지원금톡톡",
+  "name": "지원금GO — AI가 찾아주는 맞춤 정부지원금",
+  "short_name": "지원금GO",
   "description": "AI가 우리 기업에 딱 맞는 정부지원금을 자동으로 찾아드립니다.",
   "start_url": "/",
   "display": "standalone",
@@ -41,14 +41,14 @@
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "지원금톡톡 데스크톱 화면"
+      "label": "지원금GO 데스크톱 화면"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "지원금톡톡 모바일 화면"
+      "label": "지원금GO 모바일 화면"
     }
   ]
 }

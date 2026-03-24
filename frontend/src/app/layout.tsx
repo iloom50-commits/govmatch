@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "지원금톡톡 — AI가 찾아주는 맞춤 정부지원금",
+  title: "지원금GO — AI가 찾아주는 맞춤 정부지원금",
   description: "우리 기업에 딱 맞는 정부지원금을 AI가 자동으로 찾아드립니다. 중소기업 지원사업, 보조금, 정책자금 매칭.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "지원금톡톡",
+    title: "지원금GO",
   },
   other: {
     "mobile-web-app-capable": "yes",

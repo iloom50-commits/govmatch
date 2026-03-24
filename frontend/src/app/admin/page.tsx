@@ -774,7 +774,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         )}
 
         <footer className="text-center text-slate-400 text-xs pt-4 pb-8">
-          &copy; 2026 지원금톡톡 &mdash; Admin Panel
+          &copy; 2026 지원금GO &mdash; Admin Panel
         </footer>
       </div>
     </div>

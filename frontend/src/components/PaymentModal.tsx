@@ -98,7 +98,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         method: "CARD",
         amount: { currency: "KRW", value: plan.price },
         orderId,
-        orderName: `지원금톡톡 ${plan.name} 플랜`,
+        orderName: `지원금GO ${plan.name} 플랜`,
         successUrl: `${window.location.origin}/payment/success?token=${encodeURIComponent(token || "")}&plan=${selectedPlan}`,
         failUrl: `${window.location.origin}/payment/fail`,
       });

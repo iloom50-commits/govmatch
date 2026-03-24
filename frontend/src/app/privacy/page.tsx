@@ -8,7 +8,7 @@ export default function PrivacyPage() {
       <section className="space-y-6 text-sm leading-relaxed">
         <div>
           <h2 className="text-lg font-bold mb-2">1. 개인정보의 수집 및 이용 목적</h2>
-          <p>지원금톡톡(이하 &quot;서비스&quot;)은 다음의 목적을 위해 개인정보를 처리합니다.</p>
+          <p>지원금GO(이하 &quot;서비스&quot;)은 다음의 목적을 위해 개인정보를 처리합니다.</p>
           <ul className="list-disc ml-5 mt-2 space-y-1">
             <li>회원 가입 및 관리: 회원제 서비스 이용에 따른 본인 확인, 서비스 부정이용 방지</li>
             <li>서비스 제공: 맞춤형 정부지원금 매칭, AI 상담, 알림 서비스 제공</li>

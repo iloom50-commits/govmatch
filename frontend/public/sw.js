@@ -5,7 +5,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: '지원금톡톡', body: '새로운 알림이 있습니다.', url: '/' };
+  let data = { title: '지원금GO', body: '새로운 알림이 있습니다.', url: '/' };
   try {
     data = event.data.json();
   } catch (e) { /* use defaults */ }

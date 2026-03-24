@@ -72,7 +72,12 @@ const EMPTY_FORM: FormProfile = {
   interests: [],
 };
 
-export default function AiChatBot() {
+interface AiChatBotProps {
+  planStatus?: { plan: string; ai_limit?: number; consult_limit?: number } | null;
+  onUpgrade?: () => void;
+}
+
+export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ChatMode>("select");
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
@@ -526,48 +531,107 @@ export default function AiChatBot() {
               <p className="text-[12px] text-slate-500">원하시는 서비스를 선택해 주세요</p>
             </div>
 
-            <button
-              onClick={() => startMode("free")}
-              className="w-full max-w-xs p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-2xl hover:border-indigo-400 hover:shadow-lg transition-all active:scale-[0.98] group text-left"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                  <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-[14px] font-bold text-indigo-800">자유 상담</p>
-                  <p className="text-[11px] text-indigo-600 font-medium">지원사업 Q&A</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                지원사업 종류, 신청 자격, 절차, 지원 규모 등<br />궁금한 점을 자유롭게 질문하세요.
-              </p>
-            </button>
+            {/* 자유 상담 — PRO 전용 */}
+            {(() => {
+              const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
+              return (
+                <button
+                  onClick={() => {
+                    if (!isPro) { toast("자유 상담은 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
+                    startMode("free");
+                  }}
+                  className={`w-full max-w-xs p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
+                    isPro ? "border-indigo-200 hover:border-indigo-400 hover:shadow-lg" : "border-slate-200 opacity-75"
+                  }`}
+                >
+                  {!isPro && (
+                    <div className="absolute top-3 right-3 px-2 py-0.5 bg-violet-600 text-white text-[10px] font-bold rounded-full">
+                      PRO
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isPro ? "bg-indigo-100 group-hover:bg-indigo-200" : "bg-slate-100"}`}>
+                      <svg className={`w-5 h-5 ${isPro ? "text-indigo-600" : "text-slate-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-indigo-800" : "text-slate-500"}`}>자유 상담</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-indigo-600" : "text-slate-400"}`}>지원사업 Q&A</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    지원사업 종류, 신청 자격, 절차, 지원 규모 등<br />궁금한 점을 자유롭게 질문하세요.
+                  </p>
+                  {!isPro && (
+                    <div className="mt-2 px-2 py-1 bg-slate-100 rounded-lg inline-block">
+                      <span className="text-[11px] font-bold text-slate-500">PRO 플랜으로 업그레이드 시 이용 가능</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })()}
 
-            <button
-              onClick={() => startMode("consultant")}
-              className="w-full max-w-xs p-4 bg-gradient-to-br from-violet-50 to-purple-50 border-2 border-violet-200 rounded-2xl hover:border-violet-400 hover:shadow-lg transition-all active:scale-[0.98] group text-left"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center group-hover:bg-violet-200 transition-colors">
-                  <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9zm3.75 11.625a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-[14px] font-bold text-violet-800">AI 컨설턴트</p>
-                  <p className="text-[11px] text-violet-600 font-medium">고객사 맞춤 매칭</p>
-                </div>
+            {/* AI 컨설턴트 — PRO 전용 */}
+            {(() => {
+              const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
+              return (
+                <button
+                  onClick={() => {
+                    if (!isPro) { toast("AI 컨설턴트는 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
+                    startMode("consultant");
+                  }}
+                  className={`w-full max-w-xs p-4 bg-gradient-to-br from-violet-50 to-purple-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
+                    isPro ? "border-violet-200 hover:border-violet-400 hover:shadow-lg" : "border-slate-200 opacity-75"
+                  }`}
+                >
+                  {!isPro && (
+                    <div className="absolute top-3 right-3 px-2 py-0.5 bg-violet-600 text-white text-[10px] font-bold rounded-full">
+                      PRO
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isPro ? "bg-violet-100 group-hover:bg-violet-200" : "bg-slate-100"}`}>
+                      <svg className={`w-5 h-5 ${isPro ? "text-violet-600" : "text-slate-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9zm3.75 11.625a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>AI 컨설턴트</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>고객사 맞춤 매칭</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    고객사의 기업 조건을 입력하면<br />맞춤 지원사업을 매칭해 드립니다.
+                  </p>
+                  {isPro ? (
+                    <div className="mt-2 px-2 py-1 bg-violet-100 rounded-lg inline-block">
+                      <span className="text-[11px] font-bold text-violet-700">매칭 실행 시 AI 1건 차감</span>
+                    </div>
+                  ) : (
+                    <div className="mt-2 px-2 py-1 bg-slate-100 rounded-lg inline-block">
+                      <span className="text-[11px] font-bold text-slate-500">PRO 플랜으로 업그레이드 시 이용 가능</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })()}
+
+            {/* 플랜 안내 */}
+            {planStatus && !["pro", "biz"].includes(planStatus.plan) && (
+              <div className="w-full max-w-xs mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  공고별 지원대상 상담은 <span className="font-bold text-indigo-600">LITE</span> 플랜부터,<br />
+                  자유 상담 · AI 컨설턴트는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
+                </p>
+                <button
+                  onClick={() => { setOpen(false); onUpgrade?.(); }}
+                  className="mt-2 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 transition-all"
+                >
+                  플랜 보기
+                </button>
               </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                고객사의 기업 조건을 입력하면<br />맞춤 지원사업을 매칭해 드립니다.
-              </p>
-              <div className="mt-2 px-2 py-1 bg-violet-100 rounded-lg inline-block">
-                <span className="text-[11px] font-bold text-violet-700">매칭 실행 시 AI 1건 차감</span>
-              </div>
-            </button>
+            )}
           </div>
         ) : mode === "consultant" && consultantTab === "form" && !matchingInProgress && messages.length <= 1 ? (
           <>

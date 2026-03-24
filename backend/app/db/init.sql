@@ -234,3 +234,52 @@ CREATE INDEX IF NOT EXISTS idx_golden_hash ON golden_answers(question_hash);
 CREATE INDEX IF NOT EXISTS idx_golden_category ON golden_answers(category);
 CREATE INDEX IF NOT EXISTS idx_golden_quality ON golden_answers(quality_score DESC) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_golden_announcement ON golden_answers(announcement_id) WHERE is_active = TRUE;
+
+-- 13. 고객사 프로필 (PRO 전용 — 컨설턴트가 고객사 다건 관리)
+CREATE TABLE IF NOT EXISTS client_profiles (
+    id SERIAL PRIMARY KEY,
+    owner_business_number VARCHAR(20) NOT NULL,  -- PRO 사용자(컨설턴트)의 사업자번호
+    client_name VARCHAR(255) NOT NULL,           -- 고객사명
+    business_number VARCHAR(20),                 -- 고객사 사업자번호 (선택)
+    establishment_date DATE,
+    address_city VARCHAR(50),
+    industry_code VARCHAR(10),
+    industry_name VARCHAR(100),
+    revenue_bracket VARCHAR(50),
+    employee_count_bracket VARCHAR(50),
+    interests TEXT,
+    memo TEXT DEFAULT '',                        -- 컨설턴트 메모
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_owner ON client_profiles(owner_business_number) WHERE is_active = TRUE;
+
+-- 14. 종합 리포트 (PRO 전용 — 고객별 지원 가능 공고 분석)
+CREATE TABLE IF NOT EXISTS client_reports (
+    id SERIAL PRIMARY KEY,
+    client_profile_id INTEGER REFERENCES client_profiles(id) ON DELETE CASCADE,
+    owner_business_number VARCHAR(20) NOT NULL,
+    title VARCHAR(255) NOT NULL,                 -- 리포트 제목
+    summary TEXT,                                -- 종합 요약
+    matched_announcements JSONB DEFAULT '[]'::jsonb,
+    -- matched_announcements 구조:
+    -- [
+    --   {
+    --     "announcement_id": 123,
+    --     "title": "공고명",
+    --     "conclusion": "eligible|conditional|ineligible",
+    --     "reason": "판정 근거 요약",
+    --     "support_amount": "최대 3억",
+    --     "deadline_date": "2026-04-30"
+    --   }
+    -- ]
+    total_eligible INT DEFAULT 0,
+    total_conditional INT DEFAULT 0,
+    total_ineligible INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_client ON client_reports(client_profile_id);
+CREATE INDEX IF NOT EXISTS idx_report_owner ON client_reports(owner_business_number);

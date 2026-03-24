@@ -7,34 +7,19 @@ import { loadTossPayments, ANONYMOUS } from "@tosspayments/tosspayments-sdk";
 const API = process.env.NEXT_PUBLIC_API_URL;
 const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "test_ck_jExPeJWYVQ1RJDzyR6GxV49R5gvN";
 
-const PLANS = [
-  {
-    id: "basic",
-    name: "BASIC",
-    price: 4900,
-    priceLabel: "4,900",
-    color: "indigo",
-    features: [
-      { text: "AI 맞춤 매칭", desc: "무제한", highlight: false },
-      { text: "맞춤 매칭 알림", desc: "무제한", highlight: false },
-      { text: "AI 지원대상 판별", desc: "무제한", highlight: true },
-      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩14,900", highlight: false },
-    ],
-  },
-  {
-    id: "pro",
-    name: "PRO",
-    price: 19000,
-    priceLabel: "19,000",
-    popular: true,
-    color: "violet",
-    features: [
-      { text: "BASIC 기능 전부 포함", desc: "", highlight: false },
-      { text: "자유 상담 (지원사업 Q&A)", desc: "무제한", highlight: true },
-      { text: "AI 컨설턴트 (맞춤 매칭)", desc: "무제한", highlight: true },
-      { text: "AI 신청서 작성", desc: "자동 ₩4,900 / 전문가 ₩14,900", highlight: false },
-    ],
-  },
+// 기능별 플랜 비교 행
+const FEATURE_ROWS = [
+  { label: "AI 맞춤 매칭 + 알림", free: "O", lite: "O", pro: "O" },
+  { label: "공고AI 상담 (지원대상 판별)", free: "1회", lite: "무제한", pro: "무제한", highlight: "lite" },
+  { label: "자유AI 상담 (지원사업 Q&A)", free: "-", lite: "-", pro: "무제한", highlight: "pro" },
+  { label: "AI 컨설턴트 (맞춤 매칭)", free: "-", lite: "-", pro: "무제한", highlight: "pro" },
+  { label: "전문가 도구 (고객관리/리포트)", free: "-", lite: "-", pro: "PRO 전용", highlight: "pro" },
+  { label: "AI 신청서 작성", free: "-", lite: "Coming Soon", pro: "Coming Soon" },
+];
+
+const PAID_PLANS = [
+  { id: "lite", name: "LITE", price: 2900, priceLabel: "2,900", color: "indigo", desc: "사업자 필수" },
+  { id: "pro", name: "PRO", price: 19900, priceLabel: "19,900", color: "violet", desc: "컨설턴트 추천", popular: true },
 ];
 
 interface PaymentModalProps {
@@ -47,9 +32,9 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("pro");
+  const [selectedPlan, setSelectedPlan] = useState("lite");
 
-  const plan = PLANS.find((p) => p.id === selectedPlan)!;
+  const plan = PAID_PLANS.find((p) => p.id === selectedPlan)!;
 
   const handleFreeTrial = async () => {
     setLoading(true);
@@ -118,27 +103,61 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-violet-500/10 blur-[60px] rounded-full pointer-events-none" />
 
-        <div className="relative z-10 p-6 sm:p-8">
+        <div className="relative z-10 p-5 sm:p-7">
           {/* Header */}
-          <div className="text-center mb-6">
+          <div className="text-center mb-5">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-[11px] font-bold uppercase tracking-widest mb-3">
-              플랜 선택
+              플랜 비교
             </div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
-              더 많은 AI 기능을 이용하세요
+              나에게 맞는 플랜을 선택하세요
             </h2>
-            <p className="text-slate-500 text-xs font-medium">
-              공고별 상담, AI 상담 무제한, 신청서 작성까지
-            </p>
           </div>
 
-          {/* Plan Cards */}
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            {PLANS.map((p) => (
+          {/* Feature Comparison Table */}
+          <div className="mb-5 rounded-xl border border-slate-200 overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] bg-slate-50 border-b border-slate-200">
+              <div className="p-2.5 text-[11px] font-bold text-slate-500">기능</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-slate-400">FREE</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-indigo-600">LITE</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-violet-600">PRO</div>
+            </div>
+            {/* Table Rows */}
+            {FEATURE_ROWS.map((row, i) => (
+              <div key={i} className={`grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] ${i < FEATURE_ROWS.length - 1 ? "border-b border-slate-100" : ""}`}>
+                <div className="p-2.5 text-[11px] font-medium text-slate-700">{row.label}</div>
+                <div className={`p-2.5 text-center text-[11px] font-semibold ${row.free === "-" ? "text-slate-300" : "text-slate-500"}`}>
+                  {row.free === "O" ? <span className="text-emerald-500">O</span> : row.free === "-" ? <span>-</span> : row.free}
+                </div>
+                <div className={`p-2.5 text-center text-[11px] font-semibold ${
+                  row.highlight === "lite" ? "text-indigo-600 font-bold bg-indigo-50/50" : row.lite === "-" ? "text-slate-300" : "text-slate-600"
+                }`}>
+                  {row.lite === "O" ? <span className="text-emerald-500">O</span> : row.lite === "-" ? <span>-</span> : row.lite}
+                </div>
+                <div className={`p-2.5 text-center text-[11px] font-semibold ${
+                  row.highlight === "pro" ? "text-violet-600 font-bold bg-violet-50/50" : row.pro === "-" ? "text-slate-300" : "text-slate-600"
+                }`}>
+                  {row.pro === "O" ? <span className="text-emerald-500">O</span> : row.pro === "-" ? <span>-</span> : row.pro}
+                </div>
+              </div>
+            ))}
+            {/* Price Row */}
+            <div className="grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] border-t-2 border-slate-200 bg-slate-50/50">
+              <div className="p-2.5 text-[11px] font-bold text-slate-700">월 가격</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-emerald-600">무료</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-indigo-600">2,900원</div>
+              <div className="p-2.5 text-center text-[11px] font-bold text-violet-600">19,900원</div>
+            </div>
+          </div>
+
+          {/* Plan Selection Cards */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {PAID_PLANS.map((p) => (
               <button
                 key={p.id}
                 onClick={() => setSelectedPlan(p.id)}
@@ -155,31 +174,20 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
                     추천
                   </span>
                 )}
-                <div className={`text-xs font-bold mb-1 ${p.id === "pro" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
-                <div className="flex items-end gap-0.5 mb-3">
+                <div className={`text-xs font-bold mb-0.5 ${p.id === "pro" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
+                <div className="text-[10px] text-slate-400 font-medium mb-2">{p.desc}</div>
+                <div className="flex items-end gap-0.5">
                   <span className="text-2xl font-bold text-slate-900">{p.priceLabel}</span>
                   <span className="text-[11px] font-semibold text-slate-500 pb-0.5">원/월</span>
-                </div>
-                <div className="space-y-1.5">
-                  {p.features.map((f, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <svg className={`w-3.5 h-3.5 flex-shrink-0 ${f.highlight ? "text-violet-500" : "text-indigo-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className={`text-[11px] font-medium ${f.highlight ? "text-violet-700 font-bold" : "text-slate-600"}`}>
-                        {f.text} <span className="text-slate-400">{f.desc}</span>
-                      </span>
-                    </div>
-                  ))}
                 </div>
               </button>
             ))}
           </div>
 
-          {/* Free vs Paid comparison hint */}
-          <div className="text-center mb-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[11px] text-slate-500 font-medium">
-              FREE 플랜 (영구 무료): AI 매칭 + 지원대상 판별 1회 무료 | 추천 보상: BASIC 1개월 무료
+          {/* Referral hint */}
+          <div className="text-center mb-4 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
+            <p className="text-[11px] text-amber-700 font-medium">
+              친구 추천 시 양쪽 모두 LITE 1개월 무료 (최대 5회)
             </p>
           </div>
 

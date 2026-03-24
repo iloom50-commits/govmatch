@@ -4,6 +4,7 @@ import ResultCard from "./ResultCard";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import NotificationModal from "./NotificationModal";
 import SmartDocModal from "./SmartDocModal";
+import ProDashboard from "./ProDashboard";
 import { useToast } from "@/components/ui/Toast";
 
 const REVENUE_KR: Record<string, string> = {
@@ -119,6 +120,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [showProDashboard, setShowProDashboard] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -590,7 +592,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className={`relative z-10 p-3 rounded-lg border ${
           planStatus.plan === "pro" || planStatus.plan === "biz"
             ? "bg-violet-50 border-violet-200"
-            : planStatus.plan === "basic"
+            : planStatus.plan === "lite" || planStatus.plan === "basic"
             ? "bg-indigo-50 border-indigo-200"
             : planStatus.plan === "expired"
             ? "bg-rose-50 border-rose-200"
@@ -600,7 +602,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className={`text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz"
                 ? "text-violet-600"
-                : planStatus.plan === "basic"
+                : planStatus.plan === "lite" || planStatus.plan === "basic"
                 ? "text-indigo-600"
                 : planStatus.plan === "expired"
                 ? "text-rose-600"
@@ -612,48 +614,51 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <span className="text-[11px] font-semibold text-slate-400">D-{planStatus.days_left}</span>
             )}
           </div>
-          {/* AI 상담 사용량 */}
-          {planStatus.ai_limit != null && planStatus.ai_limit < 999999 && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-[11px] mb-1">
-                <span className="text-slate-500 font-medium">AI 상담 (자유+컨설턴트)</span>
-                <span className="font-bold text-slate-600">{planStatus.ai_used || 0}/{planStatus.ai_limit}회</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-200/60 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    ((planStatus.ai_used || 0) / planStatus.ai_limit) > 0.8
-                      ? "bg-rose-500"
-                      : planStatus.plan === "pro" || planStatus.plan === "biz" ? "bg-violet-500" : "bg-indigo-500"
-                  }`}
-                  style={{ width: `${Math.min(((planStatus.ai_used || 0) / planStatus.ai_limit) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
-          {planStatus.ai_limit != null && planStatus.ai_limit >= 999999 && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500 font-medium">AI 상담</span>
-                <span className="font-bold text-violet-600">무제한</span>
-              </div>
-            </div>
-          )}
-          {/* 공고별 상담 상태 */}
-          <div className="mb-2">
+          {/* 기능별 상태 요약 */}
+          <div className="space-y-1.5 mb-2">
+            {/* 공고AI 상담 */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">공고별 지원대상 상담</span>
-              <span className={`font-bold ${(planStatus.consult_limit || 0) > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.consult_limit}회 무료` : "BASIC부터"}
+              <span className="text-slate-500 font-medium">공고AI 상담</span>
+              <span className={`font-bold ${
+                (planStatus.consult_limit || 0) >= 999999 ? "text-emerald-600" :
+                (planStatus.consult_limit || 0) > 0 ? "text-amber-600" : "text-slate-400"
+              }`}>
+                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.consult_limit}회 무료` : "LITE부터"}
+              </span>
+            </div>
+            {/* 자유AI + 컨설턴트 */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">자유AI · 컨설턴트</span>
+              <span className={`font-bold ${
+                (planStatus.ai_limit || 0) >= 999999 ? "text-violet-600" : "text-slate-400"
+              }`}>
+                {(planStatus.ai_limit || 0) >= 999999 ? "무제한" : "PRO 전용"}
+              </span>
+            </div>
+            {/* 전문가 도구 */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">전문가 도구</span>
+              <span className={`font-bold ${
+                ["pro", "biz"].includes(planStatus.plan) ? "text-violet-600" : "text-slate-400"
+              }`}>
+                {["pro", "biz"].includes(planStatus.plan) ? "사용 가능" : "PRO 전용"}
               </span>
             </div>
           </div>
-          {!["basic", "pro", "biz"].includes(planStatus.plan) && onUpgrade && (
+          {!["basic", "pro", "biz", "lite"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
               className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold hover:bg-amber-600 transition-all active:scale-95"
             >
               {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
+            </button>
+          )}
+          {(planStatus.plan === "pro" || planStatus.plan === "biz") && (
+            <button
+              onClick={() => setShowProDashboard(true)}
+              className="w-full py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all active:scale-95 mt-2"
+            >
+              PRO 전문가 도구
             </button>
           )}
         </div>
@@ -874,7 +879,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {planStatus && (
             <span className={`ml-2 text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
-              planStatus.plan === "basic" ? "text-indigo-600" :
+              planStatus.plan === "lite" || planStatus.plan === "basic" ? "text-indigo-600" :
               planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
             }`}>{planStatus.label}</span>
           )}
@@ -1226,6 +1231,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         onSave={() => {}}
       />
       <SmartDocModal />
+
+      {/* PRO 전문가 도구 */}
+      {showProDashboard && (
+        <ProDashboard onClose={() => setShowProDashboard(false)} />
+      )}
 
       {/* 앱 설치 안내 모달 */}
       {showInstallGuide && (

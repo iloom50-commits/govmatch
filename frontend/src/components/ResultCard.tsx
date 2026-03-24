@@ -235,7 +235,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                   e.stopPropagation();
                   if (isPublic) { onLoginRequired?.(); return; }
                   if (isExpired) { onUpgrade?.(); return; }
-                  if (isConsultBlocked) { toast("공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
+                  if (isConsultBlocked) { toast("공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다.", "error"); onUpgrade?.(); return; }
                   if (typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
                   }

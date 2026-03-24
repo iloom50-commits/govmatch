@@ -16,7 +16,7 @@ function PaymentSuccessContent() {
     const paymentKey = searchParams.get("paymentKey");
     const orderId = searchParams.get("orderId");
     const amount = searchParams.get("amount");
-    const targetPlan = searchParams.get("plan") || "basic";
+    const targetPlan = searchParams.get("plan") || "lite";
     const token = searchParams.get("token") || localStorage.getItem("auth_token");
 
     if (!paymentKey || !orderId || !amount) {
@@ -44,7 +44,7 @@ function PaymentSuccessContent() {
           localStorage.setItem("auth_token", data.token);
         }
         setStatus("success");
-        const label = targetPlan === "pro" || targetPlan === "biz" ? "PRO" : "BASIC";
+        const label = targetPlan === "pro" || targetPlan === "biz" ? "PRO" : "LITE";
         setMessage(`${label} 플랜으로 업그레이드되었습니다!`);
         setTimeout(() => router.push("/"), 2500);
       })

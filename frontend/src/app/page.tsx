@@ -540,7 +540,7 @@ export default function Home() {
       )}
 
       <AiConsultModal />
-      <AiChatBot />
+      <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} />
 
     </main>
   );

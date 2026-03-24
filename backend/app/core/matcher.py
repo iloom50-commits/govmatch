@@ -253,8 +253,10 @@ def get_matches_for_user(user_profile):
         # 검색 텍스트 구성
         raw_summary = ad.get("summary_text") or ""
         clean_summary = _strip_html(raw_summary)
-        el_keywords = " ".join(eligibility_logic.get("target_keywords", []))
-        el_industries = " ".join(eligibility_logic.get("target_industries", []))
+        _kw = eligibility_logic.get("target_keywords", [])
+        el_keywords = " ".join(_kw) if isinstance(_kw, list) else str(_kw or "")
+        _ind = eligibility_logic.get("target_industries", [])
+        el_industries = " ".join(_ind) if isinstance(_ind, list) else str(_ind or "")
         el_business_types = " ".join(ad_biz_types)
         search_text = f"{title} {clean_summary} {el_keywords} {el_industries} {el_business_types}".lower()
 

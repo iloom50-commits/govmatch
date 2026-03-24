@@ -364,29 +364,30 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 
 
 # 플랜별 월 AI 상담 (자유Q&A + 컨설턴트) 건수 제한
-# free: 차단, basic: 차단, pro: 무제한
+# free: 차단, lite: 차단, pro: 무제한
 PLAN_LIMITS = {
     "free": 0,
-    "basic": 0,
-    "biz": 999999,   # legacy
+    "lite": 0,
+    "basic": 0,       # legacy
+    "biz": 999999,     # legacy
     "pro": 999999,
 }
 
 # 플랜별 공고별 지원대상 상담 건수 제한
-# free: 1회 무료, basic: 무제한, pro: 무제한
+# free: 1회 무료, lite: 무제한, pro: 무제한
 CONSULT_LIMITS = {
     "free": 1,
-    "basic": 999999,
-    "biz": 999999,   # legacy
+    "lite": 999999,
+    "basic": 999999,   # legacy
+    "biz": 999999,     # legacy
     "pro": 999999,
 }
 
 # 플랜 가격 (원/월)
-PLAN_PRICES = {"basic": 4900, "biz": 19000, "pro": 19000}
+PLAN_PRICES = {"lite": 2900, "pro": 19900, "basic": 2900, "biz": 19900}
 
-# AI 신청서 작성 가격 (원/건)
-AI_GUIDE_PRICE_AUTO = 4900      # 자동 모드
-AI_GUIDE_PRICE_EXPERT = 14900   # 전문가 모드
+# AI 신청서 작성 가격 (원/건) — Coming Soon
+AI_GUIDE_PRICE = None  # 가격 미정
 
 
 def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int = 0) -> dict:
@@ -409,7 +410,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "consult_limit": consult_limit,
         }
 
-    if plan in ("basic", "biz", "pro"):
+    if plan in ("lite", "basic", "biz", "pro"):
         # 유료 플랜 만료 체크
         if plan_expires_at:
             try:
@@ -423,7 +424,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                         "ai_used": ai_usage_month, "ai_limit": PLAN_LIMITS["free"],
                         "consult_limit": CONSULT_LIMITS["free"],
                     }
-                label_map = {"basic": "BASIC", "biz": "PRO", "pro": "PRO"}
+                label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
                 return {
                     "plan": plan, "active": True, "days_left": days_left,
                     "label": label_map.get(plan, plan.upper()),
@@ -432,7 +433,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                 }
             except ValueError:
                 pass
-        label_map = {"basic": "BASIC", "biz": "PRO", "pro": "PRO"}
+        label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
         return {
             "plan": plan, "active": True, "days_left": None,
             "label": label_map.get(plan, plan.upper()),
@@ -687,14 +688,14 @@ def api_register(req: RegisterRequest):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
-            # 가입 시 추천인 보상: BASIC 1개월 무료 (1회만 — referral_rewarded로 중복 방지)
+            # 가입 시 추천인 보상: LITE 1개월 무료 (최대 5회 — merit_months로 추적)
             if req.referred_by:
                 cursor.execute("SELECT user_id, plan, plan_expires_at, merit_months FROM users WHERE referral_code = %s", (req.referred_by,))
                 referrer = cursor.fetchone()
-                if referrer:
+                if referrer and (referrer["merit_months"] or 0) < 5:
                     new_merit = (referrer["merit_months"] or 0) + 1
                     now_dt = datetime.datetime.utcnow()
-                    if referrer["plan"] in ("basic", "pro", "biz"):
+                    if referrer["plan"] in ("lite", "basic", "pro", "biz"):
                         # 유료 플랜: 만료일 30일 연장
                         try:
                             current_end = datetime.datetime.fromisoformat(str(referrer["plan_expires_at"]))
@@ -706,13 +707,18 @@ def api_register(req: RegisterRequest):
                             (new_merit, new_end, referrer["user_id"])
                         )
                     else:
-                        # free 플랜: BASIC 1개월 무료 업그레이드
+                        # free 플랜: LITE 1개월 무료 업그레이드
                         new_end = (now_dt + datetime.timedelta(days=30)).isoformat()
                         cursor.execute(
-                            "UPDATE users SET merit_months=%s, plan='basic', plan_started_at=%s, plan_expires_at=%s, ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
+                            "UPDATE users SET merit_months=%s, plan='lite', plan_started_at=%s, plan_expires_at=%s, ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
                             (new_merit, now_dt.isoformat(), new_end, now_dt.isoformat(), referrer["user_id"])
                         )
-                    cursor.execute("UPDATE users SET referral_rewarded=TRUE WHERE user_id=%s", (user_id,))
+                    # 피추천인에게도 LITE 1개월 무료
+                    new_end_new = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
+                    cursor.execute(
+                        "UPDATE users SET plan='lite', plan_started_at=%s, plan_expires_at=%s, ai_usage_month=0, ai_usage_reset_at=%s, referral_rewarded=TRUE WHERE user_id=%s",
+                        (now_dt.isoformat(), new_end_new, now_dt.isoformat(), user_id)
+                    )
 
         conn.commit()
         token = _create_jwt(user_id, req.business_number, req.email, "free", None)
@@ -1063,8 +1069,8 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
 class UpgradePlanRequest(BaseModel):
     payment_key: Optional[str] = None
     order_id: Optional[str] = None
-    amount: Optional[int] = 4900
-    target_plan: Optional[str] = "basic"  # "basic" or "pro"
+    amount: Optional[int] = 2900
+    target_plan: Optional[str] = "lite"  # "lite" or "pro"
     free_trial: Optional[bool] = False    # 첫 달 무료 여부
 
 
@@ -1078,9 +1084,12 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """결제 확인 후 플랜을 basic 또는 pro로 업그레이드"""
+    """결제 확인 후 플랜을 lite 또는 pro로 업그레이드"""
     bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("basic", "pro", "biz") else "basic"
+    target = req.target_plan if req.target_plan in ("lite", "basic", "pro", "biz") else "lite"
+    # legacy: basic → lite
+    if target == "basic":
+        target = "lite"
 
     # 결제 검증 (첫 달 무료가 아닌 경우)
     if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
@@ -1116,7 +1125,7 @@ def api_plan_upgrade(
         u = cur.fetchone()
         # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
         # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
-        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('basic', 'pro', 'biz')", (bn,))
+        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'basic', 'pro', 'biz')", (bn,))
         if cur.fetchone():
             conn.close()
             raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
@@ -1131,7 +1140,8 @@ def api_plan_upgrade(
     conn.close()
 
     plan_status = _get_plan_status(target, expires_at, 0)
-    label = "BASIC" if target == "basic" else "PRO"
+    label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
+    label = label_map.get(target, target.upper())
     new_token = _create_jwt(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
@@ -1364,7 +1374,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         conn.close()
         raise HTTPException(
             status_code=403,
-            detail="공고별 지원대상 상담은 BASIC 플랜부터 이용할 수 있습니다."
+            detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
         )
 
     # FREE 플랜: 1회 무료 제한 (consult_limit=1)
@@ -1374,7 +1384,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             conn.close()
             raise HTTPException(
                 status_code=429,
-                detail=f"무료 체험 상담({consult_limit}회)을 모두 사용했습니다. BASIC 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
+                detail=f"무료 체험 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
             )
         # 첫 메시지일 때만 건수 차감
         if len(req.messages) <= 1:
@@ -2525,6 +2535,461 @@ def api_delete_saved(saved_id: int):
     if deleted:
         return {"status": "SUCCESS", "message": "삭제됨"}
     raise HTTPException(status_code=404, detail="해당 저장 항목을 찾을 수 없습니다.")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PRO 전용 API — 고객사 프로필 관리 / 상담 이력 / 종합 리포트
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _require_pro(current_user: dict):
+    """PRO 플랜 체크. PRO/biz가 아니면 403."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT plan, plan_expires_at FROM users WHERE business_number = %s", (current_user["bn"],))
+    u = cur.fetchone()
+    conn.close()
+    if not u:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    plan = u["plan"] or "free"
+    if plan not in ("pro", "biz"):
+        raise HTTPException(status_code=403, detail="PRO 플랜 전용 기능입니다.")
+    # 만료 체크
+    if u.get("plan_expires_at"):
+        import datetime as _dt
+        try:
+            exp = _dt.datetime.fromisoformat(str(u["plan_expires_at"]))
+            if exp < _dt.datetime.utcnow():
+                raise HTTPException(status_code=403, detail="플랜이 만료되었습니다. 갱신 후 이용하세요.")
+        except ValueError:
+            pass
+    return current_user
+
+
+# ── 1) 고객사 프로필 CRUD ──
+
+class ClientProfileCreate(BaseModel):
+    client_name: str
+    business_number: Optional[str] = None
+    establishment_date: Optional[str] = None
+    address_city: Optional[str] = None
+    industry_code: Optional[str] = None
+    industry_name: Optional[str] = None
+    revenue_bracket: Optional[str] = None
+    employee_count_bracket: Optional[str] = None
+    interests: Optional[str] = None
+    memo: Optional[str] = ""
+
+
+@app.get("/api/pro/clients")
+def api_pro_clients(current_user: dict = Depends(_get_current_user)):
+    """PRO: 내 고객사 프로필 목록 조회"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, client_name, business_number, address_city, industry_code, industry_name,
+                  revenue_bracket, employee_count_bracket, establishment_date, interests, memo, created_at, updated_at
+           FROM client_profiles
+           WHERE owner_business_number = %s AND is_active = TRUE
+           ORDER BY updated_at DESC""",
+        (current_user["bn"],)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    clients = []
+    for r in rows:
+        d = dict(r)
+        if d.get("establishment_date"):
+            d["establishment_date"] = str(d["establishment_date"])
+        if d.get("created_at"):
+            d["created_at"] = str(d["created_at"])
+        if d.get("updated_at"):
+            d["updated_at"] = str(d["updated_at"])
+        clients.append(d)
+    return {"status": "SUCCESS", "clients": clients}
+
+
+@app.post("/api/pro/clients")
+def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 프로필 생성"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO client_profiles
+           (owner_business_number, client_name, business_number, establishment_date, address_city,
+            industry_code, industry_name, revenue_bracket, employee_count_bracket, interests, memo)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           RETURNING id""",
+        (current_user["bn"], req.client_name, req.business_number,
+         req.establishment_date, req.address_city, req.industry_code, req.industry_name,
+         req.revenue_bracket, req.employee_count_bracket, req.interests, req.memo)
+    )
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "id": new_id, "message": f"고객사 '{req.client_name}' 등록 완료"}
+
+
+@app.put("/api/pro/clients/{client_id}")
+def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 프로필 수정"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """UPDATE client_profiles SET
+           client_name=%s, business_number=%s, establishment_date=%s, address_city=%s,
+           industry_code=%s, industry_name=%s, revenue_bracket=%s, employee_count_bracket=%s,
+           interests=%s, memo=%s, updated_at=CURRENT_TIMESTAMP
+           WHERE id=%s AND owner_business_number=%s AND is_active=TRUE""",
+        (req.client_name, req.business_number, req.establishment_date, req.address_city,
+         req.industry_code, req.industry_name, req.revenue_bracket, req.employee_count_bracket,
+         req.interests, req.memo, client_id, current_user["bn"])
+    )
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    if not updated:
+        raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "message": "수정 완료"}
+
+
+@app.delete("/api/pro/clients/{client_id}")
+def api_pro_client_delete(client_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 프로필 삭제 (soft delete)"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE client_profiles SET is_active=FALSE, updated_at=CURRENT_TIMESTAMP WHERE id=%s AND owner_business_number=%s",
+        (client_id, current_user["bn"])
+    )
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "message": "삭제 완료"}
+
+
+# ── 2) 상담 이력 조회 + 엑셀 다운로드 ──
+
+@app.get("/api/pro/consult-history")
+def api_pro_consult_history(
+    client_id: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 상담 이력 조회 (고객사별 필터 가능)"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    bn = current_user["bn"]
+    if client_id:
+        # 특정 고객사의 사업자번호로 필터
+        cur.execute(
+            "SELECT business_number FROM client_profiles WHERE id=%s AND owner_business_number=%s",
+            (client_id, bn)
+        )
+        cp = cur.fetchone()
+        if not cp:
+            conn.close()
+            raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+        filter_bn = cp["business_number"] or bn
+    else:
+        filter_bn = bn
+
+    cur.execute(
+        """SELECT cl.id, cl.announcement_id, a.title as announcement_title, a.category,
+                  cl.conclusion, cl.feedback, cl.feedback_detail, cl.created_at,
+                  cl.messages
+           FROM ai_consult_logs cl
+           LEFT JOIN announcements a ON a.announcement_id = cl.announcement_id
+           WHERE cl.business_number = %s
+           ORDER BY cl.created_at DESC
+           LIMIT %s OFFSET %s""",
+        (filter_bn, limit, offset)
+    )
+    rows = cur.fetchall()
+
+    # 총 건수
+    cur.execute("SELECT COUNT(*) as cnt FROM ai_consult_logs WHERE business_number = %s", (filter_bn,))
+    total = cur.fetchone()["cnt"]
+    conn.close()
+
+    history = []
+    for r in rows:
+        d = dict(r)
+        d["created_at"] = str(d["created_at"]) if d.get("created_at") else None
+        # messages는 용량이 크므로 요약만
+        msgs = d.pop("messages", None) or []
+        if isinstance(msgs, list):
+            d["message_count"] = len(msgs)
+            # 마지막 사용자 질문만 추출
+            last_q = ""
+            for m in reversed(msgs):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    last_q = m.get("text", "")[:100]
+                    break
+            d["last_question"] = last_q
+        else:
+            d["message_count"] = 0
+            d["last_question"] = ""
+        history.append(d)
+
+    return {"status": "SUCCESS", "history": history, "total": total}
+
+
+@app.get("/api/pro/consult-history/export")
+def api_pro_consult_history_export(
+    client_id: Optional[int] = None,
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 상담 이력 엑셀(CSV) 다운로드"""
+    _require_pro(current_user)
+    import csv
+    import io
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    bn = current_user["bn"]
+
+    if client_id:
+        cur.execute(
+            "SELECT business_number FROM client_profiles WHERE id=%s AND owner_business_number=%s",
+            (client_id, bn)
+        )
+        cp = cur.fetchone()
+        filter_bn = cp["business_number"] if cp and cp["business_number"] else bn
+    else:
+        filter_bn = bn
+
+    cur.execute(
+        """SELECT cl.id, cl.announcement_id, a.title as announcement_title, a.category, a.department,
+                  a.support_amount, a.deadline_date,
+                  cl.conclusion, cl.feedback, cl.feedback_detail, cl.created_at,
+                  cl.messages
+           FROM ai_consult_logs cl
+           LEFT JOIN announcements a ON a.announcement_id = cl.announcement_id
+           WHERE cl.business_number = %s
+           ORDER BY cl.created_at DESC""",
+        (filter_bn,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "상담ID", "공고ID", "공고명", "카테고리", "부처", "지원금액", "마감일",
+        "결론", "피드백", "피드백상세", "상담일시", "대화수", "마지막질문"
+    ])
+
+    for r in rows:
+        d = dict(r)
+        msgs = d.get("messages") or []
+        msg_count = len(msgs) if isinstance(msgs, list) else 0
+        last_q = ""
+        if isinstance(msgs, list):
+            for m in reversed(msgs):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    last_q = m.get("text", "")[:200]
+                    break
+        conclusion_map = {"eligible": "지원가능", "conditional": "조건부가능", "ineligible": "지원불가"}
+        writer.writerow([
+            d.get("id"), d.get("announcement_id"), d.get("announcement_title", ""),
+            d.get("category", ""), d.get("department", ""),
+            d.get("support_amount", ""), str(d.get("deadline_date", "")),
+            conclusion_map.get(d.get("conclusion"), d.get("conclusion") or "미판정"),
+            d.get("feedback", ""), d.get("feedback_detail", ""),
+            str(d.get("created_at", "")), msg_count, last_q
+        ])
+
+    from fastapi.responses import StreamingResponse
+    output.seek(0)
+    # BOM for Excel UTF-8 compatibility
+    bom_output = io.BytesIO()
+    bom_output.write(b'\xef\xbb\xbf')
+    bom_output.write(output.getvalue().encode("utf-8"))
+    bom_output.seek(0)
+
+    return StreamingResponse(
+        bom_output,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=consult_history.csv"}
+    )
+
+
+# ── 3) 종합 리포트 ──
+
+class ReportRequest(BaseModel):
+    client_profile_id: int
+
+
+@app.post("/api/pro/reports/generate")
+def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 종합 리포트 생성 — 고객 프로필 기반으로 전체 공고 매칭 + AI 판정"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 고객 프로필 조회
+    cur.execute(
+        """SELECT * FROM client_profiles WHERE id=%s AND owner_business_number=%s AND is_active=TRUE""",
+        (req.client_profile_id, current_user["bn"])
+    )
+    client = cur.fetchone()
+    if not client:
+        conn.close()
+        raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+    client = dict(client)
+
+    # 매칭 엔진으로 공고 검색
+    from app.core.matcher import get_matches_for_user
+    profile = {
+        "address_city": client.get("address_city") or "",
+        "industry_code": client.get("industry_code") or "",
+        "revenue_bracket": client.get("revenue_bracket") or "",
+        "employee_count_bracket": client.get("employee_count_bracket") or "",
+        "interests": client.get("interests") or "",
+        "establishment_date": str(client.get("establishment_date") or ""),
+    }
+    matched = get_matches_for_user(profile)
+
+    # 각 공고에 대해 간단 판정
+    results = []
+    eligible_count = 0
+    conditional_count = 0
+    ineligible_count = 0
+
+    for ann in matched:
+        a = ann if isinstance(ann, dict) else dict(ann)
+        # 간단 자격 체크 (매칭 점수 기반)
+        score = a.get("match_score", 0)
+        if score >= 80:
+            conclusion = "eligible"
+            reason = "매칭 점수가 높아 지원 가능성이 높습니다."
+            eligible_count += 1
+        elif score >= 50:
+            conclusion = "conditional"
+            reason = "일부 조건 확인이 필요합니다."
+            conditional_count += 1
+        else:
+            conclusion = "conditional"
+            reason = "추가 확인이 필요한 항목이 있습니다."
+            conditional_count += 1
+
+        results.append({
+            "announcement_id": a.get("announcement_id"),
+            "title": a.get("title", ""),
+            "category": a.get("category", ""),
+            "department": a.get("department", ""),
+            "conclusion": conclusion,
+            "reason": reason,
+            "support_amount": a.get("support_amount", ""),
+            "deadline_date": str(a.get("deadline_date", "")),
+            "match_score": score,
+        })
+
+    import json as _json
+    summary = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건"
+
+    # DB 저장
+    cur.execute(
+        """INSERT INTO client_reports
+           (client_profile_id, owner_business_number, title, summary, matched_announcements,
+            total_eligible, total_conditional, total_ineligible)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+           RETURNING id""",
+        (req.client_profile_id, current_user["bn"],
+         f"{client['client_name']} 종합 리포트",
+         summary, _json.dumps(results, ensure_ascii=False),
+         eligible_count, conditional_count, ineligible_count)
+    )
+    report_id = cur.fetchone()["id"]
+    conn.commit()
+    conn.close()
+
+    return {
+        "status": "SUCCESS",
+        "report_id": report_id,
+        "summary": summary,
+        "total": len(results),
+        "eligible": eligible_count,
+        "conditional": conditional_count,
+        "ineligible": ineligible_count,
+        "announcements": results,
+    }
+
+
+@app.get("/api/pro/reports")
+def api_pro_reports(
+    client_id: Optional[int] = None,
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 리포트 목록 조회"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if client_id:
+        cur.execute(
+            """SELECT r.id, r.client_profile_id, cp.client_name, r.title, r.summary,
+                      r.total_eligible, r.total_conditional, r.total_ineligible, r.created_at
+               FROM client_reports r
+               JOIN client_profiles cp ON cp.id = r.client_profile_id
+               WHERE r.owner_business_number=%s AND r.client_profile_id=%s
+               ORDER BY r.created_at DESC""",
+            (current_user["bn"], client_id)
+        )
+    else:
+        cur.execute(
+            """SELECT r.id, r.client_profile_id, cp.client_name, r.title, r.summary,
+                      r.total_eligible, r.total_conditional, r.total_ineligible, r.created_at
+               FROM client_reports r
+               JOIN client_profiles cp ON cp.id = r.client_profile_id
+               WHERE r.owner_business_number=%s
+               ORDER BY r.created_at DESC
+               LIMIT 50""",
+            (current_user["bn"],)
+        )
+
+    rows = cur.fetchall()
+    conn.close()
+    reports = []
+    for r in rows:
+        d = dict(r)
+        d["created_at"] = str(d["created_at"]) if d.get("created_at") else None
+        reports.append(d)
+    return {"status": "SUCCESS", "reports": reports}
+
+
+@app.get("/api/pro/reports/{report_id}")
+def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 리포트 상세 조회"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT r.*, cp.client_name, cp.address_city, cp.industry_code, cp.industry_name,
+                  cp.revenue_bracket, cp.employee_count_bracket, cp.establishment_date
+           FROM client_reports r
+           JOIN client_profiles cp ON cp.id = r.client_profile_id
+           WHERE r.id=%s AND r.owner_business_number=%s""",
+        (report_id, current_user["bn"])
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+    d = dict(row)
+    d["created_at"] = str(d["created_at"]) if d.get("created_at") else None
+    if d.get("establishment_date"):
+        d["establishment_date"] = str(d["establishment_date"])
+    return {"status": "SUCCESS", "report": d}
 
 
 if __name__ == "__main__":

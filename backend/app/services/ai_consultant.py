@@ -118,31 +118,63 @@ def search_announcements(query: str, db_conn, user_profile: dict = None, limit: 
     # 마감되지 않은 공고 우선 (마감일 없는 것도 포함)
     sql += " AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)"
 
+    # 사용자 유형에 따라 target_type 필터 (기업 사용자면 business 우선)
+    if user_profile and user_profile.get("business_number"):
+        sql += " AND a.target_type = 'business'"
+
     # 키워드 검색 (제목 + 요약 + deep_analysis에서)
+    # 공백 유무 변형도 함께 검색 (예: "AI 바우처" → "AI바우처"도 매칭)
     keywords = search_params.get("keywords", [])
     if keywords:
         keyword_conditions = []
         for kw in keywords[:5]:  # 최대 5개 키워드
-            keyword_conditions.append(
-                "(a.title ILIKE %s OR a.summary_text ILIKE %s OR a.department ILIKE %s OR COALESCE(aa.deep_analysis::text, '') ILIKE %s)"
-            )
-            params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%", f"%{kw}%"])
+            kw_nospace = kw.replace(" ", "")
+            variants = [kw]
+            if kw_nospace != kw:
+                variants.append(kw_nospace)
+            variant_conds = []
+            for v in variants:
+                variant_conds.append(
+                    "(a.title ILIKE %s OR a.summary_text ILIKE %s OR a.department ILIKE %s OR COALESCE(aa.deep_analysis::text, '') ILIKE %s)"
+                )
+                params.extend([f"%{v}%", f"%{v}%", f"%{v}%", f"%{v}%"])
+            keyword_conditions.append("(" + " OR ".join(variant_conds) + ")")
         if keyword_conditions:
             sql += " AND (" + " OR ".join(keyword_conditions) + ")"
 
-    # 지역 필터
+    # 지역/카테고리는 ORDER BY 가점으로 처리 (AND 필수 조건에서 제외)
+    # → 키워드 매칭이 핵심, 지역/카테고리 일치 시 상위 노출
     region = search_params.get("region")
-    if region and region != "전국":
-        sql += " AND (a.region IS NULL OR a.region = '' OR a.region = '전국' OR a.region ILIKE %s)"
-        params.append(f"%{region}%")
-
-    # 카테고리 필터
     category = search_params.get("category")
-    if category:
-        sql += " AND a.category ILIKE %s"
-        params.append(f"%{category}%")
 
-    sql += " ORDER BY a.deadline_date ASC NULLS LAST LIMIT %s"
+    # 카테고리 한영 매핑
+    _cat_map = {
+        "기술": ["기술", "Tech", "기술개발", "R&D"],
+        "창업": ["창업", "Entrepreneurship", "고용·창업"],
+        "수출": ["수출", "수출지원", "Global"],
+        "인력": ["인력", "인력지원", "고용", "Employment"],
+        "금융": ["금융", "정책자금", "Finance"],
+        "경영": ["경영", "소상공인", "Management"],
+        "교육": ["교육", "Education", "교육훈련"],
+    }
+
+    # ORDER BY: 지역 일치 가점 + 카테고리 일치 가점 + 마감일 순
+    order_parts = []
+    order_params = []
+
+    if region and region != "전국":
+        order_parts.append("CASE WHEN a.region ILIKE %s THEN 0 ELSE 1 END")
+        order_params.append(f"%{region}%")
+
+    if category:
+        cat_variants = _cat_map.get(category, [category])
+        cat_case = " OR ".join(["a.category ILIKE %s"] * len(cat_variants))
+        order_parts.append(f"CASE WHEN ({cat_case}) THEN 0 ELSE 1 END")
+        order_params.extend([f"%{v}%" for v in cat_variants])
+
+    order_parts.append("a.deadline_date ASC NULLS LAST")
+    sql += " ORDER BY " + ", ".join(order_parts) + " LIMIT %s"
+    params.extend(order_params)
     params.append(limit)
 
     cur.execute(sql, params)
@@ -498,6 +530,13 @@ def chat_free(
                      "support_amount": m.get("support_amount"), "deadline_date": str(m.get("deadline_date", "")),
                      "department": m.get("department")}
                     for m in matched if m["announcement_id"] in ann_ids]
+
+        # Gemini가 announcement_ids를 비운 경우, 검색된 상위 공고를 fallback으로 첨부
+        if not related and matched:
+            related = [{"announcement_id": m["announcement_id"], "title": m["title"],
+                         "support_amount": m.get("support_amount"), "deadline_date": str(m.get("deadline_date", "")),
+                         "department": m.get("department")}
+                        for m in matched[:5]]
 
         return {
             "reply": result.get("message", ""),

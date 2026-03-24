@@ -79,18 +79,30 @@ class RuleEngine:
 
         # 4. 최소 인원 (min_employee_count)
         min_emp = eligibility.get("min_employee_count")
+        try:
+            min_emp = float(min_emp) if min_emp is not None else None
+        except (ValueError, TypeError):
+            min_emp = None
         if min_emp and company_emp >= 0 and company_emp < min_emp:
             is_eligible = False
-            reasons.append(f"인력 부족 (최소 {min_emp}인)")
+            reasons.append(f"인력 부족 (최소 {int(min_emp)}인)")
 
         # 5. 최대 인원 (max_employee_count) — 중소기업 기준 초과 여부
         max_emp = eligibility.get("max_employee_count")
+        try:
+            max_emp = float(max_emp) if max_emp is not None else None
+        except (ValueError, TypeError):
+            max_emp = None
         if max_emp and company_emp >= 0 and company_emp > max_emp:
             is_eligible = False
-            reasons.append(f"인원 초과 (최대 {max_emp}인)")
+            reasons.append(f"인원 초과 (최대 {int(max_emp)}인)")
 
         # 6. 최대 매출 (max_revenue) — 지원 대상 규모 상한
         max_rev = eligibility.get("max_revenue")
+        try:
+            max_rev = float(max_rev) if max_rev is not None else None
+        except (ValueError, TypeError):
+            max_rev = None
         if max_rev and company_rev >= 0 and company_rev > max_rev:
             is_eligible = False
             reasons.append(f"매출 초과 (최대 {max_rev/1e8:.0f}억)")

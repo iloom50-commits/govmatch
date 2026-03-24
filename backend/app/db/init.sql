@@ -175,3 +175,62 @@ CREATE TABLE IF NOT EXISTS ai_consult_logs (
     feedback_detail TEXT,              -- 부정확 시 사유
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 11. AI 공유 지식 저장소 (수집AI ↔ 공고AI ↔ 공통AI 순환 학습)
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR(20) NOT NULL,       -- 'crawler' | 'consult' | 'free_chat'
+    knowledge_type VARCHAR(30) NOT NULL,
+    -- knowledge_type 값:
+    --   'faq'          : 자주 묻는 질문/답변 패턴
+    --   'pattern'      : 카테고리별 핵심 질문 패턴 (예: "기술개발 공고는 업력을 가장 많이 물어봄")
+    --   'error'        : 오답/부정확 피드백 패턴 (예: "금액 정보 불일치 빈번")
+    --   'insight'      : 공고 간 관계/조합 발견 (예: "A공고 신청자는 B공고도 해당 가능")
+    --   'trend'        : 사용자 관심 트렌드 (예: "이번 달 '디지털전환' 검색 급증")
+    category VARCHAR(100),             -- 공고 카테고리 (기술개발, 수출, 창업 등)
+    announcement_id INTEGER REFERENCES announcements(announcement_id) ON DELETE SET NULL,
+    content JSONB NOT NULL,            -- 학습된 내용 (구조는 type별로 다름)
+    -- content 구조 예시:
+    -- faq:     {"question": "...", "answer": "...", "context": "..."}
+    -- pattern: {"top_questions": [...], "key_fields": [...], "tips": "..."}
+    -- error:   {"wrong_info": "...", "correct_info": "...", "cause": "..."}
+    -- insight: {"related_ids": [1,2,3], "relationship": "..."}
+    -- trend:   {"keyword": "...", "count": 50, "period": "2026-03"}
+    confidence FLOAT DEFAULT 0.5,      -- 신뢰도 (0.0~1.0, 피드백으로 조정)
+    use_count INT DEFAULT 0,           -- 활용 횟수 (참조될 때마다 증가)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_source ON knowledge_base(source);
+CREATE INDEX IF NOT EXISTS idx_kb_type ON knowledge_base(knowledge_type);
+CREATE INDEX IF NOT EXISTS idx_kb_category ON knowledge_base(category);
+CREATE INDEX IF NOT EXISTS idx_kb_confidence ON knowledge_base(confidence DESC);
+
+-- 12. 골든 답변 (사용자 검증된 고품질 Q&A — Gemini 호출 없이 재활용)
+CREATE TABLE IF NOT EXISTS golden_answers (
+    id SERIAL PRIMARY KEY,
+    announcement_id INTEGER REFERENCES announcements(announcement_id) ON DELETE CASCADE,
+    category VARCHAR(100),             -- 공고 카테고리
+    question_pattern TEXT NOT NULL,    -- 정규화된 질문 패턴
+    question_hash VARCHAR(64) NOT NULL, -- 빠른 매칭용 해시
+    answer_text TEXT NOT NULL,         -- 검증된 답변
+    choices JSONB DEFAULT '[]'::jsonb, -- 후속 선택지
+    conclusion VARCHAR(20),            -- 결론 (eligible/conditional/ineligible/null)
+    source_consult_id INTEGER REFERENCES ai_consult_logs(id) ON DELETE SET NULL,
+    helpful_count INT DEFAULT 1,       -- "도움됐어요" 횟수
+    inaccurate_count INT DEFAULT 0,    -- "부정확해요" 횟수
+    quality_score FLOAT GENERATED ALWAYS AS (
+        CASE WHEN (helpful_count + inaccurate_count) > 0
+             THEN helpful_count::FLOAT / (helpful_count + inaccurate_count)
+             ELSE 0.5 END
+    ) STORED,                          -- 자동 계산 품질 점수
+    is_active BOOLEAN DEFAULT TRUE,    -- 품질 낮으면 비활성화
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_golden_hash ON golden_answers(question_hash);
+CREATE INDEX IF NOT EXISTS idx_golden_category ON golden_answers(category);
+CREATE INDEX IF NOT EXISTS idx_golden_quality ON golden_answers(quality_score DESC) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_golden_announcement ON golden_answers(announcement_id) WHERE is_active = TRUE;

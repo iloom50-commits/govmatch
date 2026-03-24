@@ -28,6 +28,9 @@ except ImportError:
 from collections import OrderedDict
 import hashlib
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -440,6 +443,7 @@ def chat_free(
 
 [지식 베이스 — 검색된 관련 공고 {len(matched)}건]
 {announcements_context}
+{_build_knowledge_context_from_announcements(matched, db_conn)}
 
 [핵심 규칙 — 할루시네이션 방지]
 1. **오직 위 지식 베이스에 명시된 내용만으로 답변하세요.** 지식 베이스에 없는 금액, 자격요건, 일정 등을 절대 추측하거나 지어내지 마세요.
@@ -514,6 +518,7 @@ def chat_consult(
     announcement: Dict,
     deep_analysis_data: Dict,
     user_profile: dict = None,
+    db_conn=None,
 ) -> Dict[str, Any]:
     """
     공고 특화 상담: 1개 공고에 대한 정밀 자격요건 상담.
@@ -539,7 +544,16 @@ def chat_consult(
             cached["source"] = "faq_cache"
             return cached
 
-    # 2차: 단순 질문이면 Gemini 호출 없이 DB에서 직접 응답
+    # 2차: 골든 답변 검색 (사용자 검증된 고품질 답변)
+    if db_conn and last_user_msg and len(messages) > 1:
+        golden = find_golden_answer(
+            announcement_id, last_user_msg, db_conn,
+            category=announcement.get("category")
+        )
+        if golden:
+            return golden
+
+    # 3차: 단순 질문이면 Gemini 호출 없이 DB에서 직접 응답
     if len(messages) > 1 and last_user_msg:  # 첫 메시지는 제외 (인사/안내 필요)
         direct = _try_direct_response(last_user_msg, announcement, deep_analysis_data)
         if direct:
@@ -650,6 +664,7 @@ def chat_consult(
 {eval_info}
 {form_info}
 {company_info}
+{_build_knowledge_context(a.get('category', ''), db_conn)}
 
 [핵심 규칙 — 할루시네이션 방지 & 응답 품질]
 1. **오직 위에 제공된 공고 분석 데이터에 명시된 내용만으로 답변하세요.** 공고 데이터에 없는 금액, 조건, 일정, 서류를 절대 추측하거나 지어내지 마세요.
@@ -920,6 +935,387 @@ def _verify_response(reply_text: str, announcement: Dict, deep_analysis_data: Di
         return reply_text + "\n\n---\n" + "\n".join(warnings)
     return reply_text
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 5. 순환 학습 시스템 — 지식 저장/조회 + 골든 답변
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _normalize_question(text: str) -> str:
+    """질문을 정규화하여 유사 질문 매칭에 사용"""
+    q = text.strip().lower()
+    # 조사/어미 제거
+    for suffix in ["요", "요?", "?", "해줘", "알려줘", "알려주세요",
+                    "궁금해요", "궁금합니다", "인가요", "인가", "은요", "는요",
+                    "하나요", "인지요", "입니다", "합니다", "하세요", "해주세요"]:
+        if q.endswith(suffix):
+            q = q[:-len(suffix)]
+            break
+    return q.strip()
+
+
+def _question_hash(text: str) -> str:
+    """질문의 해시값 생성 (골든 답변 매칭용)"""
+    normalized = _normalize_question(text)
+    return hashlib.md5(normalized.encode()).hexdigest()
+
+
+def find_golden_answer(announcement_id: int, question: str, db_conn, category: str = None) -> Optional[Dict]:
+    """
+    골든 답변 검색: 같은 공고(또는 같은 카테고리)에서 검증된 답변을 찾음.
+
+    검색 우선순위:
+    1. 같은 공고 + 같은 질문 해시 (정확 매칭)
+    2. 같은 카테고리 + 같은 질문 해시 (유사 공고 매칭)
+
+    Returns: {"answer_text": ..., "choices": ..., "conclusion": ...} or None
+    """
+    q_hash = _question_hash(question)
+    cur = db_conn.cursor()
+
+    try:
+        # 1순위: 같은 공고 + 질문 해시
+        cur.execute("""
+            SELECT id, answer_text, choices, conclusion
+            FROM golden_answers
+            WHERE announcement_id = %s AND question_hash = %s
+              AND is_active = TRUE AND quality_score >= 0.6
+            ORDER BY quality_score DESC, helpful_count DESC
+            LIMIT 1
+        """, (announcement_id, q_hash))
+        row = cur.fetchone()
+
+        if row:
+            # use_count 증가는 하지 않음 (golden_answers에는 없음)
+            r = dict(row)
+            return {
+                "reply": r["answer_text"],
+                "choices": r["choices"] if isinstance(r["choices"], list) else json.loads(r["choices"] or "[]"),
+                "done": False,
+                "conclusion": r.get("conclusion"),
+                "source": "golden_exact",
+            }
+
+        # 2순위: 같은 카테고리 + 질문 해시 (다른 공고의 검증된 답변)
+        if category:
+            cur.execute("""
+                SELECT id, answer_text, choices, conclusion
+                FROM golden_answers
+                WHERE category = %s AND question_hash = %s
+                  AND is_active = TRUE AND quality_score >= 0.8
+                  AND announcement_id != %s
+                ORDER BY quality_score DESC, helpful_count DESC
+                LIMIT 1
+            """, (category, q_hash, announcement_id))
+            row = cur.fetchone()
+
+            if row:
+                r = dict(row)
+                return {
+                    "reply": r["answer_text"] + "\n\n※ 유사 공고의 검증된 답변을 참고하였습니다. 정확한 내용은 해당 공고를 확인해 주세요.",
+                    "choices": r["choices"] if isinstance(r["choices"], list) else json.loads(r["choices"] or "[]"),
+                    "done": False,
+                    "conclusion": None,  # 다른 공고 답변이므로 결론은 제외
+                    "source": "golden_category",
+                }
+    except Exception as e:
+        logger.warning(f"[GoldenAnswer] search error: {e}")
+
+    return None
+
+
+def save_golden_answer(
+    consult_log_id: int,
+    announcement_id: int,
+    category: str,
+    messages: list,
+    conclusion: str,
+    db_conn,
+):
+    """
+    상담 완료 + "도움됐어요" 피드백 → 골든 답변으로 저장.
+    대화에서 주요 Q&A 쌍을 추출하여 저장.
+    """
+    try:
+        cur = db_conn.cursor()
+
+        # 대화에서 Q&A 쌍 추출 (user 질문 → 다음 assistant 답변)
+        pairs = []
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "user" and i + 1 < len(messages):
+                next_msg = messages[i + 1]
+                if next_msg.get("role") == "assistant":
+                    pairs.append((msg["text"], next_msg["text"]))
+
+        if not pairs:
+            return
+
+        for question, answer in pairs:
+            q_hash = _question_hash(question)
+            normalized = _normalize_question(question)
+
+            # 이미 같은 공고+질문 골든 답변이 있으면 helpful_count만 증가
+            cur.execute("""
+                SELECT id FROM golden_answers
+                WHERE announcement_id = %s AND question_hash = %s
+            """, (announcement_id, q_hash))
+            existing = cur.fetchone()
+
+            if existing:
+                cur.execute("""
+                    UPDATE golden_answers
+                    SET helpful_count = helpful_count + 1, updated_at = NOW()
+                    WHERE id = %s
+                """, (existing["id"],))
+            else:
+                cur.execute("""
+                    INSERT INTO golden_answers
+                    (announcement_id, category, question_pattern, question_hash,
+                     answer_text, conclusion, source_consult_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (announcement_id, category, normalized, q_hash,
+                      answer, conclusion, consult_log_id))
+
+        db_conn.commit()
+        logger.info(f"[GoldenAnswer] Saved {len(pairs)} Q&A pairs for announcement {announcement_id}")
+    except Exception as e:
+        logger.warning(f"[GoldenAnswer] save error: {e}")
+        try:
+            db_conn.rollback()
+        except Exception:
+            pass
+
+
+def mark_golden_inaccurate(consult_log_id: int, db_conn):
+    """
+    "부정확해요" 피드백 → 해당 상담에서 파생된 골든 답변의 inaccurate_count 증가.
+    quality_score가 0.4 미만이면 자동 비활성화.
+    """
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            UPDATE golden_answers
+            SET inaccurate_count = inaccurate_count + 1, updated_at = NOW()
+            WHERE source_consult_id = %s
+        """, (consult_log_id,))
+
+        # 품질 낮은 답변 자동 비활성화
+        cur.execute("""
+            UPDATE golden_answers
+            SET is_active = FALSE
+            WHERE source_consult_id = %s
+              AND (helpful_count::FLOAT / GREATEST(helpful_count + inaccurate_count, 1)) < 0.4
+        """, (consult_log_id,))
+
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[GoldenAnswer] mark_inaccurate error: {e}")
+
+
+def save_knowledge(
+    source: str,
+    knowledge_type: str,
+    content: dict,
+    db_conn,
+    category: str = None,
+    announcement_id: int = None,
+    confidence: float = 0.5,
+):
+    """공유 지식 저장소에 학습 결과 저장"""
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            INSERT INTO knowledge_base (source, knowledge_type, category, announcement_id, content, confidence)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (source, knowledge_type, category, announcement_id,
+              json.dumps(content, ensure_ascii=False), confidence))
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Knowledge] save error: {e}")
+        try:
+            db_conn.rollback()
+        except Exception:
+            pass
+
+
+def get_relevant_knowledge(
+    category: str,
+    db_conn,
+    knowledge_types: list = None,
+    limit: int = 5,
+) -> List[Dict]:
+    """
+    상담 시 관련 지식을 조회하여 프롬프트에 주입.
+    높은 신뢰도 + 많이 활용된 지식을 우선 반환.
+    """
+    if not category:
+        return []
+
+    try:
+        cur = db_conn.cursor()
+        type_filter = ""
+        params = [category]
+
+        if knowledge_types:
+            placeholders = ",".join(["%s"] * len(knowledge_types))
+            type_filter = f"AND knowledge_type IN ({placeholders})"
+            params.extend(knowledge_types)
+
+        params.append(limit)
+        cur.execute(f"""
+            SELECT id, source, knowledge_type, content, confidence, use_count
+            FROM knowledge_base
+            WHERE category = %s AND confidence >= 0.4
+            {type_filter}
+            ORDER BY confidence DESC, use_count DESC
+            LIMIT %s
+        """, params)
+
+        rows = cur.fetchall()
+        results = []
+        ids = []
+        for row in rows:
+            r = dict(row)
+            content = r["content"]
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except Exception:
+                    pass
+            r["content"] = content
+            results.append(r)
+            ids.append(r["id"])
+
+        # use_count 증가
+        if ids:
+            cur.execute(f"""
+                UPDATE knowledge_base SET use_count = use_count + 1
+                WHERE id IN ({",".join(["%s"] * len(ids))})
+            """, ids)
+            db_conn.commit()
+
+        return results
+    except Exception as e:
+        logger.warning(f"[Knowledge] query error: {e}")
+        return []
+
+
+def extract_knowledge_from_consult(
+    announcement_id: int,
+    category: str,
+    messages: list,
+    conclusion: str,
+    feedback: str,
+    db_conn,
+):
+    """
+    상담 완료 후 대화에서 지식을 추출하여 knowledge_base에 저장.
+    수집AI, 공통AI가 활용할 수 있는 패턴/인사이트를 생성.
+    """
+    if not messages or len(messages) < 3:
+        return  # 너무 짧은 대화는 학습 가치 낮음
+
+    # 사용자가 물어본 질문 패턴 추출
+    user_questions = [m["text"] for m in messages if m.get("role") == "user"]
+
+    if user_questions:
+        # FAQ 패턴 저장
+        save_knowledge(
+            source="consult",
+            knowledge_type="pattern",
+            content={
+                "top_questions": user_questions[:5],
+                "conclusion": conclusion,
+                "feedback": feedback,
+                "question_count": len(user_questions),
+            },
+            db_conn=db_conn,
+            category=category,
+            announcement_id=announcement_id,
+            confidence=0.7 if feedback == "helpful" else 0.3,
+        )
+
+    # 부정확 피드백이면 오류 패턴 저장
+    if feedback == "inaccurate":
+        # 마지막 AI 답변이 문제가 된 것으로 추정
+        ai_answers = [m["text"] for m in messages if m.get("role") == "assistant"]
+        if ai_answers:
+            save_knowledge(
+                source="consult",
+                knowledge_type="error",
+                content={
+                    "wrong_answer_snippet": ai_answers[-1][:500],
+                    "user_question": user_questions[-1] if user_questions else "",
+                    "feedback": "inaccurate",
+                },
+                db_conn=db_conn,
+                category=category,
+                announcement_id=announcement_id,
+                confidence=0.8,  # 사용자가 직접 지적한 오류는 신뢰도 높음
+            )
+
+
+def _format_knowledge_for_prompt(knowledge_items: List[Dict]) -> str:
+    """조회된 지식을 프롬프트에 삽입할 텍스트로 변환"""
+    if not knowledge_items:
+        return ""
+
+    parts = ["\n[축적된 학습 지식 — 이전 상담에서 학습한 내용]"]
+    for item in knowledge_items:
+        content = item["content"]
+        ktype = item["knowledge_type"]
+        conf = item["confidence"]
+
+        if ktype == "pattern":
+            questions = content.get("top_questions", [])
+            if questions:
+                parts.append(f"• 이 카테고리에서 자주 묻는 질문: {', '.join(questions[:3])} (신뢰도: {conf:.0%})")
+
+        elif ktype == "error":
+            wrong = content.get("wrong_answer_snippet", "")[:200]
+            parts.append(f"⚠️ 주의: 이전에 부정확 판정을 받은 답변 패턴이 있습니다. 유사 답변을 하지 않도록 주의하세요: \"{wrong}...\" (신뢰도: {conf:.0%})")
+
+        elif ktype == "insight":
+            parts.append(f"💡 인사이트: {content.get('relationship', '')} (신뢰도: {conf:.0%})")
+
+        elif ktype == "faq":
+            parts.append(f"• FAQ: Q: {content.get('question', '')} → A: {content.get('answer', '')[:200]} (신뢰도: {conf:.0%})")
+
+    return "\n".join(parts) if len(parts) > 1 else ""
+
+
+def _build_knowledge_context_from_announcements(matched: List[Dict], db_conn) -> str:
+    """매칭된 공고들의 카테고리에서 관련 지식을 수집"""
+    if not db_conn or not matched:
+        return ""
+    categories = list({a.get("category", "") for a in matched if a.get("category")})
+    all_items = []
+    for cat in categories[:3]:  # 최대 3개 카테고리
+        try:
+            items = get_relevant_knowledge(cat, db_conn, limit=3)
+            all_items.extend(items)
+        except Exception:
+            pass
+    return _format_knowledge_for_prompt(all_items[:5])
+
+
+def _build_knowledge_context(category: str, db_conn) -> str:
+    """카테고리 관련 축적 지식을 프롬프트용 텍스트로 변환"""
+    if not db_conn or not category:
+        return ""
+    try:
+        items = get_relevant_knowledge(
+            category, db_conn,
+            knowledge_types=["pattern", "error", "insight", "faq"],
+            limit=5,
+        )
+        return _format_knowledge_for_prompt(items)
+    except Exception:
+        return ""
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 프롬프트 유틸리티
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
     """검색된 공고 리스트를 프롬프트용 텍스트로 포맷"""

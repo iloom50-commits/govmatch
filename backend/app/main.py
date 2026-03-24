@@ -1404,7 +1404,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         import traceback; traceback.print_exc()
         deep = {}
 
-    # 3) 통합 AI 엔진으로 상담
+    # 3) 통합 AI 엔진으로 상담 (db_conn 전달 → 골든답변 조회 + 지식 주입)
     try:
         from app.services.ai_consultant import chat_consult
         result = chat_consult(
@@ -1413,6 +1413,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             announcement=a,
             deep_analysis_data=deep,
             user_profile=u,
+            db_conn=conn,
         )
     except Exception as e:
         print(f"[Consult] chat_consult error: {e}")
@@ -1585,7 +1586,7 @@ class ConsultFeedbackRequest(BaseModel):
 
 @app.post("/api/ai/consult/feedback")
 def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depends(_get_current_user)):
-    """상담 결과 피드백 저장"""
+    """상담 결과 피드백 저장 + 순환 학습 (골든답변/지식 저장)"""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -1593,6 +1594,58 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
         (req.feedback, req.detail, req.consult_log_id, current_user["bn"])
     )
     conn.commit()
+
+    # 순환 학습: 피드백 기반으로 골든답변 + 지식 저장
+    try:
+        from app.services.ai_consultant import (
+            save_golden_answer, mark_golden_inaccurate, extract_knowledge_from_consult
+        )
+
+        # 상담 로그 조회
+        cur.execute(
+            "SELECT announcement_id, messages, conclusion FROM ai_consult_logs WHERE id = %s",
+            (req.consult_log_id,)
+        )
+        log = cur.fetchone()
+        if log:
+            log_data = dict(log)
+            ann_id = log_data["announcement_id"]
+            messages = log_data["messages"]
+            if isinstance(messages, str):
+                messages = json.loads(messages)
+            conclusion = log_data.get("conclusion")
+
+            # 공고 카테고리 조회
+            cur.execute("SELECT category FROM announcements WHERE announcement_id = %s", (ann_id,))
+            ann_row = cur.fetchone()
+            category = dict(ann_row).get("category", "") if ann_row else ""
+
+            if req.feedback == "helpful":
+                # "도움됐어요" → 골든 답변으로 저장
+                save_golden_answer(
+                    consult_log_id=req.consult_log_id,
+                    announcement_id=ann_id,
+                    category=category,
+                    messages=messages,
+                    conclusion=conclusion,
+                    db_conn=conn,
+                )
+            elif req.feedback == "inaccurate":
+                # "부정확해요" → 골든 답변 비활성화
+                mark_golden_inaccurate(req.consult_log_id, conn)
+
+            # 공통: 지식 추출 (패턴/오류 저장)
+            extract_knowledge_from_consult(
+                announcement_id=ann_id,
+                category=category,
+                messages=messages,
+                conclusion=conclusion,
+                feedback=req.feedback,
+                db_conn=conn,
+            )
+    except Exception as e:
+        print(f"[Feedback] Learning error (non-critical): {e}")
+
     conn.close()
     return {"status": "SUCCESS"}
 

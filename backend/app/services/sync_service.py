@@ -158,6 +158,12 @@ class SyncService:
         await self._save_to_db(all_results)
         print(f"Sync complete. Total {len(all_results)} items processed.")
 
+        # 순환 학습: 수집 결과에서 카테고리별 트렌드 지식 저장
+        try:
+            self._save_crawl_knowledge(all_results)
+        except Exception as e:
+            print(f"  [Knowledge] crawl knowledge save error (non-critical): {e}")
+
     async def _save_to_db(self, results, use_ai=False):
         """DB 저장. use_ai=False면 API 기본 데이터만 빠르게 저장."""
         # Supabase Direct 연결 (Transaction Pooler 6543 -> Direct 5432)
@@ -295,5 +301,83 @@ class SyncService:
 
         conn.close()
         print(f"  DB Save: {saved} saved, {skipped} skipped, {errors} errors")
+
+    def _save_crawl_knowledge(self, results):
+        """
+        수집AI → 지식 저장소: 수집 결과에서 카테고리별 트렌드/패턴 저장.
+        공고AI, 공통AI가 이 지식을 참조하여 상담 품질 향상.
+        """
+        from app.services.ai_consultant import save_knowledge
+        import datetime as _dt
+
+        db_url = self.database_url.replace(":6543/", ":5432/")
+        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # 카테고리별 수집 통계
+        category_stats = {}
+        for item in results:
+            cat = item.get("category", "기타") or "기타"
+            if cat not in category_stats:
+                category_stats[cat] = {"count": 0, "titles": [], "departments": set()}
+            category_stats[cat]["count"] += 1
+            category_stats[cat]["titles"].append(item.get("title", "")[:60])
+            dept = item.get("department", "")
+            if dept:
+                category_stats[cat]["departments"].add(dept)
+
+        period = _dt.date.today().strftime("%Y-%m")
+
+        for cat, stats in category_stats.items():
+            if stats["count"] < 2:
+                continue  # 소수 공고는 트렌드 가치 낮음
+
+            save_knowledge(
+                source="crawler",
+                knowledge_type="trend",
+                content={
+                    "keyword": cat,
+                    "count": stats["count"],
+                    "period": period,
+                    "sample_titles": stats["titles"][:5],
+                    "departments": list(stats["departments"])[:5],
+                },
+                db_conn=conn,
+                category=cat,
+                confidence=0.6,
+            )
+
+        # 오류 패턴이 많은 카테고리 정보도 지식화 (knowledge_base에서 조회)
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT category, COUNT(*) as error_count
+                FROM knowledge_base
+                WHERE knowledge_type = 'error' AND confidence >= 0.5
+                  AND created_at >= NOW() - INTERVAL '30 days'
+                GROUP BY category
+                HAVING COUNT(*) >= 3
+                ORDER BY error_count DESC
+                LIMIT 5
+            """)
+            for row in cur.fetchall():
+                r = dict(row)
+                save_knowledge(
+                    source="crawler",
+                    knowledge_type="insight",
+                    content={
+                        "relationship": f"'{r['category']}' 카테고리에서 최근 30일간 부정확 피드백 {r['error_count']}건 발생. 이 카테고리 상담 시 특히 정확한 데이터 확인 필요.",
+                        "error_count": r["error_count"],
+                        "period": period,
+                    },
+                    db_conn=conn,
+                    category=r["category"],
+                    confidence=0.8,
+                )
+        except Exception as e:
+            print(f"  [Knowledge] error pattern analysis failed: {e}")
+
+        conn.close()
+        print(f"  [Knowledge] Saved crawl trends for {len(category_stats)} categories")
+
 
 sync_service = SyncService()

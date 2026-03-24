@@ -120,6 +120,22 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
         {/* Content */}
         <div className="p-5 sm:p-6 lg:p-8 space-y-6 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
 
+          {/* 계정 이메일 */}
+          {profile.email && (
+            <div className="space-y-2">
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">계정 이메일</label>
+              <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-slate-900 truncate">{profile.email}</p>
+                  <p className="text-[11px] text-slate-400 font-medium">로그인 및 매칭 리포트 수신에 사용됩니다</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Location — 복수선택 */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">

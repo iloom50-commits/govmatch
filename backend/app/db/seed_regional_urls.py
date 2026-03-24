@@ -59,6 +59,82 @@ REGIONAL_URLS = [
 
     # ── 지역 창업/기업 지원센터 ──
     ("인천콘텐츠기업지원센터", "https://www.incc.or.kr/user/business/list.php"),
+
+    # ── 누락 테크노파크 (9개 추가) ──
+    ("서울테크노파크(STP)", "https://www.seoultp.or.kr/user/nd54882.do"),
+    ("경기테크노파크", "https://www.gtp.or.kr/user/nd91800.do"),
+    ("강원테크노파크", "https://www.gwtp.or.kr/bbs/board.php?bo_table=biz_notice"),
+    ("충북테크노파크", "https://www.cbtp.or.kr/sub06/06_01.php"),
+    ("전북테크노파크", "https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006"),
+    ("경북테크노파크", "https://www.gbtp.or.kr/board.es?mid=a10301000000&bid=0006"),
+    ("광주테크노파크", "https://www.gjtp.or.kr/board/list.gjtp?boardId=BBS_0000002"),
+    ("대전테크노파크", "https://www.djtp.or.kr/sub05/05_01.php"),
+    ("울산테크노파크", "https://www.utp.or.kr/default/mp/index.do?mg_id=2c928de97f1a9b87017f1b0fb2ce0004"),
+
+    # ── 누락 경제/산업진흥원 ──
+    ("인천경제산업진흥원", "https://www.ifez.go.kr/"),
+    ("울산경제진흥원", "https://www.ulsanbe.or.kr/"),
+    ("세종창조경제혁신센터", "https://ccei.creativekorea.or.kr/sejong/"),
+    ("충북경제진흥원", "https://www.cbepa.or.kr/"),
+    ("강원경제진흥원", "https://www.gwepa.or.kr/"),
+    ("전북경제통상진흥원", "https://www.jbba.kr/"),
+    ("전남경제통상진흥원", "https://www.jnbe.or.kr/"),
+    ("경북경제진흥원", "https://www.gbepa.or.kr/"),
+    ("경남경제진흥원", "https://www.gnepa.or.kr/"),
+    ("제주경제통상진흥원", "https://www.jejueco.or.kr/"),
+
+    # ── 주요 시/군/구 (기초지자체) 지원사업 페이지 ──
+    # 경기도
+    ("수원시 기업지원", "https://www.suwon.go.kr/web/board/BD_board.list.do?bbsCd=1043"),
+    ("성남시 기업지원", "https://www.seongnam.go.kr/city/1000052/30005/bbsList.do"),
+    ("고양시 기업지원", "https://www.goyang.go.kr/www/www09/www0904/www090402.jsp"),
+    ("용인시 기업지원", "https://www.yongin.go.kr/home/www/www09/www0904/www090402.jsp"),
+    ("화성시 기업지원", "https://www.hscity.go.kr/www/selectBbsNttList.do?bbsNo=125"),
+    ("안양시 기업지원", "https://www.anyang.go.kr/main/selectBbsNttList.do?bbsNo=612"),
+    ("부천시 기업지원", "https://www.bucheon.go.kr/site/main/index006"),
+    ("안산시 기업지원", "https://www.ansan.go.kr/www/selectBbsNttList.do?bbsNo=888"),
+    ("평택시 기업지원", "https://www.pyeongtaek.go.kr/pyeongtaek/selectBbsNttList.do?bbsNo=91"),
+    ("시흥시 기업지원", "https://www.siheung.go.kr/main/selectBbsNttList.do?bbsNo=223"),
+    ("김포시 기업지원", "https://www.gimpo.go.kr/portal/selectBbsNttList.do?bbsNo=540"),
+    ("파주시 기업지원", "https://www.paju.go.kr/user/board/BD_board.list.do?bbsCd=1061"),
+    # 서울 주요구
+    ("강남구 기업지원", "https://www.gangnam.go.kr/notice/list.do?mid=ID01_040102"),
+    ("서초구 기업지원", "https://www.seocho.go.kr/site/seocho/ex/bbs/List.do?cbIdx=232"),
+    ("마포구 기업지원", "https://www.mapo.go.kr/site/main/board/bidding/list"),
+    ("영등포구 기업지원", "https://www.ydp.go.kr/www/selectBbsNttList.do?bbsNo=199"),
+    ("성동구 기업지원", "https://www.sd.go.kr/main/selectBbsNttList.do?bbsNo=1195"),
+    ("금천구 기업지원", "https://www.geumcheon.go.kr/portal/selectBbsNttList.do?bbsNo=1009"),
+    # 부산 주요구
+    ("해운대구 기업지원", "https://www.haeundae.go.kr/index.do"),
+    ("사상구 기업지원", "https://www.sasang.go.kr/index.do"),
+    # 대구
+    ("달서구 기업지원", "https://www.dalseo.daegu.kr/"),
+    ("북구(대구) 기업지원", "https://www.buk.daegu.kr/"),
+    # 인천
+    ("남동구 기업지원", "https://www.namdong.go.kr/main/selectBbsNttList.do?bbsNo=218"),
+    ("연수구 기업지원", "https://www.yeonsu.go.kr/main/selectBbsNttList.do?bbsNo=299"),
+    # 충남/충북
+    ("천안시 기업지원", "https://www.cheonan.go.kr/prog/selectBbsNttList.do?bbsNo=125"),
+    ("청주시 기업지원", "https://www.cheongju.go.kr/www/selectBbsNttList.do?bbsNo=335"),
+    # 전북/전남
+    ("전주시 기업지원", "https://www.jeonju.go.kr/index.9is?contentUid=9be517a74f8deed7014f90e21fc52aa1"),
+    ("순천시 기업지원", "https://www.suncheon.go.kr/kr/selectBbsNttList.do?bbsNo=248"),
+    # 경북/경남
+    ("포항시 기업지원", "https://www.pohang.go.kr/pohang/selectBbsNttList.do?bbsNo=182"),
+    ("창원시 기업지원", "https://www.changwon.go.kr/portal/selectBbsNttList.do?bbsNo=5"),
+    ("김해시 기업지원", "https://www.gimhae.go.kr/main/selectBbsNttList.do?bbsNo=205"),
+
+    # ── 전국 단위 추가 기관 ──
+    ("한국산업단지공단(KICOX)", "https://www.kicox.or.kr/user/bbs/BD_selectBbsList.do?q_bbsCode=1034"),
+    ("중소기업기술정보진흥원(TIPA)", "https://www.tipa.or.kr/biz/bizAnnounce.do"),
+    ("한국무역보험공사(K-SURE)", "https://www.ksure.or.kr/"),
+    ("한국벤처투자(KVIC)", "https://www.k-vic.co.kr/fund/fundAnc.do"),
+    ("여성기업종합지원센터", "https://www.wbiz.or.kr/"),
+    ("장애인기업종합지원센터", "https://www.debc.or.kr/"),
+    ("사회적기업진흥원", "https://www.socialenterprise.or.kr/"),
+    ("한국환경산업기술원(KEITI)", "https://www.keiti.re.kr/site/keiti/main.do"),
+    ("에너지기술평가원(KETEP)", "https://www.ketep.re.kr/"),
+    ("문화체육관광부 사업공고", "https://www.mcst.go.kr/kor/s_notice/press/pressView.jsp"),
 ]
 
 

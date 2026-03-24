@@ -125,6 +125,18 @@ class SyncService:
             export_results = await gov_api_service.fetch_exportvoucher_programs()
             all_results.extend(export_results)
 
+            # 고용노동부 (고용24 + HRD-Net)
+            moel_results = await gov_api_service.fetch_moel_programs()
+            all_results.extend(moel_results)
+
+            # 농림축산식품부 / 농촌진흥청
+            mafra_results = await gov_api_service.fetch_mafra_programs()
+            all_results.extend(mafra_results)
+
+            # 신용보증기금 / 기술보증기금
+            guarantee_results = await gov_api_service.fetch_guarantee_programs()
+            all_results.extend(guarantee_results)
+
             # 개인 복지서비스: 주 1회(월요일)만 전체 동기화, 나머지 날은 스킵
             import datetime as _dt
             if _dt.date.today().weekday() == 0:  # 0 = Monday

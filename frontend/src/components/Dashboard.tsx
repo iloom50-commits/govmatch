@@ -971,16 +971,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
-              {/* AI 맞춤 정보 알림 — 앱 설치 + 푸시 알림 */}
+              {/* AI 맞춤 정보 요청 — PWA 설치 전용 */}
               <button
                 onClick={() => {
                   if (deferredPrompt) handlePwaInstall();
                   else if (!isPwaInstalled) setShowInstallGuide(true);
-                  setIsNotifyOpen(true);
                 }}
                 className="ml-auto flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold text-slate-400 hover:text-indigo-600 transition-all whitespace-nowrap"
               >
-                <span>🔔</span> AI 맞춤 정보 알림
+                <span>📲</span> AI 맞춤 정보 요청
               </button>
             </div>
           </div>
@@ -993,7 +992,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
               )}
               <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 찾아주는 맞춤 정부지원금"}
+                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 구석구석 모든 지원금을 찾아서 알려 드립니다"}
               </span>
             </h2>
 

@@ -1347,5 +1347,217 @@ class GovernmentAPIService:
             print(f"  [ERR] 수출바우처 Exception: {e}")
             return []
 
+    # ─── 고용노동부 (Employment & Labor) API ───
+
+    async def fetch_moel_programs(self):
+        """고용노동부 고용장려금·직업훈련 등 지원사업 수집 (data.go.kr)"""
+        api_key = self._get_api_key()
+        if not api_key:
+            print("  [SKIP] 고용노동부 — API key not configured")
+            return []
+
+        endpoints = [
+            {
+                "url": "https://apis.data.go.kr/1051000/recruitment/list",
+                "name": "고용노동부 채용/지원사업",
+                "category": "Employment Support",
+                "dept": "고용노동부",
+            },
+        ]
+
+        # 고용24 사업공고 스크래핑 (API 미제공시 fallback)
+        all_items = []
+        try:
+            print("  [SCRAPE] Calling 고용24 사업공고...")
+            scrape_url = "https://www.work24.go.kr/cm/noticeInfo/srchNotice.do"
+            resp = requests.get(scrape_url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for a_tag in soup.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    if "noticeSeq" not in href and "srchNoticeDetail" not in href:
+                        continue
+                    title = a_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        parent = a_tag.find_parent(["li", "tr", "div"])
+                        if parent:
+                            title = parent.get_text(strip=True)[:200]
+                    if not title or len(title) < 5:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.work24.go.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "고용노동부",
+                        "category": "Employment Support",
+                        "origin_source": "moel-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+            # HRD-Net 직업훈련 공고
+            print("  [SCRAPE] Calling HRD-Net 직업훈련...")
+            hrd_url = "https://www.hrd.go.kr/hrdp/co/pcobo/PCOBO0100P.do"
+            resp2 = requests.get(hrd_url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp2.encoding = "utf-8"
+            if resp2.status_code == 200:
+                soup2 = BeautifulSoup(resp2.text, "html.parser")
+                for a_tag in soup2.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    title = a_tag.get_text(strip=True)
+                    if len(title) < 5 or "공고" not in title and "지원" not in title and "훈련" not in title:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.hrd.go.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "고용노동부/HRD-Net",
+                        "category": "Employment Support",
+                        "origin_source": "hrd-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+        except Exception as e:
+            print(f"  [ERR] 고용노동부 scrape: {e}")
+
+        # 중복 URL 제거
+        seen = set()
+        unique = [item for item in all_items if item["url"] not in seen and not seen.add(item["url"])]
+        print(f"    [OK] 고용노동부: {len(unique)} items")
+        return unique
+
+    # ─── 농림축산식품부 / 농촌진흥청 ───
+
+    async def fetch_mafra_programs(self):
+        """농림축산식품부·농촌진흥청 지원사업 수집"""
+        all_items = []
+        try:
+            # 농림축산식품부 사업공고
+            print("  [SCRAPE] Calling 농림축산식품부 사업공고...")
+            url = "https://www.mafra.go.kr/bbs/mafra/68/artclList.do"
+            resp = requests.get(url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for a_tag in soup.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    if "artclSeq" not in href and "artclId" not in href:
+                        continue
+                    title = a_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.mafra.go.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "농림축산식품부",
+                        "category": "Agriculture Support",
+                        "origin_source": "mafra-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+            # 농촌진흥청 공모사업
+            print("  [SCRAPE] Calling 농촌진흥청 공모사업...")
+            rda_url = "https://www.rda.go.kr/board/board.do?mode=list&prgId=day_farmprmninfoEntry"
+            resp2 = requests.get(rda_url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp2.encoding = "utf-8"
+            if resp2.status_code == 200:
+                soup2 = BeautifulSoup(resp2.text, "html.parser")
+                for a_tag in soup2.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    title = a_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    if "공모" not in title and "지원" not in title and "사업" not in title and "공고" not in title:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.rda.go.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "농촌진흥청",
+                        "category": "Agriculture Support",
+                        "origin_source": "rda-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+        except Exception as e:
+            print(f"  [ERR] 농림축산식품부 scrape: {e}")
+
+        seen = set()
+        unique = [item for item in all_items if item["url"] not in seen and not seen.add(item["url"])]
+        print(f"    [OK] 농림축산식품부: {len(unique)} items")
+        return unique
+
+    # ─── 신용보증기금 / 기술보증기금 ───
+
+    async def fetch_guarantee_programs(self):
+        """신용보증기금·기술보증기금 보증/지원사업 수집"""
+        all_items = []
+        try:
+            # 신용보증기금 지원사업
+            print("  [SCRAPE] Calling 신용보증기금...")
+            kodit_url = "https://www.kodit.co.kr/bbs/data/list.do?bbsId=BBM20060918134915602"
+            resp = requests.get(kodit_url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for a_tag in soup.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    title = a_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.kodit.co.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "신용보증기금",
+                        "category": "Loan/Investment",
+                        "origin_source": "kodit-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+            # 기술보증기금 사업공고
+            print("  [SCRAPE] Calling 기술보증기금...")
+            kibo_url = "https://www.kibo.or.kr/src/board/list.asp?code=s04_02_01"
+            resp2 = requests.get(kibo_url, headers=self._SCRAPE_HEADERS, timeout=15)
+            resp2.encoding = "utf-8"
+            if resp2.status_code == 200:
+                soup2 = BeautifulSoup(resp2.text, "html.parser")
+                for a_tag in soup2.find_all("a", href=True):
+                    href = a_tag.get("href", "")
+                    title = a_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    detail_url = href if href.startswith("http") else f"https://www.kibo.or.kr{href}"
+                    all_items.append({
+                        "title": title,
+                        "url": detail_url,
+                        "description": "",
+                        "department": "기술보증기금",
+                        "category": "Loan/Investment",
+                        "origin_source": "kibo-scrape",
+                        "region": "전국",
+                        "deadline_date": None,
+                    })
+
+        except Exception as e:
+            print(f"  [ERR] 보증기금 scrape: {e}")
+
+        seen = set()
+        unique = [item for item in all_items if item["url"] not in seen and not seen.add(item["url"])]
+        print(f"    [OK] 보증기금: {len(unique)} items")
+        return unique
+
+
 # Global Instance
 gov_api_service = GovernmentAPIService()

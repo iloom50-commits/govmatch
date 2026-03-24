@@ -655,22 +655,24 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   /* 미니 브랜드 알 (좌하단) — 봇이 여기서 깨고 나옴 */
   const BrandEgg = ({ shaking, cracking }: { shaking?: boolean; cracking?: boolean }) => (
     <div className="relative" style={shaking ? { animation: "brandEggShake 1.2s ease-in-out forwards" } : undefined}>
-      {/* 알 본체: 네이비 배지 + 금빛 GO */}
+      {/* 알 본체: 네이비 배지 + 금빛 GO — 달걀 모양 */}
       <div
-        className="w-11 h-11 rounded-full flex items-center justify-center"
+        className="flex items-center justify-center"
         style={{
-          background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 50%, #1a2744 100%)",
-          boxShadow: "0 2px 8px rgba(26, 39, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
+          width: 40,
+          height: 50,
+          borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
+          background: "linear-gradient(160deg, #FDF5E6 0%, #F5E6C8 25%, #E8D5A3 50%, #D4B896 75%, #C4A882 100%)",
+          boxShadow: "0 2px 8px rgba(180, 150, 100, 0.4), inset 0 2px 4px rgba(255,255,255,0.6), inset 0 -2px 4px rgba(160,120,60,0.15)",
+          border: "1px solid rgba(200, 175, 130, 0.3)",
         }}
       >
         <span
           style={{
             fontSize: 11,
             fontWeight: 900,
-            background: "linear-gradient(180deg, #D4A853 0%, #F5D78E 30%, #FFF1C9 50%, #F5D78E 70%, #B8862D 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            filter: "drop-shadow(0 1px 2px rgba(184,134,45,0.3))",
+            color: "#8B6914",
+            textShadow: "0 1px 1px rgba(255,255,255,0.5)",
           }}
         >
           GO
@@ -679,9 +681,9 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
 
       {/* 금이 가는 SVG */}
       {cracking && (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 44 44" style={{ zIndex: 10 }}>
-          <path d="M22 3 L20 13 L24 18 L20 26 L23 34 L22 41" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeDasharray="30" style={{ animation: "brandCrackLine 1s ease-out forwards" }} />
-          <path d="M20 13 L14 16" stroke="rgba(255,255,255,0.6)" strokeWidth="1" fill="none" strokeLinecap="round" strokeDasharray="8" style={{ animation: "brandCrackLine 0.6s 0.3s ease-out forwards", strokeDashoffset: 8 }} />
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 40 50" style={{ zIndex: 10 }}>
+          <path d="M20 3 L18 14 L22 20 L18 30 L21 40 L20 47" stroke="rgba(120,80,30,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeDasharray="35" style={{ animation: "brandCrackLine 1s ease-out forwards" }} />
+          <path d="M18 14 L12 18" stroke="rgba(120,80,30,0.5)" strokeWidth="1" fill="none" strokeLinecap="round" strokeDasharray="8" style={{ animation: "brandCrackLine 0.6s 0.3s ease-out forwards", strokeDashoffset: 8 }} />
         </svg>
       )}
     </div>
@@ -768,20 +770,24 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
           {(botPhase === "emerge" || botPhase === "walk") && (
             <>
               <div
-                className="absolute w-6 h-6 rounded-full overflow-hidden pointer-events-none"
+                className="absolute overflow-hidden pointer-events-none"
                 style={{
+                  width: 24, height: 30,
                   top: 2, left: 0,
-                  background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 100%)",
+                  borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
+                  background: "linear-gradient(160deg, #FDF5E6 0%, #E8D5A3 50%, #C4A882 100%)",
                   clipPath: "polygon(0 0, 55% 0, 40% 50%, 10% 100%, 0 100%)",
                   animation: "brandEggCrackLeft 0.8s ease-out forwards",
                   zIndex: 50,
                 }}
               />
               <div
-                className="absolute w-6 h-6 rounded-full overflow-hidden pointer-events-none"
+                className="absolute overflow-hidden pointer-events-none"
                 style={{
+                  width: 24, height: 30,
                   top: 2, right: 0,
-                  background: "linear-gradient(135deg, #1a2744 0%, #1e3a5f 100%)",
+                  borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
+                  background: "linear-gradient(160deg, #FDF5E6 0%, #E8D5A3 50%, #C4A882 100%)",
                   clipPath: "polygon(45% 0, 100% 0, 100% 100%, 60% 100%, 40% 50%)",
                   animation: "brandEggCrackRight 0.8s ease-out forwards",
                   zIndex: 50,

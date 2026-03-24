@@ -458,19 +458,73 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     }));
   };
 
+  // AI봇 간헐적 등장 애니메이션
+  const [botVisible, setBotVisible] = useState(false);
+  useEffect(() => {
+    if (open) return;
+    // 첫 등장: 3초 후, 이후 25~40초 랜덤 간격
+    const firstTimer = setTimeout(() => {
+      setBotVisible(true);
+      setTimeout(() => setBotVisible(false), 6000);
+    }, 3000);
+    const interval = setInterval(() => {
+      setBotVisible(true);
+      setTimeout(() => setBotVisible(false), 6000);
+    }, 25000 + Math.random() * 15000);
+    return () => { clearTimeout(firstTimer); clearInterval(interval); };
+  }, [open]);
+
   if (!open) {
-    // 플로팅 버튼
+    // 플로팅 버튼 + AI봇 애니메이션
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center group"
-        title="AI 상담"
-      >
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-        <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
-      </button>
+      <>
+        {/* AI봇 캐릭터 — 하단 라인에서 간헐적 등장 */}
+        {botVisible && (
+          <div
+            className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none overflow-hidden h-12"
+            style={{ animation: "botFadeIn 0.7s ease-out" }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                bottom: 2,
+                display: "flex",
+                alignItems: "flex-end",
+                gap: 2,
+                animation: "botRun 5s linear forwards",
+              }}
+            >
+              <span
+                className="text-2xl select-none"
+                style={{ display: "inline-block", animation: "botBounce 0.35s ease-in-out infinite alternate" }}
+              >
+                🤖
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  marginLeft: -4,
+                  alignSelf: "center",
+                  animation: "particleFade 0.6s ease-in-out infinite alternate",
+                }}
+              >
+                ✨
+              </span>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={() => setOpen(true)}
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center group"
+          title="AI 상담"
+        >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
+        </button>
+      </>
     );
   }
 

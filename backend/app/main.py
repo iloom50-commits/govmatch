@@ -1832,6 +1832,150 @@ def get_admin_stats():
     }
 
 
+@app.get("/api/admin/analytics", dependencies=[Depends(_verify_admin)])
+def get_admin_analytics():
+    """사용 패턴 분석 데이터: 가입 추이, 플랜 분포, AI 사용량, 알림 통계"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 1. 일별 가입 추이 (최근 30일)
+    cursor.execute("""
+        SELECT DATE(updated_at) as reg_date, COUNT(*) as cnt
+        FROM users
+        WHERE updated_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(updated_at)
+        ORDER BY reg_date
+    """)
+    signup_trend = [{"date": str(r["reg_date"]), "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 2. 플랜별 사용자 분포
+    cursor.execute("""
+        SELECT COALESCE(plan, 'free') as plan, COUNT(*) as cnt
+        FROM users
+        GROUP BY plan
+        ORDER BY cnt DESC
+    """)
+    plan_dist = [{"plan": r["plan"] or "free", "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 3. 사용자 유형 분포 (기업/개인)
+    cursor.execute("""
+        SELECT COALESCE(user_type, 'business') as utype, COUNT(*) as cnt
+        FROM users
+        GROUP BY user_type
+        ORDER BY cnt DESC
+    """)
+    type_dist = [{"type": r["utype"] or "business", "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 4. AI 상담 일별 추이 (최근 30일)
+    cursor.execute("""
+        SELECT DATE(created_at) as chat_date, COUNT(*) as cnt
+        FROM ai_consult_logs
+        WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(created_at)
+        ORDER BY chat_date
+    """)
+    ai_usage_trend = [{"date": str(r["chat_date"]), "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 5. AI 상담 총 통계
+    cursor.execute("SELECT COUNT(*) as total FROM ai_consult_logs")
+    ai_total = cursor.fetchone()["total"]
+    cursor.execute("""
+        SELECT COUNT(*) as cnt FROM ai_consult_logs
+        WHERE feedback = 'helpful'
+    """)
+    ai_helpful = cursor.fetchone()["cnt"]
+    cursor.execute("""
+        SELECT COUNT(*) as cnt FROM ai_consult_logs
+        WHERE feedback = 'inaccurate'
+    """)
+    ai_inaccurate = cursor.fetchone()["cnt"]
+
+    # 6. 알림 발송 통계 (최근 30일)
+    cursor.execute("""
+        SELECT DATE(sent_at) as send_date, status, COUNT(*) as cnt
+        FROM notification_logs
+        WHERE sent_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(sent_at), status
+        ORDER BY send_date
+    """)
+    notif_raw = cursor.fetchall()
+    notif_by_date = {}
+    for r in notif_raw:
+        d = str(r["send_date"])
+        if d not in notif_by_date:
+            notif_by_date[d] = {"date": d, "success": 0, "failed": 0}
+        if r["status"] == "sent":
+            notif_by_date[d]["success"] += r["cnt"]
+        else:
+            notif_by_date[d]["failed"] += r["cnt"]
+    notif_trend = sorted(notif_by_date.values(), key=lambda x: x["date"])
+
+    # 7. 총 알림 발송 수
+    cursor.execute("SELECT COUNT(*) as total FROM notification_logs")
+    notif_total = cursor.fetchone()["total"]
+    cursor.execute("SELECT COUNT(*) as cnt FROM notification_logs WHERE status = 'sent'")
+    notif_success = cursor.fetchone()["cnt"]
+
+    # 8. 저장 공고 수 (북마크)
+    cursor.execute("SELECT COUNT(*) as total FROM saved_announcements")
+    saved_total = cursor.fetchone()["total"]
+
+    # 9. 푸시 구독자 수
+    cursor.execute("SELECT COUNT(*) as total FROM push_subscriptions")
+    push_total = cursor.fetchone()["total"]
+
+    # 10. 알림 활성 사용자 수
+    cursor.execute("SELECT COUNT(*) as cnt FROM notification_settings WHERE is_active = true")
+    notif_active = cursor.fetchone()["cnt"]
+
+    # 11. 지역별 사용자 분포
+    cursor.execute("""
+        SELECT COALESCE(address_city, '미입력') as city, COUNT(*) as cnt
+        FROM users
+        GROUP BY address_city
+        ORDER BY cnt DESC
+        LIMIT 15
+    """)
+    region_dist = [{"region": r["city"], "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 12. 공고 수집 일별 추이 (최근 14일)
+    cursor.execute("""
+        SELECT DATE(created_at) as cdate, COUNT(*) as cnt
+        FROM announcements
+        WHERE created_at >= CURRENT_DATE - INTERVAL '14 days'
+        GROUP BY DATE(created_at)
+        ORDER BY cdate
+    """)
+    crawl_trend = [{"date": str(r["cdate"]), "count": r["cnt"]} for r in cursor.fetchall()]
+
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "data": {
+            "signup_trend": signup_trend,
+            "plan_distribution": plan_dist,
+            "user_type_distribution": type_dist,
+            "ai_usage_trend": ai_usage_trend,
+            "ai_stats": {
+                "total": ai_total,
+                "helpful": ai_helpful,
+                "inaccurate": ai_inaccurate,
+            },
+            "notification_trend": notif_trend,
+            "notification_stats": {
+                "total": notif_total,
+                "success": notif_success,
+                "failed": notif_total - notif_success,
+            },
+            "saved_total": saved_total,
+            "push_subscribers": push_total,
+            "notification_active_users": notif_active,
+            "region_distribution": region_dist,
+            "crawl_trend": crawl_trend,
+        }
+    }
+
+
 @app.get("/api/admin/system-sources", dependencies=[Depends(_verify_admin)])
 def get_system_sources():
     from app.services.public_api_service import gov_api_service

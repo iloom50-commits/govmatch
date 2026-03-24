@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiPlus, FiTrash2, FiRefreshCw, FiExternalLink, FiDatabase, FiGlobe, FiCpu, FiLink, FiMail, FiLock, FiUsers, FiLogOut } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiRefreshCw, FiExternalLink, FiDatabase, FiGlobe, FiCpu, FiMail, FiLock, FiUsers, FiLogOut, FiBarChart2, FiTrendingUp, FiBell, FiPieChart } from 'react-icons/fi';
 import { useToast } from '@/components/ui/Toast';
 
 interface AdminURL {
@@ -44,6 +44,21 @@ interface UserRow {
   email: string | null;
   channel: string | null;
   notify_active: number | null;
+}
+
+interface AnalyticsData {
+  signup_trend: { date: string; count: number }[];
+  plan_distribution: { plan: string; count: number }[];
+  user_type_distribution: { type: string; count: number }[];
+  ai_usage_trend: { date: string; count: number }[];
+  ai_stats: { total: number; helpful: number; inaccurate: number };
+  notification_trend: { date: string; success: number; failed: number }[];
+  notification_stats: { total: number; success: number; failed: number };
+  saved_total: number;
+  push_subscribers: number;
+  notification_active_users: number;
+  region_distribution: { region: string; count: number }[];
+  crawl_trend: { date: string; count: number }[];
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -160,11 +175,13 @@ export default function AdminPage() {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
   const [urls, setUrls] = useState<AdminURL[]>([]);
   const [apis, setApis] = useState<SourceItem[]>([]);
   const [scrapers, setScrapers] = useState<SourceItem[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [newUrl, setNewUrl] = useState('');
   const [sourceName, setSourceName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -187,11 +204,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [urlRes, systemRes, statsRes, usersRes] = await Promise.all([
+      const [urlRes, systemRes, statsRes, usersRes, analyticsRes] = await Promise.all([
         authFetch(`${API_URL}/api/admin/urls`),
         authFetch(`${API_URL}/api/admin/system-sources`),
         authFetch(`${API_URL}/api/admin/stats`),
         authFetch(`${API_URL}/api/admin/users`),
+        authFetch(`${API_URL}/api/admin/analytics`),
       ]);
 
       if (urlRes.status === 401 || statsRes.status === 401) {
@@ -203,6 +221,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       const systemData = await systemRes.json();
       const statsData = await statsRes.json();
       const usersData = await usersRes.json();
+      const analyticsData = await analyticsRes.json();
 
       if (urlData.status === 'SUCCESS') setUrls(urlData.data);
       if (systemData.status === 'SUCCESS') {
@@ -211,6 +230,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       }
       if (statsData.status === 'SUCCESS') setStats(statsData.data);
       if (usersData.status === 'SUCCESS') setUsers(usersData.data);
+      if (analyticsData.status === 'SUCCESS') setAnalytics(analyticsData.data);
     } catch (err) {
       console.error('Failed to fetch admin data', err);
     } finally {
@@ -419,44 +439,69 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="max-w-5xl mx-auto space-y-10">
 
         {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-1">관리자 대시보드</h1>
-            <p className="text-slate-500 text-sm">데이터 소스 관리 및 수집 현황</p>
+        <header className="flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-1">관리자 대시보드</h1>
+              <p className="text-slate-500 text-sm">데이터 소스 관리 및 수집 현황</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                title="로그아웃"
+              >
+                <FiLogOut size={16} />
+                <span className="hidden md:inline">로그아웃</span>
+              </button>
+              <button
+                onClick={handleDigest}
+                disabled={digestSending}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <FiMail className={digestSending ? 'animate-pulse' : ''} />
+                {digestSending ? '발송 중...' : '다이제스트 발송'}
+              </button>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
+                  syncing
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                }`}
+              >
+                <FiRefreshCw className={syncing ? 'animate-spin' : ''} size={16} />
+                {syncing ? '수집 중...' : '전체 데이터 수집'}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-3">
+          {/* Tab Navigation */}
+          <div className="flex gap-1 bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit">
             <button
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
-              title="로그아웃"
-            >
-              <FiLogOut size={16} />
-              <span className="hidden md:inline">로그아웃</span>
-            </button>
-            <button
-              onClick={handleDigest}
-              disabled={digestSending}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              <FiMail className={digestSending ? 'animate-pulse' : ''} />
-              {digestSending ? '발송 중...' : '다이제스트 발송'}
-            </button>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
-                syncing
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+              onClick={() => setActiveTab('overview')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'overview'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <FiRefreshCw className={syncing ? 'animate-spin' : ''} size={16} />
-              {syncing ? '수집 중...' : '전체 데이터 수집'}
+              <FiDatabase size={15} /> 운영 관리
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'analytics'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FiBarChart2 size={15} /> 사용 분석
             </button>
           </div>
         </header>
 
-        {/* Stats Cards */}
+        {/* Stats Cards — always visible */}
         {stats && (
           <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
@@ -475,6 +520,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ))}
           </section>
         )}
+
+        {/* ═══════════ Analytics Tab ═══════════ */}
+        {activeTab === 'analytics' && analytics && <AnalyticsPanel data={analytics} />}
+
+        {/* ═══════════ Overview Tab ═══════════ */}
+        {activeTab === 'overview' && <>
 
         {/* AI 재분석 패널 */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -773,10 +824,306 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </section>
         )}
 
+        </>}
+
         <footer className="text-center text-slate-400 text-xs pt-4 pb-8">
           &copy; 2026 지원금GO &mdash; Admin Panel
         </footer>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   Mini Bar Chart (CSS-only, no chart library)
+   ═══════════════════════════════════════════════ */
+function MiniBarChart({ data, color = 'bg-indigo-500', height = 120 }: { data: { label: string; value: number }[]; color?: string; height?: number }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div className="flex items-end gap-[3px] w-full" style={{ height }}>
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+          <div
+            className={`w-full rounded-t-sm ${color} transition-all duration-300 min-h-[2px]`}
+            style={{ height: `${Math.max((d.value / max) * 100, 2)}%` }}
+            title={`${d.label}: ${d.value}`}
+          />
+          {data.length <= 15 && (
+            <span className="text-[9px] text-slate-400 truncate w-full text-center">{d.label.slice(5)}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DonutChart({ segments, size = 100 }: { segments: { label: string; value: number; color: string }[]; size?: number }) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      {segments.map((seg, i) => {
+        const pct = seg.value / total;
+        const dash = pct * circumference;
+        const currentOffset = offset;
+        offset += dash;
+        return (
+          <circle
+            key={i}
+            cx="50" cy="50" r={radius}
+            fill="none"
+            stroke={seg.color}
+            strokeWidth="18"
+            strokeDasharray={`${dash} ${circumference - dash}`}
+            strokeDashoffset={-currentOffset}
+            className="transition-all duration-500"
+          />
+        );
+      })}
+      <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className="text-lg font-black fill-slate-800" fontSize="18">
+        {total}
+      </text>
+    </svg>
+  );
+}
+
+const PLAN_LABELS: Record<string, string> = { free: '무료', basic: '베이직', pro: 'PRO', premium: '프리미엄' };
+const PLAN_COLORS: Record<string, string> = { free: '#94a3b8', basic: '#6366f1', pro: '#8b5cf6', premium: '#f59e0b' };
+const TYPE_LABELS: Record<string, string> = { business: '기업', individual: '개인', both: '기업+개인' };
+
+function AnalyticsPanel({ data }: { data: AnalyticsData }) {
+  return (
+    <div className="space-y-8">
+
+      {/* Row 1: Key Metrics */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'AI 상담 총 건수', value: data.ai_stats.total, icon: <FiCpu />, color: 'text-purple-600 bg-purple-50' },
+          { label: '알림 발송 총 건수', value: data.notification_stats.total, icon: <FiBell />, color: 'text-amber-600 bg-amber-50' },
+          { label: '푸시 구독자', value: data.push_subscribers, icon: <FiTrendingUp />, color: 'text-emerald-600 bg-emerald-50' },
+          { label: '저장된 공고', value: data.saved_total, icon: <FiPieChart />, color: 'text-blue-600 bg-blue-50' },
+        ].map((card, i) => (
+          <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-lg ${card.color}`}>{card.icon}</div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{card.label}</span>
+            </div>
+            <p className="text-2xl font-black text-slate-900">{card.value.toLocaleString()}</p>
+          </div>
+        ))}
+      </section>
+
+      {/* Row 2: Signup Trend + AI Usage Trend */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+            <FiUsers className="text-blue-500" /> 일별 가입자 추이 <span className="text-xs font-normal text-slate-400">(최근 30일)</span>
+          </h3>
+          {data.signup_trend.length > 0 ? (
+            <div className="mt-4">
+              <MiniBarChart
+                data={data.signup_trend.map(d => ({ label: d.date, value: d.count }))}
+                color="bg-blue-500"
+              />
+              <div className="flex justify-between mt-2 text-[10px] text-slate-400">
+                <span>{data.signup_trend[0]?.date.slice(5)}</span>
+                <span className="font-bold text-blue-600">
+                  총 {data.signup_trend.reduce((s, d) => s + d.count, 0)}명
+                </span>
+                <span>{data.signup_trend[data.signup_trend.length - 1]?.date.slice(5)}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-4">데이터 없음</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+            <FiCpu className="text-purple-500" /> AI 상담 일별 추이 <span className="text-xs font-normal text-slate-400">(최근 30일)</span>
+          </h3>
+          {data.ai_usage_trend.length > 0 ? (
+            <div className="mt-4">
+              <MiniBarChart
+                data={data.ai_usage_trend.map(d => ({ label: d.date, value: d.count }))}
+                color="bg-purple-500"
+              />
+              <div className="flex justify-between mt-2 text-[10px] text-slate-400">
+                <span>{data.ai_usage_trend[0]?.date.slice(5)}</span>
+                <span className="font-bold text-purple-600">
+                  총 {data.ai_usage_trend.reduce((s, d) => s + d.count, 0)}건
+                </span>
+                <span>{data.ai_usage_trend[data.ai_usage_trend.length - 1]?.date.slice(5)}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-4">데이터 없음</p>
+          )}
+        </div>
+      </section>
+
+      {/* Row 3: Plan Distribution + User Type + Region */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Plan Distribution */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">요금제 분포</h3>
+          <div className="flex items-center gap-6">
+            <DonutChart
+              segments={data.plan_distribution.map(p => ({
+                label: PLAN_LABELS[p.plan] || p.plan,
+                value: p.count,
+                color: PLAN_COLORS[p.plan] || '#cbd5e1',
+              }))}
+            />
+            <div className="space-y-2 flex-1">
+              {data.plan_distribution.map((p, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PLAN_COLORS[p.plan] || '#cbd5e1' }} />
+                    <span className="text-xs font-medium text-slate-600">{PLAN_LABELS[p.plan] || p.plan}</span>
+                  </div>
+                  <span className="text-xs font-black text-slate-800">{p.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* User Type */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">사용자 유형</h3>
+          <div className="space-y-3">
+            {data.user_type_distribution.map((t, i) => {
+              const total = data.user_type_distribution.reduce((s, d) => s + d.count, 0) || 1;
+              const pct = Math.round((t.count / total) * 100);
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium text-slate-600">{TYPE_LABELS[t.type] || t.type}</span>
+                    <span className="font-black text-slate-800">{t.count}명 ({pct}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-2">
+                    <div className="bg-indigo-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Region */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">지역별 사용자</h3>
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {data.region_distribution.map((r, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-slate-600">{r.region}</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 bg-slate-100 rounded-full h-1.5">
+                    <div
+                      className="bg-emerald-500 h-1.5 rounded-full"
+                      style={{ width: `${Math.round((r.count / (data.region_distribution[0]?.count || 1)) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="font-black text-slate-800 w-8 text-right">{r.count}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Row 4: Notification + AI Feedback + Crawl Trend */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Notification Trend */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+            <FiBell className="text-amber-500" /> 알림 발송 추이
+          </h3>
+          <div className="flex gap-4 mt-2 mb-3">
+            <div className="text-center">
+              <p className="text-lg font-black text-emerald-600">{data.notification_stats.success}</p>
+              <p className="text-[10px] text-slate-400">성공</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-black text-rose-500">{data.notification_stats.failed}</p>
+              <p className="text-[10px] text-slate-400">실패</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-black text-blue-600">{data.notification_active_users}</p>
+              <p className="text-[10px] text-slate-400">활성 구독</p>
+            </div>
+          </div>
+          {data.notification_trend.length > 0 ? (
+            <MiniBarChart
+              data={data.notification_trend.map(d => ({ label: d.date, value: d.success + d.failed }))}
+              color="bg-amber-500"
+              height={80}
+            />
+          ) : (
+            <p className="text-xs text-slate-400">발송 이력 없음</p>
+          )}
+        </div>
+
+        {/* AI Feedback */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">AI 상담 피드백</h3>
+          <div className="flex items-center justify-center gap-8">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 border-4 border-emerald-200 flex items-center justify-center mb-2">
+                <span className="text-lg font-black text-emerald-600">{data.ai_stats.helpful}</span>
+              </div>
+              <p className="text-[11px] font-bold text-emerald-600">도움됨</p>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-rose-50 border-4 border-rose-200 flex items-center justify-center mb-2">
+                <span className="text-lg font-black text-rose-500">{data.ai_stats.inaccurate}</span>
+              </div>
+              <p className="text-[11px] font-bold text-rose-500">부정확</p>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-50 border-4 border-slate-200 flex items-center justify-center mb-2">
+                <span className="text-lg font-black text-slate-600">{data.ai_stats.total - data.ai_stats.helpful - data.ai_stats.inaccurate}</span>
+              </div>
+              <p className="text-[11px] font-bold text-slate-400">미평가</p>
+            </div>
+          </div>
+          {data.ai_stats.total > 0 && (
+            <div className="mt-4 text-center">
+              <span className="text-xs text-slate-400">만족도: </span>
+              <span className="text-sm font-black text-indigo-600">
+                {data.ai_stats.helpful + data.ai_stats.inaccurate > 0
+                  ? Math.round((data.ai_stats.helpful / (data.ai_stats.helpful + data.ai_stats.inaccurate)) * 100)
+                  : 0}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Crawl Trend */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+            <FiDatabase className="text-indigo-500" /> 공고 수집 추이 <span className="text-xs font-normal text-slate-400">(14일)</span>
+          </h3>
+          {data.crawl_trend.length > 0 ? (
+            <div className="mt-4">
+              <MiniBarChart
+                data={data.crawl_trend.map(d => ({ label: d.date, value: d.count }))}
+                color="bg-indigo-500"
+                height={100}
+              />
+              <p className="text-[10px] text-slate-400 mt-2 text-center">
+                최근 14일간 총 <span className="font-bold text-indigo-600">{data.crawl_trend.reduce((s, d) => s + d.count, 0).toLocaleString()}</span>건 수집
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-4">데이터 없음</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

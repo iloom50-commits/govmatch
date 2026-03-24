@@ -135,6 +135,14 @@ REGIONAL_URLS = [
     ("한국환경산업기술원(KEITI)", "https://www.keiti.re.kr/site/keiti/main.do"),
     ("에너지기술평가원(KETEP)", "https://www.ketep.re.kr/"),
     ("문화체육관광부 사업공고", "https://www.mcst.go.kr/kor/s_notice/press/pressView.jsp"),
+
+    # ── SPA 사이트 (Playwright 필요) ──
+    ("신용보증기금(KODIT)", "https://www.kodit.co.kr"),
+    ("기술보증기금(KIBO)", "https://www.kibo.or.kr"),
+    ("고용24(고용노동부)", "https://www.work24.go.kr"),
+    ("HRD-Net(직업훈련)", "https://www.hrd.go.kr"),
+    ("농촌진흥청", "https://www.rda.go.kr"),
+    ("고용노동부 정책", "https://www.moel.go.kr"),
 ]
 
 

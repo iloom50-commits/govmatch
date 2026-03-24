@@ -511,7 +511,30 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <span className="text-[11px] text-slate-400 font-bold">친구에게 알려주기</span>
           <div className="flex-1 h-px bg-slate-200/60" />
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            onClick={() => {
+              const url = window.location.origin;
+              const text = "AI가 나에게 맞는 정부지원금을 찾아줘요! 지원금GO에서 확인해보세요.";
+              if (typeof window !== "undefined" && (window as any).Kakao?.Share) {
+                (window as any).Kakao.Share.sendDefault({
+                  objectType: "feed",
+                  content: {
+                    title: "지원금GO",
+                    description: text,
+                    imageUrl: `${url}/icon-512.png`,
+                    link: { mobileWebUrl: url, webUrl: url },
+                  },
+                  buttons: [{ title: "지원금 확인하기", link: { mobileWebUrl: url, webUrl: url } }],
+                });
+              } else {
+                window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 py-2 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-all active:scale-95 border border-yellow-200/60 text-xs font-bold text-yellow-800"
+          >
+            <span>💬</span> 카카오톡
+          </button>
           <button
             onClick={() => {
               const url = window.location.origin;

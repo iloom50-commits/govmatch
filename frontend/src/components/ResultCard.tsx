@@ -261,37 +261,55 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               </button>
             </div>
             {/* 공유 버튼 */}
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = res.origin_url || res.url || window.location.origin;
-                const shareData = { title: res.title, url };
-                if (typeof navigator !== "undefined" && navigator.share) {
-                  try {
-                    await navigator.share(shareData);
-                  } catch (err: unknown) {
-                    if (err instanceof Error && err.name !== "AbortError") {
-                      await navigator.clipboard.writeText(`${res.title}\n${url}`);
-                      toast("링크가 복사되었습니다!", "success");
-                    }
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = res.origin_url || res.url || window.location.origin;
+                  const text = `[지원금GO] ${res.title}`;
+                  if (typeof window !== "undefined" && (window as any).Kakao?.Share) {
+                    (window as any).Kakao.Share.sendDefault({
+                      objectType: "feed",
+                      content: {
+                        title: res.title,
+                        description: "AI가 찾은 맞춤 정부지원금 공고입니다.",
+                        imageUrl: `${window.location.origin}/icon-512.png`,
+                        link: { mobileWebUrl: url, webUrl: url },
+                      },
+                      buttons: [{ title: "공고 보기", link: { mobileWebUrl: url, webUrl: url } }],
+                    });
+                  } else {
+                    navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
                   }
-                } else {
-                  await navigator.clipboard.writeText(`${res.title}\n${url}`);
-                  toast("링크가 복사되었습니다!", "success");
-                }
-              }}
-              className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-              aria-label="공유하기"
-            >
-              <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              </svg>
-              친구에게 공유
-            </button>
+                }}
+                className="py-1.5 rounded-lg text-[12px] font-bold text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+              >
+                <span>💬</span> 카카오톡
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const url = res.origin_url || res.url || window.location.origin;
+                  const text = `[지원금GO] ${res.title}`;
+                  if (typeof navigator !== "undefined" && navigator.share) {
+                    try {
+                      await navigator.share({ title: res.title, text, url });
+                    } catch (err: unknown) {
+                      if (err instanceof Error && err.name !== "AbortError") {
+                        await navigator.clipboard.writeText(`${text}\n${url}`);
+                        toast("링크가 복사되었습니다!", "success");
+                      }
+                    }
+                  } else {
+                    await navigator.clipboard.writeText(`${text}\n${url}`);
+                    toast("링크가 복사되었습니다!", "success");
+                  }
+                }}
+                className="py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+              >
+                <span>📤</span> 공유하기
+              </button>
+            </div>
           </div>
         </div>
       </div>

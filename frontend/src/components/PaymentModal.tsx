@@ -1,26 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { loadTossPayments, ANONYMOUS } from "@tosspayments/tosspayments-sdk";
 
-const API = process.env.NEXT_PUBLIC_API_URL;
-const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "test_ck_jExPeJWYVQ1RJDzyR6GxV49R5gvN";
-
-// 기능별 플랜 비교 행
-const FEATURE_ROWS = [
-  { label: "AI 맞춤 매칭 + 알림", free: "O", lite: "O", pro: "O" },
-  { label: "공고AI 상담 (지원대상 판별)", free: "1회", lite: "무제한", pro: "무제한", highlight: "lite" },
-  { label: "자유AI 상담 (지원사업 Q&A)", free: "-", lite: "-", pro: "무제한", highlight: "pro" },
-  { label: "AI 컨설턴트 (맞춤 매칭)", free: "-", lite: "-", pro: "무제한", highlight: "pro" },
-  { label: "전문가 도구 (고객관리/리포트)", free: "-", lite: "-", pro: "PRO 전용", highlight: "pro" },
-  { label: "AI 신청서 작성", free: "-", lite: "Coming Soon", pro: "Coming Soon" },
+// ── 무료 체험 기능 안내 ──
+const FREE_FEATURES = [
+  { label: "AI가 나에게 맞는 지원금을 찾아줍니다", desc: "업종·지역·규모 등 내 조건을 입력하면, 받을 수 있는 정부지원금 목록을 자동으로 보여드려요" },
+  { label: "\"이거 나도 받을 수 있어?\" AI에게 물어보세요", desc: "관심 있는 공고를 클릭하면, 지원 자격과 준비서류를 AI가 쉽게 설명해 드려요 (3회)" },
 ];
 
-const PAID_PLANS = [
-  { id: "lite", name: "LITE", price: 2900, priceLabel: "2,900", color: "indigo", desc: "사업자 필수" },
-  { id: "pro", name: "PRO", price: 19900, priceLabel: "19,900", color: "violet", desc: "컨설턴트 추천", popular: true },
+// ── 친구 추천 시 추가 혜택 ──
+const REFERRAL_BENEFITS = [
+  { label: "친구와 함께 쓰면 AI 상담 무제한!", desc: "친구에게 공유하면, 나도 친구도 1개월간 AI 상담 횟수 제한이 풀려요" },
+  { label: "최대 5번까지 가능", desc: "친구 5명에게 공유하면 최대 5개월간 무제한 혜택!" },
 ];
+
 
 interface PaymentModalProps {
   planStatus: { plan: string; days_left: number | null; label: string } | null;
@@ -28,233 +21,101 @@ interface PaymentModalProps {
   onClose: () => void;
 }
 
-export default function PaymentModal({ planStatus, onSuccess, onClose }: PaymentModalProps) {
+export default function PaymentModal({ planStatus, onClose }: PaymentModalProps) {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("lite");
 
-  const plan = PAID_PLANS.find((p) => p.id === selectedPlan)!;
-
-  const handleFreeTrial = async () => {
-    setLoading(true);
-    const token = localStorage.getItem("auth_token");
+  const handleShare = async () => {
+    const url = "https://govmatch.kr";
+    const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 상담 무제한 혜택!";
     try {
-      const res = await fetch(`${API}/api/plan/upgrade`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          target_plan: selectedPlan,
-          free_trial: true,
-          amount: 0,
-        }),
-      });
-      const data = await res.json();
-      if (data.status === "SUCCESS") {
-        localStorage.setItem("auth_token", data.token);
-        toast(`${plan.name} 플랜 1개월 무료 체험이 시작되었습니다!`, "success");
-        onSuccess(data.token, data.plan);
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: "지원금GO — AI 맞춤 지원금 매칭", text, url });
       } else {
-        toast(data.detail || "오류가 발생했습니다.", "error");
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        toast("공유 링크가 복사되었습니다!", "success");
       }
     } catch {
-      toast("서버 오류가 발생했습니다.", "error");
-    }
-    setLoading(false);
-  };
-
-  const handlePayment = async () => {
-    if (!agreed) {
-      toast("이용약관에 동의해 주세요.", "error");
-      return;
-    }
-    setLoading(true);
-    const token = localStorage.getItem("auth_token");
-    const orderId = `ORDER_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-
-    try {
-      const tossPayments = await loadTossPayments(TOSS_CLIENT_KEY);
-      const payment = tossPayments.payment({ customerKey: ANONYMOUS });
-
-      await payment.requestPayment({
-        method: "CARD",
-        amount: { currency: "KRW", value: plan.price },
-        orderId,
-        orderName: `지원금GO ${plan.name} 플랜`,
-        successUrl: `${window.location.origin}/payment/success?token=${encodeURIComponent(token || "")}&plan=${selectedPlan}`,
-        failUrl: `${window.location.origin}/payment/fail`,
-      });
-    } catch (err: any) {
-      if (err?.code === "PAY_PROCESS_CANCELED") {
-        toast("결제가 취소되었습니다.", "error");
-      } else {
-        toast(err?.message || "결제 중 오류가 발생했습니다.", "error");
+      try {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        toast("공유 링크가 복사되었습니다!", "success");
+      } catch {
+        toast("공유에 실패했습니다.", "error");
       }
-      setLoading(false);
     }
   };
 
-  const isFreePlan = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
+  const daysLeft = planStatus?.days_left;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-violet-500/10 blur-[60px] rounded-full pointer-events-none" />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+        <div className="absolute -top-20 -right-20 w-40 h-40 bg-emerald-500/10 blur-[60px] rounded-full pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
 
         <div className="relative z-10 p-5 sm:p-7">
           {/* Header */}
           <div className="text-center mb-5">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-[11px] font-bold uppercase tracking-widest mb-3">
-              플랜 비교
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
-              나에게 맞는 플랜을 선택하세요
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1">
+              지금은 무료로 이용하실 수 있습니다!
             </h2>
-          </div>
-
-          {/* Feature Comparison Table */}
-          <div className="mb-5 rounded-xl border border-slate-200 overflow-hidden">
-            {/* Table Header */}
-            <div className="grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] bg-slate-50 border-b border-slate-200">
-              <div className="p-2.5 text-[11px] font-bold text-slate-500">기능</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-slate-400">FREE</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-indigo-600">LITE</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-violet-600">PRO</div>
-            </div>
-            {/* Table Rows */}
-            {FEATURE_ROWS.map((row, i) => (
-              <div key={i} className={`grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] ${i < FEATURE_ROWS.length - 1 ? "border-b border-slate-100" : ""}`}>
-                <div className="p-2.5 text-[11px] font-medium text-slate-700">{row.label}</div>
-                <div className={`p-2.5 text-center text-[11px] font-semibold ${row.free === "-" ? "text-slate-300" : "text-slate-500"}`}>
-                  {row.free === "O" ? <span className="text-emerald-500">O</span> : row.free === "-" ? <span>-</span> : row.free}
-                </div>
-                <div className={`p-2.5 text-center text-[11px] font-semibold ${
-                  row.highlight === "lite" ? "text-indigo-600 font-bold bg-indigo-50/50" : row.lite === "-" ? "text-slate-300" : "text-slate-600"
-                }`}>
-                  {row.lite === "O" ? <span className="text-emerald-500">O</span> : row.lite === "-" ? <span>-</span> : row.lite}
-                </div>
-                <div className={`p-2.5 text-center text-[11px] font-semibold ${
-                  row.highlight === "pro" ? "text-violet-600 font-bold bg-violet-50/50" : row.pro === "-" ? "text-slate-300" : "text-slate-600"
-                }`}>
-                  {row.pro === "O" ? <span className="text-emerald-500">O</span> : row.pro === "-" ? <span>-</span> : row.pro}
-                </div>
-              </div>
-            ))}
-            {/* Price Row */}
-            <div className="grid grid-cols-[1fr_60px_70px_70px] sm:grid-cols-[1fr_80px_90px_90px] border-t-2 border-slate-200 bg-slate-50/50">
-              <div className="p-2.5 text-[11px] font-bold text-slate-700">월 가격</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-emerald-600">무료</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-indigo-600">2,900원</div>
-              <div className="p-2.5 text-center text-[11px] font-bold text-violet-600">19,900원</div>
-            </div>
-          </div>
-
-          {/* Plan Selection Cards */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {PAID_PLANS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedPlan(p.id)}
-                className={`relative text-left p-4 rounded-xl border-2 transition-all ${
-                  selectedPlan === p.id
-                    ? p.id === "pro"
-                      ? "border-violet-500 bg-violet-50/50 shadow-md"
-                      : "border-indigo-500 bg-indigo-50/50 shadow-md"
-                    : "border-slate-200 bg-white hover:border-slate-300"
-                }`}
-              >
-                {p.popular && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-violet-600 text-white text-[11px] font-bold rounded-full">
-                    추천
-                  </span>
-                )}
-                <div className={`text-xs font-bold mb-0.5 ${p.id === "pro" ? "text-violet-600" : "text-indigo-600"}`}>{p.name}</div>
-                <div className="text-[10px] text-slate-400 font-medium mb-2">{p.desc}</div>
-                <div className="flex items-end gap-0.5">
-                  <span className="text-2xl font-bold text-slate-900">{p.priceLabel}</span>
-                  <span className="text-[11px] font-semibold text-slate-500 pb-0.5">원/월</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Referral hint */}
-          <div className="text-center mb-4 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
-            <p className="text-[11px] text-amber-700 font-medium">
-              친구 추천 시 양쪽 모두 LITE 1개월 무료 (최대 5회)
+            <p className="text-slate-500 text-xs font-medium">
+              모든 기능을 먼저 체험해 보세요
             </p>
           </div>
 
-          {/* Free Trial Button (첫 이용자만) */}
-          {isFreePlan && (
-            <button
-              onClick={handleFreeTrial}
-              disabled={loading}
-              className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 ${
-                selectedPlan === "pro"
-                  ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
-              }`}
-            >
-              {loading ? (
-                <span className="animate-pulse">처리 중...</span>
-              ) : (
-                <>첫 달 무료로 {plan.name} 시작하기</>
-              )}
-            </button>
-          )}
+          {/* ── 현재 이용 가능한 기능 ── */}
+          <div className="mb-5 rounded-xl border border-emerald-200 overflow-hidden">
+            <div className="bg-emerald-50 px-4 py-2.5 border-b border-emerald-200">
+              <p className="text-[12px] font-bold text-emerald-700">지금 바로 할 수 있어요</p>
+            </div>
+            <div className="divide-y divide-emerald-100">
+              {FREE_FEATURES.map((f, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3">
+                  <span className="text-emerald-500 text-sm mt-0.5">&#10003;</span>
+                  <div>
+                    <div className="text-[12px] font-bold text-slate-800">{f.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">{f.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-          {/* Paid Upgrade (이미 유료 경험 있는 사용자) */}
-          {!isFreePlan && (
-            <>
-              <label className="flex items-start gap-2.5 mb-4 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 accent-indigo-600 mt-0.5 flex-shrink-0"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                />
-                <span className="text-[11px] text-slate-500 font-medium leading-relaxed group-hover:text-slate-700 transition-colors">
-                  월 {plan.priceLabel}원 정기결제에 동의합니다. 언제든 해지할 수 있으며, 해지 시 남은 기간까지 이용 가능합니다.
-                </span>
-              </label>
+          {/* ── 친구 추천 혜택 ── */}
+          <div className="mb-5 rounded-xl border border-amber-200 overflow-hidden">
+            <div className="bg-amber-50 px-4 py-2.5 border-b border-amber-200">
+              <p className="text-[12px] font-bold text-amber-700">친구에게 알려주면?</p>
+            </div>
+            <div className="divide-y divide-amber-100">
+              {REFERRAL_BENEFITS.map((b, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3">
+                  <span className="text-amber-500 text-sm mt-0.5">&#9733;</span>
+                  <div>
+                    <div className="text-[12px] font-bold text-slate-800">{b.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">{b.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-              <button
-                onClick={handlePayment}
-                disabled={loading || !agreed}
-                className={`w-full py-3 rounded-lg font-bold text-sm shadow-lg transition-all active:scale-[0.98] ${
-                  agreed
-                    ? selectedPlan === "pro"
-                      ? "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-200"
-                      : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                }`}
-              >
-                {loading ? (
-                  <span className="animate-pulse">결제 처리 중...</span>
-                ) : (
-                  <>월 {plan.priceLabel}원으로 {plan.name} 시작하기</>
-                )}
-              </button>
-            </>
-          )}
+          {/* 공유 버튼 */}
+          <button
+            onClick={handleShare}
+            className="w-full py-3.5 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-indigo-200 flex items-center justify-center gap-2"
+          >
+            <span className="text-base">&#128228;</span>
+            친구에게 공유하고 무제한 혜택 받기
+          </button>
 
           <button
             onClick={onClose}
-            className="w-full mt-3 py-2 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-all text-center"
+            className="w-full py-2.5 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-all text-center"
           >
-            나중에 하기
+            닫기
           </button>
-
-          <p className="text-[11px] text-slate-400 text-center mt-3 font-medium leading-relaxed">
-            결제는 토스페이먼츠를 통해 안전하게 처리됩니다. VAT 포함 가격입니다.
-          </p>
         </div>
       </div>
     </div>

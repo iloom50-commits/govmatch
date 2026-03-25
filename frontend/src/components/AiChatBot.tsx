@@ -5,6 +5,54 @@ import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
+/** 마크다운 → 보고서 스타일 HTML 변환 */
+function renderMarkdown(text: string): string {
+  // 1) 이스케이프
+  let html = text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // 2) 인라인: bold, 이모지 보존
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>');
+
+  const lines = html.split("\n");
+  const result: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+
+  const closeList = () => {
+    if (listType) { result.push(listType === "ol" ? "</ol>" : "</ul>"); listType = null; }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 번호 리스트: 1. or 1) — 공고 항목 등
+    const olMatch = trimmed.match(/^(\d+)[.\)]\s+(.*)/);
+    // 불릿 리스트: * or - (앞에 공백 허용)
+    const ulMatch = !olMatch && trimmed.match(/^[*\-•]\s+(.*)/);
+
+    if (olMatch) {
+      if (listType !== "ol") { closeList(); result.push('<ol class="ml-4 mt-2 mb-2 space-y-1.5 list-decimal list-outside">'); listType = "ol"; }
+      result.push(`<li class="text-slate-700 leading-relaxed">${olMatch[2]}</li>`);
+    } else if (ulMatch) {
+      if (listType !== "ul") { closeList(); result.push('<ul class="ml-4 mt-1 mb-1 space-y-1 list-disc list-outside">'); listType = "ul"; }
+      result.push(`<li class="text-slate-700 leading-relaxed">${ulMatch[1]}</li>`);
+    } else {
+      closeList();
+      // 섹션 제목: bold만으로 구성된 줄
+      if (/^<strong.*<\/strong>[:\s]*$/.test(trimmed) || /^#{1,3}\s/.test(trimmed)) {
+        const title = trimmed.replace(/^#{1,3}\s/, "");
+        result.push(`<div class="mt-4 mb-1.5 pb-1 border-b border-indigo-100 text-[13px] font-bold text-indigo-700">${title}</div>`);
+      } else if (trimmed === "") {
+        result.push('<div class="h-1.5"></div>');
+      } else {
+        result.push(`<p class="text-slate-700 leading-relaxed mb-1">${trimmed}</p>`);
+      }
+    }
+  }
+  closeList();
+  return result.join("");
+}
+
 interface RelatedAnnouncement {
   announcement_id: number;
   title: string;
@@ -365,6 +413,10 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     setMatchingInProgress(false);
   };
 
+  const CONSULT_MSG_LIMIT = 50;
+  const userMsgCount = messages.filter((m) => m.role === "user").length;
+  const isAtMsgLimit = userMsgCount >= CONSULT_MSG_LIMIT;
+
   const handleSend = (text: string) => {
     if (!text.trim() || loading || matchingInProgress) return;
 
@@ -375,6 +427,12 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     }
     if (mode === "consultant" && text === "다른 조건으로 다시 매칭") {
       startMode("consultant");
+      return;
+    }
+
+    // 메시지 한도 체크 (공고AI 상담 모드)
+    if (mode !== "free" && userMsgCount >= CONSULT_MSG_LIMIT) {
+      toast(`상담 메시지 한도(${CONSULT_MSG_LIMIT}회)를 초과했습니다.`, "error");
       return;
     }
 
@@ -1190,12 +1248,14 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[88%] ${msg.role === "user" ? "order-1" : ""}`}>
                     {/* Message bubble */}
-                    <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed whitespace-pre-wrap ${
+                    <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed ${
                       msg.role === "user"
                         ? mode === "consultant" ? "bg-violet-600 text-white rounded-br-md" : "bg-indigo-600 text-white rounded-br-md"
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
                     }`}>
-                      {msg.text}
+                      {msg.role === "user" ? msg.text : (
+                        <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
+                      )}
                     </div>
 
                     {/* Related announcements (free mode only) */}
@@ -1269,37 +1329,49 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
             </div>
 
             {/* Input area */}
-            <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-3">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      handleSend(input);
-                    }
-                  }}
-                  placeholder={mode === "consultant" ? "고객사 정보를 입력하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
-                  disabled={loading || matchingInProgress}
-                  className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
-                    mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
-                  }`}
-                />
-                <button
-                  onClick={() => handleSend(input)}
-                  disabled={loading || matchingInProgress || !input.trim()}
-                  className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
-                    mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                  </svg>
-                </button>
-              </div>
+            <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-2.5">
+              {mode !== "free" && userMsgCount > 0 && (
+                <div className={`text-[10px] font-medium mb-1.5 text-right ${isAtMsgLimit ? "text-rose-500" : "text-slate-400"}`}>
+                  {isAtMsgLimit ? "메시지 한도에 도달했습니다" : `${userMsgCount} / ${CONSULT_MSG_LIMIT}`}
+                </div>
+              )}
+              {isAtMsgLimit && mode !== "free" ? (
+                <div className="text-center py-2 px-3 bg-rose-50 border border-rose-200 rounded-xl">
+                  <p className="text-rose-600 text-[11px] font-bold">상담 메시지 한도({CONSULT_MSG_LIMIT}회)를 모두 사용했습니다.</p>
+                  <p className="text-rose-500 text-[10px] mt-0.5">새 공고에서 상담을 시작해 주세요.</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        handleSend(input);
+                      }
+                    }}
+                    placeholder={mode === "consultant" ? "고객사 정보를 입력하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
+                    disabled={loading || matchingInProgress}
+                    className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
+                      mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
+                    }`}
+                  />
+                  <button
+                    onClick={() => handleSend(input)}
+                    disabled={loading || matchingInProgress || !input.trim()}
+                    className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
+                      mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

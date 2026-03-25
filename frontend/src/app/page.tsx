@@ -179,14 +179,6 @@ export default function Home() {
       setBusinessNumber(user.business_number);
       setProfileData(user);
 
-      if (!user.user_type) {
-        // 프로필 미완성 → 전체 공고 목록으로 (온보딩 스킵)
-        localStorage.removeItem("needs_onboarding");
-        setStep("RESULTS");
-        setMatches(publicMatches);
-        return;
-      }
-
       if (data.plan.plan === "expired") {
         setStep("RESULTS");
         setMatches([]);

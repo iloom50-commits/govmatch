@@ -5,6 +5,54 @@ import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
+/** 마크다운 → 보고서 스타일 HTML 변환 */
+function renderMarkdown(text: string): string {
+  // 1) 이스케이프
+  let html = text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // 2) 인라인: bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>');
+
+  const lines = html.split("\n");
+  const result: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+
+  const closeList = () => {
+    if (listType) { result.push(listType === "ol" ? "</ol>" : "</ul>"); listType = null; }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 번호 리스트
+    const olMatch = trimmed.match(/^(\d+)[.\)]\s+(.*)/);
+    // 불릿 리스트
+    const ulMatch = !olMatch && trimmed.match(/^[*\-•]\s+(.*)/);
+
+    if (olMatch) {
+      if (listType !== "ol") { closeList(); result.push('<ol class="ml-4 mt-2 mb-2 space-y-1.5 list-decimal list-outside">'); listType = "ol"; }
+      result.push(`<li class="text-slate-700 leading-relaxed">${olMatch[2]}</li>`);
+    } else if (ulMatch) {
+      if (listType !== "ul") { closeList(); result.push('<ul class="ml-4 mt-1 mb-1 space-y-1 list-disc list-outside">'); listType = "ul"; }
+      result.push(`<li class="text-slate-700 leading-relaxed">${ulMatch[1]}</li>`);
+    } else {
+      closeList();
+      // 섹션 제목
+      if (/^<strong.*<\/strong>[:\s]*$/.test(trimmed) || /^#{1,3}\s/.test(trimmed)) {
+        const title = trimmed.replace(/^#{1,3}\s/, "");
+        result.push(`<div class="mt-4 mb-1.5 pb-1 border-b border-indigo-100 text-[13px] font-bold text-indigo-700">${title}</div>`);
+      } else if (trimmed === "") {
+        result.push('<div class="h-1.5"></div>');
+      } else {
+        result.push(`<p class="text-slate-700 leading-relaxed mb-1">${trimmed}</p>`);
+      }
+    }
+  }
+  closeList();
+  return result.join("");
+}
+
 interface Announcement {
   announcement_id: number;
   title: string;
@@ -160,7 +208,7 @@ export default function AiConsultModal() {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative w-full sm:max-w-md h-[85vh] sm:h-[600px] bg-white sm:rounded-2xl shadow-2xl border border-white/60 overflow-hidden flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+      <div className="relative w-full sm:max-w-4xl h-[90vh] sm:h-[85vh] bg-white sm:rounded-2xl shadow-2xl border border-white/60 overflow-hidden flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
 
         {/* Header */}
         <div className="relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0">
@@ -188,14 +236,16 @@ export default function AiConsultModal() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] ${msg.role === "user" ? "order-1" : ""}`}>
+              <div className={`${msg.role === "user" ? "max-w-[75%] order-1" : "max-w-[95%]"}`}>
                 {/* Message bubble */}
-                <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed ${
+                <div className={`rounded-2xl text-[13px] leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-indigo-600 text-white rounded-br-md"
-                    : "bg-slate-100 text-slate-800 rounded-bl-md"
+                    ? "px-3.5 py-2.5 bg-indigo-600 text-white rounded-br-md"
+                    : "px-4 py-3 bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-md"
                 }`}>
-                  {msg.text}
+                  {msg.role === "user" ? msg.text : (
+                    <div className="prose-sm" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
+                  )}
                 </div>
 
                 {/* Choice buttons (AI messages only) */}

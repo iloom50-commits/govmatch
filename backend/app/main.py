@@ -367,16 +367,18 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # free: 차단, lite: 차단, pro: 무제한
 PLAN_LIMITS = {
     "free": 0,
-    "lite": 0,
-    "basic": 0,       # legacy
+    "lite": 999999,    # LITE: 자유 상담 무제한
+    "lite_trial": 0,   # LITE 무료체험: 자유 상담 불가
+    "basic": 999999,   # legacy
     "biz": 999999,     # legacy
     "pro": 999999,
 }
 
 # 플랜별 공고별 지원대상 상담 건수 제한
-# free: 1회 무료, lite: 무제한, pro: 무제한
+# free: 3회, lite_trial: 1회, lite: 무제한, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 1,
+    "free": 3,
+    "lite_trial": 1,   # LITE 무료체험: 1건만
     "lite": 999999,
     "basic": 999999,   # legacy
     "biz": 999999,     # legacy
@@ -388,6 +390,9 @@ PLAN_PRICES = {"lite": 2900, "pro": 19900, "basic": 2900, "biz": 19900}
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon
 AI_GUIDE_PRICE = None  # 가격 미정
+
+# 공고AI 상담 1건당 메시지 제한 (사용자 메시지 기준)
+CONSULT_MSG_LIMIT = 50
 
 
 def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int = 0) -> dict:
@@ -410,7 +415,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "consult_limit": consult_limit,
         }
 
-    if plan in ("lite", "basic", "biz", "pro"):
+    if plan in ("lite", "lite_trial", "basic", "biz", "pro"):
         # 유료 플랜 만료 체크
         if plan_expires_at:
             try:
@@ -424,7 +429,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                         "ai_used": ai_usage_month, "ai_limit": PLAN_LIMITS["free"],
                         "consult_limit": CONSULT_LIMITS["free"],
                     }
-                label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
+                label_map = {"lite": "LITE", "lite_trial": "LITE 체험", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
                 return {
                     "plan": plan, "active": True, "days_left": days_left,
                     "label": label_map.get(plan, plan.upper()),
@@ -433,7 +438,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
                 }
             except ValueError:
                 pass
-        label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
+        label_map = {"lite": "LITE", "lite_trial": "LITE 체험", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
         return {
             "plan": plan, "active": True, "days_left": None,
             "label": label_map.get(plan, plan.upper()),
@@ -1061,6 +1066,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
             "establishment_date": str(u["establishment_date"]) if u.get("establishment_date") else "",
             "referral_code": u.get("referral_code"),
             "merit_months": u.get("merit_months", 0),
+            "user_type": u.get("user_type"),
         },
         "plan": plan_status,
     }
@@ -1090,6 +1096,9 @@ def api_plan_upgrade(
     # legacy: basic → lite
     if target == "basic":
         target = "lite"
+    # 무료체험은 lite_trial로 (LITE만 체험 가능, PRO 체험 불가)
+    if req.free_trial and target in ("lite", "basic"):
+        target = "lite_trial"
 
     # 결제 검증 (첫 달 무료가 아닌 경우)
     if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
@@ -1125,7 +1134,7 @@ def api_plan_upgrade(
         u = cur.fetchone()
         # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
         # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
-        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'basic', 'pro', 'biz')", (bn,))
+        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'lite_trial', 'basic', 'pro', 'biz')", (bn,))
         if cur.fetchone():
             conn.close()
             raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
@@ -1140,7 +1149,7 @@ def api_plan_upgrade(
     conn.close()
 
     plan_status = _get_plan_status(target, expires_at, 0)
-    label_map = {"lite": "LITE", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
+    label_map = {"lite": "LITE", "lite_trial": "LITE 체험", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
     label = label_map.get(target, target.upper())
     new_token = _create_jwt(
         current_user["user_id"], bn, current_user["email"], target, expires_at
@@ -1377,20 +1386,29 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
         )
 
-    # FREE 플랜: 1회 무료 제한 (consult_limit=1)
-    if plan == "free" and consult_limit < 999999:
+    # FREE/lite_trial: 건수 제한
+    if plan in ("free", "lite_trial") and consult_limit < 999999:
         # consult 사용량은 ai_usage_month로 추적
         if ai_usage >= consult_limit:
             conn.close()
-            raise HTTPException(
-                status_code=429,
-                detail=f"무료 체험 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
-            )
+            msg = ("LITE 체험 상담(1회)을 모두 사용했습니다. 친구를 추천하면 LITE 무제한을 이용할 수 있습니다."
+                   if plan == "lite_trial"
+                   else f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다.")
+            raise HTTPException(status_code=429, detail=msg)
         # 첫 메시지일 때만 건수 차감
         if len(req.messages) <= 1:
             cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
             conn.commit()
             ai_usage += 1
+
+    # 1-1) 메시지 수 제한 (사용자 메시지 기준 30회)
+    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
+    if user_msg_count > CONSULT_MSG_LIMIT:
+        conn.close()
+        raise HTTPException(
+            status_code=429,
+            detail=f"상담 메시지 한도({CONSULT_MSG_LIMIT}회)를 초과했습니다. 새 상담을 시작해 주세요."
+        )
 
     # 2) 공고 정보 조회
     cur.execute(

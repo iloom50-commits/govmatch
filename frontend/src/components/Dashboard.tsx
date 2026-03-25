@@ -633,7 +633,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className={`relative z-10 p-3 rounded-lg border ${
           planStatus.plan === "pro" || planStatus.plan === "biz"
             ? "bg-violet-50 border-violet-200"
-            : planStatus.plan === "lite" || planStatus.plan === "basic"
+            : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
             ? "bg-indigo-50 border-indigo-200"
             : planStatus.plan === "expired"
             ? "bg-rose-50 border-rose-200"
@@ -643,7 +643,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className={`text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz"
                 ? "text-violet-600"
-                : planStatus.plan === "lite" || planStatus.plan === "basic"
+                : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
                 ? "text-indigo-600"
                 : planStatus.plan === "expired"
                 ? "text-rose-600"
@@ -874,7 +874,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {planStatus && (
             <span className={`ml-2 text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
-              planStatus.plan === "lite" || planStatus.plan === "basic" ? "text-indigo-600" :
+              planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic" ? "text-indigo-600" :
               planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
             }`}>{planStatus.label}</span>
           )}

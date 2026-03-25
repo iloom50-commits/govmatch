@@ -271,7 +271,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               }}
               className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
             >
-              <span>📤</span> 공유하기
+              <span>📤</span> 친구에게 공유하기
             </button>
           </div>
         </div>

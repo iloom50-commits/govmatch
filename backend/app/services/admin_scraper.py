@@ -38,6 +38,23 @@ _ANNOUNCEMENT_KEYWORDS = [
     "notice", "board", "announcement",
 ]
 
+# source_name → region 매핑 (지역명 키워드)
+_REGION_KEYWORDS = {
+    "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
+    "광주": "광주", "대전": "대전", "울산": "울산", "세종": "세종",
+    "경기": "경기", "강원": "강원", "충북": "충북", "충남": "충남",
+    "전북": "전북", "전남": "전남", "경북": "경북", "경남": "경남",
+    "제주": "제주",
+}
+
+
+def _extract_region_from_source(source_name: str) -> str | None:
+    """source_name에서 지역명 추출 (예: '부산테크노파크' → '부산광역시')"""
+    for keyword, region in _REGION_KEYWORDS.items():
+        if keyword in source_name:
+            return region
+    return None
+
 
 def _is_likely_detail_link(href: str, text: str) -> bool:
     """공고 상세 페이지 링크 여부 판별"""
@@ -342,16 +359,21 @@ class AdminScraper:
 
             ai_summary = item.get("summary_text") or item.get("description", "")
 
+            # AI가 region을 추출하지 못한 경우 source_name에서 지역 추출
+            region = item.get("region") or _extract_region_from_source(source_name)
+
             if exists:
                 cursor.execute(
                     """UPDATE announcements SET
                         title=%s, summary_text=%s, eligibility_logic=%s,
-                        department=%s, category=%s, origin_source=%s, deadline_date=%s
+                        department=%s, category=%s, origin_source=%s, deadline_date=%s,
+                        region=COALESCE(NULLIF(%s, ''), region)
                     WHERE origin_url=%s""",
                     (
                         item.get("title", ""), ai_summary, eligibility_json,
                         item.get("department", ""), item.get("category", ""),
-                        f"admin-manual:{source_name}", item.get("deadline_date"), item["url"],
+                        f"admin-manual:{source_name}", item.get("deadline_date"),
+                        region, item["url"],
                     ),
                 )
                 conn.commit()
@@ -360,12 +382,13 @@ class AdminScraper:
                 cursor.execute(
                     """INSERT INTO announcements
                         (title, origin_url, summary_text, eligibility_logic,
-                         department, category, origin_source, deadline_date)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                         department, category, origin_source, deadline_date, region)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         item.get("title", ""), item["url"], ai_summary, eligibility_json,
                         item.get("department", ""), item.get("category", ""),
                         f"admin-manual:{source_name}", item.get("deadline_date"),
+                        region,
                     ),
                 )
                 conn.commit()

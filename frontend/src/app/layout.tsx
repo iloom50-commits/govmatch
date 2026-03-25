@@ -87,6 +87,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>{children}</Providers>
+        <footer className="w-full border-t border-slate-200/60 bg-slate-50/80 mt-12">
+          <div className="max-w-4xl mx-auto px-4 py-6 text-[11px] text-slate-400 leading-relaxed space-y-1">
+            <p className="font-semibold text-slate-500">밸류파인더 | 대표 권오성</p>
+            <p>사업자등록번호 141-17-02215 | 경영 컨설팅업</p>
+            <p>부산광역시 해운대구 센텀중앙로 145, 109동 3405호</p>
+            <p>이메일 osung94@naver.com | 전화 010-6346-7718</p>
+            <p className="pt-1 text-slate-300">&copy; {new Date().getFullYear()} 밸류파인더. All rights reserved.</p>
+          </div>
+        </footer>
       </body>
     </html>
   );

@@ -25,6 +25,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
     address_cities: ["전국"] as string[],
     establishment_date: "",
     interests: "",
+    specific_needs: "" as string,
 
     revenue_bracket: "",
     employee_count_bracket: "",
@@ -93,12 +94,18 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
         return;
       }
       setStep(step + 1);
+    } else if (st === "specific_needs") {
+      // 건너뛰기 가능 — 바로 다음 단계로
+      setStep(step + 1);
     } else if (st === "account") {
       if (!formData.email || !formData.email.includes("@")) {
         toast("매칭 결과를 받을 이메일을 입력해 주세요.", "error");
         return;
       }
-      onComplete(formData);
+      // specific_needs를 interests에 합치기
+      const merged = [formData.interests, formData.specific_needs]
+        .filter(Boolean).join(",");
+      onComplete({ ...formData, interests: merged });
     }
   };
 
@@ -111,12 +118,12 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
     }
   };
 
-  // 개인: step 0(유형) → 1(개인1) → 2(개인2) → 3(계정) = 4단계
-  // 기업: step 0(유형) → 1(사업자) → 2(지역) → 3(관심) → 4(규모) → 5(계정) = 6단계
-  // 둘다: step 0(유형) → 1(개인1) → 2(개인2) → 3(사업자) → 4(지역) → 5(관심) → 6(규모) → 7(계정) = 8단계
+  // 개인: step 0(유형) → 1(개인1) → 2(개인2) → 3(구체니즈) → 4(계정) = 5단계
+  // 기업: step 0(유형) → 1(사업자) → 2(지역) → 3(관심) → 4(규모) → 5(구체니즈) → 6(계정) = 7단계
+  // 둘다: step 0(유형) → 1(개인1) → 2(개인2) → 3(사업자) → 4(지역) → 5(관심) → 6(규모) → 7(구체니즈) → 8(계정) = 9단계
   const isIndividualOnly = formData.user_type === "individual";
   const isBoth = formData.user_type === "both";
-  const TOTAL_STEPS = isIndividualOnly ? 4 : isBoth ? 8 : 6;
+  const TOTAL_STEPS = isIndividualOnly ? 5 : isBoth ? 9 : 7;
 
   // step 번호를 논리적 단계로 매핑
   const getStepType = (s: number): string => {
@@ -124,7 +131,8 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
     if (isIndividualOnly) {
       if (s === 1) return "personal_info_1";
       if (s === 2) return "personal_info_2";
-      if (s === 3) return "account";
+      if (s === 3) return "specific_needs";
+      if (s === 4) return "account";
     } else if (isBoth) {
       if (s === 1) return "personal_info_1";
       if (s === 2) return "personal_info_2";
@@ -132,14 +140,16 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
       if (s === 4) return "business_region";
       if (s === 5) return "interests";
       if (s === 6) return "company_size";
-      if (s === 7) return "account";
+      if (s === 7) return "specific_needs";
+      if (s === 8) return "account";
     } else {
       // business
       if (s === 1) return "business_info";
       if (s === 2) return "business_region";
       if (s === 3) return "interests";
       if (s === 4) return "company_size";
-      if (s === 5) return "account";
+      if (s === 5) return "specific_needs";
+      if (s === 6) return "account";
     }
     return "unknown";
   };
@@ -176,6 +186,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
               {stepType === "business_info" && "사업자 정보를 알려주세요"}
               {stepType === "interests" && "관심 분야를 알려주세요"}
               {stepType === "company_size" && "기업 규모를 알려주세요"}
+              {stepType === "specific_needs" && "구체적으로 찾는 지원이 있으세요?"}
               {stepType === "account" && "맞춤 매칭 결과를 받아보세요"}
             </h2>
           )}
@@ -190,6 +201,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
             {stepType === "business_region" && "지역별로 다른 지원금이 있어요"}
             {stepType === "interests" && "관심 분야를 선택하면 우선순위를 높여 매칭해요"}
             {stepType === "company_size" && "지원금마다 매출·인원 기준이 달라 정확한 필터링이 필요해요"}
+            {stepType === "specific_needs" && "선택하거나 직접 입력하면 AI가 더 정밀하게 찾아드려요"}
             {stepType === "account" && "새 공고가 뜨면 이메일로 바로 알려드려요"}
           </p>
         </div>
@@ -578,6 +590,83 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
             </div>
           )}
 
+          {/* STEP: 구체적 니즈 (선택 + 직접입력) */}
+          {stepType === "specific_needs" && (() => {
+            const SPECIFIC_OPTIONS = formData.user_type === "individual"
+              ? [
+                  { label: "유류보조금", icon: "⛽" },
+                  { label: "주거지원/전세자금", icon: "🏠" },
+                  { label: "교육/학자금", icon: "📚" },
+                  { label: "출산/육아", icon: "👶" },
+                  { label: "취업훈련/직업교육", icon: "💼" },
+                  { label: "의료비/건강", icon: "🏥" },
+                  { label: "생활안정자금", icon: "💳" },
+                  { label: "농업/귀농귀촌", icon: "🌾" },
+                ]
+              : [
+                  { label: "유류보조금", icon: "⛽" },
+                  { label: "고용장려금/채용지원", icon: "👥" },
+                  { label: "시설투자/설비", icon: "🏭" },
+                  { label: "수출/해외진출", icon: "🌐" },
+                  { label: "R&D/기술개발", icon: "🔬" },
+                  { label: "교육훈련비", icon: "📖" },
+                  { label: "대출/보증", icon: "🏦" },
+                  { label: "소상공인 지원", icon: "🏪" },
+                ];
+            const needs = formData.specific_needs.split(",").filter(i => i.trim());
+            const toggleNeed = (tag: string) => {
+              const next = needs.includes(tag) ? needs.filter(i => i !== tag) : [...needs, tag];
+              setFormData({ ...formData, specific_needs: next.join(",") });
+            };
+            return (
+              <div className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+                <div className="grid grid-cols-2 gap-2">
+                  {SPECIFIC_OPTIONS.map(opt => (
+                    <button
+                      key={opt.label}
+                      onClick={() => toggleNeed(opt.label)}
+                      className={`p-3 sm:p-4 rounded-2xl border-2 transition-all flex items-center gap-2 text-left group ${
+                        needs.includes(opt.label)
+                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg scale-[1.02]"
+                          : "bg-white border-slate-100 text-slate-600 hover:border-indigo-200"
+                      }`}
+                    >
+                      <span className="text-xl flex-shrink-0 group-hover:scale-110 transition-transform">{opt.icon}</span>
+                      <span className="text-xs font-black leading-tight">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="예: 화물기사 유류비, 청년 전세자금..."
+                    className="w-full p-4 border border-slate-200 rounded-2xl bg-white/50 focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-sm font-medium outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (val) {
+                          toggleNeed(val);
+                          (e.target as HTMLInputElement).value = "";
+                        }
+                      }
+                    }}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 font-bold">Enter로 추가</span>
+                </div>
+                {needs.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 px-1">
+                    {needs.map((tag, i) => (
+                      <span key={i} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-[11px] font-black rounded-full flex items-center gap-1">
+                        {tag}
+                        <button onClick={() => toggleNeed(tag)} className="hover:text-rose-500 transition-colors">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* STEP: Email + Notification */}
           {stepType === "account" && (
             <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
@@ -645,7 +734,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
                 disabled={loading}
                 className={`${step > 0 ? 'flex-[2]' : 'w-full'} py-5 bg-slate-900 text-white rounded-2xl font-black text-base shadow-xl shadow-indigo-100 hover:bg-indigo-600 transition-all active:scale-95 flex items-center justify-center group`}
               >
-                {loading ? "분석 중..." : stepType === "account" ? "무료 매칭 시작하기" : "다음 단계로"}
+                {loading ? "분석 중..." : stepType === "account" ? "무료 매칭 시작하기" : stepType === "specific_needs" && !formData.specific_needs ? "건너뛰기" : "다음 단계로"}
                 {!loading && <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>}
               </button>
             )}

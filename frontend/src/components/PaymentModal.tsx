@@ -58,10 +58,10 @@ export default function PaymentModal({ planStatus, onClose }: PaymentModalProps)
           {/* Header */}
           <div className="text-center mb-5">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1">
-              지원금GO 무료 체험기간입니다
+              지금은 무료로 이용하실 수 있습니다!
             </h2>
             <p className="text-slate-500 text-xs font-medium">
-              아래 기능을 무료로 이용하실 수 있어요
+              모든 기능을 먼저 체험해 보세요
             </p>
           </div>
 

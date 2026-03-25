@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "지원금GO — AI가 구석구석 모든 지원금을 찾아서 알려 드립니다",
-  description: "우리 기업에 딱 맞는 정부지원금을 AI가 자동으로 찾아드립니다. 중소기업 지원사업, 보조금, 정책자금 매칭.",
+  title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+  description: "지원금 찾지 마세요. AI가 구석구석 찾아드림. 우리 기업에 딱 맞는 정부지원금, 보조금, 정책자금을 자동 매칭.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

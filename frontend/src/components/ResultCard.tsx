@@ -168,15 +168,36 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </span>
         </div>
 
-        {/* Title + Amount */}
-        <h3 className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[2lh]" title={res.title}>
-          {res.support_amount && (
-            <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap">
-              {res.support_amount}
-            </span>
-          )}
-          {res.title}
-        </h3>
+        {/* Title + Amount — 클릭 시 상세 페이지(origin_url) 이동 */}
+        {(res.origin_url || res.url) && !isPublic && !isExpired ? (
+          <a
+            href={res.origin_url || res.url}
+            rel="noopener noreferrer"
+            className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight hover:text-indigo-600 hover:underline underline-offset-2 transition-colors line-clamp-2 min-h-[2lh] cursor-pointer"
+            title={res.title}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {res.support_amount && (
+              <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap">
+                {res.support_amount}
+              </span>
+            )}
+            {res.title}
+          </a>
+        ) : (
+          <h3
+            className={`font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight transition-colors line-clamp-2 min-h-[2lh] ${isPublic ? "cursor-pointer hover:text-indigo-600" : ""}`}
+            title={res.title}
+            onClick={isPublic ? () => onLoginRequired?.() : undefined}
+          >
+            {res.support_amount && (
+              <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap">
+                {res.support_amount}
+              </span>
+            )}
+            {res.title}
+          </h3>
+        )}
 
         {/* Info & Buttons */}
         <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
@@ -196,38 +217,6 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </div>
           {/* CTA buttons */}
           <div className="flex flex-col gap-2 mt-2">
-            {/* 상세 공고 이동 */}
-            {isPublic ? (
-              <button
-                onClick={() => onLoginRequired?.()}
-                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:from-indigo-700 hover:to-blue-600 transition-all active:scale-[0.98] shadow-md text-center"
-              >
-                상세 공고 이동 →
-              </button>
-            ) : isExpired ? (
-              <button
-                onClick={() => onUpgrade?.()}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[12px] uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-slate-400 hover:text-white transition-all"
-              >
-                🔒 플랜 만료 — 업그레이드 후 이용
-              </button>
-            ) : res.origin_url || res.url ? (
-              <a
-                href={res.origin_url || res.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-500 text-white rounded-lg font-bold text-[12px] uppercase tracking-wider hover:from-indigo-700 hover:to-blue-600 transition-all active:scale-[0.98] shadow-md text-center block"
-              >
-                상세 공고 이동 →
-              </a>
-            ) : (
-              <button
-                onClick={() => toast('상세 페이지 링크가 없습니다.', 'info')}
-                className="w-full py-2 bg-slate-300 text-slate-500 rounded-lg font-bold text-[12px] uppercase tracking-wider cursor-not-allowed"
-              >
-                링크 없음
-              </button>
-            )}
             {/* AI 버튼 2개 */}
             <div className="flex items-center gap-2">
               <button
@@ -260,56 +249,30 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 버튼 */}
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const url = res.origin_url || res.url || window.location.origin;
-                  const text = `[지원금GO] ${res.title}`;
-                  if (typeof window !== "undefined" && (window as any).Kakao?.Share) {
-                    (window as any).Kakao.Share.sendDefault({
-                      objectType: "feed",
-                      content: {
-                        title: res.title,
-                        description: "AI가 찾은 맞춤 정부지원금 공고입니다.",
-                        imageUrl: `${window.location.origin}/icon-512.png`,
-                        link: { mobileWebUrl: url, webUrl: url },
-                      },
-                      buttons: [{ title: "공고 보기", link: { mobileWebUrl: url, webUrl: url } }],
-                    });
-                  } else {
-                    navigator.clipboard.writeText(`${text}\n${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
-                  }
-                }}
-                className="py-1.5 rounded-lg text-[12px] font-bold text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
-              >
-                <span>💬</span> 카카오톡
-              </button>
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const url = res.origin_url || res.url || window.location.origin;
-                  const text = `[지원금GO] ${res.title}`;
-                  if (typeof navigator !== "undefined" && navigator.share) {
-                    try {
-                      await navigator.share({ title: res.title, text, url });
-                    } catch (err: unknown) {
-                      if (err instanceof Error && err.name !== "AbortError") {
-                        await navigator.clipboard.writeText(`${text}\n${url}`);
-                        toast("링크가 복사되었습니다!", "success");
-                      }
+            {/* 공유 버튼 — OS 네이티브 공유 시트 (카카오톡, 밴드, 문자 등 포함) */}
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = res.origin_url || res.url || window.location.origin;
+                const text = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
+                if (typeof navigator !== "undefined" && navigator.share) {
+                  try {
+                    await navigator.share({ title: res.title, text, url });
+                  } catch (err: unknown) {
+                    if (err instanceof Error && err.name !== "AbortError") {
+                      await navigator.clipboard.writeText(`${text}\n${url}`);
+                      toast("링크가 복사되었습니다!", "success");
                     }
-                  } else {
-                    await navigator.clipboard.writeText(`${text}\n${url}`);
-                    toast("링크가 복사되었습니다!", "success");
                   }
-                }}
-                className="py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
-              >
-                <span>📤</span> 공유하기
-              </button>
-            </div>
+                } else {
+                  await navigator.clipboard.writeText(`${text}\n${url}`);
+                  toast("링크가 복사되었습니다!", "success");
+                }
+              }}
+              className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+            >
+              <span>📤</span> 공유하기
+            </button>
           </div>
         </div>
       </div>

@@ -459,7 +459,7 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   };
 
   // AI봇: 브랜드 알에서 깨고 등장 → 오른쪽으로 걸어감 → 책상 작업 → 왼쪽 복귀
-  const [botPhase, setBotPhase] = useState<"idle" | "crack" | "emerge" | "walk" | "work" | "return">("idle");
+  const [botPhase, setBotPhase] = useState<"idle" | "crack" | "emerge" | "walk" | "work" | "return" | "done">("idle");
   useEffect(() => {
     if (open) { setBotPhase("idle"); return; }
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -474,12 +474,11 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
       timers.push(setTimeout(() => setBotPhase("work"), 8000));
       // 5. 플로팅 버튼으로 걸어가서 흡수 (28~31s)
       timers.push(setTimeout(() => setBotPhase("return"), 28000));
-      // 6. 완료
-      timers.push(setTimeout(() => setBotPhase("idle"), 31500));
+      // 6. 완료 — 달걀 숨김 유지
+      timers.push(setTimeout(() => setBotPhase("done"), 31500));
     };
     timers.push(setTimeout(startBot, 4000));
-    const interval = setInterval(startBot, 60000 + Math.random() * 30000);
-    return () => { timers.forEach(clearTimeout); clearInterval(interval); };
+    return () => { timers.forEach(clearTimeout); };
   }, [open]);
 
   /* 하이테크 미래형 SVG 미니 AI봇 — 정면 서 있는 상태 */
@@ -766,8 +765,8 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
 
         {/* 하단 중앙 브랜드 알 — 봇이 여기서 깨고 나옴 */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
-          {/* 깨진 껍데기 (emerge 이후 표시) */}
-          {(botPhase === "emerge" || botPhase === "walk") && (
+          {/* 깨진 껍데기 — 벌어진 후 2~3초 유지하다 페이드아웃 */}
+          {botPhase === "emerge" && (
             <>
               <div
                 className="absolute overflow-hidden pointer-events-none"
@@ -777,7 +776,7 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                   borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
                   background: "linear-gradient(160deg, #FDF5E6 0%, #E8D5A3 50%, #C4A882 100%)",
                   clipPath: "polygon(0 0, 55% 0, 40% 50%, 10% 100%, 0 100%)",
-                  animation: "brandEggCrackLeft 0.8s ease-out forwards",
+                  animation: "brandEggCrackLeft 3s ease-out forwards",
                   zIndex: 50,
                 }}
               />
@@ -789,22 +788,20 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                   borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
                   background: "linear-gradient(160deg, #FDF5E6 0%, #E8D5A3 50%, #C4A882 100%)",
                   clipPath: "polygon(45% 0, 100% 0, 100% 100%, 60% 100%, 40% 50%)",
-                  animation: "brandEggCrackRight 0.8s ease-out forwards",
+                  animation: "brandEggCrackRight 3s ease-out forwards",
                   zIndex: 50,
                 }}
               />
             </>
           )}
 
-          {/* 브랜드 알 — crack 단계에서 흔들림, emerge~work에서 안 보임, return에서 재등장 */}
+          {/* 브랜드 알 — crack 단계에서 흔들림, emerge 이후 안 보임 */}
           <div style={
             botPhase === "crack"
               ? undefined
-              : botPhase === "emerge" || botPhase === "walk" || botPhase === "work"
+              : botPhase !== "idle"
                 ? { opacity: 0, pointerEvents: "none" as const }
-                : botPhase === "return"
-                  ? { animation: "brandEggReappear 1s ease-out forwards" }
-                  : undefined
+                : undefined
           }>
             <BrandEgg
               shaking={botPhase === "crack"}

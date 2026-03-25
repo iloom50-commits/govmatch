@@ -114,7 +114,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                 (window as any).Kakao.Share.sendDefault({
                   objectType: "feed",
                   content: {
-                    title: "지원금GO",
+                    title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
                     description: shareText,
                     imageUrl: `${window.location.origin}/icon-512.png`,
                     link: { mobileWebUrl: url, webUrl: url },
@@ -143,7 +143,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
           <button
             onClick={() => {
               if (navigator.share) {
-                navigator.share({ title: "지원금GO", text: shareText, url });
+                navigator.share({ title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림", text: shareText, url });
               } else {
                 navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
               }
@@ -584,7 +584,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => window.location.origin}
-        shareText="AI가 나에게 맞는 정부지원금을 찾아줘요! 지원금GO에서 확인해보세요."
+        shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금GO에서 확인해보세요!"
         toast={toast}
       />
     </div>
@@ -710,7 +710,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}`}
-            shareText="AI가 우리 기업에 맞는 정부지원금을 찾아줘요! 지원금GO에서 확인해보세요."
+            shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금GO에서 확인해보세요!"
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (

@@ -466,13 +466,13 @@ export default function Home() {
       {planStatus?.plan === "free" && step === "RESULTS" && (
         <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between animate-in slide-in-from-top duration-500">
           <p className="text-indigo-800 text-xs font-bold">
-            FREE 플랜 사용 중 — 더 많은 AI 기능을 원하시면 업그레이드하세요 (첫 달 무료)
+            무료 체험 중 — 친구에게 공유하면 AI 상담 무제한!
           </p>
           <button
             onClick={() => setShowPayment(true)}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all flex-shrink-0"
           >
-            업그레이드
+            자세히 보기
           </button>
         </div>
       )}

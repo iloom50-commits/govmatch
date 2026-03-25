@@ -180,8 +180,10 @@ export default function Home() {
       setProfileData(user);
 
       if (!user.user_type) {
+        // 프로필 미완성 → 전체 공고 목록으로 (온보딩 스킵)
         localStorage.removeItem("needs_onboarding");
-        setStep("ONBOARDING");
+        setStep("RESULTS");
+        setMatches(publicMatches);
         return;
       }
 
@@ -219,7 +221,9 @@ export default function Home() {
       setProfileData(meData.user);
 
       if (!meData.user.interests && !meData.user.industry_code) {
-        setStep("ONBOARDING");
+        // 프로필 미완성 → 전체 공고 목록으로 (온보딩 스킵)
+        setStep("RESULTS");
+        setMatches(publicMatches);
         return;
       }
 
@@ -444,6 +448,25 @@ export default function Home() {
             className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg text-sm"
           >
             플랜 선택하기
+          </button>
+        </div>
+      )}
+
+      {/* 프로필 미완성 유도 배너 */}
+      {step === "RESULTS" && profileData && !profileData.user_type && (
+        <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-top duration-500 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🎯</span>
+            <div>
+              <p className="text-indigo-900 font-bold text-sm">내 조건에 맞는 공고만 보고 싶다면?</p>
+              <p className="text-indigo-600 text-xs font-medium">간단한 프로필 설정으로 AI 맞춤 매칭을 받아보세요</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setStep("ONBOARDING")}
+            className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg flex-shrink-0 active:scale-95"
+          >
+            맞춤 설정하기
           </button>
         </div>
       )}

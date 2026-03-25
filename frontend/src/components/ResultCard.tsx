@@ -169,7 +169,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
         </div>
 
         {/* Title + Amount — 클릭 시 상세 페이지(origin_url) 이동 */}
-        {(res.origin_url || res.url) ? (
+        {(res.origin_url || res.url) && !isPublic && !isExpired ? (
           <a
             href={res.origin_url || res.url}
             rel="noopener noreferrer"
@@ -186,8 +186,9 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </a>
         ) : (
           <h3
-            className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight transition-colors line-clamp-2 min-h-[2lh]"
+            className={`font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight transition-colors line-clamp-2 min-h-[2lh] ${isPublic ? "cursor-pointer hover:text-indigo-600" : ""}`}
             title={res.title}
+            onClick={isPublic ? () => onLoginRequired?.() : undefined}
           >
             {res.support_amount && (
               <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap">

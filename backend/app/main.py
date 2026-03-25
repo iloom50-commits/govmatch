@@ -2060,6 +2060,12 @@ def delete_admin_url(url_id: int):
     conn.close()
     return {"status": "SUCCESS", "message": "URL 삭제 완료"}
 
+@app.get("/api/admin/urls/health", dependencies=[Depends(_verify_admin)])
+def get_admin_urls_health():
+    """수집 URL 헬스체크 리포트 — 실패/복구 현황"""
+    report = admin_scraper.get_health_report()
+    return {"status": "SUCCESS", "data": report}
+
 def _run_manual_sync_in_thread():
     """관리자 수동 동기화를 별도 스레드에서 실행"""
     import asyncio

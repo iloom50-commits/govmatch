@@ -1,4 +1,8 @@
 import asyncio
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import psycopg2
 import psycopg2.extras
 import json
@@ -151,10 +155,16 @@ class SyncService:
         except Exception as e:
             print(f"  Government API error: {e}")
 
-        # 2. Admin Targeted URLs (Dynamic AI Scraping)
+        # 2. Admin Targeted URLs (Dynamic AI Scraping) + 헬스체크
         try:
             print("  Processing Admin Targeted URLs...")
             await admin_scraper.run_all()
+
+            # 동기화 후 실패 URL 알림
+            health = admin_scraper.get_health_report()
+            if health["critical"] > 0:
+                print(f"  [Alert] 수집 실패 URL {health['critical']}개 — 관리자 알림 발송")
+                self._send_health_alert(health)
         except Exception as e:
             print(f"  Admin Scraper error: {e}")
 
@@ -390,6 +400,62 @@ class SyncService:
 
         conn.close()
         print(f"  [Knowledge] Saved crawl trends for {len(category_stats)} categories")
+
+    def _send_health_alert(self, health: dict):
+        """수집 실패 URL 관리자 이메일 알림"""
+        smtp_user = os.getenv("SMTP_USER", "")
+        smtp_password = os.getenv("SMTP_PASSWORD", "")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user)
+        admin_email = smtp_from  # 관리자 = 발신자
+
+        if not smtp_user or not smtp_password:
+            print("  [Alert] SMTP 미설정 — 이메일 알림 건너뜀")
+            return
+
+        critical_urls = health.get("critical_urls", [])
+        rows_html = ""
+        for u in critical_urls:
+            recovered = f"<br>→ 복구 URL: {u.get('recovered_url', '')}" if u.get("recovered_url") else ""
+            rows_html += f"""<tr>
+                <td style="padding:8px;border:1px solid #ddd">{u['source_name']}</td>
+                <td style="padding:8px;border:1px solid #ddd;font-size:12px">{u['url'][:60]}{recovered}</td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:center;color:red">{u['fail_count']}회</td>
+                <td style="padding:8px;border:1px solid #ddd;font-size:12px">{(u.get('last_fail_reason') or '')[:80]}</td>
+            </tr>"""
+
+        html = f"""
+        <h2 style="color:#dc2626">수집 URL 헬스체크 알림</h2>
+        <p>전체: {health['total_active']}개 | 정상: {health['healthy']}개 |
+           경고: {health['warning']}개 | <b style="color:red">심각: {health['critical']}개</b> |
+           자동복구: {health['recovered']}개</p>
+        <table style="border-collapse:collapse;width:100%">
+            <tr style="background:#f3f4f6">
+                <th style="padding:8px;border:1px solid #ddd">기관명</th>
+                <th style="padding:8px;border:1px solid #ddd">URL</th>
+                <th style="padding:8px;border:1px solid #ddd">실패</th>
+                <th style="padding:8px;border:1px solid #ddd">사유</th>
+            </tr>
+            {rows_html}
+        </table>
+        <p style="color:#6b7280;font-size:12px;margin-top:16px">
+            관리자 페이지에서 확인: /admin → 수집 URL 관리
+        </p>
+        """
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[지원금톡톡] 수집 URL 실패 알림 — {health['critical']}개 심각"
+        msg["From"] = smtp_from
+        msg["To"] = admin_email
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        try:
+            with smtplib.SMTP(os.getenv("SMTP_HOST", "smtp.gmail.com"), int(os.getenv("SMTP_PORT", "587"))) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_from, [admin_email], msg.as_string())
+            print(f"  [Alert] 관리자 알림 이메일 발송 완료 → {admin_email}")
+        except Exception as e:
+            print(f"  [Alert] 이메일 발송 실패: {e}")
 
 
 sync_service = SyncService()

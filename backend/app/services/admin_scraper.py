@@ -15,6 +15,9 @@ from app.services.ai_service import ai_service
 from app.config import DATABASE_URL
 import json
 
+# 연속 실패 임계값: 이 횟수 이상이면 자동 복구 시도
+_FAIL_THRESHOLD = 3
+
 # 공고 목록에서 개별 링크로 보기 어려운 텍스트 패턴
 _SKIP_LINK_TEXTS = {
     "홈", "home", "로그인", "회원가입", "마이페이지", "검색", "닫기", "이전", "다음",
@@ -28,6 +31,13 @@ _DETAIL_URL_PATTERNS = [
     r"seq=", r"idx=", r"id=", r"no=", r"nttId=", r"articleId=",
     r"bid=", r"num=", r"post", r"content",
 ]
+
+# 공고 페이지를 찾기 위한 키워드 (자동 복구 시 사용)
+_ANNOUNCEMENT_KEYWORDS = [
+    "사업공고", "공고", "공지", "모집", "지원사업", "입찰", "안내",
+    "notice", "board", "announcement",
+]
+
 
 def _is_likely_detail_link(href: str, text: str) -> bool:
     """공고 상세 페이지 링크 여부 판별"""
@@ -102,6 +112,7 @@ class AdminScraper:
 
     - 목록 페이지 URL → 개별 공고 링크 추출 → 각 공고 AI 분석 저장
     - 단일 공고 URL → 바로 AI 분석 저장 (기존 동작)
+    - 헬스체크: 접속 실패 시 fail_count 증가, 연속 실패 시 자동 복구 시도
     """
 
     def __init__(self, database_url=DATABASE_URL):
@@ -119,30 +130,147 @@ class AdminScraper:
         targets = cursor.fetchall()
         print(f"Starting Admin Targeted Scrape for {len(targets)} URLs...")
 
+        failed_targets = []
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
 
             for target in targets:
-                url = target["url"]
+                target_id = target["id"]
+                url = target.get("recovered_url") or target["url"]
                 source_name = target["source_name"]
                 print(f"\n  [{source_name}] {url[:60]}")
-                try:
-                    items = await self._scrape_target(url, browser)
+
+                # --- 헬스체크: 접속 시도 ---
+                success, error_reason, items = await self._try_scrape(url, browser)
+
+                if success:
+                    # 성공: fail_count 리셋, last_success 기록
                     saved = 0
                     for item in items:
                         if self._save_to_db(item, source_name, conn):
                             saved += 1
                     print(f"     -> {len(items)}건 분석 / {saved}건 신규 저장")
                     cursor.execute(
-                        "UPDATE admin_urls SET last_scraped = %s WHERE id = %s",
-                        (datetime.now().isoformat(), target["id"]),
+                        """UPDATE admin_urls SET
+                            last_scraped = %s, last_success = %s,
+                            fail_count = 0, last_fail_reason = NULL
+                        WHERE id = %s""",
+                        (datetime.now().isoformat(), datetime.now().isoformat(), target_id),
                     )
                     conn.commit()
-                except Exception as e:
-                    print(f"     Error: {e}")
+                else:
+                    # 실패: fail_count 증가
+                    new_fail_count = (target.get("fail_count") or 0) + 1
+                    cursor.execute(
+                        """UPDATE admin_urls SET
+                            last_scraped = %s, fail_count = %s, last_fail_reason = %s
+                        WHERE id = %s""",
+                        (datetime.now().isoformat(), new_fail_count, error_reason[:500], target_id),
+                    )
+                    conn.commit()
+                    print(f"     실패 (연속 {new_fail_count}회): {error_reason[:80]}")
+
+                    if new_fail_count >= _FAIL_THRESHOLD:
+                        failed_targets.append({**target, "fail_count": new_fail_count, "last_fail_reason": error_reason})
+
+            # --- 자동 복구 시도: 연속 실패 URL들 ---
+            if failed_targets:
+                print(f"\n{'='*50}")
+                print(f"  자동 복구 시도: {len(failed_targets)}개 URL (연속 {_FAIL_THRESHOLD}회 이상 실패)")
+                print(f"{'='*50}")
+                for target in failed_targets:
+                    recovered = await self._try_recover_url(target, browser, cursor, conn)
+                    if not recovered:
+                        print(f"     [{target['source_name']}] 자동 복구 실패 — 관리자 확인 필요")
 
             await browser.close()
         conn.close()
+
+    async def _try_scrape(self, url: str, browser) -> tuple[bool, str, list]:
+        """URL 스크래핑 시도. (성공여부, 에러사유, 결과목록) 반환"""
+        try:
+            items = await self._scrape_target(url, browser)
+            return True, "", items
+        except Exception as e:
+            return False, str(e), []
+
+    async def _try_recover_url(self, target: dict, browser, cursor, conn) -> bool:
+        """루트 도메인에서 새 공고 페이지 URL을 자동 탐색"""
+        original_url = target["url"]
+        source_name = target["source_name"]
+        parsed = urlparse(original_url)
+        root_url = f"{parsed.scheme}://{parsed.netloc}"
+
+        print(f"\n  [{source_name}] 루트 도메인 탐색: {root_url}")
+
+        try:
+            page = await browser.new_page()
+            try:
+                await page.goto(root_url, wait_until="networkidle", timeout=60000)
+                content = await page.content()
+            finally:
+                await page.close()
+
+            soup = BeautifulSoup(content, "html.parser")
+            candidate_urls = []
+
+            for a in soup.find_all("a", href=True):
+                href = a["href"].strip()
+                text = a.get_text(separator=" ", strip=True).lower()
+
+                # 공고/모집/게시판 관련 링크 찾기
+                if any(kw in text for kw in _ANNOUNCEMENT_KEYWORDS):
+                    full_url = href if href.startswith("http") else urljoin(root_url, href)
+                    if urlparse(full_url).netloc == parsed.netloc:
+                        candidate_urls.append((full_url, text))
+
+            if not candidate_urls:
+                print(f"     공고 페이지 후보 없음")
+                return False
+
+            print(f"     공고 페이지 후보 {len(candidate_urls)}개 발견")
+
+            # 각 후보 URL을 시도하여 공고 목록이 있는지 확인
+            for candidate_url, link_text in candidate_urls[:5]:
+                print(f"     시도: {link_text} → {candidate_url[:70]}")
+                try:
+                    test_page = await browser.new_page()
+                    try:
+                        await test_page.goto(candidate_url, wait_until="networkidle", timeout=30000)
+                        test_content = await test_page.content()
+                    finally:
+                        await test_page.close()
+
+                    test_soup = BeautifulSoup(test_content, "html.parser")
+                    detail_links = _extract_detail_links(test_soup, candidate_url)
+
+                    if len(detail_links) >= 3:
+                        # 공고 목록 페이지 발견!
+                        print(f"     복구 성공! {len(detail_links)}개 공고 링크 발견 → {candidate_url[:70]}")
+                        cursor.execute(
+                            """UPDATE admin_urls SET
+                                recovered_url = %s, fail_count = 0,
+                                last_fail_reason = %s
+                            WHERE id = %s""",
+                            (
+                                candidate_url,
+                                f"자동 복구 완료 ({datetime.now().strftime('%Y-%m-%d')}): {original_url[:100]} → {candidate_url[:100]}",
+                                target["id"],
+                            ),
+                        )
+                        conn.commit()
+                        return True
+
+                except Exception as e:
+                    print(f"     후보 접속 실패: {e}")
+                    continue
+
+            return False
+
+        except Exception as e:
+            print(f"     루트 도메인 접속 실패: {e}")
+            return False
 
     async def _scrape_target(self, url: str, browser) -> list[dict]:
         """목록 페이지이면 개별 링크를 수집하고, 단일 공고이면 직접 분석"""
@@ -245,6 +373,42 @@ class AdminScraper:
         except Exception as e:
             print(f"      DB 저장 오류: {e}")
             return False
+
+    # --- 관리자용 헬스 리포트 ---
+
+    def get_health_report(self) -> dict:
+        """전체 admin_urls 상태 요약 반환 (관리자 대시보드용)"""
+        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM admin_urls WHERE is_active = 1")
+        total = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM admin_urls WHERE is_active = 1 AND fail_count >= %s", (_FAIL_THRESHOLD,))
+        critical = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM admin_urls WHERE is_active = 1 AND fail_count > 0 AND fail_count < %s", (_FAIL_THRESHOLD,))
+        warning = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM admin_urls WHERE is_active = 1 AND recovered_url IS NOT NULL")
+        recovered = cursor.fetchone()["cnt"]
+
+        cursor.execute(
+            """SELECT id, source_name, url, recovered_url, fail_count, last_fail_reason, last_success
+            FROM admin_urls WHERE is_active = 1 AND fail_count >= %s ORDER BY fail_count DESC""",
+            (_FAIL_THRESHOLD,),
+        )
+        critical_list = cursor.fetchall()
+
+        conn.close()
+        return {
+            "total_active": total,
+            "healthy": total - critical - warning,
+            "warning": warning,
+            "critical": critical,
+            "recovered": recovered,
+            "critical_urls": [dict(row) for row in critical_list],
+        }
 
 
 admin_scraper = AdminScraper()

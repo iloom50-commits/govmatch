@@ -12,7 +12,7 @@ from app.config import DATABASE_URL
 
 REGIONAL_URLS = [
     # ── 테크노파크 (17개 시도) ──
-    ("부산테크노파크", "https://www.btp.or.kr/index.php?action=BD0000M&pagecode=P000000296&language=KR"),
+    ("부산테크노파크", "https://www.btp.or.kr/kor/CMS/Board/Board.do?mCode=MN013"),
     ("대구디지털혁신진흥원(대구TP)", "https://daon.distep.re.kr/alert/announce"),
     ("인천테크노파크", "https://itp.or.kr/intro.asp?tmid=13"),
     ("세종테크노파크", "https://sjtp.or.kr/bbs/board.php?bo_table=business01"),

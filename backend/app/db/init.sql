@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS admin_urls (
     source_name VARCHAR(255) NOT NULL,
     is_active BOOLEAN DEFAULT true,
     last_scraped TIMESTAMP,
+    last_success TIMESTAMP,
+    fail_count INT DEFAULT 0,
+    last_fail_reason TEXT,
+    recovered_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

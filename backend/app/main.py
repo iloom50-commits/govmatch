@@ -2147,24 +2147,25 @@ def admin_seed_urls():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    inserted, skipped = 0, 0
+    inserted, skipped, errors = 0, 0, []
     for source_name, url in REGIONAL_URLS:
         try:
             cursor.execute(
                 """INSERT INTO admin_urls (url, source_name, is_active)
-                   VALUES (%s, %s, true)
+                   VALUES (%s, %s, 1)
                    ON CONFLICT (url) DO NOTHING""",
                 (url, source_name),
             )
+            conn.commit()
             if cursor.rowcount > 0:
                 inserted += 1
             else:
                 skipped += 1
-        except Exception:
-            pass
-    conn.commit()
+        except Exception as e:
+            conn.rollback()
+            errors.append(f"{source_name}: {str(e)[:80]}")
     conn.close()
-    return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped, "source_count": len(REGIONAL_URLS)}
+    return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped, "source_count": len(REGIONAL_URLS), "errors": errors[:5]}
 
 
 def _run_manual_sync_in_thread():

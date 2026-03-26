@@ -1,18 +1,87 @@
 "use client";
 
+import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
+
+const API = process.env.NEXT_PUBLIC_API_URL;
+const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
+const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "";
 
 interface PaymentModalProps {
   planStatus: { plan: string; days_left: number | null; label: string } | null;
-  userType?: string | null; // "individual" | "business" | "both"
+  userType?: string | null;
   onSuccess: (token: string, plan: any) => void;
   onClose: () => void;
 }
 
-export default function PaymentModal({ planStatus, userType, onClose }: PaymentModalProps) {
+export default function PaymentModal({ planStatus, userType, onSuccess, onClose }: PaymentModalProps) {
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
   const isBusiness = userType === "business" || userType === "both";
   const isIndividual = userType === "individual";
+
+  const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
+
+  const handlePayment = async (targetPlan: "lite" | "pro", freeTrial = false) => {
+    setLoading(true);
+    try {
+      const token = getToken();
+
+      if (freeTrial) {
+        // 사업자 LITE 1개월 무료 체험 — 결제 없이 바로 업그레이드
+        const res = await fetch(`${API}/api/plan/upgrade`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ target_plan: targetPlan, free_trial: true }),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast(data.detail || "체험 시작 실패", "error"); return; }
+        toast(data.message, "success");
+        onSuccess(data.token, data.plan);
+        return;
+      }
+
+      // 포트원 V2 결제
+      const PortOne = (await import("@portone/browser-sdk/v2")).default;
+      const paymentId = `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const price = targetPlan === "pro" ? 49000 : (isIndividual ? 2900 : 4900);
+
+      const response = await PortOne.requestPayment({
+        storeId: STORE_ID,
+        channelKey: CHANNEL_KEY,
+        paymentId,
+        orderName: `지원금GO ${targetPlan.toUpperCase()} 월 구독`,
+        totalAmount: price,
+        currency: "CURRENCY_KRW",
+        payMethod: "CARD",
+        redirectUrl: `${window.location.origin}/payment/success`,
+      });
+
+      if (response?.code) {
+        // 결제 실패 또는 취소
+        if (response.code !== "USER_CANCEL") {
+          toast(response.message || "결제 실패", "error");
+        }
+        return;
+      }
+
+      // 결제 성공 — 백엔드에서 검증 + 플랜 업그레이드
+      const res = await fetch(`${API}/api/plan/upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payment_id: paymentId, target_plan: targetPlan }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.detail || "플랜 업그레이드 실패", "error"); return; }
+      toast(data.message, "success");
+      onSuccess(data.token, data.plan);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.";
+      toast(msg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleShare = async () => {
     const url = "https://govmatch.kr";
@@ -97,10 +166,11 @@ export default function PaymentModal({ planStatus, userType, onClose }: PaymentM
               </div>
               <div className="px-4 pb-3">
                 <button
-                  onClick={() => toast("결제 시스템 준비 중입니다. 곧 카카오페이로 이용 가능합니다.", "info")}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                  disabled={loading}
+                  onClick={() => isBusiness ? handlePayment("lite", true) : handlePayment("lite")}
+                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
-                  {isBusiness ? "1개월 무료 체험 시작" : "LITE 시작하기"}
+                  {loading ? "처리 중..." : isBusiness ? "1개월 무료 체험 시작" : "LITE 시작하기"}
                 </button>
               </div>
             </div>
@@ -136,10 +206,11 @@ export default function PaymentModal({ planStatus, userType, onClose }: PaymentM
                 </div>
                 <div className="px-4 pb-3">
                   <button
-                    onClick={() => toast("결제 시스템 준비 중입니다. 곧 카카오페이로 이용 가능합니다.", "info")}
-                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]"
+                    disabled={loading}
+                    onClick={() => handlePayment("pro")}
+                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
-                    PRO 시작하기
+                    {loading ? "처리 중..." : "PRO 시작하기"}
                   </button>
                 </div>
               </div>

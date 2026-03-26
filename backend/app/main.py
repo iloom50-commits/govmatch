@@ -1245,14 +1245,13 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
 
 
 class UpgradePlanRequest(BaseModel):
-    payment_key: Optional[str] = None
-    order_id: Optional[str] = None
-    amount: Optional[int] = 2900
-    target_plan: Optional[str] = "lite"  # "lite" or "pro"
-    free_trial: Optional[bool] = False    # 첫 달 무료 여부
+    payment_id: Optional[str] = None      # 포트원 V2 결제 ID
+    billing_key: Optional[str] = None     # 정기결제 빌링키
+    target_plan: Optional[str] = "lite"   # "lite" or "pro"
+    free_trial: Optional[bool] = False    # 사업자 LITE 1개월 무료 여부
 
 
-TOSS_SECRET_KEY = os.getenv("TOSS_SECRET_KEY", "")
+PORTONE_API_SECRET = os.getenv("PORTONE_API_SECRET", "")
 
 # PLAN_PRICES는 상단에 정의됨
 
@@ -1262,60 +1261,73 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """결제 확인 후 플랜을 lite 또는 pro로 업그레이드"""
+    """포트원 V2 결제 확인 후 플랜 업그레이드"""
     bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("lite", "basic", "pro", "biz") else "lite"
-    # legacy: basic → lite
-    if target == "basic":
-        target = "lite"
-    # 무료체험은 lite_trial로 (LITE만 체험 가능, PRO 체험 불가)
-    if req.free_trial and target in ("lite", "basic"):
-        target = "lite_trial"
+    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
 
-    # 결제 검증 (첫 달 무료가 아닌 경우)
-    if not req.free_trial and TOSS_SECRET_KEY and req.payment_key:
+    # 사용자 정보 조회
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT user_type, plan, plan_expires_at FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+    user_type = u.get("user_type") or "business"
+
+    # 가격 결정 (user_type별)
+    if target == "lite":
+        price = PLAN_PRICES.get("lite_individual" if user_type == "individual" else "lite", 4900)
+    else:
+        price = PLAN_PRICES.get("pro", 49000)
+
+    # 사업자 LITE 1개월 무료 체험
+    if req.free_trial and target == "lite" and user_type != "individual":
+        # 이미 체험한 적 있는지 확인
+        cur.execute(
+            "SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'lite_trial', 'pro')",
+            (bn,),
+        )
+        if cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="무료 체험은 1회만 가능합니다.")
+        # 무료 체험: 결제 없이 30일 부여
+        target = "lite"
+    elif req.payment_id and PORTONE_API_SECRET:
+        # 포트원 V2 결제 검증
         import httpx
-        import base64
-        auth = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
-        confirm_res = httpx.post(
-            "https://api.tosspayments.com/v1/payments/confirm",
-            headers={
-                "Authorization": f"Basic {auth}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "paymentKey": req.payment_key,
-                "orderId": req.order_id,
-                "amount": req.amount,
-            },
+        verify_res = httpx.get(
+            f"https://api.portone.io/payments/{req.payment_id}",
+            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
             timeout=15,
         )
-        if confirm_res.status_code != 200:
-            detail = confirm_res.json().get("message", "결제 승인에 실패했습니다.")
-            raise HTTPException(status_code=400, detail=detail)
+        if verify_res.status_code != 200:
+            conn.close()
+            raise HTTPException(status_code=400, detail="결제 정보를 확인할 수 없습니다.")
+        payment = verify_res.json()
+        if payment.get("status") != "PAID":
+            conn.close()
+            raise HTTPException(status_code=400, detail="결제가 완료되지 않았습니다.")
+        if payment.get("amount", {}).get("total") != price:
+            conn.close()
+            raise HTTPException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
+
+    # 빌링키 저장 (정기결제용)
+    billing_update = ""
+    billing_params = []
+    if req.billing_key:
+        billing_update = ", billing_key = %s"
+        billing_params = [req.billing_key]
 
     now = datetime.datetime.utcnow()
     expires_at = (now + datetime.timedelta(days=30)).isoformat()
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # 첫 달 무료는 한 번만 가능 (이미 유료 경험이 있으면 불가)
-    if req.free_trial:
-        cur.execute("SELECT plan_started_at FROM users WHERE business_number = %s", (bn,))
-        u = cur.fetchone()
-        # plan_started_at이 있고 plan이 이미 basic/pro였던 적이 있으면 첫달무료 불가
-        # 간단히: plan_expires_at이 이미 설정된 적이 있으면 불가
-        cur.execute("SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'lite_trial', 'basic', 'pro', 'biz')", (bn,))
-        if cur.fetchone():
-            conn.close()
-            raise HTTPException(status_code=400, detail="첫 달 무료 체험은 1회만 가능합니다.")
-
     cur.execute(
-        """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s
+        f"""UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
+           ai_usage_month = 0, ai_usage_reset_at = %s{billing_update}
            WHERE business_number = %s""",
-        (target, now.isoformat(), expires_at, now.isoformat(), bn),
+        [target, now.isoformat(), expires_at, now.isoformat()] + billing_params + [bn],
     )
     conn.commit()
     conn.close()
@@ -1331,7 +1343,8 @@ def api_plan_upgrade(
         "status": "SUCCESS",
         "token": new_token,
         "plan": plan_status,
-        "message": f"{label} 플랜으로 업그레이드되었습니다.",
+        "message": f"{label} 플랜으로 업그레이드되었습니다. ({'무료 체험 시작' if req.free_trial else f'{price:,}원 결제 완료'})",
+        "price": price,
     }
 
 

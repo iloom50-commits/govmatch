@@ -23,56 +23,39 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
-  const handlePayment = async (targetPlan: "lite" | "pro", freeTrial = false) => {
+  const handleSubscribe = async (targetPlan: "lite" | "pro") => {
     setLoading(true);
     try {
       const token = getToken();
 
-      if (freeTrial) {
-        // 사업자 LITE 1개월 무료 체험 — 결제 없이 바로 업그레이드
-        const res = await fetch(`${API}/api/plan/upgrade`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ target_plan: targetPlan, free_trial: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) { toast(data.detail || "체험 시작 실패", "error"); return; }
-        toast(data.message, "success");
-        onSuccess(data.token, data.plan);
-        return;
-      }
-
-      // 포트원 V2 결제
-      const paymentId = `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const price = targetPlan === "pro" ? 49000 : (isIndividual ? 2900 : 4900);
-
-      const response = await PortOne.requestPayment({
+      // 빌링키 발급 (카드 등록만, 결제는 0원)
+      const billingKeyResponse = await PortOne.requestIssueBillingKey({
         storeId: STORE_ID,
         channelKey: CHANNEL_KEY,
-        paymentId,
-        orderName: `지원금GO ${targetPlan.toUpperCase()} 월 구독`,
-        totalAmount: price,
-        currency: "CURRENCY_KRW",
-        payMethod: "CARD",
-        redirectUrl: `${window.location.origin}/payment/success`,
+        billingKeyMethod: "CARD",
       });
 
-      if (response?.code) {
-        // 결제 실패 또는 취소
-        if (response.code !== "USER_CANCEL") {
-          toast(response.message || "결제 실패", "error");
+      if (billingKeyResponse?.code) {
+        if (billingKeyResponse.code !== "USER_CANCEL") {
+          toast(billingKeyResponse.message || "카드 등록 실패", "error");
         }
         return;
       }
 
-      // 결제 성공 — 백엔드에서 검증 + 플랜 업그레이드
-      const res = await fetch(`${API}/api/plan/upgrade`, {
+      const billingKey = billingKeyResponse?.billingKey;
+      if (!billingKey) {
+        toast("카드 등록에 실패했습니다.", "error");
+        return;
+      }
+
+      // 백엔드로 빌링키 전달 → 무료 체험 시작
+      const res = await fetch(`${API}/api/plan/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ payment_id: paymentId, target_plan: targetPlan }),
+        body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan }),
       });
       const data = await res.json();
-      if (!res.ok) { toast(data.detail || "플랜 업그레이드 실패", "error"); return; }
+      if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); return; }
       toast(data.message, "success");
       onSuccess(data.token, data.plan);
     } catch (err: unknown) {
@@ -167,11 +150,12 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               <div className="px-4 pb-3">
                 <button
                   disabled={loading}
-                  onClick={() => isBusiness ? handlePayment("lite", true) : handlePayment("lite")}
+                  onClick={() => handleSubscribe("lite")}
                   className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
-                  {loading ? "처리 중..." : isBusiness ? "1개월 무료 체험 시작" : "LITE 시작하기"}
+                  {loading ? "처리 중..." : "1개월 무료 체험 시작"}
                 </button>
+                <p className="text-[9px] text-slate-400 text-center mt-1.5">카드 등록 후 1개월 무료, 이후 월 {isIndividual ? "2,900" : "4,900"}원 자동결제</p>
               </div>
             </div>
 
@@ -207,11 +191,12 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <div className="px-4 pb-3">
                   <button
                     disabled={loading}
-                    onClick={() => handlePayment("pro")}
+                    onClick={() => handleSubscribe("pro")}
                     className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
-                    {loading ? "처리 중..." : "PRO 시작하기"}
+                    {loading ? "처리 중..." : "1주일 무료 체험 시작"}
                   </button>
+                  <p className="text-[9px] text-slate-400 text-center mt-1.5">카드 등록 후 1주일 무료, 이후 월 49,000원 자동결제</p>
                 </div>
               </div>
             )}

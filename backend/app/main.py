@@ -91,6 +91,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # billing_key 컬럼 추가 (정기결제용)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_key TEXT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS keyword_synonyms (
@@ -185,11 +192,15 @@ async def _daily_sync_loop():
         print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
-            # Step 0: URL 자동 관리 (누락 등록 + 신규 발견 + 폐기 정리)
-            print("[Scheduler] Step 0: URL 자동 관리...")
+            # Step 0-A: URL 자동 관리 (누락 등록 + 신규 발견 + 폐기 정리)
+            print("[Scheduler] Step 0-A: URL 자동 관리...")
             _auto_seed_urls()
             _discover_new_sources()
             _deactivate_dead_urls()
+
+            # Step 0-B: 구독 자동 갱신 (만료된 빌링키 결제)
+            print("[Scheduler] Step 0-B: 구독 자동 갱신...")
+            _auto_renew_subscriptions()
 
             # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
             print("[Scheduler] Step 1/3: 공고 수집 시작...")
@@ -1346,6 +1357,148 @@ def api_plan_upgrade(
         "message": f"{label} 플랜으로 업그레이드되었습니다. ({'무료 체험 시작' if req.free_trial else f'{price:,}원 결제 완료'})",
         "price": price,
     }
+
+
+class SubscribeRequest(BaseModel):
+    billing_key: str
+    target_plan: str = "lite"  # "lite" or "pro"
+
+
+@app.post("/api/plan/subscribe")
+def api_plan_subscribe(
+    req: SubscribeRequest,
+    current_user: dict = Depends(_get_current_user),
+):
+    """빌링키 등록 + 무료 체험 시작 (LITE 30일 / PRO 7일)"""
+    bn = current_user["bn"]
+    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 이미 구독 중인지 확인
+    cur.execute("SELECT plan, billing_key FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+    if u.get("billing_key") and u.get("plan") in ("lite", "pro"):
+        conn.close()
+        raise HTTPException(status_code=400, detail="이미 구독 중입니다.")
+
+    # 무료 체험 기간: LITE 30일, PRO 7일
+    now = datetime.datetime.utcnow()
+    trial_days = 30 if target == "lite" else 7
+    expires_at = (now + datetime.timedelta(days=trial_days)).isoformat()
+
+    cur.execute(
+        """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
+           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s
+           WHERE business_number = %s""",
+        (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, bn),
+    )
+    conn.commit()
+    conn.close()
+
+    plan_status = _get_plan_status(target, expires_at, 0)
+    label = "LITE" if target == "lite" else "PRO"
+    new_token = _create_jwt(
+        current_user["user_id"], bn, current_user["email"], target, expires_at
+    )
+
+    return {
+        "status": "SUCCESS",
+        "token": new_token,
+        "plan": plan_status,
+        "message": f"{label} {trial_days}일 무료 체험이 시작되었습니다! 이후 자동결제됩니다.",
+    }
+
+
+@app.post("/api/plan/cancel")
+def api_plan_cancel(current_user: dict = Depends(_get_current_user)):
+    """구독 해지 — 빌링키 삭제, 만료일까지는 이용 가능"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET billing_key = NULL WHERE business_number = %s",
+        (bn,),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 현재 플랜 만료일까지는 이용 가능합니다."}
+
+
+def _auto_renew_subscriptions():
+    """만료된 구독 자동 갱신 — 빌링키로 결제"""
+    if not PORTONE_API_SECRET:
+        return
+    import httpx
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # 만료일이 지났고 빌링키가 있는 사용자
+        cur.execute("""
+            SELECT business_number, plan, billing_key, user_type, email
+            FROM users
+            WHERE billing_key IS NOT NULL
+              AND plan IN ('lite', 'pro')
+              AND plan_expires_at < NOW()
+        """)
+        expired_users = cur.fetchall()
+
+        renewed, failed = 0, 0
+        for row in expired_users:
+            u = dict(row)
+            plan = u["plan"]
+            user_type = u.get("user_type") or "business"
+
+            # 가격 결정
+            if plan == "lite":
+                price = PLAN_PRICES.get("lite_individual" if user_type == "individual" else "lite", 4900)
+            else:
+                price = PLAN_PRICES.get("pro", 49000)
+
+            payment_id = f"renew-{u['business_number']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M')}"
+
+            try:
+                resp = httpx.post(
+                    f"https://api.portone.io/payments/{payment_id}/billing-key",
+                    headers={
+                        "Authorization": f"PortOne {PORTONE_API_SECRET}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "billingKey": u["billing_key"],
+                        "orderName": f"지원금GO {plan.upper()} 월 구독",
+                        "amount": {"total": price, "currency": "KRW"},
+                    },
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    now = datetime.datetime.utcnow()
+                    new_expires = (now + datetime.timedelta(days=30)).isoformat()
+                    cur.execute(
+                        """UPDATE users SET plan_expires_at = %s, ai_usage_month = 0,
+                           ai_usage_reset_at = %s WHERE business_number = %s""",
+                        (new_expires, now.isoformat(), u["business_number"]),
+                    )
+                    conn.commit()
+                    renewed += 1
+                    print(f"[renew] {u.get('email','?')} {plan.upper()} {price:,}원 결제 완료")
+                else:
+                    failed += 1
+                    print(f"[renew] {u.get('email','?')} 결제 실패: {resp.status_code}")
+            except Exception as e:
+                failed += 1
+                print(f"[renew] {u.get('email','?')} 오류: {e}")
+
+        conn.close()
+        if renewed or failed:
+            print(f"[renew] 자동 갱신 완료: 성공 {renewed}건, 실패 {failed}건")
+    except Exception as e:
+        print(f"[renew] 오류: {e}")
 
 
 @app.get("/api/plan/status")

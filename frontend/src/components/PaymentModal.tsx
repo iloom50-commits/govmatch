@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
+import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
@@ -42,7 +43,6 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
       }
 
       // 포트원 V2 결제
-      const PortOne = (await import("@portone/browser-sdk/v2")).default;
       const paymentId = `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const price = targetPlan === "pro" ? 49000 : (isIndividual ? 2900 : 4900);
 

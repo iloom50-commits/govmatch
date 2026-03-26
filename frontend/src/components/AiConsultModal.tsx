@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/Toast";
+import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -279,7 +280,7 @@ export default function AiConsultModal() {
                     : "px-4 py-3 bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-md"
                 }`}>
                   {msg.role === "user" ? msg.text : (
-                    <div className="prose-sm" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
+                    <div className="prose-sm" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(msg.text)) }} />
                   )}
                 </div>
 

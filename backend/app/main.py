@@ -407,8 +407,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 class BusinessNumberRequest(BaseModel):
@@ -788,6 +788,7 @@ def api_find_email(req: FindEmailRequest):
 class ResetPasswordRequest(BaseModel):
     email: str
     company_name: str
+    business_number: str  # 추가 검증
     new_password: str
 
 
@@ -798,16 +799,16 @@ def api_reset_password(req: ResetPasswordRequest):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT business_number FROM users WHERE email = %s AND company_name = %s",
-        (req.email, req.company_name),
+        "SELECT business_number FROM users WHERE email = %s AND company_name = %s AND business_number = %s",
+        (req.email, req.company_name, req.business_number),
     )
     user = cursor.fetchone()
     if not user:
         conn.close()
-        raise HTTPException(status_code=404, detail="일치하는 계정을 찾을 수 없습니다. 이메일과 회사명을 확인해 주세요.")
+        raise HTTPException(status_code=404, detail="일치하는 계정을 찾을 수 없습니다. 이메일, 회사명, 사업자번호를 확인해 주세요.")
     new_hash = _hash_password(req.new_password)
-    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s AND company_name = %s",
-                   (new_hash, req.email, req.company_name))
+    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s AND business_number = %s",
+                   (new_hash, req.email, req.business_number))
     conn.commit()
     conn.close()
     return {"status": "SUCCESS", "message": "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해 주세요."}

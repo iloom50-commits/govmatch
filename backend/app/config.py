@@ -1,9 +1,8 @@
 import os
 
-_raw_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres.erjxlphndhkpdfmglzyv:v2TCYGJ2noIUgtYu@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres"
-)
+_raw_url = os.getenv("DATABASE_URL", "")
+if not _raw_url:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 # Supabase requires SSL — append sslmode=require if not already present
 if "sslmode" not in _raw_url:

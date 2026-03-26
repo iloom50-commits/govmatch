@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/Toast";
+import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -1289,7 +1290,7 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
                     }`}>
                       {msg.role === "user" ? msg.text : (
-                        <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
+                        <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(msg.text)) }} />
                       )}
                     </div>
 

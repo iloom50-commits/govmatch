@@ -185,6 +185,9 @@ async def _daily_sync_loop():
         print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
+            # Step 0: seed URL 누락분 자동 등록
+            _auto_seed_urls()
+
             # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
             print("[Scheduler] Step 1/3: 공고 수집 시작...")
             await sync_service.sync_all()
@@ -274,7 +277,6 @@ def _auto_seed_urls():
 
 
 async def lifespan(app):
-    _auto_seed_urls()  # 시작 시 누락 URL 자동 등록
     _log_expired_announcements()  # 시작 시 현황만 로그
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())

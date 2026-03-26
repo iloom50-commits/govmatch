@@ -1010,7 +1010,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     if (deferredPrompt) handlePwaInstall();
                     else setShowInstallGuide(true);
                   }}
-                  className="ml-auto flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold text-slate-400 hover:text-indigo-600 transition-all whitespace-nowrap"
+                  className="ml-auto flex items-center gap-1.5 pb-3 pt-1 px-3 text-sm font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95"
                 >
                   <span>⬇️</span> 지원금GO 설치
                 </button>

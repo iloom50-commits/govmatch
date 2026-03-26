@@ -998,16 +998,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
-              {/* AI 맞춤 정보 요청 — PWA 설치 전용 */}
-              <button
-                onClick={() => {
-                  if (deferredPrompt) handlePwaInstall();
-                  else if (!isPwaInstalled) setShowInstallGuide(true);
-                }}
-                className="ml-auto flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold text-slate-400 hover:text-indigo-600 transition-all whitespace-nowrap"
-              >
-                <span>📲</span> AI 맞춤 정보 요청
-              </button>
+              {/* 지원금GO 설치 */}
+              {!isPwaInstalled && (
+                <button
+                  onClick={() => {
+                    if (deferredPrompt) handlePwaInstall();
+                    else setShowInstallGuide(true);
+                  }}
+                  className="ml-auto flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold text-slate-400 hover:text-indigo-600 transition-all whitespace-nowrap"
+                >
+                  <span>⬇️</span> 지원금GO 설치
+                </button>
+              )}
             </div>
           </div>
 

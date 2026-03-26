@@ -198,6 +198,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [searchLoading, setSearchLoading] = useState(false);
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showMyMenu, setShowMyMenu] = useState(false);
+  const [totalAnnouncementCount, setTotalAnnouncementCount] = useState(0);
+
+  // DB 전체 공고 수 조회
+  useEffect(() => {
+    (async () => {
+      try {
+        const [r1, r2] = await Promise.all([
+          fetch(`${API}/api/announcements/public?page=1&size=1&target_type=business`),
+          fetch(`${API}/api/announcements/public?page=1&size=1&target_type=individual`),
+        ]);
+        const d1 = await r1.json();
+        const d2 = await r2.json();
+        setTotalAnnouncementCount((d1.total || 0) + (d2.total || 0));
+      } catch {}
+    })();
+  }, []);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -469,9 +485,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {/* 통계 */}
       <div className="relative z-10 p-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
-        <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">실시간 분석 중</p>
-        <p className="text-lg font-black text-indigo-700">{(matches.length || 0).toLocaleString()}건</p>
-        <p className="text-[11px] text-slate-500 font-medium">의 공고를 확인할 수 있습니다</p>
+        <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">AI가 분석한 지원사업</p>
+        <p className="text-lg font-black text-indigo-700">{(totalAnnouncementCount || matches.length || 0).toLocaleString()}건</p>
+        <p className="text-[11px] text-slate-500 font-medium">구석구석 찾아드립니다</p>
       </div>
 
       {/* 구분선 */}

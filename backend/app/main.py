@@ -367,20 +367,20 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # free: 차단, lite: 차단, pro: 무제한
 PLAN_LIMITS = {
     "free": 0,
-    "lite": 999999,    # LITE: 자유 상담 무제한
+    "lite": 0,         # LITE: 자유 상담 불가 (PRO 전용)
     "lite_trial": 0,   # LITE 무료체험: 자유 상담 불가
-    "basic": 999999,   # legacy
-    "biz": 999999,     # legacy
+    "basic": 0,        # legacy → LITE 취급
+    "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
 
 # 플랜별 공고별 지원대상 상담 건수 제한
-# free: 3회, lite_trial: 1회, lite: 무제한, pro: 무제한
+# free: 1회, lite_trial: 3회, lite: 무제한, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 3,
-    "lite_trial": 1,   # LITE 무료체험: 1건만
-    "lite": 999999,
-    "basic": 999999,   # legacy
+    "free": 1,
+    "lite_trial": 3,   # LITE 무료체험: 3건
+    "lite": 10,        # LITE: 공고AI 상담 월 10회
+    "basic": 10,        # legacy → LITE 취급
     "biz": 999999,     # legacy
     "pro": 999999,
 }

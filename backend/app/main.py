@@ -478,26 +478,63 @@ def api_announcements_public(
         where_clauses.append("category = %s")
         params.append(category)
     if search:
-        # 동의어 확장: 검색어가 동의어 그룹에 속하면 관련 키워드 모두 검색
-        cursor.execute(
-            "SELECT DISTINCT keyword FROM keyword_synonyms WHERE group_name = ("
-            "  SELECT group_name FROM keyword_synonyms WHERE keyword = %s LIMIT 1"
-            ")",
-            (search,),
-        )
-        synonym_rows = cursor.fetchall()
-        search_terms = [r["keyword"] for r in synonym_rows] if synonym_rows else [search]
+        # 공백으로 단어 분리
+        words = search.strip().split()
 
-        # OR 조건으로 모든 동의어 검색
-        term_conditions = []
-        for term in search_terms:
-            term_conditions.append(
-                "(title ILIKE %s OR summary_text ILIKE %s OR department ILIKE %s"
-                " OR region ILIKE %s OR category ILIKE %s)"
+        # 동의어 확장: 각 단어별로 동의어 그룹 확장
+        all_search_terms = []
+        for word in words:
+            cursor.execute(
+                "SELECT DISTINCT keyword FROM keyword_synonyms WHERE group_name = ("
+                "  SELECT group_name FROM keyword_synonyms WHERE keyword = %s LIMIT 1"
+                ")",
+                (word,),
             )
-            t = f"%{term}%"
-            params.extend([t, t, t, t, t])
-        where_clauses.append("(" + " OR ".join(term_conditions) + ")")
+            synonym_rows = cursor.fetchall()
+            word_terms = [r["keyword"] for r in synonym_rows] if synonym_rows else [word]
+            all_search_terms.append(word_terms)
+
+        # 검색 조건: 각 단어(OR 동의어)가 모두 포함 (AND)
+        # 단어가 1개면 OR 검색, 2개 이상이면 각 단어 AND 조합
+        # 추가로 원본 구문 그대로 매칭도 포함 (OR)
+        search_fields = "(title || ' ' || COALESCE(summary_text,'') || ' ' || COALESCE(department,'') || ' ' || COALESCE(region,'') || ' ' || COALESCE(category,''))"
+
+        if len(words) == 1:
+            # 단일 단어: 기존 동의어 OR 검색
+            word_conditions = []
+            for term in all_search_terms[0]:
+                word_conditions.append(f"{search_fields} ILIKE %s")
+                params.append(f"%{term}%")
+            where_clauses.append("(" + " OR ".join(word_conditions) + ")")
+        else:
+            # 복수 단어: 구문 매칭 OR (각 단어 AND)
+            # 1) 구문 그대로 매칭
+            phrase_cond = f"{search_fields} ILIKE %s"
+            params.append(f"%{search}%")
+
+            # 2) 각 단어(+동의어)가 모두 포함 (AND)
+            and_parts = []
+            for word_terms in all_search_terms:
+                word_or = []
+                for term in word_terms:
+                    word_or.append(f"{search_fields} ILIKE %s")
+                    params.append(f"%{term}%")
+                and_parts.append("(" + " OR ".join(word_or) + ")")
+            and_cond = " AND ".join(and_parts)
+
+            # 3) 단어 중 하나라도 포함 (OR) — 넓은 범위
+            or_parts = []
+            for word_terms in all_search_terms:
+                for term in word_terms:
+                    or_parts.append(f"{search_fields} ILIKE %s")
+                    params.append(f"%{term}%")
+            or_cond = " OR ".join(or_parts)
+
+            where_clauses.append(f"({phrase_cond} OR {and_cond} OR {or_cond})")
+
+        search_terms = []
+        for wt in all_search_terms:
+            search_terms.extend(wt)
         s = f"%{search}%"  # 관련성 정렬용 원본 검색어
     if target_type:
         where_clauses.append("(target_type = %s OR target_type = 'both')")
@@ -509,18 +546,24 @@ def api_announcements_public(
     cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
     total = cursor.fetchone()["cnt"]
 
-    # 공고 리스트 — 검색 시 관련성 정렬 (원본 제목 > 동의어 제목 > 요약 > 기타)
+    # 공고 리스트 — 검색 시 관련성 정렬
+    # 구문 제목 매칭 > 구문 요약 매칭 > AND 제목 > AND 요약 > OR 매칭
     if search:
-        # 동의어 중 하나라도 제목에 있으면 높은 순위
-        title_or_parts = " OR ".join(["title ILIKE %s"] * len(search_terms))
-        summary_or_parts = " OR ".join(["summary_text ILIKE %s"] * len(search_terms))
+        words = search.strip().split()
+        # AND 조건: 모든 단어가 제목에 포함
+        and_title_parts = " AND ".join([f"title ILIKE %s" for _ in words])
+        and_title_params = [f"%{w}%" for w in words]
+        and_summary_parts = " AND ".join([f"summary_text ILIKE %s" for _ in words])
+        and_summary_params = [f"%{w}%" for w in words]
+
         relevance_order = f"""
                 CASE WHEN title ILIKE %s THEN 0
-                     WHEN ({title_or_parts}) THEN 1
-                     WHEN ({summary_or_parts}) THEN 2
-                     ELSE 3 END,
+                     WHEN ({and_title_parts}) THEN 1
+                     WHEN summary_text ILIKE %s THEN 2
+                     WHEN ({and_summary_parts}) THEN 3
+                     ELSE 4 END,
 """
-        relevance_params = [s] + [f"%{t}%" for t in search_terms] + [f"%{t}%" for t in search_terms]
+        relevance_params = [s] + and_title_params + [s] + and_summary_params
     else:
         relevance_order = ""
         relevance_params = []

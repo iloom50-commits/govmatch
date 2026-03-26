@@ -246,7 +246,35 @@ def _log_expired_announcements():
 
 
 @asynccontextmanager
+def _auto_seed_urls():
+    """앱 시작 시 seed_regional_urls의 URL을 DB에 자동 등록 (누락분만)"""
+    try:
+        from app.db.seed_regional_urls import REGIONAL_URLS
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        inserted = 0
+        for source_name, url in REGIONAL_URLS:
+            try:
+                cursor.execute(
+                    "INSERT INTO admin_urls (url, source_name, is_active) VALUES (%s, %s, 1) ON CONFLICT (url) DO NOTHING",
+                    (url, source_name),
+                )
+                conn.commit()
+                if cursor.rowcount > 0:
+                    inserted += 1
+            except Exception:
+                conn.rollback()
+        conn.close()
+        if inserted > 0:
+            print(f"[auto-seed] {inserted}개 신규 URL 등록 완료 (총 {len(REGIONAL_URLS)}개 중)")
+        else:
+            print(f"[auto-seed] 모든 URL 등록 확인 완료 ({len(REGIONAL_URLS)}개)")
+    except Exception as e:
+        print(f"[auto-seed] 오류: {e}")
+
+
 async def lifespan(app):
+    _auto_seed_urls()  # 시작 시 누락 URL 자동 등록
     _log_expired_announcements()  # 시작 시 현황만 로그
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())

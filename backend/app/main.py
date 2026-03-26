@@ -2130,7 +2130,21 @@ def get_admin_urls_health():
 @app.post("/api/admin/seed-urls", dependencies=[Depends(_verify_admin)])
 def admin_seed_urls():
     """seed_regional_urls에 등록된 URL을 DB에 일괄 등록"""
-    from app.db.seed_regional_urls import REGIONAL_URLS
+    try:
+        from app.db.seed_regional_urls import REGIONAL_URLS
+    except ImportError:
+        try:
+            import importlib, sys
+            spec = importlib.util.spec_from_file_location("seed", os.path.join(os.path.dirname(__file__), "db", "seed_regional_urls.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            REGIONAL_URLS = mod.REGIONAL_URLS
+        except Exception as e:
+            return {"status": "ERROR", "detail": f"import 실패: {e}", "inserted": 0, "skipped": 0, "total": 0}
+
+    if not REGIONAL_URLS:
+        return {"status": "ERROR", "detail": "REGIONAL_URLS가 비어있음", "inserted": 0, "skipped": 0, "total": 0}
+
     conn = get_db_connection()
     cursor = conn.cursor()
     inserted, skipped = 0, 0
@@ -2150,7 +2164,7 @@ def admin_seed_urls():
             pass
     conn.commit()
     conn.close()
-    return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped}
+    return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped, "source_count": len(REGIONAL_URLS)}
 
 
 def _run_manual_sync_in_thread():

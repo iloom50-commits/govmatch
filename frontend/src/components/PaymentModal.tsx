@@ -2,31 +2,21 @@
 
 import { useToast } from "@/components/ui/Toast";
 
-// ── 무료 체험 기능 안내 ──
-const FREE_FEATURES = [
-  { label: "AI가 나에게 맞는 지원금을 찾아줍니다", desc: "업종·지역·규모 등 내 조건을 입력하면, 받을 수 있는 정부지원금 목록을 자동으로 보여드려요" },
-  { label: "\"이거 나도 받을 수 있어?\" AI에게 물어보세요", desc: "관심 있는 공고를 클릭하면, 지원 자격과 준비서류를 AI가 쉽게 설명해 드려요 (3회)" },
-];
-
-// ── 친구 추천 시 추가 혜택 ──
-const REFERRAL_BENEFITS = [
-  { label: "친구와 함께 쓰면 AI 상담 무제한!", desc: "친구에게 공유하면, 나도 친구도 1개월간 AI 상담 횟수 제한이 풀려요" },
-  { label: "최대 5번까지 가능", desc: "친구 5명에게 공유하면 최대 5개월간 무제한 혜택!" },
-];
-
-
 interface PaymentModalProps {
   planStatus: { plan: string; days_left: number | null; label: string } | null;
+  userType?: string | null; // "individual" | "business" | "both"
   onSuccess: (token: string, plan: any) => void;
   onClose: () => void;
 }
 
-export default function PaymentModal({ planStatus, onClose }: PaymentModalProps) {
+export default function PaymentModal({ planStatus, userType, onClose }: PaymentModalProps) {
   const { toast } = useToast();
+  const isBusiness = userType === "business" || userType === "both";
+  const isIndividual = userType === "individual";
 
   const handleShare = async () => {
     const url = "https://govmatch.kr";
-    const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 상담 무제한 혜택!";
+    const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 상담 혜택!";
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
         await navigator.share({ title: "지원금GO — AI 맞춤 지원금 매칭", text, url });
@@ -44,75 +34,164 @@ export default function PaymentModal({ planStatus, onClose }: PaymentModalProps)
     }
   };
 
-  const daysLeft = planStatus?.days_left;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        <div className="absolute -top-20 -right-20 w-40 h-40 bg-emerald-500/10 blur-[60px] rounded-full pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
+        <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
 
         <div className="relative z-10 p-5 sm:p-7">
           {/* Header */}
           <div className="text-center mb-5">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1">
-              지금은 무료로 이용하실 수 있습니다!
+              {planStatus?.plan === "free" ? "현재 무료 이용 중" : `${planStatus?.label || ""} 플랜`}
             </h2>
             <p className="text-slate-500 text-xs font-medium">
-              모든 기능을 먼저 체험해 보세요
+              더 많은 AI 상담이 필요하시면 업그레이드하세요
             </p>
           </div>
 
-          {/* ── 현재 이용 가능한 기능 ── */}
-          <div className="mb-5 rounded-xl border border-emerald-200 overflow-hidden">
-            <div className="bg-emerald-50 px-4 py-2.5 border-b border-emerald-200">
-              <p className="text-[12px] font-bold text-emerald-700">지금 바로 할 수 있어요</p>
+          {/* ── 현재 무료 기능 ── */}
+          <div className="mb-4 rounded-xl border border-emerald-200 overflow-hidden">
+            <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200">
+              <p className="text-[11px] font-bold text-emerald-700">현재 이용 가능</p>
             </div>
-            <div className="divide-y divide-emerald-100">
-              {FREE_FEATURES.map((f, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3">
-                  <span className="text-emerald-500 text-sm mt-0.5">&#10003;</span>
-                  <div>
-                    <div className="text-[12px] font-bold text-slate-800">{f.label}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">{f.desc}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="px-4 py-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-emerald-500">&#10003;</span>
+                <span className="text-slate-700 font-medium">맞춤 공고 알림 — 무제한</span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-emerald-500">&#10003;</span>
+                <span className="text-slate-700 font-medium">공고AI 상담 — 월 3회</span>
+              </div>
             </div>
           </div>
 
-          {/* ── 친구 추천 혜택 ── */}
-          <div className="mb-5 rounded-xl border border-amber-200 overflow-hidden">
-            <div className="bg-amber-50 px-4 py-2.5 border-b border-amber-200">
-              <p className="text-[12px] font-bold text-amber-700">친구에게 알려주면?</p>
+          {/* ── 유료 플랜 ── */}
+          <div className="mb-4 space-y-3">
+            {/* 개인 LITE or 사업자 LITE */}
+            <div className="rounded-xl border-2 border-indigo-200 overflow-hidden hover:border-indigo-400 transition-all">
+              <div className="bg-indigo-50 px-4 py-2.5 border-b border-indigo-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[13px] font-bold text-indigo-700">LITE</span>
+                  <span className="text-[11px] text-indigo-500 ml-1.5">
+                    {isIndividual ? "개인" : "사업자"}
+                  </span>
+                </div>
+                <span className="text-[14px] font-black text-indigo-700">
+                  {isIndividual ? "2,900" : "4,900"}
+                  <span className="text-[10px] font-medium text-indigo-400">원/월</span>
+                </span>
+              </div>
+              <div className="px-4 py-3 space-y-1.5">
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-indigo-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>월 10회</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-indigo-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">맞춤 공고 알림 — 무제한</span>
+                </div>
+              </div>
+              <div className="px-4 pb-3">
+                <button
+                  onClick={() => toast("결제 시스템 준비 중입니다. 곧 카카오페이로 이용 가능합니다.", "info")}
+                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                >
+                  {isBusiness ? "1개월 무료 체험 시작" : "LITE 시작하기"}
+                </button>
+              </div>
             </div>
-            <div className="divide-y divide-amber-100">
-              {REFERRAL_BENEFITS.map((b, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3">
-                  <span className="text-amber-500 text-sm mt-0.5">&#9733;</span>
+
+            {/* 사업자 PRO — 사업자/both만 표시 */}
+            {isBusiness && (
+              <div className="rounded-xl border-2 border-violet-200 overflow-hidden hover:border-violet-400 transition-all relative">
+                <div className="absolute -top-0.5 right-3 px-2 py-0.5 bg-violet-600 text-white text-[9px] font-bold rounded-b-md">
+                  전문가용
+                </div>
+                <div className="bg-violet-50 px-4 py-2.5 border-b border-violet-200 flex items-center justify-between">
                   <div>
-                    <div className="text-[12px] font-bold text-slate-800">{b.label}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">{b.desc}</div>
+                    <span className="text-[13px] font-bold text-violet-700">PRO</span>
+                    <span className="text-[11px] text-violet-500 ml-1.5">상담사·컨설턴트</span>
+                  </div>
+                  <span className="text-[14px] font-black text-violet-700">
+                    49,000<span className="text-[10px] font-medium text-violet-400">원/월</span>
+                  </span>
+                </div>
+                <div className="px-4 py-3 space-y-1.5">
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <span className="text-violet-500">&#10003;</span>
+                    <span className="text-slate-700 font-medium">공고AI 상담 — <strong>무제한</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <span className="text-violet-500">&#10003;</span>
+                    <span className="text-slate-700 font-medium">자유AI 상담 — <strong>무제한</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <span className="text-violet-500">&#10003;</span>
+                    <span className="text-slate-700 font-medium">고객 매칭 · 리포트</span>
                   </div>
                 </div>
-              ))}
+                <div className="px-4 pb-3">
+                  <button
+                    onClick={() => toast("결제 시스템 준비 중입니다. 곧 카카오페이로 이용 가능합니다.", "info")}
+                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]"
+                  >
+                    PRO 시작하기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* both 표시 */}
+            {isBusiness && (
+              <p className="text-[10px] text-slate-400 text-center">
+                * 사업자 유료 플랜에는 개인 지원금 기능이 포함됩니다
+              </p>
+            )}
+          </div>
+
+          {/* ── 친구 추천 ── */}
+          <div className="mb-4 rounded-xl border border-amber-200 overflow-hidden">
+            <div className="bg-amber-50 px-4 py-2 border-b border-amber-200">
+              <p className="text-[11px] font-bold text-amber-700">친구에게 알려주면?</p>
+            </div>
+            <div className="px-4 py-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-amber-500">&#9733;</span>
+                <span className="text-slate-700 font-medium">
+                  {isIndividual
+                    ? "친구 추천 시 1개월간 상담 10회로 확장"
+                    : "친구 추천 시 양쪽 LITE 1개월 무료"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-amber-500">&#9733;</span>
+                <span className="text-slate-700 font-medium">최대 5명까지 적용 가능</span>
+              </div>
             </div>
           </div>
 
           {/* 공유 버튼 */}
           <button
             onClick={handleShare}
-            className="w-full py-3.5 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-indigo-200 flex items-center justify-center gap-2"
+            className="w-full py-3 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-indigo-200 flex items-center justify-center gap-2"
           >
-            <span className="text-base">&#128228;</span>
-            친구에게 공유하고 무제한 혜택 받기
+            친구에게 공유하기
           </button>
+
+          {/* 개인 사용자에게 사업자 플랜 안내 */}
+          {isIndividual && (
+            <p className="text-[10px] text-slate-400 text-center mb-2">
+              사업자이신가요? 프로필 설정에서 사업자 등록하면 사업자 플랜을 이용할 수 있습니다
+            </p>
+          )}
 
           <button
             onClick={onClose}
-            className="w-full py-2.5 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-all text-center"
+            className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-all text-center"
           >
             닫기
           </button>

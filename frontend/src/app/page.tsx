@@ -531,6 +531,7 @@ export default function Home() {
       {showPayment && (
         <PaymentModal
           planStatus={planStatus}
+          userType={profileData?.user_type}
           onSuccess={(newToken, newPlan) => {
             setPlanStatus(newPlan);
             setShowPayment(false);

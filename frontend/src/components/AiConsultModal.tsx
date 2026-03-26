@@ -80,6 +80,31 @@ export default function AiConsultModal() {
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 드래그 이동
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    const panel = e.currentTarget.closest("[data-consult-panel]") as HTMLElement;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      setDragPos({
+        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
   const { toast } = useToast();
 
   // 이벤트 리스너
@@ -93,6 +118,7 @@ export default function AiConsultModal() {
         setIsDone(false);
         setFeedbackSent(false);
         setConsultLogId(null);
+        setDragPos(null);
         setOpen(true);
       }
     };
@@ -205,13 +231,22 @@ export default function AiConsultModal() {
   if (!open || !announcement) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 lg:pointer-events-none">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm lg:hidden" onClick={handleClose} />
 
-      <div className="relative w-full sm:max-w-4xl h-[90vh] sm:h-[85vh] bg-white sm:rounded-2xl shadow-2xl border border-white/60 overflow-hidden flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+      <div
+        data-consult-panel
+        className={`bg-white shadow-2xl border border-white/60 overflow-hidden flex flex-col pointer-events-auto ${
+          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-4xl h-[90vh] sm:h-[85vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"
+        }`}
+        style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 700, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
+      >
 
-        {/* Header */}
-        <div className="relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0">
+        {/* Header — 드래그 핸들 */}
+        <div
+          className="relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleDragStart}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">

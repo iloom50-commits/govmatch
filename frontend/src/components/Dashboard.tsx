@@ -702,6 +702,26 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               PRO 전문가 도구
             </button>
           )}
+          {["lite", "pro", "basic", "biz"].includes(planStatus.plan) && (
+            <button
+              onClick={async () => {
+                if (!confirm("구독을 해지하시겠습니까? 만료일까지는 계속 이용 가능합니다.")) return;
+                try {
+                  const token = localStorage.getItem("auth_token");
+                  const res = await fetch(`${API}/api/plan/cancel`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const data = await res.json();
+                  if (res.ok) { alert(data.message); }
+                  else { alert(data.detail || "해지 실패"); }
+                } catch { alert("서버 오류"); }
+              }}
+              className="w-full py-1 text-[10px] text-slate-400 hover:text-rose-500 font-medium transition-all mt-1.5"
+            >
+              구독 해지
+            </button>
+          )}
         </div>
       )}
 

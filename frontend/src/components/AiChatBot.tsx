@@ -136,12 +136,36 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   const [matchingInProgress, setMatchingInProgress] = useState(false);
   const [formProfile, setFormProfile] = useState<FormProfile>({ ...EMPTY_FORM });
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 드래그 이동
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    const panel = e.currentTarget.closest("[data-chat-panel]") as HTMLElement;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dx = ev.clientX - dragRef.current.startX;
+      const dy = ev.clientY - dragRef.current.startY;
+      setDragPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   // 이벤트 리스너: 메인 화면에서 챗봇 열기
   useEffect(() => {
-    const handler = () => setOpen(true);
+    const handler = () => { setOpen(true); setDragPos(null); };
     window.addEventListener("open-ai-chatbot", handler);
     return () => window.removeEventListener("open-ai-chatbot", handler);
   }, []);
@@ -900,10 +924,19 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     <div className="fixed inset-0 z-50 flex lg:pointer-events-none">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] lg:hidden" onClick={handleClose} />
 
-      <div className="relative w-full sm:w-[420px] lg:w-[380px] h-full bg-white shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col animate-in slide-in-from-left duration-300 pointer-events-auto">
+      <div
+        data-chat-panel
+        className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col pointer-events-auto ${
+          dragPos ? "fixed rounded-2xl" : "relative w-full sm:w-[420px] lg:w-[380px] h-full animate-in slide-in-from-left duration-300"
+        }`}
+        style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
+      >
 
-        {/* Header */}
-        <div className={`relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r ${headerGradient} flex-shrink-0`}>
+        {/* Header — 드래그 핸들 */}
+        <div
+          className={`relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r ${headerGradient} flex-shrink-0 cursor-grab active:cursor-grabbing select-none`}
+          onMouseDown={handleDragStart}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">

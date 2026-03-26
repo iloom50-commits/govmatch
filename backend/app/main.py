@@ -185,8 +185,11 @@ async def _daily_sync_loop():
         print(f"[Scheduler] next sync at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
-            # Step 0: seed URL 누락분 자동 등록
+            # Step 0: URL 자동 관리 (누락 등록 + 신규 발견 + 폐기 정리)
+            print("[Scheduler] Step 0: URL 자동 관리...")
             _auto_seed_urls()
+            _discover_new_sources()
+            _deactivate_dead_urls()
 
             # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
             print("[Scheduler] Step 1/3: 공고 수집 시작...")
@@ -248,9 +251,8 @@ def _log_expired_announcements():
         print(f"[Info] expire check error: {e}")
 
 
-@asynccontextmanager
 def _auto_seed_urls():
-    """앱 시작 시 seed_regional_urls의 URL을 DB에 자동 등록 (누락분만)"""
+    """seed_regional_urls의 URL을 DB에 자동 등록 (누락분만)"""
     try:
         from app.db.seed_regional_urls import REGIONAL_URLS
         conn = get_db_connection()
@@ -270,10 +272,100 @@ def _auto_seed_urls():
         conn.close()
         if inserted > 0:
             print(f"[auto-seed] {inserted}개 신규 URL 등록 완료 (총 {len(REGIONAL_URLS)}개 중)")
-        else:
-            print(f"[auto-seed] 모든 URL 등록 확인 완료 ({len(REGIONAL_URLS)}개)")
     except Exception as e:
         print(f"[auto-seed] 오류: {e}")
+
+
+def _discover_new_sources():
+    """수집된 공고의 origin_url에서 미등록 도메인을 발견하여 자동 등록"""
+    from urllib.parse import urlparse
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 1. 기존 admin_urls 도메인 목록
+        cursor.execute("SELECT url FROM admin_urls WHERE is_active = 1")
+        registered_domains = set()
+        for row in cursor.fetchall():
+            try:
+                registered_domains.add(urlparse(row["url"]).netloc.replace("www.", ""))
+            except Exception:
+                pass
+
+        # 2. 최근 30일 공고의 origin_url에서 도메인 추출
+        cursor.execute("""
+            SELECT origin_url, COUNT(*) as cnt
+            FROM announcements
+            WHERE origin_url IS NOT NULL
+              AND origin_url != ''
+              AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+              AND COALESCE(target_type, 'business') = 'business'
+            GROUP BY origin_url
+        """)
+        domain_count = {}
+        for row in cursor.fetchall():
+            try:
+                parsed = urlparse(row["origin_url"])
+                domain = parsed.netloc.replace("www.", "")
+                if domain and "." in domain and domain.endswith(".kr"):
+                    domain_count[domain] = domain_count.get(domain, 0) + row["cnt"]
+            except Exception:
+                pass
+
+        # 3. 미등록 도메인 중 공고 3건 이상인 것만 후보
+        new_domains = []
+        for domain, cnt in domain_count.items():
+            if domain not in registered_domains and cnt >= 3:
+                new_domains.append((domain, cnt))
+
+        # 4. 신규 도메인 자동 등록 (루트 URL로)
+        inserted = 0
+        for domain, cnt in sorted(new_domains, key=lambda x: -x[1])[:20]:  # 상위 20개
+            source_name = domain.split(".")[0].upper() if domain else "Unknown"
+            url = f"https://www.{domain}" if not domain.startswith("www.") else f"https://{domain}"
+            try:
+                cursor.execute(
+                    "INSERT INTO admin_urls (url, source_name, is_active) VALUES (%s, %s, 1) ON CONFLICT (url) DO NOTHING",
+                    (url, f"[자동발견] {source_name} ({cnt}건)"),
+                )
+                conn.commit()
+                if cursor.rowcount > 0:
+                    inserted += 1
+                    print(f"[discover] 신규 소스 발견: {domain} ({cnt}건)")
+            except Exception:
+                conn.rollback()
+
+        conn.close()
+        if inserted > 0:
+            print(f"[discover] {inserted}개 신규 소스 자동 등록")
+        else:
+            print(f"[discover] 신규 소스 없음 (후보 {len(new_domains)}개 검토)")
+    except Exception as e:
+        print(f"[discover] 오류: {e}")
+
+
+def _deactivate_dead_urls():
+    """연속 실패 URL 자동 비활성화 (fail_count >= 5 + 복구 실패)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE admin_urls
+            SET is_active = 0
+            WHERE is_active = 1
+              AND fail_count >= 5
+              AND recovered_url IS NULL
+            RETURNING id, source_name, url, fail_count
+        """)
+        deactivated = cursor.fetchall()
+        conn.commit()
+        conn.close()
+        if deactivated:
+            for row in deactivated:
+                print(f"[cleanup] 비활성화: {row['source_name']} (실패 {row['fail_count']}회)")
+            print(f"[cleanup] {len(deactivated)}개 URL 비활성화 완료")
+    except Exception as e:
+        print(f"[cleanup] 오류: {e}")
 
 
 async def lifespan(app):

@@ -94,7 +94,11 @@ export default function RootLayout({
             <p>사업자등록번호 141-17-02215 | 경영 컨설팅업</p>
             <p>부산광역시 해운대구 센텀중앙로 145, 109동 3405호</p>
             <p>이메일 osung94@naver.com | 전화 010-6346-7718</p>
-            <p className="pt-2"><a href="/privacy" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">개인정보 처리방침</a></p>
+            <p className="pt-2 flex gap-3">
+              <a href="/terms" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">이용약관</a>
+              <a href="/privacy" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">개인정보 처리방침</a>
+              <a href="/refund" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">환불 정책</a>
+            </p>
             <p className="pt-1 text-slate-300">&copy; {new Date().getFullYear()} 밸류파인더. All rights reserved.</p>
           </div>
         </footer>

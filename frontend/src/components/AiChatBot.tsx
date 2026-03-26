@@ -897,8 +897,8 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   const headerSub = mode === "consultant" ? "고객사 맞춤 매칭" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] lg:bg-transparent lg:backdrop-blur-none lg:pointer-events-none" onClick={handleClose} />
+    <div className="fixed inset-0 z-50 flex lg:pointer-events-none">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] lg:hidden" onClick={handleClose} />
 
       <div className="relative w-full sm:w-[420px] lg:w-[380px] h-full bg-white shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col animate-in slide-in-from-left duration-300 pointer-events-auto">
 

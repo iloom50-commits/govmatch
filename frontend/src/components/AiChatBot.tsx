@@ -254,13 +254,13 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
         const summary = buildProfileSummary(user);
         setMessages([{
           role: "assistant",
-          text: `AI 컨설턴트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
+          text: `전문가 상담 에이전트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
           choices: ["이 정보로 매칭해줘", "다른 고객사 정보를 입력할게요", "추가 정보를 더 알려줄게"],
         }]);
       } else {
         setMessages([{
           role: "assistant",
-          text: "AI 컨설턴트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
+          text: "전문가 상담 에이전트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
           choices: ["네, 시작할게요", "어떤 정보가 필요한가요?"],
         }]);
       }
@@ -917,8 +917,8 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     ? "from-violet-600 to-purple-600"
     : "from-indigo-600 to-violet-600";
 
-  const headerTitle = mode === "consultant" ? "AI 컨설턴트" : mode === "free" ? "자유 상담" : "AI 서비스";
-  const headerSub = mode === "consultant" ? "고객사 맞춤 매칭" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
+  const headerTitle = mode === "consultant" ? "전문가 상담 에이전트" : mode === "free" ? "자유 상담" : "AI 서비스";
+  const headerSub = mode === "consultant" ? "고객사 맞춤 매칭·관리" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
 
   return (
     <div className="fixed inset-0 z-50 flex lg:pointer-events-none">
@@ -1019,13 +1019,13 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
               );
             })()}
 
-            {/* AI 컨설턴트 — PRO 전용 */}
+            {/* 전문가 상담 에이전트 — PRO 전용 */}
             {(() => {
               const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
               return (
                 <button
                   onClick={() => {
-                    if (!isPro) { toast("AI 컨설턴트는 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
+                    if (!isPro) { toast("전문가 상담 에이전트는 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
                     startMode("consultant");
                   }}
                   className={`w-full max-w-xs p-4 bg-gradient-to-br from-violet-50 to-purple-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
@@ -1044,8 +1044,8 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                       </svg>
                     </div>
                     <div>
-                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>AI 컨설턴트</p>
-                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>고객사 맞춤 매칭</p>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>전문가 상담 에이전트</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>고객사 맞춤 매칭·관리</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
@@ -1069,7 +1069,7 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
               <div className="w-full max-w-xs mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   공고별 지원대상 상담은 <span className="font-bold text-indigo-600">LITE</span> 플랜부터,<br />
-                  자유 상담 · AI 컨설턴트는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
+                  자유 상담 · 전문가 상담 에이전트는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
                 </p>
                 <button
                   onClick={() => { setOpen(false); onUpgrade?.(); }}

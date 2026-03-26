@@ -691,9 +691,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {(planStatus.ai_limit || 0) >= 999999 ? "무제한" : "PRO 전용"}
               </span>
             </div>
-            {/* 전문가 도구 */}
+            {/* 전문가 에이전트 */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">전문가 도구</span>
+              <span className="text-slate-500 font-medium">전문가 에이전트</span>
               <span className={`font-bold ${
                 ["pro", "biz"].includes(planStatus.plan) ? "text-violet-600" : "text-slate-400"
               }`}>
@@ -709,14 +709,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
             </button>
           )}
-          {(planStatus.plan === "pro" || planStatus.plan === "biz") && (
-            <button
-              onClick={() => setShowProDashboard(true)}
-              className="w-full py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all active:scale-95 mt-2"
-            >
-              PRO 전문가 도구
-            </button>
-          )}
+          {/* PRO 전문가 에이전트 → FAB의 "전문가 상담 에이전트"로 통합 */}
           {["lite", "pro", "basic", "biz"].includes(planStatus.plan) && (
             <button
               onClick={async () => {
@@ -1252,7 +1245,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       />
       <SmartDocModal />
 
-      {/* PRO 전문가 도구 */}
+      {/* PRO 전문가 에이전트 */}
       {showProDashboard && (
         <ProDashboard onClose={() => setShowProDashboard(false)} />
       )}

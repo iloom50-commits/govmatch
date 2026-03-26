@@ -485,33 +485,40 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _decode_jwt(token)
 
 
-# 플랜별 월 AI 상담 (자유Q&A + 컨설턴트) 건수 제한
-# free: 차단, lite: 차단, pro: 무제한
+# ── 플랜 v3: 개인·사업자 분리 (2026-03-26 확정) ──
+# 자유AI 상담 (자유Q&A + 컨설턴트) 건수 제한 — PRO 전용
 PLAN_LIMITS = {
     "free": 0,
-    "lite": 0,         # LITE: 자유 상담 불가 (PRO 전용)
-    "lite_trial": 0,   # LITE 무료체험: 자유 상담 불가
+    "lite": 0,         # LITE: 자유AI 불가 (PRO 전용)
+    "lite_trial": 0,   # legacy
     "basic": 0,        # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
 
-# 플랜별 공고별 지원대상 상담 건수 제한
-# free: 1회, lite_trial: 3회, lite: 무제한, pro: 무제한
+# 공고AI 상담 건수 제한
+# free: 3회/월 (개인·사업자 동일), lite: 10회/월, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 1,
-    "lite_trial": 3,   # LITE 무료체험: 3건
-    "lite": 10,        # LITE: 공고AI 상담 월 10회
-    "basic": 10,        # legacy → LITE 취급
-    "biz": 999999,     # legacy
+    "free": 3,
+    "lite_trial": 3,   # legacy
+    "lite": 10,
+    "basic": 10,       # legacy → LITE 취급
+    "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
 
-# 플랜 가격 (원/월)
-PLAN_PRICES = {"lite": 4900, "pro": 49000, "basic": 4900, "biz": 49000}
+# 플랜 가격 (원/월) — user_type에 따라 분기
+# 개인 LITE: 2,900 / 사업자 LITE: 4,900 / PRO: 49,000 (사업자 전용)
+PLAN_PRICES = {
+    "lite_individual": 2900,
+    "lite": 4900,       # 사업자 LITE (기본값)
+    "pro": 49000,
+    "basic": 4900,      # legacy
+    "biz": 49000,       # legacy
+}
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon
-AI_GUIDE_PRICE = None  # 가격 미정
+AI_GUIDE_PRICE = None
 
 # 공고AI 상담 1건당 메시지 제한 (사용자 메시지 기준)
 CONSULT_MSG_LIMIT = 50

@@ -386,7 +386,7 @@ CONSULT_LIMITS = {
 }
 
 # 플랜 가격 (원/월)
-PLAN_PRICES = {"lite": 2900, "pro": 19900, "basic": 2900, "biz": 19900}
+PLAN_PRICES = {"lite": 4900, "pro": 49000, "basic": 4900, "biz": 49000}
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon
 AI_GUIDE_PRICE = None  # 가격 미정

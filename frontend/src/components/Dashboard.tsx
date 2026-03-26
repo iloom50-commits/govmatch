@@ -867,19 +867,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
-      {/* 모바일 상단 바 (lg 미만에서만 표시) — 로그인 사용자만 */}
-      {isPublic ? null : (
-        <div className="lg:hidden flex items-center py-3 mb-4 border-b border-slate-200/60">
-          <span className="text-base font-bold tracking-tight brand-badge-sm brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
-          {planStatus && (
-            <span className={`ml-2 text-[11px] font-bold uppercase tracking-widest ${
-              planStatus.plan === "pro" || planStatus.plan === "biz" ? "text-violet-600" :
-              planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic" ? "text-indigo-600" :
-              planStatus.plan === "expired" ? "text-rose-500" : "text-slate-400"
-            }`}>{planStatus.label}</span>
-          )}
-        </div>
-      )}
+      {/* 모바일 상단 지원금GO 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}
       {!isPublic && sidebarOpen && (

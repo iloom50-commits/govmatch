@@ -509,10 +509,12 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     }]);
   };
 
-  // 공고 상세 상담으로 이동
-  const openConsult = (ann: RelatedAnnouncement) => {
-    window.dispatchEvent(new CustomEvent("open-ai-consult", {
-      detail: { announcement: ann }
+  // 공고로 이동 — 채팅 닫고 메인 화면에서 해당 공고 하이라이트
+  const goToAnnouncement = (ann: RelatedAnnouncement) => {
+    setOpen(false);
+    // 메인 화면에 공고 하이라이트 이벤트 전달
+    window.dispatchEvent(new CustomEvent("highlight-announcement", {
+      detail: { announcement_id: ann.announcement_id, title: ann.title }
     }));
   };
 
@@ -895,10 +897,10 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
   const headerSub = mode === "consultant" ? "고객사 맞춤 매칭" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-2">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] lg:bg-transparent lg:backdrop-blur-none lg:pointer-events-none" onClick={handleClose} />
 
-      <div className="relative w-full sm:max-w-2xl h-full sm:h-[96vh] bg-white sm:rounded-2xl shadow-2xl border border-white/60 overflow-hidden flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+      <div className="relative w-full sm:w-[420px] lg:w-[380px] h-full bg-white shadow-2xl border-r border-slate-200 overflow-hidden flex flex-col animate-in slide-in-from-left duration-300 pointer-events-auto">
 
         {/* Header */}
         <div className={`relative z-10 px-4 py-3 border-b border-slate-100 bg-gradient-to-r ${headerGradient} flex-shrink-0`}>
@@ -1258,28 +1260,20 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                       )}
                     </div>
 
-                    {/* Related announcements (free mode only) */}
+                    {/* Related announcements — 제목 + 링크만 (메인 화면 공고 카드로 이동) */}
                     {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
-                      <div className="mt-2 space-y-1.5">
-                        <p className="text-[11px] font-semibold text-indigo-600 px-1">관련 공고</p>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-[10px] font-semibold text-indigo-500 px-1">관련 공고</p>
                         {msg.announcements.map((ann) => (
                           <button
                             key={ann.announcement_id}
-                            onClick={() => openConsult(ann)}
-                            className="w-full text-left px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all group"
+                            onClick={() => goToAnnouncement(ann)}
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-indigo-50 transition-all group flex items-center gap-1.5"
                           >
-                            <p className="text-[11px] font-semibold text-indigo-800 truncate group-hover:text-indigo-900">
+                            <span className="text-indigo-400 text-[10px] shrink-0">&rarr;</span>
+                            <span className="text-[11px] font-medium text-indigo-700 truncate group-hover:text-indigo-900 group-hover:underline">
                               {ann.title}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {ann.support_amount && (
-                                <span className="text-[11px] text-indigo-600 font-medium">{ann.support_amount}</span>
-                              )}
-                              {ann.deadline_date && (
-                                <span className="text-[11px] text-slate-500">마감: {ann.deadline_date}</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-indigo-500 mt-0.5">상세 상담 &rarr;</p>
+                            </span>
                           </button>
                         ))}
                       </div>

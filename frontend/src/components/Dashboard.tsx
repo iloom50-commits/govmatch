@@ -271,6 +271,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchQuery, majorTab, doSearch]);
 
+  // 자유AI 채팅에서 공고 링크 클릭 시 → 검색으로 해당 공고 표시
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.title) {
+        // 공고 제목의 핵심 키워드로 검색 (너무 긴 제목은 앞 20자만)
+        const keyword = detail.title.replace(/\[.*?\]/g, "").trim().slice(0, 20);
+        setSearchQuery(keyword);
+        // 상단으로 스크롤
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("highlight-announcement", handler);
+    return () => window.removeEventListener("highlight-announcement", handler);
+  }, []);
+
   const bn = profile?.business_number || "";
   const [industryDisplayName, setIndustryDisplayName] = useState<string>("");
 

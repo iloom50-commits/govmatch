@@ -1489,10 +1489,21 @@ def _auto_renew_subscriptions():
                     print(f"[renew] {u.get('email','?')} {plan.upper()} {price:,}원 결제 완료")
                 else:
                     failed += 1
-                    print(f"[renew] {u.get('email','?')} 결제 실패: {resp.status_code}")
+                    # 결제 실패 → 플랜 만료 + 빌링키 삭제
+                    cur.execute(
+                        "UPDATE users SET plan = 'free', billing_key = NULL WHERE business_number = %s",
+                        (u["business_number"],),
+                    )
+                    conn.commit()
+                    print(f"[renew] {u.get('email','?')} 결제 실패 → FREE 전환: {resp.status_code}")
             except Exception as e:
                 failed += 1
-                print(f"[renew] {u.get('email','?')} 오류: {e}")
+                cur.execute(
+                    "UPDATE users SET plan = 'free', billing_key = NULL WHERE business_number = %s",
+                    (u["business_number"],),
+                )
+                conn.commit()
+                print(f"[renew] {u.get('email','?')} 오류 → FREE 전환: {e}")
 
         conn.close()
         if renewed or failed:

@@ -220,21 +220,46 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
               <p className="text-[11px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
             </div>
 
-            {/* Password Confirmation */}
-            <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
-              <input
-                type="password"
-                placeholder="현재 비밀번호를 입력해 주세요"
-                className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
-              />
-              {passwordError && (
-                <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
-              )}
-              <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
-            </div>
+            {/* Authentication — 이메일: 비밀번호 / 소셜: 재인증 */}
+            {profile?.is_social ? (
+              <div className="space-y-3">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">본인 확인</label>
+                <button
+                  onClick={() => {
+                    const provider = profile.social_provider || "kakao";
+                    const API_URL = process.env.NEXT_PUBLIC_API_URL;
+                    // 소셜 재인증 후 돌아올 URL에 profile_save 플래그 추가
+                    localStorage.setItem("pending_profile_save", JSON.stringify({ ...formData, address_city: formData.address_cities?.join(",") }));
+                    window.location.href = `${API_URL}/api/auth/social/${provider}`;
+                  }}
+                  className={`w-full p-3 rounded-xl text-xs font-bold transition-all active:scale-[0.98] ${
+                    profile.social_provider === "kakao" ? "bg-[#FEE500] text-[#191919]" :
+                    profile.social_provider === "naver" ? "bg-[#03C75A] text-white" :
+                    "bg-white border border-slate-200 text-slate-700"
+                  }`}
+                >
+                  {profile.social_provider === "kakao" ? "카카오로 본인 확인" :
+                   profile.social_provider === "naver" ? "네이버로 본인 확인" :
+                   "Google로 본인 확인"}
+                </button>
+                <p className="text-[11px] text-slate-400 pl-1">소셜 로그인으로 가입하셨습니다. 본인 확인 후 저장됩니다.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
+                <input
+                  type="password"
+                  placeholder="현재 비밀번호를 입력해 주세요"
+                  className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
+                />
+                {passwordError && (
+                  <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
+                )}
+                <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
+              </div>
+            )}
 
             {/* Industry / KSIC */}
             <div className="space-y-3">
@@ -295,11 +320,16 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
         <div className="px-5 sm:px-6 lg:px-8 py-3 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 safe-bottom flex items-center gap-3">
           <button
             onClick={() => {
-              if (!password) {
-                setPasswordError("비밀번호를 입력해 주세요.");
-                return;
+              if (profile?.is_social) {
+                // 소셜 사용자: 비밀번호 없이 저장 (소셜 재인증은 별도 플로우)
+                onSave({ ...formData, address_city: formData.address_cities?.join(",") });
+              } else {
+                if (!password) {
+                  setPasswordError("비밀번호를 입력해 주세요.");
+                  return;
+                }
+                onSave({ ...formData, password, address_city: formData.address_cities?.join(",") });
               }
-              onSave({ ...formData, password, address_city: formData.address_cities.join(",") });
             }}
             className="flex-1 py-3.5 bg-slate-950 text-white rounded-2xl font-black text-sm tracking-tight hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98]"
           >

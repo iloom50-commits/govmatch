@@ -1250,6 +1250,8 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
             "referral_code": u.get("referral_code"),
             "merit_months": u.get("merit_months", 0),
             "user_type": u.get("user_type"),
+            "is_social": bool(u.get("kakao_id")),
+            "social_provider": u.get("kakao_id", "").split(":")[0] if u.get("kakao_id") else None,
         },
         "plan": plan_status,
     }

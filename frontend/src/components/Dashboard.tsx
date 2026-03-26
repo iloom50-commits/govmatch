@@ -528,8 +528,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="flex items-center gap-2.5 mb-2">
             <span className="text-lg">📲</span>
             <div>
-              <p className="text-[11px] font-bold text-slate-800">앱으로 설치하기</p>
-              <p className="text-[11px] text-slate-500">홈 화면에서 바로 실행할 수 있어요</p>
+              <p className="text-[11px] font-bold text-slate-800">AI맞춤 알림 받기</p>
             </div>
           </div>
           <button
@@ -773,8 +772,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="flex items-center gap-2.5 mb-2">
             <span className="text-lg">📲</span>
             <div>
-              <p className="text-[11px] font-bold text-slate-800">앱으로 설치하기</p>
-              <p className="text-[11px] text-slate-500">홈 화면에서 바로 실행할 수 있어요</p>
+              <p className="text-[11px] font-bold text-slate-800">AI맞춤 알림 받기</p>
             </div>
           </div>
           <button

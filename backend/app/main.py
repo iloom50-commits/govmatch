@@ -2127,6 +2127,32 @@ def get_admin_urls_health():
     report = admin_scraper.get_health_report()
     return {"status": "SUCCESS", "data": report}
 
+@app.post("/api/admin/seed-urls", dependencies=[Depends(_verify_admin)])
+def admin_seed_urls():
+    """seed_regional_urls에 등록된 URL을 DB에 일괄 등록"""
+    from app.db.seed_regional_urls import REGIONAL_URLS
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    inserted, skipped = 0, 0
+    for source_name, url in REGIONAL_URLS:
+        try:
+            cursor.execute(
+                """INSERT INTO admin_urls (url, source_name, is_active)
+                   VALUES (%s, %s, true)
+                   ON CONFLICT (url) DO NOTHING""",
+                (url, source_name),
+            )
+            if cursor.rowcount > 0:
+                inserted += 1
+            else:
+                skipped += 1
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped}
+
+
 def _run_manual_sync_in_thread():
     """관리자 수동 동기화를 별도 스레드에서 실행"""
     import asyncio

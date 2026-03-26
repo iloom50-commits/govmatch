@@ -136,6 +136,41 @@ REGIONAL_URLS = [
     ("에너지기술평가원(KETEP)", "https://www.ketep.re.kr/"),
     ("문화체육관광부 사업공고", "https://www.mcst.go.kr/kor/s_notice/press/pressView.jsp"),
 
+    # ── 중앙부처 사업공고 ──
+    ("환경부(기후에너지환경부)", "https://www.me.go.kr/home/web/board/list.do?boardMasterId=1&menuId=286"),
+    ("농림축산식품부", "https://www.mafra.go.kr/home/5108/subview.do"),
+
+    # ── 전국 단위 추가 기관 (2026-03-26 추가) ──
+    ("한국연구재단(NRF)", "https://www.nrf.re.kr/biz/info/notice/list"),
+    ("한국무역협회(KITA)", "https://www.kita.net/cmmrcInfo/cmmrcNews/busiNotice/busiNoticeList.do"),
+    ("한국보건산업진흥원(KHIDI)", "https://www.khidi.or.kr/board?menuId=MENU01108"),
+    ("한국발명진흥회(KIPA)", "https://www.kipa.org/kipa/ip003/kw_culture_0202.jsp"),
+    ("KOTRA(대한무역투자진흥공사)", "https://www.kotra.or.kr/subList/20000020753/subhome/bizAply/"),
+    ("한국농수산식품유통공사(aT)", "https://www.at.or.kr/"),
+    ("한국표준협회(KSA)", "https://www.ksa.or.kr/ksa_kr/828/subview.do"),
+    ("한국경영혁신중소기업협회(메인비즈)", "https://www.mainbiz.or.kr/usr/board/BBSMSTR_000000000053/list.do"),
+    ("이노비즈협회", "https://www.innobiz.net/common/boardList.do?boardId=notice"),
+    ("농업기술실용화재단", "https://www.fact.or.kr/bbs/board.php?bo_table=notice"),
+
+    # ── 경제자유구역청 ──
+    ("인천경제자유구역청(IFEZ)", "https://www.ifez.go.kr/ivt/main/contents.do?menuNo=500067"),
+    ("부산진해경제자유구역청(BJFEZ)", "https://www.bjfez.go.kr/portal/bbs/B0000003/list.do"),
+    ("광양만권경제자유구역청(GFEZ)", "https://www.gfez.go.kr/bbs/content/list.do?bCd=notice"),
+    ("대구경북경제자유구역청(DGFEZ)", "https://www.dgfez.go.kr/bbs/boardList.do?menuCd=DOM_000000302001000000"),
+
+    # ── 빠진 기초지자체 (인구 30만+) ──
+    ("경기 남양주시 기업지원", "https://www.nyj.go.kr/main/1847/subview.do"),
+    ("경기 광주시 기업지원", "https://www.gjcity.go.kr/portal/bbs/list.do?ptIdx=71"),
+    ("경기 하남시 기업지원", "https://www.hanam.go.kr/www/selectBbsNttList.do?bbsNo=95"),
+    ("서울 송파구 기업지원", "https://www.songpa.go.kr/www/contents/economy.do"),
+    ("서울 노원구 기업지원", "https://www.nowon.kr/dong/bbs/BD_selectBbsList.do?q_bbsCode=1014"),
+    ("서울 강서구 기업지원", "https://www.gangseo.seoul.kr/reserve/re010101"),
+    ("서울 성북구 기업지원", "https://www.sb.go.kr/main/cop/bbs/selectBoardList.do?bbsId=B0000049"),
+    ("인천 부평구 기업지원", "https://www.icbp.go.kr/open_content/ko/board/list.do?boardCd=BBS_0000003"),
+    ("광주 북구 기업지원", "https://www.bukgu.gwangju.kr/board/list.do?boardId=BBS_0000025"),
+    ("대전 유성구 기업지원", "https://www.yuseong.go.kr/kor/sub04_01_01.do"),
+    ("제주시 기업지원", "https://www.jejusi.go.kr/news/notice.do"),
+
     # ── SPA 사이트 (Playwright 필요) ──
     ("신용보증기금(KODIT)", "https://www.kodit.co.kr"),
     ("기술보증기금(KIBO)", "https://www.kibo.or.kr"),

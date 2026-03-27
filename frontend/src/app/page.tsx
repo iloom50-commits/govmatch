@@ -131,7 +131,22 @@ export default function Home() {
 
   const handleEditProfile = () => setStep("PROFILE");
 
-  const performMatching = useCallback(async (bn: string) => {
+  const performMatching = useCallback(async (bn: string, forceRefresh = false) => {
+    // 캐시 확인 (10분 이내면 재사용)
+    if (!forceRefresh) {
+      try {
+        const cached = sessionStorage.getItem("match_cache");
+        if (cached) {
+          const { data, bn: cachedBn, ts } = JSON.parse(cached);
+          if (cachedBn === bn && Date.now() - ts < 10 * 60 * 1000) {
+            setMatches(data);
+            setStep("RESULTS");
+            return;
+          }
+        }
+      } catch {}
+    }
+
     try {
       const res = await fetch(`${API}/api/match`, {
         method: "POST",
@@ -143,6 +158,10 @@ export default function Home() {
       if (result.status === "SUCCESS") {
         setMatches(result.data);
         setStep("RESULTS");
+        // 캐시 저장
+        try {
+          sessionStorage.setItem("match_cache", JSON.stringify({ data: result.data, bn, ts: Date.now() }));
+        } catch {}
       } else {
         throw new Error(result.detail || "매칭 실패");
       }
@@ -319,7 +338,7 @@ export default function Home() {
       if (meRes.ok) setProfileData((await meRes.json()).user);
 
       toast("프로필 설정이 완료되었습니다! AI 매칭을 시작합니다.", "success");
-      await performMatching(bn);
+      await performMatching(bn, true);
     } catch {
       toast("처리 중 오류가 발생했습니다.", "error");
       setStep("ONBOARDING");
@@ -352,7 +371,7 @@ export default function Home() {
           const meData = await meRes.json();
           setProfileData(meData.user);
         }
-        await performMatching(businessNumber);
+        await performMatching(businessNumber, true);
       } else {
         toast("프로필 저장에 실패했습니다.", "error");
         setStep("PROFILE");

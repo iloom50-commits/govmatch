@@ -932,12 +932,22 @@ done=true일 때 (모든 정보 수집 + 사용자 확인 완료):
 
         result = _parse_gemini_json(response.text)
 
+        collected = result.get("collected", {})
+        done = result.get("done", False)
+        profile = result.get("profile")
+
+        # AI가 done=false인데 7개 필드가 모두 수집된 경우 → 강제 done=true
+        REQUIRED = ["company_name", "establishment_date", "industry_code", "revenue_bracket", "employee_count_bracket", "address_city", "interests"]
+        if not done and collected and all(collected.get(k) for k in REQUIRED):
+            done = True
+            profile = {k: collected[k] for k in REQUIRED}
+
         return {
-            "reply": result.get("message", ""),
-            "choices": result.get("choices", []),
-            "done": result.get("done", False),
-            "profile": result.get("profile"),
-            "collected": result.get("collected", {}),
+            "reply": result.get("message", "") if not done else "모든 정보가 확인되었습니다. 매칭을 시작합니다!",
+            "choices": result.get("choices", []) if not done else [],
+            "done": done,
+            "profile": profile,
+            "collected": collected,
         }
     except json.JSONDecodeError:
         return {"reply": response.text.strip() if 'response' in dir() else "응답 처리 오류", "choices": [], "done": False, "profile": None, "collected": {}}

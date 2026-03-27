@@ -288,6 +288,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchQuery, majorTab, doSearch]);
 
+  // FAB에서 "고객 관리" 클릭 시 ProDashboard 열기
+  useEffect(() => {
+    const handler = () => setShowProDashboard(true);
+    window.addEventListener("open-pro-dashboard", handler);
+    return () => window.removeEventListener("open-pro-dashboard", handler);
+  }, []);
+
   // 자유AI 채팅에서 공고 링크 클릭 시 → 검색으로 해당 공고 표시
   useEffect(() => {
     const handler = (e: Event) => {

@@ -41,6 +41,16 @@ INTEREST_KEYWORD_MAP = {
 # 지원 대상 기업 유형 분류
 EXCLUSIVE_BIZ_TYPES = {"소상공인", "예비창업자", "사회적기업", "예비사회적기업", "마을기업", "자활기업", "수출기업"}
 
+# 특정 대상 제한 키워드 — 제목에 포함 시 해당 대상이 아니면 제외
+RESTRICTED_TARGET_KEYWORDS = {
+    "여성": ["여성", "여성기업", "여성창업"],
+    "장애인": ["장애인", "장애인기업"],
+    "군인/보훈": ["보훈", "제대군인", "군인"],
+    "농업": ["농업인", "농업법인", "영농"],
+    "어업": ["어업인", "수산업"],
+    "사회적경제": ["사회적기업", "마을기업", "자활기업", "협동조합"],
+}
+
 # 카테고리 정규화 (AI가 영어/한글 혼재로 추출)
 CATEGORY_NORMALIZE = {
     # 영어
@@ -249,6 +259,18 @@ def get_matches_for_user(user_profile):
                 if "예비창업자" in exclusive_types and not any(bt in ad_biz_types for bt in ["중소기업", "스타트업"]):
                     if company_age > 0:
                         continue
+
+        # 특정 대상 제한 필터 — 제목에 여성/장애인/보훈 등 키워드가 있으면 해당 대상만 통과
+        title_lower = title.lower()
+        skip_restricted = False
+        for target_group, keywords in RESTRICTED_TARGET_KEYWORDS.items():
+            if any(kw in title for kw in keywords):
+                # 사용자의 관심분야나 검색어에 해당 키워드가 없으면 제외
+                if not any(kw in user_interests_raw for kw in keywords):
+                    skip_restricted = True
+                    break
+        if skip_restricted:
+            continue
 
         # 검색 텍스트 구성
         raw_summary = ad.get("summary_text") or ""

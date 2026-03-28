@@ -25,6 +25,40 @@ def _normalize_title(title: str) -> str:
     return t.lower()
 
 
+# 지원사업이 아닌 공고 제목 키워드 (단순 정보공개, 결과 발표 등)
+_NON_SUPPORT_KEYWORDS = [
+    # 정보공개/행정
+    "업무추진비", "사용내역", "사용 내역", "공개", "회의록", "의사록",
+    "결산", "예산서", "감사결과", "감사 결과", "인사발령",
+    # 입찰/계약 결과 (모집이 아닌 결과)
+    "입찰결과", "낙찰", "낙찰자", "계약현황", "계약체결", "개찰결과",
+    "수의계약", "견적결과",
+    # 채용 결과 (모집이 아닌 결과)
+    "채용결과", "합격자", "선정결과", "최종 선정", "선정 공고",
+    # 단순 안내/후기
+    "행사 후기", "수료", "졸업", "시상식", "축하",
+    # 정정/취소
+    "취소공고", "취소 공고", "철회",
+]
+
+# 제외하지 말아야 할 예외 키워드 (결과지만 모집인 경우)
+_NON_SUPPORT_EXCEPTIONS = [
+    "모집", "참여기업", "참여자", "신청", "접수", "공모",
+]
+
+
+def _is_non_support_announcement(title: str) -> bool:
+    """지원사업이 아닌 공고인지 판별 (True이면 제외)"""
+    if not title:
+        return False
+    title_lower = title.lower()
+    # 예외 키워드가 있으면 지원사업일 가능성 → 제외 안 함
+    if any(kw in title for kw in _NON_SUPPORT_EXCEPTIONS):
+        return False
+    # 비지원사업 키워드가 있으면 제외
+    return any(kw in title for kw in _NON_SUPPORT_KEYWORDS)
+
+
 DOMAIN_ONLY_BLOCKLIST = {
     "https://www.k-startup.go.kr",
     "http://www.k-startup.go.kr",
@@ -211,6 +245,11 @@ class SyncService:
         for item in results:
             try:
                 if not _is_valid_detail_url(item.get('url', '')):
+                    skipped += 1
+                    continue
+
+                # 지원사업 아닌 공고 제외 (제목 기반 1차 필터)
+                if _is_non_support_announcement(item.get('title', '')):
                     skipped += 1
                     continue
 

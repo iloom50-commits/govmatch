@@ -207,8 +207,9 @@ async def _daily_sync_loop():
             await sync_service.sync_all()
             print("[Scheduler] Step 1/3: 공고 수집 완료")
 
-            # Step 1.5: DB 중복 공고 제거
-            print("[Scheduler] Step 1.5: 중복 공고 제거...")
+            # Step 1.5: DB 정리 (비지원사업 제거 + 중복 제거)
+            print("[Scheduler] Step 1.5: DB 정리...")
+            _cleanup_non_support_announcements()
             _deduplicate_announcements()
 
             # Step 2: 지자체복지 상세 보강 (매일 100건씩 점진적)
@@ -357,6 +358,41 @@ def _discover_new_sources():
             print(f"[discover] 신규 소스 없음 (후보 {len(new_domains)}개 검토)")
     except Exception as e:
         print(f"[discover] 오류: {e}")
+
+
+def _cleanup_non_support_announcements():
+    """DB에서 지원사업이 아닌 공고 제거 (정보공개, 결과 발표 등)"""
+    NON_SUPPORT_PATTERNS = [
+        "업무추진비", "사용내역", "사용 내역", "회의록", "의사록",
+        "결산", "예산서", "감사결과", "인사발령",
+        "입찰결과", "낙찰자", "계약현황", "계약체결", "개찰결과",
+        "채용결과", "합격자 발표", "선정결과 발표",
+        "행사 후기", "수료식", "시상식",
+        "취소공고", "취소 공고", "철회",
+    ]
+    EXCEPTIONS = ["모집", "참여기업", "참여자", "신청", "접수", "공모"]
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        deleted = 0
+        for pattern in NON_SUPPORT_PATTERNS:
+            cur.execute(
+                "SELECT announcement_id, title FROM announcements WHERE title ILIKE %s",
+                (f"%{pattern}%",)
+            )
+            for row in cur.fetchall():
+                title = row["title"]
+                # 예외 키워드 확인
+                if any(exc in title for exc in EXCEPTIONS):
+                    continue
+                cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (row["announcement_id"],))
+                deleted += 1
+            conn.commit()
+        conn.close()
+        if deleted > 0:
+            print(f"[cleanup] 비지원사업 공고 {deleted}건 삭제")
+    except Exception as e:
+        print(f"[cleanup] 오류: {e}")
 
 
 def _deduplicate_announcements():
@@ -2528,6 +2564,14 @@ def admin_seed_urls():
             errors.append(f"{source_name}: {str(e)[:80]}")
     conn.close()
     return {"status": "SUCCESS", "inserted": inserted, "skipped": skipped, "total": inserted + skipped, "source_count": len(REGIONAL_URLS), "errors": errors[:5]}
+
+
+@app.post("/api/admin/cleanup-db", dependencies=[Depends(_verify_admin)])
+def admin_cleanup_db():
+    """DB 정리: 비지원사업 제거 + 중복 제거"""
+    _cleanup_non_support_announcements()
+    _deduplicate_announcements()
+    return {"status": "SUCCESS", "message": "DB 정리 완료"}
 
 
 def _run_manual_sync_in_thread():

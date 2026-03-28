@@ -55,7 +55,7 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
             onClick={(e) => {
               e.stopPropagation();
               if (navigator.share) {
-                navigator.share({ title: res.title, text: shareText, url });
+                navigator.share({ title: "지원금GO — AI 맞춤 지원금 매칭", text: shareText, url });
               } else {
                 navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
               }

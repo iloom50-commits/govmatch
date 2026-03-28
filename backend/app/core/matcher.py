@@ -292,14 +292,14 @@ def get_matches_for_user(user_profile):
         # A. 기본 자격 (30점)
         score += 30.0
 
-        # A-1. 지역 매칭 보너스 (최대 15점)
+        # A-1. 지역 매칭 보너스 (최대 25점)
         matched_city = None
         if bracket_city_match and not is_nationwide:
             matched_city = bracket_city_match.group(1)
         elif ad_region and ad_region not in ("전국", "", "All") and not is_nationwide and ad_region in user_cities:
             matched_city = ad_region
         if matched_city:
-            score += 15.0
+            score += 25.0
             reasons.append(f"{matched_city} 지역 특화 지원사업")
 
         # B. 소상공인 매칭 (최대 20점)
@@ -347,6 +347,37 @@ def get_matches_for_user(user_profile):
                         reasons.append(f"{ad_category} 분야 지원사업")
                     break
 
+        # E-2. 업종 연관성 매칭 (최대 20점)
+        user_ind = user_profile.get("industry_code") or ""
+        if user_ind:
+            # 업종코드 대분류 (앞 2자리)
+            user_ind_major = user_ind[:2]
+            # 공고 텍스트에서 업종 연관 키워드 검색
+            INDUSTRY_KEYWORDS = {
+                "62": ["소프트웨어", "IT", "정보통신", "디지털", "AI", "인공지능", "ICT", "플랫폼", "앱"],
+                "56": ["음식", "외식", "요식", "식당", "프랜차이즈", "식품"],
+                "10": ["식품", "제조", "가공식품", "식품제조"],
+                "25": ["금속", "기계", "부품", "가공", "제조"],
+                "26": ["전자", "반도체", "디스플레이", "전자부품"],
+                "29": ["자동차", "차량", "모빌리티"],
+                "21": ["바이오", "의약", "제약", "생명과학", "헬스케어"],
+                "41": ["건설", "건축", "시공"],
+                "47": ["소매", "유통", "판매", "쇼핑"],
+                "49": ["물류", "운송", "배송", "택배"],
+                "70": ["컨설팅", "전문서비스", "경영"],
+                "85": ["교육", "학원", "훈련", "에듀"],
+                "72": ["연구", "R&D", "연구개발", "바이오"],
+                "74": ["디자인", "광고", "마케팅"],
+            }
+            ind_keywords = INDUSTRY_KEYWORDS.get(user_ind_major, [])
+            if ind_keywords:
+                ind_match_count = sum(1 for kw in ind_keywords if kw.lower() in search_text)
+                if ind_match_count >= 2:
+                    score += 20.0
+                    reasons.append("업종 연관성 높음")
+                elif ind_match_count == 1:
+                    score += 10.0
+
         # F. 마감일 가중치 (최대 10점)
         if ad.get("deadline_date"):
             try:
@@ -381,6 +412,16 @@ def get_matches_for_user(user_profile):
         ad["recommendation_reason"] = " / ".join(meaningful_reasons[:2]) if meaningful_reasons else "지원 자격 충족"
         ad["_category"] = ad_category  # 다양성 처리용 임시 필드
         results.append(ad)
+
+    # 중복 공고 제거 (같은 제목)
+    seen_titles = set()
+    unique_results = []
+    for r in results:
+        norm = re.sub(r'\s+', '', r.get("title", ""))
+        if norm not in seen_titles:
+            seen_titles.add(norm)
+            unique_results.append(r)
+    results = unique_results
 
     # 점수 순 정렬
     results.sort(key=lambda x: x["match_score"], reverse=True)

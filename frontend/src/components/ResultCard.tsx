@@ -11,9 +11,9 @@ function ShareMenu({ res, toast }: { res: Result; toast: (msg: string, type?: "s
     <div className="space-y-1.5">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
-        className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+        className="w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
       >
-        <span>📤</span> 친구에게 추천하기 <span className={`text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+        <span className="text-sm">📢</span> 친구에게 추천하기 <span className={`text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
       </button>
       {open && (
         <div className="grid grid-cols-4 gap-1.5 animate-in slide-in-from-top-2 duration-200">

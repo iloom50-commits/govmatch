@@ -3606,14 +3606,20 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
          full_summary, _json.dumps(results, ensure_ascii=False),
          eligible_count, conditional_count, ineligible_count)
     )
-    report_id = cur.fetchone()["id"]
-    conn.commit()
+    try:
+        report_id = cur.fetchone()["id"]
+        conn.commit()
+    except Exception as db_err:
+        conn.rollback()
+        conn.close()
+        print(f"[report] DB error: {db_err}")
+        raise HTTPException(status_code=500, detail=f"리포트 저장 실패: {str(db_err)[:100]}")
     conn.close()
 
     return {
         "status": "SUCCESS",
         "report_id": report_id,
-        "summary": summary,
+        "summary": brief,
         "ai_analysis": ai_summary,
         "consult_history": consult_summaries[:10],
         "total": len(results),

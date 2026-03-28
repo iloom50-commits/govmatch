@@ -1,6 +1,85 @@
 "use client";
 
+import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
+
+function ShareMenu({ res, toast }: { res: Result; toast: (msg: string, type?: "success" | "error" | "info") => void }) {
+  const [open, setOpen] = useState(false);
+  const url = typeof window !== "undefined" ? (res.origin_url || res.url || window.location.origin) : "";
+  const shareText = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
+  return (
+    <div className="space-y-1.5">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+      >
+        <span>📤</span> 친구에게 추천하기 <span className={`text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && (
+        <div className="grid grid-cols-4 gap-1.5 animate-in slide-in-from-top-2 duration-200">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
+              if (kakao?.Share) {
+                kakao.Share.sendDefault({
+                  objectType: "feed",
+                  content: {
+                    title: res.title,
+                    description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
+                    imageUrl: "https://govmatch.kr/og-image.png",
+                    link: { mobileWebUrl: url, webUrl: url },
+                  },
+                  buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],
+                });
+              } else {
+                window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
+              }
+            }}
+            className="flex flex-col items-center gap-1 py-2 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-all active:scale-95 border border-yellow-200/60"
+          >
+            <span className="text-base">💬</span>
+            <span className="text-[10px] font-semibold text-yellow-800">카카오톡</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.href = `sms:?&body=${encodeURIComponent(shareText + " " + url)}`;
+            }}
+            className="flex flex-col items-center gap-1 py-2 bg-green-50 rounded-lg hover:bg-green-100 transition-all active:scale-95 border border-green-200/60"
+          >
+            <span className="text-base">📱</span>
+            <span className="text-[10px] font-semibold text-green-800">문자</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (navigator.share) {
+                navigator.share({ title: res.title, text: shareText, url });
+              } else {
+                navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
+              }
+            }}
+            className="flex flex-col items-center gap-1 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all active:scale-95 border border-blue-200/60"
+          >
+            <span className="text-base">📤</span>
+            <span className="text-[10px] font-semibold text-blue-800">더보기</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(url).then(() => toast("링크가 복사되었습니다!", "success"));
+            }}
+            className="flex flex-col items-center gap-1 py-2 bg-violet-50 rounded-lg hover:bg-violet-100 transition-all active:scale-95 border border-violet-200/60"
+          >
+            <span className="text-base">🔗</span>
+            <span className="text-[10px] font-semibold text-violet-800">링크복사</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface EligibilityLogic {
   business_type?: string[];
@@ -249,46 +328,8 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 버튼 — 모바일: OS 공유 시트 / PC: 카카오 SDK 팝업 */}
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = res.origin_url || res.url || window.location.origin;
-                const text = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
-                const isMobile = typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-                const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
-
-                if (isMobile && navigator.share) {
-                  // 모바일: OS 네이티브 공유 시트 (카카오톡, 문자, 이메일 등)
-                  try {
-                    await navigator.share({ title: res.title, text, url });
-                  } catch (err: unknown) {
-                    if (err instanceof Error && err.name !== "AbortError") {
-                      await navigator.clipboard.writeText(`${text}\n${url}`);
-                      toast("링크가 복사되었습니다!", "success");
-                    }
-                  }
-                } else if (kakao?.isInitialized()) {
-                  // PC: 카카오 SDK 공유 팝업
-                  kakao.Share.sendDefault({
-                    objectType: "feed",
-                    content: {
-                      title: res.title,
-                      description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
-                      imageUrl: "https://govmatch.kr/og-image.png",
-                      link: { mobileWebUrl: url, webUrl: url },
-                    },
-                    buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],
-                  });
-                } else {
-                  await navigator.clipboard.writeText(`${text}\n${url}`);
-                  toast("링크가 복사되었습니다!", "success");
-                }
-              }}
-              className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
-            >
-              <span>📤</span> 친구에게 추천하기
-            </button>
+            {/* 공유 버튼 — 토글 시 카카오톡/문자/더보기/링크복사 */}
+            <ShareMenu res={res} toast={toast} />
           </div>
         </div>
       </div>

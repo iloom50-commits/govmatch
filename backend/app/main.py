@@ -1247,6 +1247,7 @@ async def api_social_callback(req: SocialCallbackRequest):
                 "client_id": NAVER_CLIENT_ID,
                 "client_secret": NAVER_CLIENT_SECRET,
                 "code": req.code,
+                "redirect_uri": redirect_uri,
             })
             token_data = token_res.json()
             access_token = token_data.get("access_token")

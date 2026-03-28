@@ -171,6 +171,34 @@ REGIONAL_URLS = [
     ("대전 유성구 기업지원", "https://www.yuseong.go.kr/kor/sub04_01_01.do"),
     ("제주시 기업지원", "https://www.jejusi.go.kr/news/notice.do"),
 
+    # ── 대학 창업지원/산학협력 ──
+    # 통합 포털
+    ("BI-Net 창업보육센터네트워크", "https://www.smes.go.kr/binet/board/list.do"),
+    ("LINC3.0 통합포털", "https://lincthree.nrf.re.kr/"),
+
+    # 창업중심대학 11개교
+    ("한양대 창업지원단", "https://startup.hanyang.ac.kr/"),
+    ("성균관대 창업지원단", "https://skkustartup.kr/"),
+    ("강원대 창업지원단", "https://ksef.kangwon.ac.kr/"),
+    ("한남대 LINC3.0", "https://linc.hannam.ac.kr/"),
+    ("호서대 LINC3.0", "https://linc.hoseo.ac.kr/"),
+    ("충북대 창업지원단", "https://startup.chungbuk.ac.kr/"),
+    ("대구대 창업지원단", "https://startup.daegu.ac.kr/"),
+    ("경상국립대 창업지원단", "https://startup.gnu.ac.kr/"),
+    ("부산대 창업지원단", "https://startup.pusan.ac.kr/"),
+    ("전북대 창업지원단", "https://startup.jbnu.ac.kr/"),
+    ("전남대 LINC3.0", "https://linc.jnu.ac.kr/"),
+
+    # 주요 대학 창업지원센터
+    ("서울대 창업지원센터", "https://startup.snu.ac.kr/"),
+    ("KAIST 창업원", "https://tbic.kaist.ac.kr/"),
+    ("연세대 창업지원센터", "https://venture.yonsei.ac.kr/"),
+    ("고려대 창업지원센터", "https://kustartup.korea.ac.kr/"),
+    ("POSTECH 창업지원센터", "https://startup.postech.ac.kr/"),
+    ("서울과기대 창업지원센터", "https://sssf.seoultech.ac.kr/"),
+    ("이화여대 창업지원센터", "https://startup.ewha.ac.kr/"),
+    ("중앙대 창업지원센터", "http://changup1.cau.ac.kr/"),
+
     # ── SPA 사이트 (Playwright 필요) ──
     ("신용보증기금(KODIT)", "https://www.kodit.co.kr"),
     ("기술보증기금(KIBO)", "https://www.kibo.or.kr"),

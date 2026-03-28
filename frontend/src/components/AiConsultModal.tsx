@@ -191,6 +191,8 @@ export default function AiConsultModal() {
       if (data.done) {
         setIsDone(true);
         if (data.consult_log_id) setConsultLogId(data.consult_log_id);
+        // 상담 완료 시 맞춤 설정 유도 이벤트
+        window.dispatchEvent(new CustomEvent("consult-done"));
       }
     } catch {
       toast("서버 연결에 실패했습니다.", "error");

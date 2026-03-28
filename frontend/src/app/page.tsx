@@ -81,7 +81,38 @@ export default function Home() {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [consultantResult, setConsultantResult] = useState<{ matches: any[]; profile: any } | null>(null);
   const [publicMatches, setPublicMatches] = useState<any[]>([]);
+  const [showProfileNudge, setShowProfileNudge] = useState(false);
   const { toast } = useToast();
+
+  // 맞춤 설정 유도: 프로필 미설정 사용자 감지
+  const isProfileIncomplete = profileData && (
+    !profileData.industry_code || profileData.industry_code === "00000" ||
+    !profileData.address_city || profileData.address_city === "전국"
+  );
+
+  // 공고 스크롤/상담 후 유도 표시
+  useEffect(() => {
+    if (!isProfileIncomplete || step !== "RESULTS") return;
+
+    // 이미 3회 이상 닫았으면 안 보여줌
+    const dismissCount = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
+    if (dismissCount >= 3) return;
+
+    // 첫 표시: 5초 후
+    const timer = setTimeout(() => setShowProfileNudge(true), 5000);
+
+    // AI 상담 완료 시에도 표시
+    const consultHandler = () => {
+      const dc = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
+      if (dc < 3) setShowProfileNudge(true);
+    };
+    window.addEventListener("consult-done", consultHandler);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("consult-done", consultHandler);
+    };
+  }, [isProfileIncomplete, step]);
 
   // 비로그인 공고 로드 (기업 + 개인 각각 fetch하여 합침)
   useEffect(() => {
@@ -544,6 +575,64 @@ export default function Home() {
             consultantResult={consultantResult}
             onClearConsultant={() => setConsultantResult(null)}
           />
+        </div>
+      )}
+
+      {/* 맞춤 설정 유도 모달 */}
+      {showProfileNudge && isProfileIncomplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => {
+            setShowProfileNudge(false);
+            const c = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
+            localStorage.setItem("profile_nudge_dismiss", String(c + 1));
+          }} />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-indigo-100 rounded-full flex items-center justify-center">
+                <span className="text-3xl">🎯</span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                맞춤 설정 한 번이면
+              </h3>
+              <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                매일 내 조건에 맞는 새 지원금을<br />
+                <strong className="text-indigo-600">AI가 자동으로 찾아서 알려드립니다</strong>
+              </p>
+              <div className="space-y-2 text-left mb-5 px-2">
+                <div className="flex items-center gap-2 text-[13px] text-slate-700">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  검색 없이 자동 추천
+                </div>
+                <div className="flex items-center gap-2 text-[13px] text-slate-700">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  마감 임박 알림 자동 발송
+                </div>
+                <div className="flex items-center gap-2 text-[13px] text-slate-700">
+                  <span className="text-emerald-500 font-bold">✓</span>
+                  AI 상담 정확도 향상
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowProfileNudge(false);
+                  handleEditProfile();
+                }}
+                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
+              >
+                1분이면 끝! 맞춤 설정하기
+              </button>
+              <button
+                onClick={() => {
+                  setShowProfileNudge(false);
+                  const c = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
+                  localStorage.setItem("profile_nudge_dismiss", String(c + 1));
+                }}
+                className="w-full py-2 mt-2 text-slate-400 text-xs font-medium hover:text-slate-600 transition-all"
+              >
+                나중에 할게요
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

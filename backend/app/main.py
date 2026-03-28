@@ -207,6 +207,10 @@ async def _daily_sync_loop():
             await sync_service.sync_all()
             print("[Scheduler] Step 1/3: 공고 수집 완료")
 
+            # Step 1.5: DB 중복 공고 제거
+            print("[Scheduler] Step 1.5: 중복 공고 제거...")
+            _deduplicate_announcements()
+
             # Step 2: 지자체복지 상세 보강 (매일 100건씩 점진적)
             print("[Scheduler] Step 2/3: 지자체복지 상세 보강...")
             try:
@@ -353,6 +357,55 @@ def _discover_new_sources():
             print(f"[discover] 신규 소스 없음 (후보 {len(new_domains)}개 검토)")
     except Exception as e:
         print(f"[discover] 오류: {e}")
+
+
+def _deduplicate_announcements():
+    """DB에서 중복 공고 제거 — 제목 정규화 기준으로 최신 1건만 유지"""
+    import re as _re
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 제목 정규화 후 중복 찾기 (공백/괄호/특수문자 제거)
+        cur.execute("""
+            WITH normalized AS (
+                SELECT announcement_id, title, created_at,
+                       LOWER(REGEXP_REPLACE(REGEXP_REPLACE(title, '[\s\[\]()（）【】]', '', 'g'), '년도', '년', 'g')) AS norm_title
+                FROM announcements
+                WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+            ),
+            duplicates AS (
+                SELECT norm_title, COUNT(*) as cnt,
+                       ARRAY_AGG(announcement_id ORDER BY created_at DESC) as ids
+                FROM normalized
+                GROUP BY norm_title
+                HAVING COUNT(*) > 1
+            )
+            SELECT norm_title, cnt, ids FROM duplicates
+        """)
+        dup_groups = cur.fetchall()
+
+        deleted = 0
+        for row in dup_groups:
+            ids = row["ids"]
+            # 첫 번째(최신)는 유지, 나머지 삭제
+            to_delete = ids[1:]
+            for del_id in to_delete:
+                try:
+                    cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (del_id,))
+                    deleted += 1
+                except Exception:
+                    conn.rollback()
+                    continue
+            conn.commit()
+
+        conn.close()
+        if deleted > 0:
+            print(f"[dedup] {deleted}건 중복 공고 삭제 ({len(dup_groups)}개 그룹)")
+        else:
+            print(f"[dedup] 중복 없음")
+    except Exception as e:
+        print(f"[dedup] 오류: {e}")
 
 
 def _deactivate_dead_urls():

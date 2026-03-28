@@ -249,13 +249,17 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 버튼 — OS 네이티브 공유 시트 (카카오톡, 밴드, 문자 등 포함) */}
+            {/* 공유 버튼 — 모바일: OS 공유 시트 / PC: 카카오 SDK 팝업 */}
             <button
               onClick={async (e) => {
                 e.stopPropagation();
                 const url = res.origin_url || res.url || window.location.origin;
                 const text = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
-                if (typeof navigator !== "undefined" && navigator.share) {
+                const isMobile = typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+                const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
+
+                if (isMobile && navigator.share) {
+                  // 모바일: OS 네이티브 공유 시트 (카카오톡, 문자, 이메일 등)
                   try {
                     await navigator.share({ title: res.title, text, url });
                   } catch (err: unknown) {
@@ -264,6 +268,18 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                       toast("링크가 복사되었습니다!", "success");
                     }
                   }
+                } else if (kakao?.isInitialized()) {
+                  // PC: 카카오 SDK 공유 팝업
+                  kakao.Share.sendDefault({
+                    objectType: "feed",
+                    content: {
+                      title: res.title,
+                      description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
+                      imageUrl: "https://govmatch.kr/og-image.png",
+                      link: { mobileWebUrl: url, webUrl: url },
+                    },
+                    buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],
+                  });
                 } else {
                   await navigator.clipboard.writeText(`${text}\n${url}`);
                   toast("링크가 복사되었습니다!", "success");

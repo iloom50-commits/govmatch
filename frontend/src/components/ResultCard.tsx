@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 
-function ShareMenu({ res, toast }: { res: Result; toast: (msg: string, type?: "success" | "error" | "info") => void }) {
+function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" | "info") => void }) {
   const [open, setOpen] = useState(false);
-  const url = typeof window !== "undefined" ? (res.origin_url || res.url || window.location.origin) : "";
-  const shareText = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
+  const url = "https://govmatch.kr";
+  const shareText = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
   return (
     <div className="space-y-1.5">
       <button
@@ -25,12 +25,12 @@ function ShareMenu({ res, toast }: { res: Result; toast: (msg: string, type?: "s
                 kakao.Share.sendDefault({
                   objectType: "feed",
                   content: {
-                    title: res.title,
-                    description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
+                    title: "지원금GO — AI 맞춤 지원금 매칭",
+                    description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
                     imageUrl: "https://govmatch.kr/icon-512.png",
                     link: { mobileWebUrl: url, webUrl: url },
                   },
-                  buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],
+                  buttons: [{ title: "지원금GO 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
                 });
               } else {
                 window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
@@ -329,7 +329,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               </button>
             </div>
             {/* 공유 버튼 — 토글 시 카카오톡/문자/더보기/링크복사 */}
-            <ShareMenu res={res} toast={toast} />
+            <ShareMenu toast={toast} />
           </div>
         </div>
       </div>

@@ -249,60 +249,30 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
-            {/* 공유 버튼 */}
-            <div className="flex items-center gap-2">
-              {/* 카카오톡 공유 */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const url = res.origin_url || res.url || window.location.origin;
-                  const kakao = (window as any).Kakao;
-                  if (kakao?.isInitialized()) {
-                    kakao.Share.sendDefault({
-                      objectType: "feed",
-                      content: {
-                        title: res.title,
-                        description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
-                        imageUrl: "https://govmatch.kr/og-image.png",
-                        link: { mobileWebUrl: url, webUrl: url },
-                      },
-                      buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],
-                    });
-                  } else {
-                    navigator.clipboard.writeText(url);
-                    toast("링크가 복사되었습니다!", "success");
-                  }
-                }}
-                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold text-yellow-700 hover:bg-yellow-50 border border-yellow-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1 bg-yellow-50/60"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.48 3 2 6.69 2 11.25c0 2.88 1.72 5.42 4.33 6.95L5.1 21.5l4.03-2.13C10.02 19.6 11 19.75 12 19.75c5.52 0 10-3.69 10-8.5S17.52 3 12 3z"/></svg>
-                카카오톡
-              </button>
-              {/* 링크 복사 / 기타 공유 */}
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const url = res.origin_url || res.url || window.location.origin;
-                  const text = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
-                  if (typeof navigator !== "undefined" && navigator.share) {
-                    try {
-                      await navigator.share({ title: res.title, text, url });
-                    } catch (err: unknown) {
-                      if (err instanceof Error && err.name !== "AbortError") {
-                        await navigator.clipboard.writeText(`${text}\n${url}`);
-                        toast("링크가 복사되었습니다!", "success");
-                      }
+            {/* 공유 버튼 — OS 네이티브 공유 시트 (카카오톡, 밴드, 문자 등 포함) */}
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = res.origin_url || res.url || window.location.origin;
+                const text = `[지원금GO] ${res.title}\n지원금 찾지 마세요. AI가 구석구석 찾아드림`;
+                if (typeof navigator !== "undefined" && navigator.share) {
+                  try {
+                    await navigator.share({ title: res.title, text, url });
+                  } catch (err: unknown) {
+                    if (err instanceof Error && err.name !== "AbortError") {
+                      await navigator.clipboard.writeText(`${text}\n${url}`);
+                      toast("링크가 복사되었습니다!", "success");
                     }
-                  } else {
-                    await navigator.clipboard.writeText(`${text}\n${url}`);
-                    toast("링크가 복사되었습니다!", "success");
                   }
-                }}
-                className="flex-1 py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
-              >
-                <span>📤</span> 더 공유하기
-              </button>
-            </div>
+                } else {
+                  await navigator.clipboard.writeText(`${text}\n${url}`);
+                  toast("링크가 복사되었습니다!", "success");
+                }
+              }}
+              className="w-full py-1.5 rounded-lg text-[12px] font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1"
+            >
+              <span>📤</span> 친구에게 추천하기
+            </button>
           </div>
         </div>
       </div>

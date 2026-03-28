@@ -87,8 +87,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${loading ? "pointer-events-none" : ""}`} onClick={onClose} />
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${loading ? "pointer-events-none" : ""}`}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={loading ? undefined : onClose} />
 
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />

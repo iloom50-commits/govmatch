@@ -335,10 +335,27 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           >
             설정 저장하고 결과 업데이트 →
           </button>
+          <button
+            onClick={async () => {
+              if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능합니다.")) return;
+              try {
+                const token = localStorage.getItem("auth_token");
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/cancel`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json();
+                alert(res.ok ? data.message : (data.detail || "해지 실패"));
+              } catch { alert("서버 오류"); }
+            }}
+            className="px-3 py-3.5 text-slate-400 hover:text-amber-600 text-[11px] font-bold transition-all whitespace-nowrap"
+          >
+            구독 해지
+          </button>
           {onLogout && (
             <button
               onClick={onLogout}
-              className="px-4 py-3.5 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all whitespace-nowrap"
+              className="px-3 py-3.5 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all whitespace-nowrap"
             >
               로그아웃
             </button>

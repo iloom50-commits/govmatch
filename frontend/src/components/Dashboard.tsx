@@ -870,7 +870,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <div className="relative z-10 pt-1 space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => setShowMyMenu(prev => !prev)}
+            onClick={() => { onEditProfile(); setSidebarOpen(false); }}
             className="py-2 bg-slate-950 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs"
           >
             <span className="text-sm">⚙️</span>
@@ -884,44 +884,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <span className="tracking-tight">일정 관리</span>
           </a>
         </div>
-        {showMyMenu && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-            <button
-              onClick={() => { onEditProfile(); setSidebarOpen(false); setShowMyMenu(false); }}
-              className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100"
-            >
-              <span>👤</span> 프로필 수정
-            </button>
-            {["lite", "pro", "basic", "biz"].includes(planStatus?.plan || "") && (
-              <button
-                onClick={async () => {
-                  if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능합니다.")) return;
-                  try {
-                    const token = localStorage.getItem("auth_token");
-                    const res = await fetch(`${API}/api/plan/cancel`, {
-                      method: "POST",
-                      headers: { Authorization: `Bearer ${token}` },
-                    });
-                    const data = await res.json();
-                    alert(res.ok ? data.message : (data.detail || "해지 실패"));
-                  } catch { alert("서버 오류"); }
-                  setShowMyMenu(false);
-                }}
-                className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100"
-              >
-                <span>💳</span> 구독 관리 (해지)
-              </button>
-            )}
-            {!isPublic && onLogout && (
-              <button
-                onClick={() => { onLogout(); setSidebarOpen(false); setShowMyMenu(false); }}
-                className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-rose-500 hover:bg-rose-50 flex items-center gap-2"
-              >
-                <span>🚪</span> 로그아웃
-              </button>
-            )}
-          </div>
-        )}
+        {/* 드롭다운 제거 — 마이페이지 클릭 시 바로 ProfileSettings 모달 열림 */}
       </div>
     </div>
   );

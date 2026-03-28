@@ -3581,11 +3581,30 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 다음 분기 대비 사항
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-[형식 규칙]
-- 마크다운 형식, ## 헤더 사용
-- 전문적이면서 읽기 쉬운 톤
-- 한국어로 작성
-- 1500~2000자 내외
+[형식 규칙] — 매우 중요! 반드시 준수
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+- **반드시 HTML 태그로 작성** (마크다운 아님)
+- 문장 끝맺음은 명사형 (예: "지원 가능", "확인 필요", "신청 권장")
+- 줄바꿈 없이 문장 나열하지 말 것. 각 항목은 분리
+- **표(table)를 최대한 활용:**
+  - 기업 현황 → 표
+  - 추천 공고 TOP 5 → 표 (순위/공고명/금액/마감일/적합도/사유)
+  - 필요 서류 → 체크리스트 표
+- **로드맵은 시각적 타임라인:**
+  - div 기반 가로 타임라인 또는 표 형태
+  - 주간별 구분, 우선순위 색상 표시
+- HTML 스타일:
+  - 섹션 헤더: <h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">
+  - 표: <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
+  - th: style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;"
+  - td: style="padding:8px 12px;border:1px solid #e5e7eb;"
+  - 긴급 마감: <span style="color:#dc2626;font-weight:bold;">긴급</span>
+  - 우선순위 높음: <span style="color:#7c3aed;">★★★</span>
+  - 체크박스: ☐ (빈 체크박스 문자)
+- 한국어, 전문 컨설턴트 톤
+- 2000~3000자 내외
+- <style> 태그 사용 금지 (인라인 스타일만)
+- <script> 태그 사용 금지
 ━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             response = model.generate_content(prompt)

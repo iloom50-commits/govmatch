@@ -453,33 +453,53 @@ function ReportsTab({ headers, toast }: { headers: () => any; toast: any }) {
           </div>
         </div>
 
-        {/* AI 종합 분석 리포트 */}
-        {detail.summary && detail.summary.includes("##") && (
-          <div className="mb-6 p-5 bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl border border-violet-200">
-            <div className="prose prose-sm prose-slate max-w-none
-              [&_h2]:text-violet-800 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pb-1 [&_h2]:border-b [&_h2]:border-violet-200
-              [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-3
-              [&_strong]:text-slate-900
-              [&_li]:text-[13px] [&_li]:leading-relaxed
-              [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-slate-700
-              [&_ul]:space-y-1 [&_ol]:space-y-1"
+        {/* AI 종합 분석 리포트 (HTML) */}
+        {detail.summary && (detail.summary.includes("<h2") || detail.summary.includes("<table") || detail.summary.includes("##")) && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-violet-700">AI 종합 분석</h4>
+              <button
+                onClick={() => {
+                  const printWin = window.open("", "_blank");
+                  if (!printWin) return;
+                  const content = detail.summary.split("\n").filter((l: string) => !l.startsWith(detail.client_name + " 기업 분석")).join("\n");
+                  printWin.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${detail.title}</title>
+                    <style>body{font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;max-width:800px;margin:0 auto;padding:40px 30px;color:#1e293b;font-size:13px;line-height:1.7;}
+                    h2{color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:28px;font-size:16px;}
+                    table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px;}
+                    th{background:#f5f3ff;color:#5b21b6;padding:8px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;}
+                    td{padding:8px 10px;border:1px solid #e5e7eb;}
+                    @media print{body{padding:20px;}}</style></head><body>
+                    <div style="text-align:center;margin-bottom:30px;border-bottom:3px double #5b21b6;padding-bottom:15px;">
+                      <h1 style="color:#5b21b6;font-size:20px;margin:0;">${detail.title}</h1>
+                      <p style="color:#64748b;font-size:12px;margin-top:6px;">${detail.client_name} | ${detail.address_city || ""} | ${detail.revenue_bracket || ""} | 작성일: ${new Date().toLocaleDateString("ko-KR")}</p>
+                    </div>${content}</body></html>`);
+                  printWin.document.close();
+                  setTimeout(() => printWin.print(), 500);
+                }}
+                className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" /></svg>
+                PDF 출력
+              </button>
+            </div>
+            <div className="p-5 bg-white rounded-xl border border-violet-200 shadow-sm overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: (() => {
-                let md = detail.summary;
-                // brief 부분 제거 (첫 줄)
-                const lines = md.split("\n");
-                const startIdx = lines.findIndex((l: string) => l.startsWith("##"));
-                if (startIdx > 0) md = lines.slice(startIdx).join("\n");
-                // 간단 마크다운 변환
-                md = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                md = md.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-                md = md.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-                md = md.replace(/^\* (.+)$/gm, '<li>$1</li>');
-                md = md.replace(/^- (.+)$/gm, '<li>$1</li>');
-                md = md.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-                md = md.replace(/(<li>.*<\/li>\n?)+/g, (m: string) => `<ul>${m}</ul>`);
-                md = md.replace(/\n\n/g, '<br/>');
-                return md;
+                let html = detail.summary;
+                // brief 첫 줄 제거
+                const firstNewline = html.indexOf("\n\n");
+                if (firstNewline > 0 && firstNewline < 200) html = html.slice(firstNewline + 2);
+                // 마크다운 fallback (HTML 태그가 없는 경우)
+                if (!html.includes("<h2") && !html.includes("<table")) {
+                  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+                  html = html.replace(/^## (.+)$/gm, '<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;font-size:15px;">$1</h2>');
+                  html = html.replace(/^### (.+)$/gm, '<h3 style="color:#334155;font-size:14px;margin-top:16px;">$1</h3>');
+                  html = html.replace(/^\* (.+)$/gm, "<li>$1</li>");
+                  html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
+                  html = html.replace(/\n\n/g, "<br/>");
+                }
+                return html;
               })() }}
             />
           </div>

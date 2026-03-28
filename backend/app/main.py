@@ -3502,9 +3502,15 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                     consult_text += f"- {cs['title']}: {cs['conclusion'] or '미판정'} — {cs['summary'][:100]}\n"
 
             # 마감일 임박 순 정렬
-            import datetime as _dt
-            today_str = _dt.date.today().isoformat()
-            urgent = [r for r in results if r.get("deadline_date") and r["deadline_date"] > today_str and r["deadline_date"] <= (_dt.date.today() + _dt.timedelta(days=14)).isoformat()]
+            today_str = datetime.date.today().isoformat()
+            two_weeks = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
+            urgent = [r for r in results if r.get("deadline_date") and r["deadline_date"] > today_str and r["deadline_date"] <= two_weeks]
+
+            # f-string에서 줄바꿈 사용 위해 변수로 분리
+            NL = "\n"
+            eligible_lines = NL.join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_eligible]) or "없음"
+            conditional_lines = NL.join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_conditional]) or "없음"
+            urgent_lines = NL.join([f"- [긴급] {r['title']} | 마감: {r['deadline_date']}" for r in urgent]) or "없음"
 
             prompt = f"""당신은 10년 경력의 정부지원사업 전문 컨설턴트입니다.
 아래 고객사 정보와 AI 매칭 결과를 바탕으로, 고객에게 전달할 **전문 컨설팅 리포트**를 작성하세요.
@@ -3526,13 +3532,13 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 조건부(50~79점): {conditional_count}건
 
 [지원가능 공고]
-{chr(10).join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_eligible]) or '없음'}
+{eligible_lines}
 
 [조건부 상위 공고]
-{chr(10).join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_conditional]) or '없음'}
+{conditional_lines}
 
 [2주 내 마감 임박]
-{chr(10).join([f"- [긴급] {r['title']} | 마감: {r['deadline_date']}" for r in urgent]) or '없음'}
+{urgent_lines}
 {consult_text}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━

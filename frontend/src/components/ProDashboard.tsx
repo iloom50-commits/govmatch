@@ -443,22 +443,56 @@ function ReportsTab({ headers, toast }: { headers: () => any; toast: any }) {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           목록으로
         </button>
-        <div className="mb-4">
+        <div className="mb-6">
           <h3 className="text-lg font-bold text-slate-900">{detail.title}</h3>
-          <p className="text-sm text-slate-500 mt-1">{detail.client_name} | {detail.address_city} | {detail.industry_name} | {detail.revenue_bracket}</p>
-          <p className="text-sm text-slate-600 mt-2">{detail.summary}</p>
+          <p className="text-sm text-slate-500 mt-1">{detail.client_name} | {detail.address_city} | {detail.revenue_bracket}</p>
           <div className="flex gap-3 mt-3">
             <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-sm font-bold rounded-lg">지원가능 {detail.total_eligible}건</span>
             <span className="px-3 py-1 bg-amber-100 text-amber-700 text-sm font-bold rounded-lg">조건부 {detail.total_conditional}건</span>
             <span className="px-3 py-1 bg-rose-100 text-rose-700 text-sm font-bold rounded-lg">불가 {detail.total_ineligible}건</span>
           </div>
         </div>
+
+        {/* AI 종합 분석 리포트 */}
+        {detail.summary && detail.summary.includes("##") && (
+          <div className="mb-6 p-5 bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl border border-violet-200">
+            <div className="prose prose-sm prose-slate max-w-none
+              [&_h2]:text-violet-800 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pb-1 [&_h2]:border-b [&_h2]:border-violet-200
+              [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-3
+              [&_strong]:text-slate-900
+              [&_li]:text-[13px] [&_li]:leading-relaxed
+              [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-slate-700
+              [&_ul]:space-y-1 [&_ol]:space-y-1"
+              dangerouslySetInnerHTML={{ __html: (() => {
+                let md = detail.summary;
+                // brief 부분 제거 (첫 줄)
+                const lines = md.split("\n");
+                const startIdx = lines.findIndex((l: string) => l.startsWith("##"));
+                if (startIdx > 0) md = lines.slice(startIdx).join("\n");
+                // 간단 마크다운 변환
+                md = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                md = md.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+                md = md.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+                md = md.replace(/^\* (.+)$/gm, '<li>$1</li>');
+                md = md.replace(/^- (.+)$/gm, '<li>$1</li>');
+                md = md.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+                md = md.replace(/(<li>.*<\/li>\n?)+/g, (m: string) => `<ul>${m}</ul>`);
+                md = md.replace(/\n\n/g, '<br/>');
+                return md;
+              })() }}
+            />
+          </div>
+        )}
+
+        {/* 매칭 공고 목록 */}
+        <h4 className="text-sm font-bold text-slate-700 mb-3">매칭 공고 상세 ({(detail.matched_announcements || []).length}건)</h4>
         <div className="space-y-2">
           {(detail.matched_announcements || []).map((a: any, i: number) => (
             <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900 text-sm truncate">{a.title}</p>
+                  <p className="font-semibold text-slate-900 text-sm">{a.title}</p>
                   <p className="text-xs text-slate-500 mt-1">{a.category} | {a.department} | 마감 {a.deadline_date} | {a.support_amount}</p>
                   <p className="text-xs text-slate-600 mt-1">{a.reason}</p>
                 </div>

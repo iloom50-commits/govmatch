@@ -1072,7 +1072,6 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
             {planStatus && ["pro", "biz"].includes(planStatus.plan) && (
               <button
                 onClick={() => {
-                  setOpen(false);
                   window.dispatchEvent(new CustomEvent("open-pro-dashboard"));
                 }}
                 className="w-full max-w-xs p-3 bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 hover:border-emerald-400 hover:shadow-lg rounded-2xl transition-all active:scale-[0.98] group text-left"

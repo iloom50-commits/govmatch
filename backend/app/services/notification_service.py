@@ -5,6 +5,7 @@ import psycopg2
 import psycopg2.extras
 import datetime
 import smtplib
+import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict, Any
@@ -267,6 +268,79 @@ class NotificationService:
             self._log_notification(business_number, company_name, "push", f"sent:{sent}")
         return sent
 
+    async def send_kakao_message(self, business_number: str, company_name: str, matches: List[Dict]) -> bool:
+        """카카오 refresh_token으로 액세스 토큰 갱신 후 나에게 보내기 API로 맞춤 공고 발송"""
+        kakao_client_id = os.getenv("KAKAO_CLIENT_ID", "")
+        kakao_client_secret = os.getenv("KAKAO_CLIENT_SECRET", "")
+        if not kakao_client_id:
+            return False
+
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor = conn.cursor()
+        cursor.execute("SELECT kakao_refresh_token FROM users WHERE business_number = %s", (business_number,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row or not row.get("kakao_refresh_token"):
+            return False
+
+        refresh_token = row["kakao_refresh_token"]
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # 1. refresh_token → 새 access_token
+                token_res = await client.post("https://kauth.kakao.com/oauth/token", data={
+                    "grant_type": "refresh_token",
+                    "client_id": kakao_client_id,
+                    "client_secret": kakao_client_secret,
+                    "refresh_token": refresh_token,
+                })
+                token_data = token_res.json()
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    return False
+
+                # refresh_token이 갱신된 경우 DB 업데이트
+                new_refresh = token_data.get("refresh_token")
+                if new_refresh:
+                    conn2 = psycopg2.connect(DATABASE_URL)
+                    cur2 = conn2.cursor()
+                    cur2.execute("UPDATE users SET kakao_refresh_token = %s WHERE business_number = %s",
+                                 (new_refresh, business_number))
+                    conn2.commit()
+                    conn2.close()
+
+                # 2. 나에게 보내기 메시지 구성
+                top = matches[0] if matches else {}
+                more = len(matches) - 1
+                desc = f"총 {len(matches)}건 매칭 | 최고점: {top.get('score', 0)}점"
+                link_url = top.get("url", "https://govmatch.kr")
+
+                msg_res = await client.post(
+                    "https://kapi.kakao.com/v2/api/talk/memo/default/send",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    data={"template_object": json.dumps({
+                        "object_type": "feed",
+                        "content": {
+                            "title": f"[지원금GO] {company_name} 맞춤 공고 {len(matches)}건",
+                            "description": desc + (f"\n외 {more}건" if more > 0 else ""),
+                            "image_url": "https://govmatch.kr/og-image.png",
+                            "link": {"web_url": link_url, "mobile_web_url": link_url},
+                        },
+                        "buttons": [{"title": "공고 확인하기", "link": {"web_url": "https://govmatch.kr", "mobile_web_url": "https://govmatch.kr"}}],
+                    }, ensure_ascii=False)},
+                )
+                result = msg_res.json()
+                success = result.get("result_code") == 0
+                if success:
+                    self._log_notification(business_number, company_name, "kakao", "sent")
+                else:
+                    self._log_notification(business_number, company_name, "kakao", f"error:{result}")
+                return success
+        except Exception as e:
+            print(f"  Kakao message error: {e}")
+            return False
+
     def _log_notification(self, recipient: str, company_name: str, channel: str, status: str):
         """알림 발송 이력 저장"""
         try:
@@ -330,12 +404,14 @@ class NotificationService:
                     "matches": matches,
                     "email_sent": False,
                     "push_sent": 0,
+                    "kakao_sent": False,
                 }
 
                 if email:
                     entry["email_sent"] = self.send_email(email, company_name, matches)
 
                 entry["push_sent"] = self.send_push(bn, company_name, matches)
+                entry["kakao_sent"] = await self.send_kakao_message(bn, company_name, matches)
 
                 digest_results.append(entry)
 

@@ -98,6 +98,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # kakao_refresh_token 컬럼 추가 (카카오톡 메시지 발송용)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_refresh_token TEXT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS keyword_synonyms (
@@ -1114,7 +1121,7 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 
-def _social_login_or_register(provider: str, social_id: str, email: str, name: str):
+def _social_login_or_register(provider: str, social_id: str, email: str, name: str, kakao_refresh_token: str = ""):
     """소셜 로그인: 기존 사용자면 로그인, 신규면 자동 가입"""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1128,9 +1135,17 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     if user:
         u = dict(user)
         # kakao_id 컬럼에 소셜 provider:id 저장 (기존 호환)
+        updates = []
+        params = []
         if not u.get("kakao_id"):
-            cursor.execute("UPDATE users SET kakao_id = %s WHERE user_id = %s",
-                           (f"{provider}:{social_id}", u["user_id"]))
+            updates.append("kakao_id = %s")
+            params.append(f"{provider}:{social_id}")
+        if kakao_refresh_token and provider == "kakao":
+            updates.append("kakao_refresh_token = %s")
+            params.append(kakao_refresh_token)
+        if updates:
+            params.append(u["user_id"])
+            cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s", params)
             conn.commit()
     else:
         # 신규 가입
@@ -1225,6 +1240,7 @@ async def api_social_callback(req: SocialCallbackRequest):
             })
             token_data = token_res.json()
             access_token = token_data.get("access_token")
+            kakao_refresh_token = token_data.get("refresh_token", "")
             if not access_token:
                 raise HTTPException(status_code=400, detail="카카오 인증 실패")
 
@@ -1238,7 +1254,7 @@ async def api_social_callback(req: SocialCallbackRequest):
         email = account.get("email", f"kakao_{kakao_id}@kakao.local")
         name = account.get("profile", {}).get("nickname", "")
 
-        token, plan_status, u, is_new = _social_login_or_register("kakao", kakao_id, email, name)
+        token, plan_status, u, is_new = _social_login_or_register("kakao", kakao_id, email, name, kakao_refresh_token=kakao_refresh_token)
 
     elif req.provider == "naver":
         async with httpx.AsyncClient() as client:

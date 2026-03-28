@@ -161,12 +161,13 @@ def get_matches_for_user(user_profile):
     user_emp = employee_map.get(user_profile.get("employee_count_bracket") or user_profile.get("employees"), 0)
 
     # SQL 1차 필터: 마감 공고 제외 + deadline 없는 공고는 최근 60일 이내만
-    # 지역 필터는 Python 단에서 처리 (관심지역 외 지역전용 공고만 제외)
+    # target_type 필터: business 매칭은 business/both만, individual은 individual/both만
     query = """
     SELECT * FROM announcements
     WHERE (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
+    AND (COALESCE(target_type, 'business') IN ('business', 'both'))
     AND (
         (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
         OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '60 days')

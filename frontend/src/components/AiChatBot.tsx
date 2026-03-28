@@ -898,18 +898,20 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
           </div>
         </div>
 
-        {/* 플로팅 상담 버튼 — 항상 보이고 클릭 가능, return 시 흡수 효과 */}
+        {/* 플로팅 AI 상담 버튼 */}
         <div className="fixed bottom-6 right-6 z-40">
+          {/* 말풍선 툴팁 */}
+          <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap animate-bounce shadow-lg">
+            AI 전문 상담
+            <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
+          </div>
           <button
-            onClick={() => setOpen(true)}
-            className="relative w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center group"
+            onClick={() => { setOpen(true); setDragPos(null); }}
+            className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
             style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-            title="AI 상담"
+            title="AI 전문 상담"
           >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
+            <span className="text-2xl animate-ai-pulse">✨</span>
           </button>
         </div>
       </>

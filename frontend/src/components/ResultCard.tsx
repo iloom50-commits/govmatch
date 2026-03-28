@@ -232,7 +232,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "💬"}</span> 지원대상 여부 상담
+                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 지원대상 여부 상담
               </button>
               <button
                 onClick={(e) => {
@@ -246,7 +246,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-sparkle">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
+                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
               </button>
             </div>
             {/* 공유 버튼 — OS 네이티브 공유 시트 (카카오톡, 밴드, 문자 등 포함) */}

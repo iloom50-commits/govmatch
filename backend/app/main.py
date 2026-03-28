@@ -3392,12 +3392,12 @@ class ReportRequest(BaseModel):
 
 @app.post("/api/pro/reports/generate")
 def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_get_current_user)):
-    """PRO: 고객사 종합 리포트 생성 — 고객 프로필 기반으로 전체 공고 매칭 + AI 판정"""
+    """PRO: 고객사 종합 리포트 생성 — 매칭 + 상담 이력 + AI 종합 요약"""
     _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # 고객 프로필 조회
+    # 1. 고객 프로필 조회
     cur.execute(
         """SELECT * FROM client_profiles WHERE id=%s AND owner_business_number=%s AND is_active=TRUE""",
         (req.client_profile_id, current_user["bn"])
@@ -3408,7 +3408,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
     client = dict(client)
 
-    # 매칭 엔진으로 공고 검색
+    # 2. 매칭 엔진으로 공고 검색
     from app.core.matcher import get_matches_for_user
     profile = {
         "address_city": client.get("address_city") or "",
@@ -3420,7 +3420,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     }
     matched = get_matches_for_user(profile)
 
-    # 각 공고에 대해 간단 판정
+    # 3. 각 공고에 대해 판정
     results = []
     eligible_count = 0
     conditional_count = 0
@@ -3428,7 +3428,6 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 
     for ann in matched:
         a = ann if isinstance(ann, dict) else dict(ann)
-        # 간단 자격 체크 (매칭 점수 기반)
         score = a.get("match_score", 0)
         if score >= 80:
             conclusion = "eligible"
@@ -3455,10 +3454,91 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             "match_score": score,
         })
 
+    # 4. 공고AI 상담 이력 수집 (이 고객사 관련 최근 30건)
+    consult_summaries = []
+    try:
+        cur.execute(
+            """SELECT a.title, cl.conclusion, cl.messages, cl.created_at
+               FROM ai_consult_logs cl
+               JOIN announcements a ON a.announcement_id = cl.announcement_id
+               WHERE cl.business_number = %s
+               ORDER BY cl.created_at DESC LIMIT 30""",
+            (current_user["bn"],)
+        )
+        for row in cur.fetchall():
+            r = dict(row)
+            msgs = r.get("messages") or []
+            # 마지막 AI 응답만 추출
+            last_ai = ""
+            if isinstance(msgs, list):
+                for m in reversed(msgs):
+                    if m.get("role") == "assistant":
+                        last_ai = m.get("text", "")[:200]
+                        break
+            consult_summaries.append({
+                "title": r.get("title", ""),
+                "conclusion": r.get("conclusion", ""),
+                "summary": last_ai,
+            })
+    except Exception:
+        pass
+
+    # 5. AI 종합 요약 생성
+    ai_summary = ""
+    try:
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key and results:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+            top_eligible = [r for r in results if r["conclusion"] == "eligible"][:5]
+            top_conditional = [r for r in results if r["conclusion"] == "conditional"][:5]
+
+            consult_text = ""
+            if consult_summaries:
+                consult_text = "\n\n[공고별 상담 이력]\n"
+                for cs in consult_summaries[:10]:
+                    consult_text += f"- {cs['title']}: {cs['conclusion'] or '미판정'} — {cs['summary'][:100]}\n"
+
+            prompt = f"""다음 고객사의 정부지원사업 매칭 결과를 종합 분석하여 전문 컨설턴트 리포트를 작성해주세요.
+
+[고객사 정보]
+- 기업명: {client.get('client_name', '')}
+- 소재지: {client.get('address_city', '')}
+- 업종: {client.get('industry_code', '')}
+- 설립일: {client.get('establishment_date', '')}
+- 매출: {client.get('revenue_bracket', '')}
+- 직원: {client.get('employee_count_bracket', '')}
+- 관심분야: {client.get('interests', '')}
+
+[매칭 결과 요약]
+- 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건
+
+[지원가능 상위 공고]
+{chr(10).join([f"- {r['title']} ({r['support_amount']}, 마감: {r['deadline_date']})" for r in top_eligible]) or '없음'}
+
+[조건부 상위 공고]
+{chr(10).join([f"- {r['title']} ({r['support_amount']}, 마감: {r['deadline_date']})" for r in top_conditional]) or '없음'}
+{consult_text}
+
+[작성 규칙]
+1. 마크다운 형식으로 작성
+2. 섹션: 고객사 개요 → 매칭 분석 → 추천 공고 TOP 5 → 신청 전략 → 주의사항
+3. 각 추천 공고에 대해 왜 적합한지 1~2문장 설명
+4. 마감일 임박한 공고는 긴급 표시
+5. 전문 컨설턴트 톤으로 간결하게 작성 (500자 내외)
+6. 한국어로 작성"""
+
+            response = model.generate_content(prompt)
+            ai_summary = response.text.strip()
+    except Exception as e:
+        ai_summary = f"AI 요약 생성 실패: {str(e)[:100]}"
+
     import json as _json
     summary = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건"
 
-    # DB 저장
+    # 6. DB 저장
     cur.execute(
         """INSERT INTO client_reports
            (client_profile_id, owner_business_number, title, summary, matched_announcements,
@@ -3478,6 +3558,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         "status": "SUCCESS",
         "report_id": report_id,
         "summary": summary,
+        "ai_analysis": ai_summary,
+        "consult_history": consult_summaries[:10],
         "total": len(results),
         "eligible": eligible_count,
         "conditional": conditional_count,

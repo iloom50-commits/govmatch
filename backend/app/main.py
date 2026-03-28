@@ -3531,9 +3531,11 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 6. 한국어로 작성"""
 
             response = model.generate_content(prompt)
-            ai_summary = response.text.strip()
+            ai_summary = response.text.strip() if response and response.text else "AI 분석을 생성하지 못했습니다."
+            print(f"[report] AI summary generated: {len(ai_summary)} chars")
     except Exception as e:
-        ai_summary = f"AI 요약 생성 실패: {str(e)[:100]}"
+        ai_summary = f"AI 요약 생성 실패: {str(e)[:200]}"
+        print(f"[report] AI summary error: {e}")
 
     import json as _json
     summary = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건"

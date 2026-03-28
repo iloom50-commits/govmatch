@@ -8,6 +8,9 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 
 /** 마크다운 → 보고서 스타일 HTML 변환 */
 function renderMarkdown(text: string): string {
+  // 0) (None) 링크 패턴 제거: ([텍스트](None)) or [텍스트](None)
+  text = text.replace(/\(\[.*?\]\(None\)\)/g, "").replace(/\[.*?\]\(None\)/g, "");
+
   // 1) 이스케이프
   let html = text
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

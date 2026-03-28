@@ -902,14 +902,14 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
         <div className="fixed bottom-6 right-6 z-40">
           {/* 말풍선 툴팁 */}
           <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap animate-bounce shadow-lg">
-            AI 전문 상담
+            전문가용 기업 상담 에이전트
             <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
           </div>
           <button
             onClick={() => { setOpen(true); setDragPos(null); }}
             className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
             style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-            title="AI 전문 상담"
+            title="전문가용 기업 상담 에이전트"
           >
             <span className="text-2xl animate-ai-pulse">✨</span>
           </button>

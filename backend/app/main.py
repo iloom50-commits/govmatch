@@ -3501,34 +3501,86 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                 for cs in consult_summaries[:10]:
                     consult_text += f"- {cs['title']}: {cs['conclusion'] or '미판정'} — {cs['summary'][:100]}\n"
 
-            prompt = f"""다음 고객사의 정부지원사업 매칭 결과를 종합 분석하여 전문 컨설턴트 리포트를 작성해주세요.
+            # 마감일 임박 순 정렬
+            import datetime as _dt
+            today_str = _dt.date.today().isoformat()
+            urgent = [r for r in results if r.get("deadline_date") and r["deadline_date"] > today_str and r["deadline_date"] <= (_dt.date.today() + _dt.timedelta(days=14)).isoformat()]
 
+            prompt = f"""당신은 10년 경력의 정부지원사업 전문 컨설턴트입니다.
+아래 고객사 정보와 AI 매칭 결과를 바탕으로, 고객에게 전달할 **전문 컨설팅 리포트**를 작성하세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 [고객사 정보]
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 기업명: {client.get('client_name', '')}
 - 소재지: {client.get('address_city', '')}
-- 업종: {client.get('industry_code', '')}
+- 업종코드: {client.get('industry_code', '')}
 - 설립일: {client.get('establishment_date', '')}
-- 매출: {client.get('revenue_bracket', '')}
-- 직원: {client.get('employee_count_bracket', '')}
+- 매출규모: {client.get('revenue_bracket', '')}
+- 직원수: {client.get('employee_count_bracket', '')}
 - 관심분야: {client.get('interests', '')}
 
-[매칭 결과 요약]
-- 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건
+[AI 매칭 결과]
+- 총 {len(results)}건 매칭
+- 지원가능(80점+): {eligible_count}건
+- 조건부(50~79점): {conditional_count}건
 
-[지원가능 상위 공고]
-{chr(10).join([f"- {r['title']} ({r['support_amount']}, 마감: {r['deadline_date']})" for r in top_eligible]) or '없음'}
+[지원가능 공고]
+{chr(10).join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_eligible]) or '없음'}
 
 [조건부 상위 공고]
-{chr(10).join([f"- {r['title']} ({r['support_amount']}, 마감: {r['deadline_date']})" for r in top_conditional]) or '없음'}
+{chr(10).join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_conditional]) or '없음'}
+
+[2주 내 마감 임박]
+{chr(10).join([f"- [긴급] {r['title']} | 마감: {r['deadline_date']}" for r in urgent]) or '없음'}
 {consult_text}
 
-[작성 규칙]
-1. 마크다운 형식으로 작성
-2. 섹션: 고객사 개요 → 매칭 분석 → 추천 공고 TOP 5 → 신청 전략 → 주의사항
-3. 각 추천 공고에 대해 왜 적합한지 1~2문장 설명
-4. 마감일 임박한 공고는 긴급 표시
-5. 전문 컨설턴트 톤으로 간결하게 작성 (500자 내외)
-6. 한국어로 작성"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+[리포트 작성 규칙] — 반드시 아래 7개 섹션을 모두 포함
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1. 기업 현황 분석
+- 기업 개요 (업종 특성, 업력, 규모)
+- 강점: 매칭에 유리한 조건 (예: 설립 3년 이내 → 창업지원 적합)
+- 약점: 매칭에 불리한 조건 (예: 매출 1억 미만 → 일부 사업 제외)
+
+## 2. 상담 이력 요약
+- 기존 AI 상담에서 확인된 판정 결과 정리
+- 상담이 없으면 "아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다." 로 작성
+
+## 3. 맞춤 공고 분석 (추천 TOP 5)
+- 각 공고에 대해:
+  - 공고명 + 지원금액 + 마감일
+  - **왜 이 기업에 적합한지** 2~3문장
+  - 주의사항/준비 필요 사항
+
+## 4. 신청 로드맵
+- 마감일 순서로 타임라인 작성
+- 이번 주 / 다음 주 / 이번 달 구분
+- 우선순위 표시 (★★★ / ★★ / ★)
+
+## 5. 필요 서류 체크리스트
+- 공통 서류: 사업자등록증, 중소기업확인서, 재무제표 등
+- 공고별 추가 서류 (알 수 있는 범위에서)
+
+## 6. 경쟁력 분석
+- 이 기업이 선정될 가능성을 높이는 방법
+- 사업계획서 작성 팁
+- 강조해야 할 포인트
+
+## 7. 종합 의견
+- 컨설턴트의 최종 판단
+- 즉시 신청 권장 공고 (1~2개)
+- 준비 후 신청 권장 공고
+- 다음 분기 대비 사항
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+[형식 규칙]
+- 마크다운 형식, ## 헤더 사용
+- 전문적이면서 읽기 쉬운 톤
+- 한국어로 작성
+- 1500~2000자 내외
+━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             response = model.generate_content(prompt)
             ai_summary = response.text.strip() if response and response.text else "AI 분석을 생성하지 못했습니다."

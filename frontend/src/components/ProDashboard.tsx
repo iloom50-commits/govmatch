@@ -62,9 +62,9 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
   }), [token]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-50 flex">
+      <div className="w-0 lg:w-[380px] shrink-0" onClick={onClose} />
+      <div className="relative flex-1 h-full bg-white shadow-2xl border-l border-slate-200 overflow-hidden flex flex-col animate-in slide-in-from-right duration-300">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-violet-50 to-indigo-50">
           <div className="flex items-center gap-3">

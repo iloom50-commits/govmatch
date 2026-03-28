@@ -27,7 +27,7 @@ function ShareMenu({ res, toast }: { res: Result; toast: (msg: string, type?: "s
                   content: {
                     title: res.title,
                     description: `${res.support_amount ? `[${res.support_amount}] ` : ""}지원금 찾지 마세요. AI가 구석구석 찾아드림`,
-                    imageUrl: "https://govmatch.kr/og-image.png",
+                    imageUrl: "https://govmatch.kr/icon-512.png",
                     link: { mobileWebUrl: url, webUrl: url },
                   },
                   buttons: [{ title: "공고 보러가기", link: { mobileWebUrl: url, webUrl: url } }],

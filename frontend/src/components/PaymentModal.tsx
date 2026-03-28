@@ -36,6 +36,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
       });
 
       if (billingKeyResponse?.code) {
+        onClose(); // 우리 모달 먼저 닫아 포트원 다이얼로그 간섭 제거
         if (billingKeyResponse.code !== "USER_CANCEL") {
           toast(billingKeyResponse.message || "카드 등록 실패", "error");
         }
@@ -44,6 +45,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
       const billingKey = billingKeyResponse?.billingKey;
       if (!billingKey) {
+        onClose();
         toast("카드 등록에 실패했습니다.", "error");
         return;
       }

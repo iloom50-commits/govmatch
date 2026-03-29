@@ -18,13 +18,12 @@ function renderMarkdown(text: string): string {
   // 2) 인라인: bold
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>');
 
-  // 2b) URL → 링크 + 복사 버튼
+  // 2b) URL → 바로가기 링크 버튼
   html = html.replace(
     /(https?:\/\/[^\s<)"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener" class="text-indigo-600 underline underline-offset-2 break-all">$1</a>'
-    + '<button onclick="navigator.clipboard.writeText(\'$1\');this.textContent=\'copied!\';setTimeout(()=>this.textContent=\'copy\',1500)" '
-    + 'class="ml-1.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-bold rounded hover:bg-indigo-200 transition-all" '
-    + 'type="button">copy</button>'
+    '<a href="$1" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[11px] font-bold rounded-md border border-indigo-200 hover:bg-indigo-100 transition-all no-underline break-all">'
+    + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+    + '바로가기</a>'
   );
 
   const lines = html.split("\n");

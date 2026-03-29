@@ -1551,9 +1551,8 @@ async def api_enrich_gov24():
             errors += 1
 
     conn.close()
-    # 디버그: 처음 3건의 URL 패턴
     url_samples = [{"id": r["announcement_id"], "url": (r["origin_url"] or "")[:80]} for r in rows[:3]]
-    return {"status": "OK", "need": need, "rows_fetched": len(rows), "updated": updated, "skipped": skipped, "errors": errors, "sample": sample, "url_samples": url_samples}
+    return {"status": "OK", "need": need, "rows_fetched": len(rows), "updated": updated, "skipped": skipped, "errors": errors, "sample": sample, "url_samples": url_samples, "has_api_key": bool(api_key)}
 
 
 @app.get("/api/auth/social/{provider}")

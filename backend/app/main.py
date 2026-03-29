@@ -1498,6 +1498,7 @@ async def api_enrich_gov24():
     rows = cur.fetchall()
 
     updated, skipped, errors = 0, 0, 0
+    err_detail = ""
     sample = None
     for row in rows:
         try:
@@ -1549,10 +1550,12 @@ async def api_enrich_gov24():
             try: conn.rollback()
             except: pass
             errors += 1
+            if errors <= 3:
+                err_detail = f"{type(e).__name__}: {str(e)[:100]}"
 
     conn.close()
     url_samples = [{"id": r["announcement_id"], "url": (r["origin_url"] or "")[:80]} for r in rows[:3]]
-    return {"status": "OK", "need": need, "rows_fetched": len(rows), "updated": updated, "skipped": skipped, "errors": errors, "sample": sample, "url_samples": url_samples, "has_api_key": bool(api_key)}
+    return {"status": "OK", "need": need, "rows_fetched": len(rows), "updated": updated, "skipped": skipped, "errors": errors, "sample": sample, "url_samples": url_samples, "has_api_key": bool(api_key), "last_error": err_detail if errors > 0 else None}
 
 
 @app.get("/api/auth/social/{provider}")

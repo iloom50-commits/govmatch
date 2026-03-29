@@ -1480,6 +1480,7 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
 @app.post("/api/util/enrich-gov24")
 async def api_enrich_gov24():
     import re as _re
+    import requests as _requests
     api_key = os.getenv("GOV24_API_KEY")
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1514,7 +1515,7 @@ async def api_enrich_gov24():
                 skipped += 1
                 continue
 
-            resp = requests.get("https://api.odcloud.kr/api/gov24/v3/serviceDetail",
+            resp = _requests.get("https://api.odcloud.kr/api/gov24/v3/serviceDetail",
                 params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"}, timeout=15)
             if resp.status_code == 429:
                 break

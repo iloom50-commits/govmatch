@@ -1216,6 +1216,21 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+# 임시: 테스트 유저 플랜 변경 (테스트 후 제거)
+@app.post("/api/util/set-plan")
+def api_util_set_plan(user=Depends(_get_current_user)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET plan='pro', plan_expires_at='2027-12-31' WHERE user_id=%s", (user["user_id"],))
+    conn.commit()
+    # 새 토큰 발급
+    cur.execute("SELECT * FROM users WHERE user_id=%s", (user["user_id"],))
+    u = dict(cur.fetchone())
+    conn.close()
+    token = _create_jwt(u["user_id"], u["business_number"], u["email"], "pro", "2027-12-31")
+    return {"token": token, "plan": "pro"}
+
+
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""

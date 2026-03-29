@@ -2077,9 +2077,13 @@ def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = De
     conn.close()
     usage += 1
 
-    # 가상 프로필로 매칭 엔진 실행
+    # 가상 프로필로 매칭 엔진 실행 — 개인/사업자 분기
     virtual_profile = req.profile
-    matches = get_matches_for_user(virtual_profile)
+    is_individual = not virtual_profile.get("industry_code") or u.get("user_type") == "individual"
+    if is_individual:
+        matches = get_individual_matches_for_user(virtual_profile)
+    else:
+        matches = get_matches_for_user(virtual_profile)
 
     # 직렬화 (date 등)
     for m in matches:

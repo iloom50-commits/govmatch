@@ -258,16 +258,63 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
     }]);
   };
 
+  // 상담 보고서 인쇄 (PDF 저장 가능)
+  const handlePrintReport = () => {
+    const aiMessages = messages.filter(m => m.role === "assistant" && !m.done);
+    const userMessages = messages.filter(m => m.role === "user");
+    const now = new Date().toLocaleString("ko-KR");
+
+    const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>상담 보고서 — ${announcement?.title || ""}</title>
+<style>
+  @page { margin: 20mm; }
+  body { font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; color: #1e293b; line-height: 1.7; font-size: 13px; }
+  h1 { font-size: 18px; color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 8px; margin-bottom: 16px; }
+  .meta { color: #64748b; font-size: 12px; margin-bottom: 20px; }
+  .meta span { margin-right: 16px; }
+  .section { margin-bottom: 20px; }
+  .section h2 { font-size: 14px; color: #334155; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; }
+  .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; }
+  .msg.user { background: #eef2ff; border-left: 3px solid #6366f1; }
+  .msg.ai { background: #f8fafc; border-left: 3px solid #10b981; }
+  .msg .role { font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 4px; }
+  .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 11px; text-align: center; }
+</style></head><body>
+<h1>AI 지원대상 상담 보고서</h1>
+<div class="meta">
+  <span>공고: <strong>${announcement?.title || ""}</strong></span><br/>
+  <span>부처: ${announcement?.department || "-"}</span>
+  <span>카테고리: ${announcement?.category || "-"}</span>
+  <span>마감: ${announcement?.deadline_date || "상시"}</span><br/>
+  <span>상담일시: ${now}</span>
+</div>
+<div class="section"><h2>상담 내용</h2>
+${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? "user" : "ai"}">
+  <div class="role">${m.role === "user" ? "질문" : "AI 상담사"}</div>
+  <div>${m.role === "user" ? m.text.replace(/</g, "&lt;") : renderMarkdown(m.text)}</div>
+</div>`).join("")}
+</div>
+<div class="footer">지원금GO — AI 맞춤 지원금 매칭 (govmatch.kr) | 본 보고서는 AI가 생성한 참고용 자료이며, 최종 판단은 주관기관의 심사에 따릅니다.</div>
+</body></html>`;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
   if (!open || !announcement) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 lg:pointer-events-none">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center lg:justify-end p-0 sm:p-4 lg:pr-6 lg:pointer-events-none">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm lg:hidden" onClick={handleClose} />
 
       <div
         data-consult-panel
         className={`bg-white shadow-2xl border border-white/60 overflow-hidden flex flex-col pointer-events-auto ${
-          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-4xl h-[90vh] sm:h-[85vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"
+          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-2xl lg:max-w-[680px] h-[90vh] sm:h-[85vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 lg:slide-in-from-right duration-300"
         }`}
         style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 700, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >
@@ -389,12 +436,23 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
               ) : !isPro && feedbackSent ? (
                 <p className="text-[11px] text-center text-slate-400">피드백이 저장되었습니다</p>
               ) : null}
-              <button
-                onClick={handleClose}
-                className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
-              >
-                닫기
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePrintReport}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  보고서 출력
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                >
+                  닫기
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-2">

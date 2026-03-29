@@ -23,28 +23,66 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
+  // PortOne iframe 잔여물 강제 정리
+  const cleanupPortone = () => {
+    document.getElementById("imp-iframe-wrapper")?.remove();
+    document.getElementById("portone-force-close")?.remove();
+    document.querySelectorAll("iframe[src*='portone'], iframe[src*='iamport']").forEach(el => {
+      (el as HTMLElement).closest("div[style*='z-index']")?.remove();
+    });
+  };
+
   const handleSubscribe = async (targetPlan: "lite" | "pro") => {
     setLoading(true);
     try {
       const token = getToken();
 
-      // 빌링키 발급 (카드 등록만, 결제는 0원)
-      const billingKeyResponse = await PortOne.requestIssueBillingKey({
-        storeId: STORE_ID,
-        channelKey: CHANNEL_KEY,
-        billingKeyMethod: "CARD",
-      });
+      // PortOne 호출 + 에러 다이얼로그 감지 시 강제 닫기 버튼 추가
+      const billingKeyResponse = await Promise.race([
+        PortOne.requestIssueBillingKey({
+          storeId: STORE_ID,
+          channelKey: CHANNEL_KEY,
+          billingKeyMethod: "CARD",
+        }),
+        new Promise<{ code: string; message: string }>((resolve) => {
+          const interval = setInterval(() => {
+            const wrapper = document.getElementById("imp-iframe-wrapper");
+            if (!wrapper) return;
+            if (document.getElementById("portone-force-close")) return;
+            // 강제 닫기 버튼 추가 (PortOne iframe 위에 z-100000)
+            const btn = document.createElement("button");
+            btn.id = "portone-force-close";
+            btn.textContent = "✕ 닫기";
+            Object.assign(btn.style, {
+              position: "fixed", top: "12px", right: "12px", zIndex: "100000",
+              padding: "12px 28px", background: "#ef4444", color: "white",
+              border: "none", borderRadius: "12px", fontWeight: "bold",
+              fontSize: "16px", cursor: "pointer",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            });
+            btn.onclick = () => {
+              wrapper.remove();
+              btn.remove();
+              clearInterval(interval);
+              resolve({ code: "FORCE_CLOSED", message: "" });
+            };
+            document.body.appendChild(btn);
+          }, 2000);
+        }),
+      ]);
 
       if (billingKeyResponse?.code) {
-        onClose(); // 우리 모달 먼저 닫아 포트원 다이얼로그 간섭 제거
-        if (billingKeyResponse.code !== "USER_CANCEL") {
+        cleanupPortone();
+        if (billingKeyResponse.code !== "USER_CANCEL" && billingKeyResponse.code !== "FORCE_CLOSED") {
           toast(billingKeyResponse.message || "카드 등록 실패", "error");
         }
+        onClose();
         return;
       }
 
       const billingKey = billingKeyResponse?.billingKey;
       if (!billingKey) {
+        cleanupPortone();
         onClose();
         toast("카드 등록에 실패했습니다.", "error");
         return;
@@ -61,9 +99,11 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
       toast(data.message, "success");
       onSuccess(data.token, data.plan);
     } catch (err: unknown) {
+      cleanupPortone();
       const msg = err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.";
       toast(msg, "error");
     } finally {
+      cleanupPortone();
       setLoading(false);
     }
   };

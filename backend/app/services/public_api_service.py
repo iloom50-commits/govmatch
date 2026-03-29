@@ -1070,8 +1070,7 @@ class GovernmentAPIService:
 
         import psycopg2, psycopg2.extras, re, time as _time
         from app.config import DATABASE_URL
-        db_url = DATABASE_URL.replace(":6543/", ":5432/")
-        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = True
         cur = conn.cursor()
 

@@ -80,7 +80,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
         return;
       }
 
-      const billingKey = billingKeyResponse?.billingKey;
+      const billingKey = (billingKeyResponse as any)?.billingKey;
       if (!billingKey) {
         cleanupPortone();
         onClose();

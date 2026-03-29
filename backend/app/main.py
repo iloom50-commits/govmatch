@@ -1476,12 +1476,23 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
-# 임시: gov24 개인 공고 보강 트리거 (테스트 후 제거)
+# 임시: gov24 개인 공고 보강 트리거 + 디버그 (테스트 후 제거)
 @app.post("/api/util/enrich-gov24")
 async def api_enrich_gov24():
+    # 먼저 DB에서 대상 건수 확인
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as cnt FROM announcements WHERE origin_source = 'gov24-individual-api'")
+    total = cur.fetchone()["cnt"]
+    cur.execute("SELECT COUNT(*) as cnt FROM announcements WHERE origin_source = 'gov24-individual-api' AND (summary_text IS NULL OR summary_text NOT LIKE '%[상세보강]%')")
+    need_enrich = cur.fetchone()["cnt"]
+    cur.execute("SELECT DISTINCT origin_source, COUNT(*) as cnt FROM announcements WHERE target_type = 'individual' GROUP BY origin_source ORDER BY cnt DESC LIMIT 10")
+    sources = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
     from app.services.public_api_service import gov_api_service
     result = await gov_api_service.enrich_gov24_individual_details(batch_size=50)
-    return {"status": "OK", "result": result}
+    return {"status": "OK", "debug": {"total_gov24": total, "need_enrich": need_enrich, "sources": sources}, "result": result}
 
 
 @app.get("/api/auth/social/{provider}")

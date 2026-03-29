@@ -264,13 +264,19 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
         const summary = buildProfileSummary(user);
         setMessages([{
           role: "assistant",
-          text: `전문가 상담 에이전트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
-          choices: ["이 정보로 매칭해줘", "다른 고객사 정보를 입력할게요", "추가 정보를 더 알려줄게"],
+          text: isIndividual
+            ? `개인 상담 에이전트 모드입니다.\n\n**현재 등록된 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객 정보를 입력하시겠습니까?`
+            : `전문가 상담 에이전트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
+          choices: isIndividual
+            ? ["이 정보로 매칭해줘", "다른 고객 정보를 입력할게요", "추가 정보를 더 알려줄게"]
+            : ["이 정보로 매칭해줘", "다른 고객사 정보를 입력할게요", "추가 정보를 더 알려줄게"],
         }]);
       } else {
         setMessages([{
           role: "assistant",
-          text: "전문가 상담 에이전트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
+          text: isIndividual
+            ? "개인 상담 에이전트 모드입니다.\n\n고객의 조건(이름, 나이, 거주지, 관심분야)을 대화로 알려주시면, 맞춤 복지·지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?"
+            : "전문가 상담 에이전트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
           choices: ["네, 시작할게요", "어떤 정보가 필요한가요?"],
         }]);
       }
@@ -436,7 +442,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       // 완료 메시지
       setMessages([...currentMessages, {
         role: "assistant",
-        text: `매칭이 완료되었습니다!\n\n**${profile.company_name || "고객사"}** 조건으로 **${matchCount}건**의 맞춤 지원사업을 찾았습니다.\n\n대시보드에서 매칭 결과를 확인해 주세요.${matchCount > 0 ? "\n각 공고를 클릭하면 상세 자격요건 상담도 받으실 수 있습니다." : ""}`,
+        text: `매칭이 완료되었습니다!\n\n**${profile.company_name || (isIndividual ? "고객" : "고객사")}** 조건으로 **${matchCount}건**의 맞춤 ${isIndividual ? "복지·지원사업" : "지원사업"}을 찾았습니다.\n\n대시보드에서 매칭 결과를 확인해 주세요.${matchCount > 0 ? "\n각 공고를 클릭하면 상세 자격요건 상담도 받으실 수 있습니다." : ""}`,
         choices: matchCount > 0 ? ["대시보드에서 결과 확인", "다른 조건으로 다시 매칭"] : ["다른 조건으로 다시 매칭"],
       }]);
 
@@ -922,14 +928,14 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
         <div className="fixed bottom-6 right-6 z-40">
           {/* 말풍선 툴팁 */}
           <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap animate-bounce shadow-lg">
-            전문가용 기업 상담 에이전트
+            {isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
             <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
           </div>
           <button
             onClick={() => { setOpen(true); setDragPos(null); }}
             className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
             style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-            title="전문가용 기업 상담 에이전트"
+            title={isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
           >
             <span className="text-2xl animate-ai-pulse">✨</span>
           </button>
@@ -943,7 +949,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     ? "from-violet-600 to-purple-600"
     : "from-indigo-600 to-violet-600";
 
-  const headerTitle = mode === "consultant" ? "전문가 상담 에이전트" : mode === "free" ? "자유 상담" : "AI 서비스";
+  const headerTitle = mode === "consultant" ? (isIndividual ? "개인 상담 에이전트" : "전문가 상담 에이전트") : mode === "free" ? "자유 상담" : "AI 서비스";
   const headerSub = mode === "consultant" ? "고객사 맞춤 매칭·관리" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
 
   return (
@@ -1070,12 +1076,14 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
                       </svg>
                     </div>
                     <div>
-                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>전문가 상담 에이전트</p>
-                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>고객사 맞춤 매칭·관리</p>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>{isIndividual ? "개인 상담 에이전트" : "전문가 상담 에이전트"}</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>{isIndividual ? "개인 고객 맞춤 매칭·관리" : "고객사 맞춤 매칭·관리"}</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    고객사의 기업 조건을 입력하면<br />맞춤 지원사업을 매칭해 드립니다.
+                    {isIndividual
+                      ? "고객의 개인 조건을 입력하면\n맞춤 복지·지원사업을 매칭해 드립니다."
+                      : "고객사의 기업 조건을 입력하면\n맞춤 지원사업을 매칭해 드립니다."}
                   </p>
                   {isPro ? (
                     <div className="mt-2 px-2 py-1 bg-violet-100 rounded-lg inline-block">

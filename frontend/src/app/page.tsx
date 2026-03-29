@@ -84,34 +84,25 @@ export default function Home() {
   const [showProfileNudge, setShowProfileNudge] = useState(false);
   const { toast } = useToast();
 
-  // 맞춤 설정 유도: 프로필 미설정 사용자 감지
-  const isProfileIncomplete = profileData && (
+  // 맞춤 설정 유도: 프로필 미설정 사용자 감지 (개인 유저는 업종 불필요)
+  const isIndividualUser = profileData?.user_type === "individual";
+  const isProfileIncomplete = profileData && !isIndividualUser && (
     !profileData.industry_code || profileData.industry_code === "00000" ||
     !profileData.address_city || profileData.address_city === "전국"
   );
 
-  // 공고 스크롤/상담 후 유도 표시
+  // 맞춤 설정 모달: 최초 1회만
   useEffect(() => {
     if (!isProfileIncomplete || step !== "RESULTS") return;
+    const alreadyShown = localStorage.getItem("profile_nudge_shown");
+    if (alreadyShown) return;
 
-    // 이미 3회 이상 닫았으면 안 보여줌
-    const dismissCount = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
-    if (dismissCount >= 3) return;
+    const timer = setTimeout(() => {
+      setShowProfileNudge(true);
+      localStorage.setItem("profile_nudge_shown", "1");
+    }, 5000);
 
-    // 첫 표시: 5초 후
-    const timer = setTimeout(() => setShowProfileNudge(true), 5000);
-
-    // AI 상담 완료 시에도 표시
-    const consultHandler = () => {
-      const dc = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
-      if (dc < 3) setShowProfileNudge(true);
-    };
-    window.addEventListener("consult-done", consultHandler);
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("consult-done", consultHandler);
-    };
+    return () => clearTimeout(timer);
   }, [isProfileIncomplete, step]);
 
   // 비로그인 공고 로드 (기업 + 개인 각각 fetch하여 합침)
@@ -581,11 +572,7 @@ export default function Home() {
       {/* 맞춤 설정 유도 모달 */}
       {showProfileNudge && isProfileIncomplete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => {
-            setShowProfileNudge(false);
-            const c = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
-            localStorage.setItem("profile_nudge_dismiss", String(c + 1));
-          }} />
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowProfileNudge(false)} />
           <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-6 text-center">
               <div className="w-16 h-16 mx-auto mb-4 bg-indigo-100 rounded-full flex items-center justify-center">
@@ -622,11 +609,7 @@ export default function Home() {
                 1분이면 끝! 맞춤 설정하기
               </button>
               <button
-                onClick={() => {
-                  setShowProfileNudge(false);
-                  const c = parseInt(localStorage.getItem("profile_nudge_dismiss") || "0");
-                  localStorage.setItem("profile_nudge_dismiss", String(c + 1));
-                }}
+                onClick={() => setShowProfileNudge(false)}
                 className="w-full py-2 mt-2 text-slate-400 text-xs font-medium hover:text-slate-600 transition-all"
               >
                 나중에 할게요

@@ -7,6 +7,52 @@ import SmartDocModal from "./SmartDocModal";
 import ProDashboard from "./ProDashboard";
 import { useToast } from "@/components/ui/Toast";
 
+// 맞춤형 알림 버튼 + 말풍선 안내
+function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => void }) {
+  const [showBubble, setShowBubble] = useState(false);
+  const isIndividual = profile?.user_type === "individual";
+  const isIncomplete = !isIndividual && (
+    !profile?.industry_code || profile?.industry_code === "00000" ||
+    !profile?.address_city || profile?.address_city === "전국"
+  );
+
+  useEffect(() => {
+    if (!isIncomplete) return;
+    const shown = localStorage.getItem("profile_nudge_shown");
+    if (!shown) return; // 모달이 아직 안 뜬 상태면 말풍선 불필요
+
+    // 30초 후 말풍선 표시, 10초 유지 → 5분마다 반복 (최대 3회)
+    let count = 0;
+    const show = () => {
+      if (count >= 3) return;
+      setShowBubble(true);
+      count++;
+      setTimeout(() => setShowBubble(false), 10000);
+    };
+    const timer1 = setTimeout(show, 30000);
+    const timer2 = setInterval(show, 300000);
+    return () => { clearTimeout(timer1); clearInterval(timer2); };
+  }, [isIncomplete]);
+
+  return (
+    <div className="relative z-10">
+      {showBubble && (
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+          맞춤 설정하면 AI가 자동 추천!
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+        </div>
+      )}
+      <button
+        onClick={onClick}
+        className="w-full py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all border border-indigo-100 active:scale-95 text-xs"
+      >
+        <span className="text-sm">🔔</span>
+        <span className="tracking-tight">맞춤형 알림 요청</span>
+      </button>
+    </div>
+  );
+}
+
 const REVENUE_KR: Record<string, string> = {
   UNDER_1B: "1억 미만",
   "1B_5B": "1억~5억",
@@ -754,15 +800,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </div>
       )}
 
-      <div className="relative z-10">
-        <button
-          onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
-          className="w-full py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all border border-indigo-100 active:scale-95 text-xs"
-        >
-          <span className="text-sm">🔔</span>
-          <span className="tracking-tight">맞춤형 알림 요청</span>
-        </button>
-      </div>
+      <NudgeBubbleButton
+        profile={profile}
+        onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
+      />
 
       {/* PWA 앱 설치 유도 — Android/Chrome */}
       {!isPwaInstalled && deferredPrompt && (

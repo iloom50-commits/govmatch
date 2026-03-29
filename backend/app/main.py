@@ -587,6 +587,185 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
+# ── 보안 헤더 미들웨어 ──
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response: StarletteResponse = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ── 보안 AI 에이전트 — 실시간 이상 감지 ──
+import collections
+import threading
+
+class SecurityAgent:
+    """실시간 보안 모니터링 에이전트"""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        # IP별 요청 카운터 (1분 윈도우)
+        self._request_counts: dict[str, list] = {}
+        # IP별 실패 로그인 카운터
+        self._failed_logins: dict[str, list] = {}
+        # 차단된 IP
+        self._blocked_ips: set = set()
+        # SQL 인젝션 패턴
+        self._sqli_patterns = [
+            "union select", "drop table", "insert into", "delete from",
+            "update set", "pg_sleep", "information_schema", "1=1", "or 1=",
+            "'; --", "\"; --", "/*", "*/", "xp_cmdshell",
+        ]
+        # XSS 패턴
+        self._xss_patterns = [
+            "<script", "javascript:", "onerror=", "onload=", "eval(",
+            "document.cookie", "alert(", "<svg", "<iframe",
+        ]
+        # 이벤트 로그 (최근 100건)
+        self._events: list = []
+        self._MAX_EVENTS = 100
+        # 임계값
+        self.RATE_LIMIT = 120       # 1분간 최대 요청 수
+        self.FAILED_LOGIN_LIMIT = 5  # 5회 실패 시 차단
+        self.BLOCK_DURATION = 300    # 5분 차단
+
+    def _log_event(self, severity: str, event_type: str, ip: str, detail: str):
+        entry = {
+            "ts": datetime.datetime.utcnow().isoformat(),
+            "severity": severity,
+            "type": event_type,
+            "ip": ip,
+            "detail": detail[:200],
+        }
+        with self._lock:
+            self._events.append(entry)
+            if len(self._events) > self._MAX_EVENTS:
+                self._events = self._events[-self._MAX_EVENTS:]
+        if severity in ("HIGH", "CRITICAL"):
+            print(f"[SECURITY-{severity}] {event_type}: {ip} — {detail[:100]}")
+
+    def _cleanup_old(self, counter: dict, window: int = 60):
+        """오래된 타임스탬프 정리"""
+        now = time.time()
+        for key in list(counter.keys()):
+            counter[key] = [t for t in counter[key] if now - t < window]
+            if not counter[key]:
+                del counter[key]
+
+    def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "") -> str | None:
+        """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
+        now = time.time()
+
+        # 1. 차단된 IP 확인
+        if ip in self._blocked_ips:
+            return "IP_BLOCKED"
+
+        # 2. Rate Limiting
+        with self._lock:
+            if ip not in self._request_counts:
+                self._request_counts[ip] = []
+            self._request_counts[ip].append(now)
+            self._cleanup_old(self._request_counts)
+            if len(self._request_counts.get(ip, [])) > self.RATE_LIMIT:
+                self._blocked_ips.add(ip)
+                self._log_event("HIGH", "RATE_LIMIT", ip, f"{len(self._request_counts[ip])} req/min on {path}")
+                # 자동 차단 해제 예약
+                threading.Timer(self.BLOCK_DURATION, lambda: self._blocked_ips.discard(ip)).start()
+                return "RATE_LIMITED"
+
+        # 3. SQL 인젝션 패턴 감지
+        check_str = f"{query} {body}".lower()
+        for pattern in self._sqli_patterns:
+            if pattern in check_str:
+                self._log_event("HIGH", "SQLI_ATTEMPT", ip, f"pattern='{pattern}' path={path}")
+                return None  # 차단하지는 않음 (파라미터 바인딩으로 안전), 로깅만
+
+        # 4. XSS 패턴 감지
+        for pattern in self._xss_patterns:
+            if pattern in check_str:
+                self._log_event("MEDIUM", "XSS_ATTEMPT", ip, f"pattern='{pattern}' path={path}")
+                return None  # 로깅만
+
+        # 5. 민감 경로 접근 감지
+        suspicious_paths = ["/.env", "/.git", "/wp-admin", "/phpmyadmin", "/admin.php"]
+        if path in suspicious_paths:
+            self._log_event("MEDIUM", "SUSPICIOUS_PATH", ip, path)
+
+        return None
+
+    def record_failed_login(self, ip: str, endpoint: str):
+        """로그인 실패 기록"""
+        now = time.time()
+        with self._lock:
+            if ip not in self._failed_logins:
+                self._failed_logins[ip] = []
+            self._failed_logins[ip].append(now)
+            self._cleanup_old(self._failed_logins, window=300)
+            count = len(self._failed_logins.get(ip, []))
+            if count >= self.FAILED_LOGIN_LIMIT:
+                self._blocked_ips.add(ip)
+                self._log_event("CRITICAL", "BRUTE_FORCE", ip, f"{count} failed logins on {endpoint}")
+                threading.Timer(self.BLOCK_DURATION, lambda: self._blocked_ips.discard(ip)).start()
+
+    def get_status(self) -> dict:
+        """보안 상태 리포트"""
+        with self._lock:
+            self._cleanup_old(self._request_counts)
+            self._cleanup_old(self._failed_logins, 300)
+        return {
+            "blocked_ips": list(self._blocked_ips),
+            "active_ips": len(self._request_counts),
+            "failed_logins": {ip: len(ts) for ip, ts in self._failed_logins.items() if ts},
+            "recent_events": self._events[-20:],
+        }
+
+
+# 보안 에이전트 인스턴스
+security_agent = SecurityAgent()
+
+
+# 보안 미들웨어 — 모든 요청을 에이전트가 검사
+class SecurityAgentMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        ip = request.client.host if request.client else "unknown"
+        path = request.url.path
+        method = request.method
+        query = str(request.query_params)
+
+        # 요청 검사
+        block_reason = security_agent.check_request(ip, path, method, query)
+        if block_reason == "IP_BLOCKED":
+            return StarletteResponse(content='{"detail":"접근이 차단되었습니다."}',
+                                     status_code=403, media_type="application/json")
+        if block_reason == "RATE_LIMITED":
+            return StarletteResponse(content='{"detail":"요청이 너무 많습니다. 잠시 후 다시 시도하세요."}',
+                                     status_code=429, media_type="application/json")
+
+        response = await call_next(request)
+
+        # 인증 실패 감지
+        if response.status_code == 401 and path.startswith("/api/admin"):
+            security_agent.record_failed_login(ip, path)
+
+        return response
+
+app.add_middleware(SecurityAgentMiddleware)
+
+
+# 보안 상태 API (Admin 전용)
 class BusinessNumberRequest(BaseModel):
     business_number: str
 
@@ -2351,6 +2530,12 @@ def admin_auth(request: AdminAuthRequest):
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
     token = _create_admin_token()
     return {"status": "SUCCESS", "token": token}
+
+
+@app.get("/api/admin/security-status", dependencies=[Depends(_verify_admin)])
+def api_security_status():
+    """보안 에이전트 실시간 상태 — 차단 IP, 이상 감지 이벤트"""
+    return {"status": "SUCCESS", "security": security_agent.get_status()}
 
 
 @app.get("/api/admin/users", dependencies=[Depends(_verify_admin)])

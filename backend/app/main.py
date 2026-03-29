@@ -9,7 +9,9 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 import datetime
+import time
 import json
 import hmac
 import hashlib
@@ -39,8 +41,37 @@ manual_sync_status = {"running": False, "last_result": None, "last_time": None}
 reanalyze_status = {"running": False, "done": 0, "total": 0, "last_result": None, "last_time": None}
 
 
+# ── DB 커넥션 풀 (동시접속 대응) ──
+_db_pool = None
+
+def _get_pool():
+    global _db_pool
+    if _db_pool is None or _db_pool.closed:
+        _db_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=20,
+            dsn=DATABASE_URL,
+        )
+    return _db_pool
+
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    pool = _get_pool()
+    conn = pool.getconn()
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+    # 원래 close()를 호출하면 풀에 반환되도록 래핑
+    original_close = conn.close
+    def return_to_pool():
+        try:
+            if not conn.closed:
+                conn.reset()
+                pool.putconn(conn)
+        except Exception:
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+    conn.close = return_to_pool
+    return conn
 
 
 def init_database():
@@ -727,6 +758,20 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "consult_limit": CONSULT_LIMITS["free"]}
 
 
+# ─── 응답 캐시 (동시접속 대응) ───────────────────────────────────────
+_response_cache: dict = {}
+_CACHE_TTL = 300  # 5분
+
+def _get_cached(key: str):
+    entry = _response_cache.get(key)
+    if entry and time.time() - entry["ts"] < _CACHE_TTL:
+        return entry["data"]
+    return None
+
+def _set_cache(key: str, data):
+    _response_cache[key] = {"data": data, "ts": time.time()}
+
+
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
 @app.get("/api/announcements/public")
 def api_announcements_public(
@@ -741,6 +786,13 @@ def api_announcements_public(
     if size > 200:
         size = 200
     offset = (max(1, page) - 1) * size
+
+    # 검색 없는 기본 조회는 캐시 활용
+    if not search and not region and not category:
+        cache_key = f"pub:{target_type}:{page}:{size}"
+        cached = _get_cached(cache_key)
+        if cached:
+            return cached
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -871,7 +923,7 @@ def api_announcements_public(
 
     conn.close()
 
-    return {
+    result = {
         "status": "SUCCESS",
         "data": rows,
         "total": total,
@@ -880,6 +932,13 @@ def api_announcements_public(
         "regions": regions,
         "categories": categories,
     }
+
+    # 기본 조회 캐시 저장
+    if not search and not region and not category:
+        cache_key = f"pub:{target_type}:{page}:{size}"
+        _set_cache(cache_key, result)
+
+    return result
 
 
 @app.get("/api/announcements/{announcement_id}/detail")

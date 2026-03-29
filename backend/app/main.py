@@ -1476,23 +1476,82 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
-# 임시: gov24 개인 공고 보강 트리거 + 디버그 (테스트 후 제거)
+# 임시: gov24 개인 공고 보강 (main.py 내 직접 실행)
 @app.post("/api/util/enrich-gov24")
 async def api_enrich_gov24():
-    # 먼저 DB에서 대상 건수 확인
+    import re as _re
+    api_key = os.getenv("GOV24_API_KEY")
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as cnt FROM announcements WHERE origin_source = 'gov24-individual-api'")
-    total = cur.fetchone()["cnt"]
-    cur.execute("SELECT COUNT(*) as cnt FROM announcements WHERE origin_source = 'gov24-individual-api' AND (summary_text IS NULL OR summary_text NOT LIKE '%[상세보강]%')")
-    need_enrich = cur.fetchone()["cnt"]
-    cur.execute("SELECT DISTINCT origin_source, COUNT(*) as cnt FROM announcements WHERE target_type = 'individual' GROUP BY origin_source ORDER BY cnt DESC LIMIT 10")
-    sources = [dict(r) for r in cur.fetchall()]
-    conn.close()
 
-    from app.services.public_api_service import gov_api_service
-    result = await gov_api_service.enrich_gov24_individual_details(batch_size=50)
-    return {"status": "OK", "debug": {"total_gov24": total, "need_enrich": need_enrich, "sources": sources}, "result": result}
+    # 대상 확인
+    cur.execute("SELECT COUNT(*) as cnt FROM announcements WHERE origin_source='gov24-individual-api' AND (summary_text IS NULL OR summary_text NOT LIKE '%%[상세보강]%%')")
+    need = cur.fetchone()["cnt"]
+
+    # 보강 대상 50건 가져오기
+    cur.execute("""
+        SELECT announcement_id, origin_url, title FROM announcements
+        WHERE origin_source='gov24-individual-api'
+          AND (summary_text IS NULL OR summary_text NOT LIKE '%%[상세보강]%%')
+        ORDER BY announcement_id LIMIT 50
+    """)
+    rows = cur.fetchall()
+
+    updated, skipped, errors = 0, 0, 0
+    sample = None
+    for row in rows:
+        try:
+            url = row["origin_url"] or ""
+            m = _re.search(r"/dtlEx/([A-Z0-9]+)", url) or _re.search(r"servId=([A-Z0-9]+)", url)
+            if not m:
+                cur.execute("UPDATE announcements SET summary_text='[상세보강]'||COALESCE(summary_text,'') WHERE announcement_id=%s", (row["announcement_id"],))
+                conn.commit()
+                skipped += 1
+                continue
+            serv_id = m.group(1)
+            if not api_key:
+                skipped += 1
+                continue
+
+            resp = requests.get("https://api.odcloud.kr/api/gov24/v3/serviceDetail",
+                params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"}, timeout=15)
+            if resp.status_code == 429:
+                break
+            if resp.status_code != 200:
+                errors += 1
+                continue
+
+            data = resp.json()
+            detail = data.get("data", [{}])
+            if isinstance(detail, list) and detail:
+                detail = detail[0]
+            elif not isinstance(detail, dict):
+                detail = {}
+
+            target = detail.get("지원대상", "") or detail.get("tgtrDtlCn", "") or ""
+            support = detail.get("지원내용", "") or detail.get("sprtCn", "") or ""
+            method = detail.get("신청방법", "") or detail.get("aplyMtdCn", "") or ""
+            selection = detail.get("선정기준", "") or detail.get("slctCritCn", "") or ""
+
+            parts = []
+            if support: parts.append(f"[지원내용] {support[:400]}")
+            if target: parts.append(f"[지원대상] {target[:400]}")
+            if selection: parts.append(f"[선정기준] {selection[:300]}")
+            if method: parts.append(f"[신청방법] {method[:300]}")
+
+            enriched = "[상세보강]" + ("\n".join(parts) if parts else row["title"])
+            cur.execute("UPDATE announcements SET summary_text=%s WHERE announcement_id=%s", (enriched[:2000], row["announcement_id"]))
+            conn.commit()
+            updated += 1
+            if not sample:
+                sample = {"id": row["announcement_id"], "title": row["title"], "enriched_len": len(enriched)}
+        except Exception as e:
+            try: conn.rollback()
+            except: pass
+            errors += 1
+
+    conn.close()
+    return {"status": "OK", "need": need, "rows_fetched": len(rows), "updated": updated, "skipped": skipped, "errors": errors, "sample": sample}
 
 
 @app.get("/api/auth/social/{provider}")

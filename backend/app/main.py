@@ -1182,6 +1182,28 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+# ── 임시 테스트 유저 생성 (테스트 후 제거) ──
+@app.post("/api/test/create-individual")
+def api_test_create_individual():
+    """개인 테스트 유저 생성 → 토큰 반환"""
+    import hashlib as _h
+    test_email = f"test_individual_{int(datetime.datetime.utcnow().timestamp())}@test.local"
+    token, plan_status, user, _ = _social_login_or_register(
+        provider="test", social_id=f"test_{int(datetime.datetime.utcnow().timestamp())}",
+        email=test_email, name="개인테스트유저"
+    )
+    # user_type을 individual로 설정
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET user_type='individual', address_city='서울', interests='취업,주거,교육,청년' WHERE user_id=%s",
+        (user["user_id"],)
+    )
+    conn.commit()
+    conn.close()
+    return {"token": token, "user": {"user_id": user["user_id"], "email": test_email, "user_type": "individual"}, "plan": plan_status}
+
+
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""

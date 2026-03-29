@@ -568,7 +568,7 @@ async def lifespan(app):
         pass
 
 
-app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan)
+app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 
 @app.get("/health")

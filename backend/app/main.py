@@ -1216,6 +1216,18 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+# 임시: target_type 분류 실행 (테스트 후 제거)
+@app.post("/api/util/classify-announcements")
+def api_classify_announcements():
+    _auto_classify_target_type()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT target_type, COUNT(*) as cnt FROM announcements GROUP BY target_type")
+    stats = {row["target_type"] or "null": row["cnt"] for row in cur.fetchall()}
+    conn.close()
+    return {"status": "OK", "stats": stats}
+
+
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""

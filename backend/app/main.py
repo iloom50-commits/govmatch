@@ -43,35 +43,43 @@ reanalyze_status = {"running": False, "done": 0, "total": 0, "last_result": None
 
 # ── DB 커넥션 풀 (동시접속 대응) ──
 _db_pool = None
+_db_pool_lock = __import__("threading").Lock()
 
 def _get_pool():
     global _db_pool
     if _db_pool is None or _db_pool.closed:
-        _db_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=2,
-            maxconn=20,
-            dsn=DATABASE_URL,
-        )
+        with _db_pool_lock:
+            if _db_pool is None or _db_pool.closed:
+                _db_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1,
+                    maxconn=15,
+                    dsn=DATABASE_URL,
+                    cursor_factory=psycopg2.extras.RealDictCursor,
+                )
     return _db_pool
 
 def get_db_connection():
-    pool = _get_pool()
-    conn = pool.getconn()
-    conn.cursor_factory = psycopg2.extras.RealDictCursor
-    # 원래 close()를 호출하면 풀에 반환되도록 래핑
-    original_close = conn.close
-    def return_to_pool():
-        try:
-            if not conn.closed:
-                conn.reset()
-                pool.putconn(conn)
-        except Exception:
+    try:
+        pool = _get_pool()
+        conn = pool.getconn()
+        conn.autocommit = False
+        # close() → 풀 반환으로 래핑
+        _orig_close = conn.close.__func__ if hasattr(conn.close, '__func__') else None
+        def _return():
             try:
-                pool.putconn(conn, close=True)
+                if not conn.closed:
+                    conn.rollback()  # 미완료 트랜잭션 정리
+                pool.putconn(conn)
             except Exception:
-                pass
-    conn.close = return_to_pool
-    return conn
+                try:
+                    pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+        conn.close = _return
+        return conn
+    except Exception:
+        # 풀 실패 시 직접 연결 (폴백)
+        return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def init_database():

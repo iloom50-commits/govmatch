@@ -1068,10 +1068,11 @@ class GovernmentAPIService:
             print("  [Enrich-Gov24] GOV24_API_KEY not set. Skipping.")
             return {"updated": 0, "skipped": 0, "errors": 0}
 
-        import psycopg2, psycopg2.extras, re, time as _time
-        from app.config import DATABASE_URL
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        conn.autocommit = True
+        import re, time as _time
+        # main의 get_db_connection 사용 (런타임에 import하여 순환 방지)
+        import importlib
+        main_mod = importlib.import_module("app.main")
+        conn = main_mod.get_db_connection()
         cur = conn.cursor()
 
         cur.execute("""
@@ -1099,6 +1100,7 @@ class GovernmentAPIService:
                         "UPDATE announcements SET summary_text = '[상세보강]' || COALESCE(summary_text,'') WHERE announcement_id = %s",
                         (row["announcement_id"],),
                     )
+                    conn.commit()
                     skipped += 1
                     continue
                 serv_id = m.group(1)
@@ -1152,6 +1154,7 @@ class GovernmentAPIService:
                     "UPDATE announcements SET summary_text = %s WHERE announcement_id = %s",
                     (enriched[:2000], row["announcement_id"]),
                 )
+                conn.commit()
                 updated += 1
 
                 # API 속도 제한 준수
@@ -1159,6 +1162,10 @@ class GovernmentAPIService:
                     _time.sleep(1)
 
             except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 errors += 1
                 if i < 3:
                     print(f"    [ERR] {row['announcement_id']}: {e}")

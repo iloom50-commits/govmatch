@@ -266,15 +266,22 @@ async def _daily_sync_loop():
             _deduplicate_announcements()
             _auto_classify_target_type()
 
-            # Step 2: 지자체복지 상세 보강 (매일 100건씩 점진적)
-            print("[Scheduler] Step 2/3: 지자체복지 상세 보강...")
+            # Step 2a: 지자체복지 상세 보강 (매일 100건씩 점진적)
+            print("[Scheduler] Step 2a: 지자체복지 상세 보강...")
             try:
                 from app.services.public_api_service import gov_api_service
                 await gov_api_service.enrich_local_welfare_details(batch_size=100)
             except Exception as enrich_err:
-                print(f"[Scheduler] enrich error: {enrich_err}")
+                print(f"[Scheduler] enrich(local-welfare) error: {enrich_err}")
 
-            # Step 3: AI 재분석 — 기업 공고만 (개인 복지는 API 데이터 충분)
+            # Step 2b: gov24 개인 공고 상세 보강 (매일 100건씩)
+            print("[Scheduler] Step 2b: gov24 개인 공고 상세 보강...")
+            try:
+                await gov_api_service.enrich_gov24_individual_details(batch_size=100)
+            except Exception as enrich_err:
+                print(f"[Scheduler] enrich(gov24-individual) error: {enrich_err}")
+
+            # Step 3: AI 재분석 — 기업 공고만 (개인 복지는 API 데이터로 보강)
             print("[Scheduler] Step 3/3: AI 재분석 시작 (미분석 기업 공고)...")
             import threading
             t = threading.Thread(target=_run_reanalyze_in_thread, args=(300,), daemon=True)

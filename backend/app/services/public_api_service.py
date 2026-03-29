@@ -1056,6 +1056,119 @@ class GovernmentAPIService:
         print(f"  [Enrich] Done: {result}")
         return result
 
+    async def enrich_gov24_individual_details(self, batch_size=100):
+        """gov24-individual-api 공고의 상세 정보를 보강
+
+        gov24 상세 API로 지원대상, 지원내용, 신청방법, 선정기준 등을 가져와
+        summary_text를 풍부하게 보강합니다.
+        보강 완료: summary_text 앞에 '[상세보강]' 마커 추가.
+        """
+        api_key = os.getenv("GOV24_API_KEY")
+        if not api_key:
+            print("  [Enrich-Gov24] GOV24_API_KEY not set. Skipping.")
+            return {"updated": 0, "skipped": 0, "errors": 0}
+
+        import psycopg2, psycopg2.extras, re, time as _time
+        from app.config import DATABASE_URL
+        db_url = DATABASE_URL.replace(":6543/", ":5432/")
+        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT announcement_id, origin_url, title FROM announcements
+            WHERE origin_source = 'gov24-individual-api'
+              AND (summary_text IS NULL OR summary_text NOT LIKE '%%[상세보강]%%')
+            ORDER BY announcement_id
+            LIMIT %s
+        """, (batch_size,))
+        rows = cur.fetchall()
+        if not rows:
+            print("  [Enrich-Gov24] 모든 gov24 개인 공고 보강 완료")
+            conn.close()
+            return {"updated": 0, "skipped": 0, "errors": 0}
+        print(f"  [Enrich-Gov24] {len(rows)}건 보강 시작")
+
+        updated, skipped, errors = 0, 0, 0
+        for i, row in enumerate(rows):
+            try:
+                url = row["origin_url"] or ""
+                # 서비스ID 추출
+                m = re.search(r"/dtlEx/([A-Z0-9]+)", url) or re.search(r"servId=([A-Z0-9]+)", url)
+                if not m:
+                    cur.execute(
+                        "UPDATE announcements SET summary_text = '[상세보강]' || COALESCE(summary_text,'') WHERE announcement_id = %s",
+                        (row["announcement_id"],),
+                    )
+                    skipped += 1
+                    continue
+                serv_id = m.group(1)
+
+                # gov24 상세 API 호출
+                resp = requests.get(
+                    "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
+                    params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"},
+                    timeout=15,
+                )
+                if resp.status_code == 429:
+                    print(f"  [Enrich-Gov24] API 한도 초과 ({i}건 처리 후 중단)")
+                    break
+                if resp.status_code != 200:
+                    errors += 1
+                    continue
+
+                data = resp.json()
+                detail = data.get("data", [{}])
+                if isinstance(detail, list) and detail:
+                    detail = detail[0]
+                elif not isinstance(detail, dict):
+                    detail = {}
+
+                # 상세 필드 추출
+                target = detail.get("지원대상", "") or detail.get("tgtrDtlCn", "") or ""
+                support = detail.get("지원내용", "") or detail.get("sprtCn", "") or ""
+                method = detail.get("신청방법", "") or detail.get("aplyMtdCn", "") or ""
+                selection = detail.get("선정기준", "") or detail.get("slctCritCn", "") or ""
+                required_docs = detail.get("구비서류", "") or detail.get("psblDocCn", "") or ""
+                contact = detail.get("문의처", "") or detail.get("inqPlCtadrList", "") or ""
+
+                # 풍부한 summary 구성
+                parts = []
+                if support:
+                    parts.append(f"[지원내용] {support[:400]}")
+                if target:
+                    parts.append(f"[지원대상] {target[:400]}")
+                if selection:
+                    parts.append(f"[선정기준] {selection[:300]}")
+                if method:
+                    parts.append(f"[신청방법] {method[:300]}")
+                if required_docs:
+                    parts.append(f"[구비서류] {required_docs[:200]}")
+                if contact:
+                    parts.append(f"[문의처] {str(contact)[:150]}")
+
+                enriched = "[상세보강]" + ("\n".join(parts) if parts else (row.get("summary_text") or row["title"]))
+
+                cur.execute(
+                    "UPDATE announcements SET summary_text = %s WHERE announcement_id = %s",
+                    (enriched[:2000], row["announcement_id"]),
+                )
+                updated += 1
+
+                # API 속도 제한 준수
+                if i % 10 == 9:
+                    _time.sleep(1)
+
+            except Exception as e:
+                errors += 1
+                if i < 3:
+                    print(f"    [ERR] {row['announcement_id']}: {e}")
+
+        conn.close()
+        result = {"updated": updated, "skipped": skipped, "errors": errors}
+        print(f"  [Enrich-Gov24] Done: {result}")
+        return result
+
     # ─── 보조금24 / 정부24 개인 복지서비스 API ───
 
     # 개인 복지 관련 서비스 분야 키워드

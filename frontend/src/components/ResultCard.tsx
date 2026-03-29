@@ -280,7 +280,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
         )}
 
         {/* Info & Buttons */}
-        <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all">
+        <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-5">
             <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
@@ -296,9 +296,9 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             )}
           </div>
           {/* CTA buttons */}
-          <div className="flex flex-col gap-2 mt-2">
+          <div className="flex flex-col gap-2 mt-2 min-w-0">
             {/* AI 버튼 */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
               <button
                 onClick={(e) => {
                   e.stopPropagation();

@@ -85,7 +85,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
       >
         <Providers>{children}</Providers>
         <footer className="w-full border-t border-slate-200/60 bg-slate-50/80 mt-12">

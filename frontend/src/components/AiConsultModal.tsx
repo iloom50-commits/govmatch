@@ -18,6 +18,15 @@ function renderMarkdown(text: string): string {
   // 2) 인라인: bold
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>');
 
+  // 2b) URL → 링크 + 복사 버튼
+  html = html.replace(
+    /(https?:\/\/[^\s<)"]+)/g,
+    '<a href="$1" target="_blank" rel="noopener" class="text-indigo-600 underline underline-offset-2 break-all">$1</a>'
+    + '<button onclick="navigator.clipboard.writeText(\'$1\');this.textContent=\'copied!\';setTimeout(()=>this.textContent=\'copy\',1500)" '
+    + 'class="ml-1.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-bold rounded hover:bg-indigo-200 transition-all" '
+    + 'type="button">copy</button>'
+  );
+
   const lines = html.split("\n");
   const result: string[] = [];
   let listType: "ul" | "ol" | null = null;

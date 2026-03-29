@@ -109,6 +109,7 @@ interface Result {
   category?: string;
   department?: string;
   origin_source?: string;
+  target_type?: string;
   eligibility_logic?: EligibilityLogic;
 }
 
@@ -296,7 +297,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </div>
           {/* CTA buttons */}
           <div className="flex flex-col gap-2 mt-2">
-            {/* AI 버튼 2개 */}
+            {/* AI 버튼 */}
             <div className="flex items-center gap-2">
               <button
                 onClick={(e) => {
@@ -313,20 +314,23 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               >
                 <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 지원대상 여부 상담
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isPublic) { onLoginRequired?.(); return; }
-                  if (isExpired) { onUpgrade?.(); return; }
-                  if (typeof window !== "undefined") {
-                    window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
-                  }
-                }}
-                className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
-                  bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
-              >
-                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
-              </button>
+              {/* AI 신청서 — 기업 공고만 (개인 복지 공고는 정부24 등에서 직접 신청) */}
+              {res.target_type !== "individual" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isPublic) { onLoginRequired?.(); return; }
+                    if (isExpired) { onUpgrade?.(); return; }
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
+                    }
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
+                    bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
+                >
+                  <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
+                </button>
+              )}
             </div>
             {/* 공유 버튼 — 토글 시 카카오톡/문자/더보기/링크복사 */}
             <ShareMenu toast={toast} />

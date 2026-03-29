@@ -1476,6 +1476,14 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+# 임시: gov24 개인 공고 보강 트리거 (테스트 후 제거)
+@app.post("/api/util/enrich-gov24")
+async def api_enrich_gov24():
+    from app.services.public_api_service import gov_api_service
+    result = await gov_api_service.enrich_gov24_individual_details(batch_size=50)
+    return {"status": "OK", "result": result}
+
+
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""

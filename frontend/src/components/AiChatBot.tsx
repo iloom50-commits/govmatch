@@ -6,6 +6,54 @@ import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
+// FAB 버튼 + 말풍선 (첫 3초 표시 → 사라짐 → 2분마다 3초 표시, 최대 3회)
+function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
+  const [showBubble, setShowBubble] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    let count = 0;
+    // 첫 표시: 1초 후 3초간
+    const first = setTimeout(() => {
+      setShowBubble(true);
+      count++;
+      setTimeout(() => setShowBubble(false), 3000);
+    }, 1000);
+    // 이후: 2분마다 3초간 (최대 3회)
+    const interval = setInterval(() => {
+      if (count >= 3) return;
+      setShowBubble(true);
+      count++;
+      setTimeout(() => setShowBubble(false), 3000);
+    }, 120000);
+    return () => { clearTimeout(first); clearInterval(interval); };
+  }, []);
+
+  const visible = showBubble || hovered;
+
+  return (
+    <div className="fixed bottom-6 right-6 z-40"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {visible && (
+        <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-in fade-in zoom-in-95 duration-200">
+          {label}
+          <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
+        </div>
+      )}
+      <button
+        onClick={onClick}
+        className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
+        style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
+        title={label}
+      >
+        <span className="text-2xl animate-ai-pulse">✨</span>
+      </button>
+    </div>
+  );
+}
+
 /** 마크다운 → 보고서 스타일 HTML 변환 */
 function renderMarkdown(text: string): string {
   // 0) (None) 링크 패턴 제거
@@ -925,21 +973,11 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
         </div>
 
         {/* 플로팅 AI 상담 버튼 */}
-        <div className="fixed bottom-6 right-6 z-40">
-          {/* 말풍선 툴팁 */}
-          <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap animate-bounce shadow-lg">
-            {isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
-            <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
-          </div>
-          <button
-            onClick={() => { setOpen(true); setDragPos(null); }}
-            className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
-            style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-            title={isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
-          >
-            <span className="text-2xl animate-ai-pulse">✨</span>
-          </button>
-        </div>
+        <FabWithBubble
+          label={isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
+          onClick={() => { setOpen(true); setDragPos(null); }}
+          botPhase={botPhase}
+        />
       </>
     );
   }

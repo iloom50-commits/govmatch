@@ -651,7 +651,7 @@ export default function Home() {
         />
       )}
 
-      <AiConsultModal />
+      <AiConsultModal planStatus={planStatus} />
       <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} />
 
     </main>

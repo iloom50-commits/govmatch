@@ -73,7 +73,12 @@ interface ChatMessage {
   done?: boolean;
 }
 
-export default function AiConsultModal() {
+interface AiConsultModalProps {
+  planStatus?: { plan: string } | null;
+}
+
+export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
+  const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -234,6 +239,16 @@ export default function AiConsultModal() {
     setConsultLogId(null);
   };
 
+  // 사용자가 직접 상담 종료
+  const handleManualEnd = () => {
+    setIsDone(true);
+    setMessages(prev => [...prev, {
+      role: "assistant" as const,
+      text: "상담이 종료되었습니다.\n\n이 공고에 대해 다시 상담을 원하시면 공고 카드에서 **'지원대상 여부 상담'**을 클릭하세요.",
+      done: true,
+    }]);
+  };
+
   if (!open || !announcement) return null;
 
   return (
@@ -343,7 +358,8 @@ export default function AiConsultModal() {
         <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-3">
           {isDone ? (
             <div className="space-y-2">
-              {!feedbackSent && consultLogId ? (
+              {/* 피드백 — PRO(전문 상담사)는 제외 */}
+              {!isPro && !feedbackSent && consultLogId ? (
                 <div className="space-y-2">
                   <p className="text-[11px] text-center text-slate-500 font-medium">상담이 도움이 되셨나요?</p>
                   <div className="flex gap-2">
@@ -361,42 +377,53 @@ export default function AiConsultModal() {
                     </button>
                   </div>
                 </div>
-              ) : feedbackSent ? (
+              ) : !isPro && feedbackSent ? (
                 <p className="text-[11px] text-center text-slate-400">피드백이 저장되었습니다</p>
               ) : null}
               <button
                 onClick={handleClose}
                 className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
               >
-                상담 종료
+                닫기
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    handleSend(input);
-                  }
-                }}
-                placeholder="질문을 입력하세요..."
-                disabled={loading}
-                className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all disabled:opacity-50"
-              />
-              <button
-                onClick={() => handleSend(input)}
-                disabled={loading || !input.trim()}
-                className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                </svg>
-              </button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleSend(input);
+                    }
+                  }}
+                  placeholder="질문을 입력하세요..."
+                  disabled={loading}
+                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all disabled:opacity-50"
+                />
+                <button
+                  onClick={() => handleSend(input)}
+                  disabled={loading || !input.trim()}
+                  className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                  </svg>
+                </button>
+              </div>
+              {/* 상담 중 종료 버튼 — 첫 AI 응답 이후 표시 */}
+              {messages.length >= 2 && !loading && (
+                <button
+                  onClick={handleManualEnd}
+                  className="w-full py-2 text-slate-400 hover:text-slate-600 text-[12px] font-semibold transition-all text-center hover:bg-slate-50 rounded-lg"
+                >
+                  상담 종료
+                </button>
+              )}
             </div>
           )}
         </div>

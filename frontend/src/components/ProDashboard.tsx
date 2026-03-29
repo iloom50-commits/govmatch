@@ -5,9 +5,12 @@ import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
+type ClientType = "business" | "individual";
+
 interface ClientProfile {
   id: number;
   client_name: string;
+  client_type?: ClientType;
   business_number?: string;
   address_city?: string;
   industry_code?: string;
@@ -20,6 +23,8 @@ interface ClientProfile {
   created_at?: string;
   updated_at?: string;
 }
+
+const INDIVIDUAL_INTEREST_OPTIONS = ["취업", "주거", "교육", "청년", "출산", "육아", "다자녀", "장학금", "의료", "장애", "저소득", "노인", "문화"];
 
 interface ConsultHistory {
   id: number;
@@ -51,6 +56,7 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("clients");
   const [token, setToken] = useState("");
+  const [clientType, setClientType] = useState<ClientType>("business");
 
   useEffect(() => {
     setToken(localStorage.getItem("auth_token") || "");
@@ -76,6 +82,23 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
+        {/* 기업/개인 토글 */}
+        <div className="flex items-center gap-1 px-6 pt-3 pb-1">
+          {(["business", "individual"] as ClientType[]).map((ct) => (
+            <button
+              key={ct}
+              onClick={() => setClientType(ct)}
+              className={`px-4 py-1.5 rounded-full text-[12px] font-bold transition-all ${
+                clientType === ct
+                  ? "bg-violet-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {ct === "business" ? "기업 고객" : "개인 고객"}
+            </button>
+          ))}
+        </div>
+
         {/* Tabs */}
         <div className="flex border-b bg-white px-6">
           {([
@@ -98,9 +121,9 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {tab === "clients" && token && <ClientsTab headers={headers} toast={toast} />}
+          {tab === "clients" && token && <ClientsTab headers={headers} toast={toast} clientType={clientType} />}
           {tab === "history" && token && <HistoryTab headers={headers} toast={toast} />}
-          {tab === "reports" && token && <ReportsTab headers={headers} toast={toast} />}
+          {tab === "reports" && token && <ReportsTab headers={headers} toast={toast} clientType={clientType} />}
         </div>
       </div>
     </div>
@@ -110,25 +133,28 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
 
 // ━━━━━━━━━━━━━━ 고객사 관리 탭 ━━━━━━━━━━━━━━
 
-function ClientsTab({ headers, toast }: { headers: () => any; toast: any }) {
+function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ClientProfile | null>(null);
+  const isInd = clientType === "individual";
+  const label = isInd ? "고객" : "고객사";
 
   const fetchClients = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch(`${API}/api/pro/clients`, { headers: headers() });
+      const res = await fetch(`${API}/api/pro/clients?client_type=${clientType}`, { headers: headers() });
       const data = await res.json();
       if (data.clients) setClients(data.clients);
     } catch { /* */ }
     setLoading(false);
-  }, [headers]);
+  }, [headers, clientType]);
 
-  useEffect(() => { fetchClients(); }, [fetchClients]);
+  useEffect(() => { fetchClients(); setShowForm(false); setEditTarget(null); }, [fetchClients]);
 
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`'${name}' 고객사를 삭제하시겠습니까?`)) return;
+    if (!confirm(`'${name}' ${label}을(를) 삭제하시겠습니까?`)) return;
     const res = await fetch(`${API}/api/pro/clients/${id}`, { method: "DELETE", headers: headers() });
     if (res.ok) {
       toast("삭제 완료", "success");
@@ -141,18 +167,19 @@ function ClientsTab({ headers, toast }: { headers: () => any; toast: any }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-slate-500">{clients.length}개 고객사</p>
+        <p className="text-sm text-slate-500">{clients.length}개 {label}</p>
         <button
           onClick={() => { setEditTarget(null); setShowForm(true); }}
           className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700 transition-all"
         >
-          + 고객사 추가
+          + {label} 추가
         </button>
       </div>
 
       {showForm && (
         <ClientForm
           initial={editTarget}
+          clientType={clientType}
           headers={headers}
           onDone={() => { setShowForm(false); setEditTarget(null); fetchClients(); }}
           onCancel={() => { setShowForm(false); setEditTarget(null); }}
@@ -162,9 +189,9 @@ function ClientsTab({ headers, toast }: { headers: () => any; toast: any }) {
 
       {clients.length === 0 && !showForm ? (
         <div className="text-center py-16">
-          <p className="text-slate-400 text-sm mb-4">등록된 고객사가 없습니다</p>
+          <p className="text-slate-400 text-sm mb-4">등록된 {label}이(가) 없습니다</p>
           <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-violet-100 text-violet-700 text-sm font-bold rounded-lg hover:bg-violet-200">
-            첫 고객사 등록하기
+            첫 {label} 등록하기
           </button>
         </div>
       ) : (
@@ -174,7 +201,10 @@ function ClientsTab({ headers, toast }: { headers: () => any; toast: any }) {
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-slate-900 text-sm truncate">{c.client_name}</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {c.address_city || "지역미등록"} | {c.industry_name || c.industry_code || "업종미등록"} | {c.revenue_bracket || "매출미등록"}
+                  {isInd
+                    ? `${c.address_city || "지역미등록"} | ${c.interests || "관심분야미등록"}`
+                    : `${c.address_city || "지역미등록"} | ${c.industry_name || c.industry_code || "업종미등록"} | ${c.revenue_bracket || "매출미등록"}`
+                  }
                 </p>
                 {c.memo && <p className="text-xs text-slate-400 mt-1 truncate">{c.memo}</p>}
               </div>
@@ -195,11 +225,13 @@ function ClientsTab({ headers, toast }: { headers: () => any; toast: any }) {
 }
 
 
-function ClientForm({ initial, headers, onDone, onCancel, toast }: {
-  initial: ClientProfile | null; headers: () => any; onDone: () => void; onCancel: () => void; toast: any;
+function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
+  initial: ClientProfile | null; clientType: ClientType; headers: () => any; onDone: () => void; onCancel: () => void; toast: any;
 }) {
+  const isInd = clientType === "individual";
   const [form, setForm] = useState({
     client_name: initial?.client_name || "",
+    client_type: clientType,
     business_number: initial?.business_number || "",
     establishment_date: initial?.establishment_date?.slice(0, 10) || "",
     address_city: initial?.address_city || "",
@@ -212,13 +244,27 @@ function ClientForm({ initial, headers, onDone, onCancel, toast }: {
   });
   const [saving, setSaving] = useState(false);
 
+  const toggleInterest = (interest: string) => {
+    const arr = form.interests ? form.interests.split(",").filter(Boolean) : [];
+    const next = arr.includes(interest) ? arr.filter(i => i !== interest) : [...arr, interest];
+    setForm({ ...form, interests: next.join(",") });
+  };
+
   const handleSave = async () => {
-    if (!form.client_name.trim()) { toast("고객사명을 입력하세요", "error"); return; }
+    if (!form.client_name.trim()) { toast(isInd ? "이름을 입력하세요" : "고객사명을 입력하세요", "error"); return; }
     setSaving(true);
+    const payload = { ...form, client_type: clientType };
+    if (isInd) {
+      payload.industry_code = "";
+      payload.industry_name = "";
+      payload.revenue_bracket = "";
+      payload.employee_count_bracket = "";
+      payload.business_number = "";
+    }
     const url = initial ? `${API}/api/pro/clients/${initial.id}` : `${API}/api/pro/clients`;
     const method = initial ? "PUT" : "POST";
     try {
-      const res = await fetch(url, { method, headers: headers(), body: JSON.stringify(form) });
+      const res = await fetch(url, { method, headers: headers(), body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
         toast(initial ? "수정 완료" : "등록 완료", "success");
@@ -233,59 +279,101 @@ function ClientForm({ initial, headers, onDone, onCancel, toast }: {
   const CITIES = ["서울","부산","대구","인천","광주","대전","울산","세종","경기","강원","충북","충남","전북","전남","경북","경남","제주"];
   const REVENUE = ["1억 미만","1억~5억","5억~10억","10억~50억","50억~100억","100억 이상"];
   const EMP = ["5인 미만","5인~10인","10인~30인","30인~50인","50인~100인","100인 이상"];
+  const label = isInd ? "고객" : "고객사";
 
   return (
     <div className="mb-4 p-5 bg-violet-50/50 rounded-xl border border-violet-200">
-      <h3 className="text-sm font-bold text-violet-800 mb-3">{initial ? "고객사 수정" : "새 고객사 등록"}</h3>
+      <h3 className="text-sm font-bold text-violet-800 mb-3">{initial ? `${label} 수정` : `새 ${label} 등록`}</h3>
       <div className="grid grid-cols-2 gap-3">
+        {/* 이름/기업명 */}
         <div className="col-span-2">
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">고객사명 *</label>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">{isInd ? "이름" : "고객사명"} *</label>
           <input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 focus:border-violet-400 outline-none" placeholder="기업명" />
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 focus:border-violet-400 outline-none"
+            placeholder={isInd ? "홍길동" : "기업명"} />
         </div>
+
+        {/* 사업자번호 — 기업만 */}
+        {!isInd && (
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">사업자번호</label>
+            <input value={form.business_number} onChange={(e) => setForm({ ...form, business_number: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="000-00-00000" />
+          </div>
+        )}
+
+        {/* 설립일/생년월일 */}
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">사업자번호</label>
-          <input value={form.business_number} onChange={(e) => setForm({ ...form, business_number: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="000-00-00000" />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">설립일</label>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">{isInd ? "생년월일" : "설립일"}</label>
           <input type="date" value={form.establishment_date} onChange={(e) => setForm({ ...form, establishment_date: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" />
         </div>
+
+        {/* 소재지/거주지 */}
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">소재지</label>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">{isInd ? "거주지" : "소재지"}</label>
           <select value={form.address_city} onChange={(e) => setForm({ ...form, address_city: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
             <option value="">선택</option>
             {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">업종</label>
-          <input value={form.industry_name} onChange={(e) => setForm({ ...form, industry_name: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="소프트웨어 개발" />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">매출 규모</label>
-          <select value={form.revenue_bracket} onChange={(e) => setForm({ ...form, revenue_bracket: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
-            <option value="">선택</option>
-            {REVENUE.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">직원 수</label>
-          <select value={form.employee_count_bracket} onChange={(e) => setForm({ ...form, employee_count_bracket: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
-            <option value="">선택</option>
-            {EMP.map((e) => <option key={e} value={e}>{e}</option>)}
-          </select>
-        </div>
+
+        {/* 업종 — 기업만 */}
+        {!isInd && (
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">업종</label>
+            <input value={form.industry_name} onChange={(e) => setForm({ ...form, industry_name: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="소프트웨어 개발" />
+          </div>
+        )}
+
+        {/* 매출/직원 — 기업만 */}
+        {!isInd && (
+          <>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">매출 규모</label>
+              <select value={form.revenue_bracket} onChange={(e) => setForm({ ...form, revenue_bracket: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
+                <option value="">선택</option>
+                {REVENUE.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">직원 수</label>
+              <select value={form.employee_count_bracket} onChange={(e) => setForm({ ...form, employee_count_bracket: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
+                <option value="">선택</option>
+                {EMP.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* 관심분야 — 개인 고객용 칩 선택 */}
+        {isInd && (
+          <div className="col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">관심분야</label>
+            <div className="flex flex-wrap gap-1.5">
+              {INDIVIDUAL_INTEREST_OPTIONS.map((interest) => {
+                const selected = form.interests.split(",").includes(interest);
+                return (
+                  <button key={interest} type="button" onClick={() => toggleInterest(interest)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                      selected ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-600 border-slate-200 hover:border-violet-300"
+                    }`}
+                  >{interest}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 메모 */}
         <div className="col-span-2">
           <label className="block text-[11px] font-semibold text-slate-600 mb-1">메모</label>
           <textarea value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none resize-none" rows={2} placeholder="컨설턴트 메모" />
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none resize-none" rows={2} placeholder="상담사 메모" />
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-4">
@@ -378,7 +466,7 @@ function HistoryTab({ headers, toast }: { headers: () => any; toast: any }) {
 
 // ━━━━━━━━━━━━━━ 종합 리포트 탭 ━━━━━━━━━━━━━━
 
-function ReportsTab({ headers, toast }: { headers: () => any; toast: any }) {
+function ReportsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
@@ -399,12 +487,13 @@ function ReportsTab({ headers, toast }: { headers: () => any; toast: any }) {
     fetchReports();
     (async () => {
       try {
-        const res = await fetch(`${API}/api/pro/clients`, { headers: headers() });
+        const res = await fetch(`${API}/api/pro/clients?client_type=${clientType}`, { headers: headers() });
         const data = await res.json();
         if (data.clients) setClients(data.clients);
       } catch { /* */ }
     })();
-  }, [headers, fetchReports]);
+    setSelectedClient(null);
+  }, [headers, fetchReports, clientType]);
 
   const handleGenerate = async () => {
     if (!selectedClient) { toast("고객사를 선택하세요", "error"); return; }

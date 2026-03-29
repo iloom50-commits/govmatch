@@ -105,6 +105,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # client_profiles에 client_type 컬럼 추가 (기업/개인 구분)
+        try:
+            cursor.execute("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'business'")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS keyword_synonyms (
@@ -3283,6 +3290,7 @@ def _require_pro(current_user: dict):
 
 class ClientProfileCreate(BaseModel):
     client_name: str
+    client_type: Optional[str] = "business"  # "business" | "individual"
     business_number: Optional[str] = None
     establishment_date: Optional[str] = None
     address_city: Optional[str] = None
@@ -3295,18 +3303,24 @@ class ClientProfileCreate(BaseModel):
 
 
 @app.get("/api/pro/clients")
-def api_pro_clients(current_user: dict = Depends(_get_current_user)):
-    """PRO: 내 고객사 프로필 목록 조회"""
+def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depends(_get_current_user)):
+    """PRO: 내 고객 프로필 목록 조회 (client_type 필터 가능)"""
     _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
+    where = "owner_business_number = %s AND is_active = TRUE"
+    params: list = [current_user["bn"]]
+    if client_type:
+        where += " AND COALESCE(client_type, 'business') = %s"
+        params.append(client_type)
     cur.execute(
-        """SELECT id, client_name, business_number, address_city, industry_code, industry_name,
+        f"""SELECT id, client_name, COALESCE(client_type, 'business') AS client_type,
+                  business_number, address_city, industry_code, industry_name,
                   revenue_bracket, employee_count_bracket, establishment_date, interests, memo, created_at, updated_at
            FROM client_profiles
-           WHERE owner_business_number = %s AND is_active = TRUE
+           WHERE {where}
            ORDER BY updated_at DESC""",
-        (current_user["bn"],)
+        params
     )
     rows = cur.fetchall()
     conn.close()
@@ -3331,11 +3345,11 @@ def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO client_profiles
-           (owner_business_number, client_name, business_number, establishment_date, address_city,
+           (owner_business_number, client_name, client_type, business_number, establishment_date, address_city,
             industry_code, industry_name, revenue_bracket, employee_count_bracket, interests, memo)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id""",
-        (current_user["bn"], req.client_name, req.business_number,
+        (current_user["bn"], req.client_name, req.client_type or "business", req.business_number,
          req.establishment_date, req.address_city, req.industry_code, req.industry_name,
          req.revenue_bracket, req.employee_count_bracket, req.interests, req.memo)
     )
@@ -3353,11 +3367,11 @@ def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user
     cur = conn.cursor()
     cur.execute(
         """UPDATE client_profiles SET
-           client_name=%s, business_number=%s, establishment_date=%s, address_city=%s,
+           client_name=%s, client_type=%s, business_number=%s, establishment_date=%s, address_city=%s,
            industry_code=%s, industry_name=%s, revenue_bracket=%s, employee_count_bracket=%s,
            interests=%s, memo=%s, updated_at=CURRENT_TIMESTAMP
            WHERE id=%s AND owner_business_number=%s AND is_active=TRUE""",
-        (req.client_name, req.business_number, req.establishment_date, req.address_city,
+        (req.client_name, req.client_type or "business", req.business_number, req.establishment_date, req.address_city,
          req.industry_code, req.industry_name, req.revenue_bracket, req.employee_count_bracket,
          req.interests, req.memo, client_id, current_user["bn"])
     )
@@ -3561,8 +3575,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
     client = dict(client)
 
-    # 2. 매칭 엔진으로 공고 검색
-    from app.core.matcher import get_matches_for_user
+    # 2. 매칭 엔진으로 공고 검색 — 기업/개인 분기
+    from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
     profile = {
         "address_city": client.get("address_city") or "",
         "industry_code": client.get("industry_code") or "",
@@ -3571,7 +3585,11 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         "interests": client.get("interests") or "",
         "establishment_date": str(client.get("establishment_date") or ""),
     }
-    matched = get_matches_for_user(profile)
+    is_individual_client = (client.get("client_type") or "business") == "individual"
+    if is_individual_client:
+        matched = get_individual_matches_for_user(profile)
+    else:
+        matched = get_matches_for_user(profile)
 
     # 3. 각 공고에 대해 판정
     results = []

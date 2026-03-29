@@ -103,6 +103,7 @@ const REVENUE_OPTIONS = ["1억 미만", "1억~5억", "5억~10억", "10억~50억"
 const EMPLOYEE_OPTIONS = ["5인 미만", "5인~10인", "10인~30인", "30인~50인", "50인 이상"];
 const CITY_OPTIONS = ["전국", "서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 const INTEREST_OPTIONS = ["창업지원", "기술개발", "수출마케팅", "고용지원", "시설개선", "정책자금", "디지털전환", "판로개척", "교육훈련", "에너지환경", "소상공인", "R&D"];
+const INDIVIDUAL_INTEREST_OPTIONS = ["취업", "주거", "교육", "청년", "출산", "육아", "다자녀", "장학금", "의료", "장애", "저소득", "노인", "문화"];
 
 interface FormProfile {
   company_name: string;
@@ -127,9 +128,11 @@ const EMPTY_FORM: FormProfile = {
 interface AiChatBotProps {
   planStatus?: { plan: string; ai_limit?: number; consult_limit?: number } | null;
   onUpgrade?: () => void;
+  userType?: string | null;
 }
 
-export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
+export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBotProps) {
+  const isIndividual = userType === "individual";
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ChatMode>("select");
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
@@ -225,11 +228,14 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     setFormProfile({ ...EMPTY_FORM });
 
     if (selectedMode === "free") {
-      // 자유 상담: 중소기업 지원사업 전반에 대한 자유 질의응답
       setMessages([{
         role: "assistant",
-        text: "안녕하세요! 중소기업 지원사업 전문 AI 상담사입니다.\n\n지원사업 종류, 신청 자격, 절차, 지원 규모 등 궁금한 점을 자유롭게 질문해 주세요.",
-        choices: ["R&D 지원사업 종류 알려줘", "소상공인 지원사업 뭐가 있어?", "창업 지원금 신청 방법은?", "정책자금 대출 조건이 궁금해"],
+        text: isIndividual
+          ? "안녕하세요! 정부 지원사업 AI 상담사입니다.\n\n개인 복지·지원금, 청년 정책, 주거·취업 지원 등 궁금한 점을 자유롭게 질문해 주세요."
+          : "안녕하세요! 중소기업 지원사업 전문 AI 상담사입니다.\n\n지원사업 종류, 신청 자격, 절차, 지원 규모 등 궁금한 점을 자유롭게 질문해 주세요.",
+        choices: isIndividual
+          ? ["청년 지원금 종류 알려줘", "주거 지원 뭐가 있어?", "취업 지원 프로그램 추천해줘", "출산·육아 혜택 알려줘"]
+          : ["R&D 지원사업 종류 알려줘", "소상공인 지원사업 뭐가 있어?", "창업 지원금 신청 방법은?", "정책자금 대출 조건이 궁금해"],
       }]);
     } else {
       // consultant: 로그인 프로필로 폼 사전 채움
@@ -510,6 +516,14 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
 
   // 폼 유효성 검사
   const isFormValid = () => {
+    if (isIndividual) {
+      return (
+        formProfile.company_name.trim() &&
+        formProfile.establishment_date &&
+        formProfile.address_city &&
+        formProfile.interests.length > 0
+      );
+    }
     return (
       formProfile.company_name.trim() &&
       formProfile.establishment_date &&
@@ -529,11 +543,17 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
     }
     const profile = {
       ...formProfile,
+      // 개인 모드: 기업 전용 필드 자동 설정
+      industry_code: isIndividual ? "" : formProfile.industry_code,
+      revenue_bracket: isIndividual ? "1억 미만" : formProfile.revenue_bracket,
+      employee_count_bracket: isIndividual ? "5인 미만" : formProfile.employee_count_bracket,
       interests: formProfile.interests.join(","),
     };
     executeMatching(profile, [{
       role: "assistant" as const,
-      text: `**${profile.company_name}** 기업 정보로 매칭을 시작합니다.`,
+      text: isIndividual
+        ? `**${profile.company_name}**님 조건으로 맞춤 지원사업 매칭을 시작합니다.`
+        : `**${profile.company_name}** 기업 정보로 매칭을 시작합니다.`,
     }]);
   };
 
@@ -1130,21 +1150,25 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
 
             {/* Direct Input Form */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {/* 기업명 */}
+              {/* 이름/기업명 */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">기업명 <span className="text-red-400">*</span></label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  {isIndividual ? "이름" : "기업명"} <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="text"
                   value={formProfile.company_name}
                   onChange={(e) => updateForm("company_name", e.target.value)}
-                  placeholder="예: (주)테스트기업"
+                  placeholder={isIndividual ? "예: 홍길동" : "예: (주)테스트기업"}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
                 />
               </div>
 
-              {/* 설립일 */}
+              {/* 생년월일/설립일 */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">설립일 <span className="text-red-400">*</span></label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  {isIndividual ? "생년월일" : "설립일"} <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="date"
                   value={formProfile.establishment_date}
@@ -1153,50 +1177,54 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                 />
               </div>
 
-              {/* 업종 */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">업종 <span className="text-red-400">*</span></label>
-                <select
-                  value={formProfile.industry_code}
-                  onChange={(e) => updateForm("industry_code", e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
-                >
-                  <option value="">업종을 선택하세요</option>
-                  {INDUSTRY_OPTIONS.map((opt) => (
-                    <option key={opt.code} value={opt.code}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
+              {/* 업종 — 사업자만 */}
+              {!isIndividual && (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">업종 <span className="text-red-400">*</span></label>
+                  <select
+                    value={formProfile.industry_code}
+                    onChange={(e) => updateForm("industry_code", e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
+                  >
+                    <option value="">업종을 선택하세요</option>
+                    {INDUSTRY_OPTIONS.map((opt) => (
+                      <option key={opt.code} value={opt.code}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-              {/* 매출규모 & 직원수 (2열) */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">매출규모 <span className="text-red-400">*</span></label>
-                  <select
-                    value={formProfile.revenue_bracket}
-                    onChange={(e) => updateForm("revenue_bracket", e.target.value)}
-                    className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
-                  >
-                    <option value="">선택</option>
-                    {REVENUE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+              {/* 매출규모 & 직원수 — 사업자만 */}
+              {!isIndividual && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">매출규모 <span className="text-red-400">*</span></label>
+                    <select
+                      value={formProfile.revenue_bracket}
+                      onChange={(e) => updateForm("revenue_bracket", e.target.value)}
+                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
+                    >
+                      <option value="">선택</option>
+                      {REVENUE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">직원수 <span className="text-red-400">*</span></label>
+                    <select
+                      value={formProfile.employee_count_bracket}
+                      onChange={(e) => updateForm("employee_count_bracket", e.target.value)}
+                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
+                    >
+                      <option value="">선택</option>
+                      {EMPLOYEE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">직원수 <span className="text-red-400">*</span></label>
-                  <select
-                    value={formProfile.employee_count_bracket}
-                    onChange={(e) => updateForm("employee_count_bracket", e.target.value)}
-                    className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
-                  >
-                    <option value="">선택</option>
-                    {EMPLOYEE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              )}
 
               {/* 관심지역 — 복수선택 */}
               <div>
@@ -1242,7 +1270,7 @@ export default function AiChatBot({ planStatus, onUpgrade }: AiChatBotProps) {
                   <span className="font-normal text-slate-400 ml-1">(복수 선택 가능)</span>
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {INTEREST_OPTIONS.map((interest) => (
+                  {(isIndividual ? INDIVIDUAL_INTEREST_OPTIONS : INTEREST_OPTIONS).map((interest) => (
                     <button
                       key={interest}
                       type="button"

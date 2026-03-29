@@ -215,9 +215,10 @@ async def _daily_sync_loop():
             print("[Scheduler] Step 1/3: 공고 수집 완료")
 
             # Step 1.5: DB 정리 (비지원사업 제거 + 중복 제거)
-            print("[Scheduler] Step 1.5: DB 정리...")
+            print("[Scheduler] Step 1.5: DB 정리 + 분류...")
             _cleanup_non_support_announcements()
             _deduplicate_announcements()
+            _auto_classify_target_type()
 
             # Step 2: 지자체복지 상세 보강 (매일 100건씩 점진적)
             print("[Scheduler] Step 2/3: 지자체복지 상세 보강...")
@@ -400,6 +401,39 @@ def _cleanup_non_support_announcements():
             print(f"[cleanup] 비지원사업 공고 {deleted}건 삭제")
     except Exception as e:
         print(f"[cleanup] 오류: {e}")
+
+
+def _auto_classify_target_type():
+    """기존 공고의 target_type을 키워드 기반으로 자동 분류 (business→individual/both)"""
+    INDIVIDUAL_KEYWORDS = [
+        "다자녀", "다둥이", "출산", "임신", "산모", "육아", "보육", "어린이집",
+        "장학금", "학비", "등록금", "학자금",
+        "취업지원", "구직", "직업훈련", "취업성공",
+        "주거급여", "전세", "임대주택", "월세지원", "주거지원",
+        "노인", "어르신", "경로", "고령자", "연금",
+        "장애인", "장애수당", "활동지원", "보조기기",
+        "기초생활", "차상위", "한부모", "긴급복지", "생계급여", "저소득",
+        "청년수당", "청년월세", "청년정책", "청년지원",
+        "의료비", "건강검진", "진료비", "병원비",
+        "교육바우처", "평생교육", "배움카드",
+        "문화바우처", "문화생활",
+    ]
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT announcement_id, title, category FROM announcements WHERE COALESCE(target_type, 'business') = 'business'")
+        updated = 0
+        for row in cur.fetchall():
+            title = (row["title"] or "") + " " + (row.get("category") or "")
+            if any(kw in title for kw in INDIVIDUAL_KEYWORDS):
+                cur.execute("UPDATE announcements SET target_type = 'individual' WHERE announcement_id = %s", (row["announcement_id"],))
+                updated += 1
+        conn.commit()
+        conn.close()
+        if updated > 0:
+            print(f"[classify] {updated}건 공고 target_type → individual 분류")
+    except Exception as e:
+        print(f"[classify] 오류: {e}")
 
 
 def _deduplicate_announcements():
@@ -1180,28 +1214,6 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
 
     is_new = not u.get("user_type")
     return token, plan_status, u, is_new
-
-
-# ── 임시 테스트 유저 생성 (테스트 후 제거) ──
-@app.post("/api/test/create-individual")
-def api_test_create_individual():
-    """개인 테스트 유저 생성 → 토큰 반환"""
-    import hashlib as _h
-    test_email = f"test_individual_{int(datetime.datetime.utcnow().timestamp())}@test.local"
-    token, plan_status, user, _ = _social_login_or_register(
-        provider="test", social_id=f"test_{int(datetime.datetime.utcnow().timestamp())}",
-        email=test_email, name="개인테스트유저"
-    )
-    # user_type을 individual로 설정
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET user_type='individual', address_city='서울', interests='취업,주거,교육,청년' WHERE user_id=%s",
-        (user["user_id"],)
-    )
-    conn.commit()
-    conn.close()
-    return {"token": token, "user": {"user_id": user["user_id"], "email": test_email, "user_type": "individual"}, "plan": plan_status}
 
 
 @app.get("/api/auth/social/{provider}")
@@ -2607,10 +2619,11 @@ def admin_seed_urls():
 
 @app.post("/api/admin/cleanup-db", dependencies=[Depends(_verify_admin)])
 def admin_cleanup_db():
-    """DB 정리: 비지원사업 제거 + 중복 제거"""
+    """DB 정리: 비지원사업 제거 + 중복 제거 + target_type 분류"""
     _cleanup_non_support_announcements()
     _deduplicate_announcements()
-    return {"status": "SUCCESS", "message": "DB 정리 완료"}
+    _auto_classify_target_type()
+    return {"status": "SUCCESS", "message": "DB 정리 + 분류 완료"}
 
 
 def _run_manual_sync_in_thread():

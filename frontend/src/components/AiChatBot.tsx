@@ -349,12 +349,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       });
 
       if (res.status === 429) {
-        toast("이번 달 AI 사용 한도를 모두 사용했습니다.", "error");
+        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
         setLoading(false);
         return;
       }
       if (res.status === 403) {
-        toast("플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.", "error");
+        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
         setOpen(false);
         setLoading(false);
         return;
@@ -400,12 +400,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       });
 
       if (res.status === 429) {
-        toast("이번 달 AI 사용 한도를 모두 사용했습니다.", "error");
+        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
         setLoading(false);
         return;
       }
       if (res.status === 403) {
-        toast("플랜이 만료되었습니다.", "error");
+        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
         setLoading(false);
         return;
       }
@@ -464,7 +464,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       });
 
       if (res.status === 429) {
-        toast("이번 달 AI 사용 한도를 모두 사용했습니다.", "error");
+        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
         setMatchingInProgress(false);
         return;
       }
@@ -1054,7 +1054,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
               return (
                 <button
                   onClick={() => {
-                    if (!isPro) { toast("자유 상담은 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
+                    if (!isPro) { toast("자유 상담은 곧 유료 서비스로 제공됩니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
                     startMode("free");
                   }}
                   className={`w-full max-w-xs p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
@@ -1095,7 +1095,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
               return (
                 <button
                   onClick={() => {
-                    if (!isPro) { toast("전문가 상담 에이전트는 PRO 플랜 전용 기능입니다.", "error"); onUpgrade?.(); return; }
+                    if (!isPro) { toast("전문가 상담은 곧 유료 서비스로 제공됩니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
                     startMode("consultant");
                   }}
                   className={`w-full max-w-xs p-4 bg-gradient-to-br from-violet-50 to-purple-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${

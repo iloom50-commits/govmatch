@@ -175,12 +175,12 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
       });
 
       if (res.status === 429) {
-        toast("이번 달 AI 사용 한도를 모두 사용했습니다.", "error");
+        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
         setLoading(false);
         return;
       }
       if (res.status === 403) {
-        toast("플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.", "error");
+        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
         setOpen(false);
         setLoading(false);
         return;

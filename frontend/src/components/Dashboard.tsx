@@ -239,7 +239,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [androidBannerDismissed, setAndroidBannerDismissed] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  // URL 파라미터에서 검색어 읽기 (블로그 연동)
+  const urlQ = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") || "" : "";
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showProDashboard, setShowProDashboard] = useState(false);

@@ -3313,10 +3313,6 @@ def push_unsubscribe(data: dict):
     return {"status": "SUCCESS", "message": "푸시 알림 해제 완료"}
 
 
-@app.post("/api/util/push-test")
-def util_push_test():
-    return admin_push_test()
-
 @app.post("/api/admin/push-test", dependencies=[Depends(_verify_admin)])
 def admin_push_test():
     from pywebpush import webpush, WebPushException

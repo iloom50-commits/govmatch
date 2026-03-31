@@ -5,7 +5,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: '지원금집사', body: '새로운 알림이 있습니다.', url: '/' };
+  let data = { title: '지원금GO', body: '새로운 알림이 있습니다.', url: '/' };
   try {
     data = event.data.json();
   } catch (e) { /* use defaults */ }
@@ -17,7 +17,6 @@ self.addEventListener('push', (event) => {
       badge: '/icon-128.png',
       tag: 'govmatch',
       renotify: true,
-      vibrate: [200, 100, 200],
       data: { url: data.url || '/' },
     })
   );

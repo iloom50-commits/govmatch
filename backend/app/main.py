@@ -3328,7 +3328,7 @@ def admin_push_test():
     sent = 0
     failed = 0
     payload = json.dumps({
-        "title": "지원금집사",
+        "title": "지원금GO",
         "body": "새로운 맞춤 공고가 등록되었습니다!",
         "url": "/",
     }, ensure_ascii=False)

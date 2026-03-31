@@ -309,10 +309,10 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                     window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
-                  bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
+                className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1
+                  bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
+                <span>{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
               </button>
               {/* AI 신청서 — 기업 공고만 (개인 복지 공고는 정부24 등에서 직접 신청) */}
               {res.target_type !== "individual" && (

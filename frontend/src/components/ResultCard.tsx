@@ -312,7 +312,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                 className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
                   bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:shadow-md active:scale-[0.98]`}
               >
-                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 지원대상 여부 상담
+                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
               </button>
               {/* AI 신청서 — 기업 공고만 (개인 복지 공고는 정부24 등에서 직접 신청) */}
               {res.target_type !== "individual" && (

@@ -252,7 +252,7 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
     setIsDone(true);
     setMessages(prev => [...prev, {
       role: "assistant" as const,
-      text: "상담이 종료되었습니다.\n\n이 공고에 대해 다시 상담을 원하시면 공고 카드에서 **'지원대상 여부 상담'**을 클릭하세요.",
+      text: "상담이 종료되었습니다.\n\n이 공고에 대해 다시 상담을 원하시면 공고 카드에서 **'나도 받을 수 있나?'**를 클릭하세요.",
       done: true,
     }]);
   };

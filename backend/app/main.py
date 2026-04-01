@@ -228,7 +228,7 @@ init_database()
 
 
 SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "8"))
-DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "10"))
+DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "0"))  # UTC 0시 = 한국시간 09시
 
 
 async def _daily_sync_loop():
@@ -292,18 +292,23 @@ async def _daily_sync_loop():
 
 
 async def _daily_digest_loop():
-    """매일 DIGEST_HOUR(10시)에 매칭 + 이메일/푸시 발송"""
+    """평일 한국시간 09시(UTC 0시)에 매칭 + 이메일/푸시 발송"""
     from app.services.notification_service import notification_service
     while True:
-        now = datetime.datetime.now()
+        now = datetime.datetime.utcnow()
         target = now.replace(hour=DIGEST_HOUR, minute=0, second=0, microsecond=0)
         if now >= target:
             target += datetime.timedelta(days=1)
+        # 평일만 (월~금, UTC 기준 → 한국 요일과 동일)
+        while target.weekday() >= 5:  # 5=토, 6=일
+            target += datetime.timedelta(days=1)
         wait_seconds = (target - now).total_seconds()
-        print(f"[Scheduler] next digest at {target.isoformat()} (in {wait_seconds/3600:.1f}h)")
+        kst_target = target + datetime.timedelta(hours=9)
+        weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][kst_target.weekday()]
+        print(f"[Scheduler] next digest at KST {kst_target.strftime('%Y-%m-%d')}({weekday_kr}) 09:00 (in {wait_seconds/3600:.1f}h)")
         await asyncio.sleep(wait_seconds)
         try:
-            print("[Scheduler] Running scheduled daily digest...")
+            print("[Scheduler] Running scheduled daily digest (평일 09시 KST)...")
             results = await notification_service.generate_daily_digest()
             sent = sum(1 for r in results if r.get("email_sent"))
             push_sent = sum(r.get("push_sent", 0) for r in results)

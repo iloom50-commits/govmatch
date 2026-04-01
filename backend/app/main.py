@@ -137,6 +137,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # custom_needs 컬럼 추가 (맞춤 알림용 구체적 니즈)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_needs TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # kakao_refresh_token 컬럼 추가 (카카오톡 메시지 발송용)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_refresh_token TEXT")
@@ -3239,6 +3246,28 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+@app.put("/api/profile")
+def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user)):
+    """프로필 간편 업데이트 (알림 설정에서 호출)"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    fields = []
+    params = []
+    for key in ["user_type", "address_city", "revenue_bracket", "employee_count_bracket", "interests", "custom_needs"]:
+        if key in req and req[key] is not None:
+            fields.append(f"{key} = %s")
+            params.append(req[key])
+    if not fields:
+        conn.close()
+        return {"status": "SUCCESS"}
+    params.append(bn)
+    cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE business_number = %s", params)
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "message": "프로필이 업데이트되었습니다."}
+
 
 from app.services.sync_service import sync_service
 

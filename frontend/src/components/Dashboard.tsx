@@ -1321,6 +1321,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         onClose={() => setIsNotifyOpen(false)}
         businessNumber={profile?.business_number}
         onSave={() => {}}
+        profile={profile}
       />
       <SmartDocModal />
 

@@ -178,8 +178,47 @@ def _detect_file_type(content: bytes, content_disposition: str) -> str:
 # 2단계: 원문 텍스트 추출
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _extract_with_kordoc(content: bytes, file_type: str, max_chars: int = 50000) -> str:
+    """kordoc CLI로 HWP/HWPX/PDF → Markdown 변환 (고품질 한글 문서 파싱)"""
+    import subprocess, tempfile
+    ext = {"hwp": ".hwp", "hwpx": ".hwpx", "pdf": ".pdf", "ole": ".hwp"}.get(file_type, ".hwp")
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        md_path = tmp_path.rsplit(".", 1)[0] + ".md"
+        subprocess.run(
+            ["kordoc", tmp_path, "-o", md_path, "--silent"],
+            capture_output=True, timeout=30
+        )
+        if os.path.exists(md_path):
+            with open(md_path, "r", encoding="utf-8") as f:
+                text = f.read()
+            os.unlink(md_path)
+            if text and len(text) > 50:
+                print(f"[kordoc] Parsed {len(text)} chars ({file_type})")
+                return text[:max_chars]
+    except FileNotFoundError:
+        pass  # kordoc 미설치 → 레거시 폴백
+    except Exception as e:
+        print(f"[kordoc] {e}")
+    finally:
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            pass
+    return ""
+
+
 def extract_text_from_bytes(content: bytes, file_type: str, max_chars: int = 50000) -> str:
-    """바이트 데이터에서 텍스트 추출 (파일 타입별 분기)"""
+    """바이트 데이터에서 텍스트 추출 — kordoc 우선, 실패 시 레거시 폴백"""
+    if file_type in ("hwp", "hwpx", "pdf", "ole"):
+        kordoc_text = _extract_with_kordoc(content, file_type, max_chars)
+        if kordoc_text:
+            return kordoc_text
+    # 레거시 폴백
     if file_type == "pdf":
         return _extract_from_pdf(content, max_chars)
     elif file_type in ("hwp", "ole"):

@@ -1476,6 +1476,18 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+# 임시: kordoc 설치 확인 (테스트 후 제거)
+@app.get("/api/util/kordoc-check")
+def util_kordoc_check():
+    import subprocess
+    try:
+        r = subprocess.run(["kordoc", "--version"], capture_output=True, text=True, timeout=5)
+        return {"installed": True, "version": r.stdout.strip() or r.stderr.strip()}
+    except FileNotFoundError:
+        return {"installed": False, "error": "kordoc not found"}
+    except Exception as e:
+        return {"installed": False, "error": str(e)}
+
 # 임시: 테스트 유저 플랜 리셋 (테스트 후 제거)
 @app.post("/api/util/reset-plan")
 def util_reset_plan(user=Depends(_get_current_user)):

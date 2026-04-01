@@ -242,17 +242,44 @@ export default function NotificationModal({
           {/* Q3: 관심분야 */}
           <div>
             <p className="text-[12px] font-bold text-slate-700 mb-2">관심분야 <span className="font-normal text-slate-400">(복수 선택)</span></p>
-            <div className="flex flex-wrap gap-1.5">
-              {interestOptions.map(item => (
-                <button
-                  key={item}
-                  onClick={() => toggleInterest(item)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
-                    interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
-                  }`}
-                >{item}</button>
-              ))}
-            </div>
+            {userType === "both" ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] font-bold text-indigo-600 mb-1.5">개인 복지</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {IND_INTERESTS.map(item => (
+                      <button key={item} onClick={() => toggleInterest(item)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                          interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
+                        }`}
+                      >{item}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-violet-600 mb-1.5">기업 지원</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BIZ_INTERESTS.map(item => (
+                      <button key={item} onClick={() => toggleInterest(item)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                          interests.includes(item) ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-500 border-slate-200 hover:border-violet-300"
+                        }`}
+                      >{item}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {(isInd ? IND_INTERESTS : BIZ_INTERESTS).map(item => (
+                  <button key={item} onClick={() => toggleInterest(item)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                      interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
+                    }`}
+                  >{item}</button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Q4: 구체적 니즈 */}

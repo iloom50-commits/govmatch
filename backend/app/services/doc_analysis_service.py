@@ -178,8 +178,53 @@ def _detect_file_type(content: bytes, content_disposition: str) -> str:
 # 2단계: 원문 텍스트 추출
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _extract_with_kordoc(content: bytes, file_type: str, max_chars: int = 50000) -> str:
+    """kordoc CLI로 HWP/HWPX/PDF → Markdown 변환 (고품질 파싱)"""
+    import subprocess, tempfile
+    ext = {"hwp": ".hwp", "hwpx": ".hwpx", "pdf": ".pdf", "ole": ".hwp"}.get(file_type, ".hwp")
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        result = subprocess.run(
+            ["kordoc", tmp_path, "--format", "markdown", "--silent"],
+            capture_output=True, text=True, timeout=30, encoding="utf-8"
+        )
+        os.unlink(tmp_path)
+        # kordoc은 stdout에 마크다운 출력, 또는 같은 이름.md 파일 생성
+        md_path = tmp_path.rsplit(".", 1)[0] + ".md"
+        if os.path.exists(md_path):
+            with open(md_path, "r", encoding="utf-8") as f:
+                text = f.read()
+            os.unlink(md_path)
+            if text and len(text) > 50:
+                print(f"[kordoc] Parsed {len(text)} chars ({file_type})")
+                return text[:max_chars]
+        if result.stdout and len(result.stdout) > 50:
+            print(f"[kordoc] Parsed {len(result.stdout)} chars from stdout ({file_type})")
+            return result.stdout[:max_chars]
+    except FileNotFoundError:
+        print("[kordoc] kordoc CLI not installed — falling back to legacy parser")
+    except subprocess.TimeoutExpired:
+        print("[kordoc] Timeout — falling back to legacy parser")
+    except Exception as e:
+        print(f"[kordoc] Error: {e} — falling back to legacy parser")
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+    return ""
+
+
 def extract_text_from_bytes(content: bytes, file_type: str, max_chars: int = 50000) -> str:
-    """바이트 데이터에서 텍스트 추출 (파일 타입별 분기)"""
+    """바이트 데이터에서 텍스트 추출 — kordoc 우선, 실패 시 레거시 폴백"""
+    # 1) kordoc 시도 (HWP/HWPX/PDF 고품질 파싱)
+    if file_type in ("hwp", "hwpx", "pdf", "ole"):
+        kordoc_text = _extract_with_kordoc(content, file_type, max_chars)
+        if kordoc_text:
+            return kordoc_text
+
+    # 2) 레거시 폴백
     if file_type == "pdf":
         return _extract_from_pdf(content, max_chars)
     elif file_type in ("hwp", "ole"):

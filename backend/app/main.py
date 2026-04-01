@@ -151,6 +151,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # kakao_enabled 컬럼 추가 (카카오톡 알림 설정)
+        try:
+            cursor.execute("ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS kakao_enabled INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # client_profiles에 client_type 컬럼 추가 (기업/개인 구분)
         try:
             cursor.execute("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'business'")
@@ -819,6 +826,7 @@ class NotificationSettings(BaseModel):
     phone_number: Optional[str] = None
     channel: str = "email"
     is_active: bool = True
+    kakao_enabled: Optional[int] = 0
 
 class AdminURLRequest(BaseModel):
     url: str
@@ -1500,7 +1508,8 @@ def api_social_auth_redirect(provider: str):
         url = (f"https://kauth.kakao.com/oauth/authorize"
                f"?client_id={KAKAO_CLIENT_ID}"
                f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
-               f"&response_type=code&state={state}")
+               f"&response_type=code&state={state}"
+               f"&scope=talk_message")
     elif provider == "naver":
         if not NAVER_CLIENT_ID:
             raise HTTPException(status_code=501, detail="네이버 로그인이 아직 설정되지 않았습니다.")
@@ -3431,18 +3440,19 @@ def api_save_notification_settings(settings: NotificationSettings):
     cursor = conn.cursor()
     try:
         query = """
-        INSERT INTO notification_settings (business_number, email, phone_number, channel, is_active)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO notification_settings (business_number, email, phone_number, channel, is_active, kakao_enabled)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT(business_number) DO UPDATE SET
             email=EXCLUDED.email,
             phone_number=EXCLUDED.phone_number,
             channel=EXCLUDED.channel,
             is_active=EXCLUDED.is_active,
+            kakao_enabled=EXCLUDED.kakao_enabled,
             updated_at=NOW()
         """
         cursor.execute(query, (
             settings.business_number, settings.email, settings.phone_number,
-            settings.channel, int(settings.is_active)
+            settings.channel, int(settings.is_active), int(settings.kakao_enabled or 0)
         ))
         conn.commit()
         return {"status": "SUCCESS", "message": "알림 설정이 저장되었습니다."}

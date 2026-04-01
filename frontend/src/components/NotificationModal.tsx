@@ -13,6 +13,8 @@ const EMPLOYEE = ["5인 미만", "5인~10인", "10인~30인", "30인~50인", "50
 
 type UserType = "individual" | "business" | "both";
 
+const TOTAL_STEPS = 5;
+
 // ── 푸시 구독 유틸 ──
 async function subscribePush(bn: string): Promise<boolean> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
@@ -60,6 +62,22 @@ async function isPushSubscribed(): Promise<boolean> {
   } catch { return false; }
 }
 
+// ── 스텝 설정 ──
+const STEP_TITLES = [
+  "어떤 지원금을 찾고 계세요?",
+  "지역을 선택해주세요",
+  "관심분야를 선택해주세요",
+  "구체적으로 찾는 지원금이 있나요?",
+  "알림은 어떻게 받으실래요?",
+];
+const STEP_SUBTITLES = [
+  "맞춤 공고를 찾아드릴게요",
+  "여러 지역을 선택할 수 있어요",
+  "관심있는 분야를 모두 골라주세요",
+  "자유롭게 적어주시면 AI가 매칭해요",
+  "평일 오전 9시에 맞춤 공고를 보내드려요",
+];
+
 export default function NotificationModal({
   isOpen, onClose, businessNumber, onSave, profile
 }: {
@@ -70,12 +88,15 @@ export default function NotificationModal({
   profile?: any;
 }) {
   const { toast } = useToast();
+  const [step, setStep] = useState(1);
 
   // 사용자 타입
   const [userType, setUserType] = useState<UserType>(profile?.user_type || "individual");
 
-  // 프로필 정보
-  const [addressCity, setAddressCity] = useState(profile?.address_city || "");
+  // 프로필 정보 — 지역 복수 선택
+  const [addressCities, setAddressCities] = useState<string[]>(
+    profile?.address_city ? String(profile.address_city).split(",").filter(Boolean) : []
+  );
   const [revenueBracket, setRevenueBracket] = useState(profile?.revenue_bracket || "");
   const [employeeBracket, setEmployeeBracket] = useState(profile?.employee_count_bracket || "");
   const [interests, setInterests] = useState<string[]>(
@@ -84,30 +105,55 @@ export default function NotificationModal({
   const [customNeeds, setCustomNeeds] = useState(profile?.custom_needs || "");
 
   // 알림 채널
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(profile?.email || "");
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [kakaoEnabled, setKakaoEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // 카카오 로그인 여부 판별
+  const isKakaoUser = profile?.social_provider === "kakao";
 
   useEffect(() => {
     if (!isOpen || !businessNumber) return;
-    // 기존 알림 설정 로드
+    setStep(1);
     fetch(`${API}/api/notification-settings/${businessNumber}`)
       .then(r => r.json())
-      .then(d => { if (d.status === "SUCCESS" && d.data) setEmail(d.data.email || ""); })
+      .then(d => {
+        if (d.status === "SUCCESS" && d.data) {
+          if (d.data.email) setEmail(d.data.email);
+          if (d.data.kakao_enabled) setKakaoEnabled(true);
+        }
+      })
       .catch(() => {});
     isPushSubscribed().then(setPushEnabled);
 
-    // 프로필에서 초기값
     if (profile) {
       setUserType(profile.user_type || "individual");
-      setAddressCity(profile.address_city || "");
+      setAddressCities(profile.address_city ? String(profile.address_city).split(",").filter(Boolean) : []);
       setRevenueBracket(profile.revenue_bracket || "");
       setEmployeeBracket(profile.employee_count_bracket || "");
       setInterests(profile.interests ? String(profile.interests).split(",").filter(Boolean) : []);
       setCustomNeeds(profile.custom_needs || "");
+      // 소셜 로그인 이메일 자동 채우기 (기존 설정이 없을 때)
+      if (!email && profile.email && !profile.email.endsWith(".local")) {
+        setEmail(profile.email);
+      }
+      // 카카오 사용자면 카카오 알림 기본 ON
+      if (isKakaoUser) setKakaoEnabled(true);
     }
   }, [isOpen, businessNumber, profile]);
+
+  const toggleCity = (city: string) => {
+    if (city === "전국") {
+      setAddressCities(prev => prev.includes("전국") ? [] : ["전국"]);
+    } else {
+      setAddressCities(prev => {
+        const without전국 = prev.filter(c => c !== "전국");
+        return without전국.includes(city) ? without전국.filter(c => c !== city) : [...without전국, city];
+      });
+    }
+  };
 
   const toggleInterest = (item: string) => {
     setInterests(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
@@ -119,33 +165,33 @@ export default function NotificationModal({
       if (enabled) {
         const ok = await subscribePush(businessNumber);
         setPushEnabled(ok);
-        toast(ok ? "푸시 알림이 활성화되었습니다." : "푸시 권한이 거부되었습니다.", ok ? "success" : "error");
+        if (!ok) toast("푸시 권한이 거부되었습니다.", "error");
       } else {
         await unsubscribePush();
         setPushEnabled(false);
-        toast("푸시 알림이 해제되었습니다.", "success");
       }
     } finally { setPushLoading(false); }
   };
+
+  const goNext = () => { if (step < TOTAL_STEPS) setStep(s => s + 1); };
+  const goBack = () => { if (step > 1) setStep(s => s - 1); };
 
   const handleSave = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("auth_token") || "";
-      // 1. 프로필 업데이트 (관심분야, 니즈 포함)
       await fetch(`${API}/api/profile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_type: userType,
-          address_city: addressCity,
+          address_city: addressCities.join(","),
           revenue_bracket: userType !== "individual" ? revenueBracket : undefined,
           employee_count_bracket: userType !== "individual" ? employeeBracket : undefined,
           interests: interests.join(","),
           custom_needs: customNeeds,
         }),
       });
-      // 2. 알림 설정 저장
       await fetch(`${API}/api/notification-settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,182 +200,287 @@ export default function NotificationModal({
           email,
           channel: "BOTH",
           is_active: 1,
+          kakao_enabled: isKakaoUser && kakaoEnabled ? 1 : 0,
         }),
       });
       toast("맞춤 알림이 설정되었습니다! 평일 오전 9시에 맞춤 공고를 알려드려요.", "success");
-      onSave({ userType, addressCity, interests, customNeeds });
+      onSave({ userType, addressCities, interests, customNeeds });
       onClose();
     } catch {
       toast("저장 중 오류가 발생했습니다.", "error");
     } finally { setLoading(false); }
   };
 
+  // 다음 버튼 활성화 조건
+  const canNext = (): boolean => {
+    switch (step) {
+      case 1: return !!userType;
+      case 2: return addressCities.length > 0;
+      case 3: return interests.length > 0;
+      case 4: return true;
+      case 5: return true;
+      default: return false;
+    }
+  };
+
   if (!isOpen) return null;
 
   const isInd = userType === "individual";
-  const isBiz = userType === "business";
-  const interestOptions = isInd ? IND_INTERESTS : isBiz ? BIZ_INTERESTS : [...IND_INTERESTS, ...BIZ_INTERESTS];
+  const progressPct = (step / TOTAL_STEPS) * 100;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        <div className="p-6 space-y-5">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[92vh] overflow-y-auto">
+        {/* 진행률 바 */}
+        <div className="h-1.5 bg-slate-100">
+          <div
+            className="h-full bg-indigo-600 transition-all duration-500 ease-out rounded-r-full"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+
+        <div className="p-5 sm:p-7">
           {/* 헤더 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-indigo-500 tracking-wider">맞춤 설정</p>
-              <h2 className="text-xl font-black text-slate-900">맞춤 알림 설정</h2>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">✕</button>
-          </div>
-
-          {/* Q1: 사용자 타입 */}
-          <div>
-            <p className="text-[12px] font-bold text-slate-700 mb-2">어떤 지원금을 찾고 계세요?</p>
-            <div className="flex gap-2">
-              {([["individual", "개인"], ["business", "사업자"], ["both", "둘 다"]] as [UserType, string][]).map(([val, label]) => (
-                <button
-                  key={val}
-                  onClick={() => { setUserType(val); setInterests([]); }}
-                  className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all active:scale-95 ${
-                    userType === val ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                  }`}
-                >{label}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Q2: 기본 정보 */}
-          <div>
-            <p className="text-[12px] font-bold text-slate-700 mb-2">{isInd ? "거주지" : "소재지"}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {CITIES.map(city => (
-                <button
-                  key={city}
-                  onClick={() => setAddressCity(city)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all active:scale-95 ${
-                    addressCity === city ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
-                  }`}
-                >{city}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* 사업자 전용 필드 */}
-          {!isInd && (
-            <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center justify-between mb-5 sm:mb-7">
+            <div className="flex items-center gap-3">
+              {step > 1 ? (
+                <button onClick={goBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+              ) : (
+                <div className="w-10" />
+              )}
               <div>
-                <p className="text-[11px] font-bold text-slate-600 mb-1">매출 규모</p>
-                <select value={revenueBracket} onChange={e => setRevenueBracket(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[12px] outline-none focus:ring-2 focus:ring-indigo-200">
-                  <option value="">선택</option>
-                  {REVENUE.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-slate-600 mb-1">직원 수</p>
-                <select value={employeeBracket} onChange={e => setEmployeeBracket(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[12px] outline-none focus:ring-2 focus:ring-indigo-200">
-                  <option value="">선택</option>
-                  {EMPLOYEE.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
+                <p className="text-xs font-bold text-indigo-500 tracking-wider">{step} / {TOTAL_STEPS}</p>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{STEP_TITLES[step - 1]}</h2>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{STEP_SUBTITLES[step - 1]}</p>
               </div>
             </div>
-          )}
+            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-xl shrink-0">✕</button>
+          </div>
 
-          {/* Q3: 관심분야 */}
-          <div>
-            <p className="text-[12px] font-bold text-slate-700 mb-2">관심분야 <span className="font-normal text-slate-400">(복수 선택)</span></p>
-            {userType === "both" ? (
-              <div className="space-y-3">
+          {/* 스텝 콘텐츠 */}
+          <div className="min-h-[220px]">
+            {/* Step 1: 사용자 타입 */}
+            {step === 1 && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                {([["individual", "개인 복지", "취업·주거·교육·출산 등 개인 지원금"], ["business", "기업 지원", "R&D·창업·수출·고용 등 기업 지원금"], ["both", "둘 다", "개인 복지 + 기업 지원 모두 받기"]] as [UserType, string, string][]).map(([val, label, desc]) => (
+                  <button
+                    key={val}
+                    onClick={() => { setUserType(val); setInterests([]); }}
+                    className={`w-full p-5 rounded-xl border-2 text-left transition-all active:scale-[0.98] ${
+                      userType === val
+                        ? "border-indigo-600 bg-indigo-50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <p className={`text-base font-bold ${userType === val ? "text-indigo-700" : "text-slate-700"}`}>{label}</p>
+                    <p className={`text-sm mt-1 ${userType === val ? "text-indigo-500" : "text-slate-400"}`}>{desc}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Step 2: 지역 (복수 선택) + 사업자 정보 */}
+            {step === 2 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
-                  <p className="text-[11px] font-bold text-indigo-600 mb-1.5">개인 복지</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {IND_INTERESTS.map(item => (
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-bold text-slate-600">{isInd ? "거주 지역" : "사업장 소재지"} <span className="font-normal text-slate-400">(복수 선택)</span></p>
+                    {addressCities.length > 0 && (
+                      <p className="text-xs text-indigo-500 font-semibold">{addressCities.includes("전국") ? "전국" : `${addressCities.length}개 선택`}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {CITIES.map(city => (
+                      <button
+                        key={city}
+                        onClick={() => toggleCity(city)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all active:scale-95 ${
+                          addressCities.includes(city)
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
+                        }`}
+                      >{city}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {!isInd && (
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <p className="text-sm font-bold text-slate-600 mb-1.5">매출 규모</p>
+                      <select value={revenueBracket} onChange={e => setRevenueBracket(e.target.value)}
+                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200">
+                        <option value="">선택</option>
+                        {REVENUE.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-600 mb-1.5">직원 수</p>
+                      <select value={employeeBracket} onChange={e => setEmployeeBracket(e.target.value)}
+                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200">
+                        <option value="">선택</option>
+                        {EMPLOYEE.map(e => <option key={e} value={e}>{e}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: 관심분야 */}
+            {step === 3 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                {(userType === "both") ? (
+                  <>
+                    <div>
+                      <p className="text-sm font-bold text-indigo-600 mb-2">개인 복지</p>
+                      <div className="flex flex-wrap gap-2">
+                        {IND_INTERESTS.map(item => (
+                          <button key={item} onClick={() => toggleInterest(item)}
+                            className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all active:scale-95 ${
+                              interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
+                            }`}
+                          >{item}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-violet-600 mb-2">기업 지원</p>
+                      <div className="flex flex-wrap gap-2">
+                        {BIZ_INTERESTS.map(item => (
+                          <button key={item} onClick={() => toggleInterest(item)}
+                            className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all active:scale-95 ${
+                              interests.includes(item) ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-500 border-slate-200 hover:border-violet-300"
+                            }`}
+                          >{item}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(isInd ? IND_INTERESTS : BIZ_INTERESTS).map(item => (
                       <button key={item} onClick={() => toggleInterest(item)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
+                        className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all active:scale-95 ${
                           interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
                         }`}
                       >{item}</button>
                     ))}
                   </div>
+                )}
+                {interests.length > 0 && (
+                  <p className="text-xs text-indigo-500 font-semibold">{interests.length}개 선택됨</p>
+                )}
+              </div>
+            )}
+
+            {/* Step 4: 구체적 니즈 */}
+            {step === 4 && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <textarea
+                  value={customNeeds}
+                  onChange={e => setCustomNeeds(e.target.value)}
+                  placeholder={isInd
+                    ? "예: 전세 자금 대출 지원, 청년 월세 지원, 취업 교육 프로그램"
+                    : "예: 해외 수출 바우처, R&D 기술개발 자금, 고용 장려금"}
+                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 resize-none leading-relaxed"
+                  rows={4}
+                  autoFocus
+                />
+                <p className="text-xs text-slate-400 mt-2">건너뛰셔도 괜찮아요. 나중에 수정할 수 있습니다.</p>
+              </div>
+            )}
+
+            {/* Step 5: 알림 채널 */}
+            {step === 5 && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="p-5 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <span className="text-lg">📧</span>
+                    <p className="text-sm font-bold text-slate-700">이메일 알림</p>
+                    {profile?.email && !profile.email.endsWith(".local") && email === profile.email && (
+                      <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold">자동입력</span>
+                    )}
+                  </div>
+                  <input
+                    type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="email@example.com"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
                 </div>
-                <div>
-                  <p className="text-[11px] font-bold text-violet-600 mb-1.5">기업 지원</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {BIZ_INTERESTS.map(item => (
-                      <button key={item} onClick={() => toggleInterest(item)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
-                          interests.includes(item) ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-500 border-slate-200 hover:border-violet-300"
-                        }`}
-                      >{item}</button>
-                    ))}
+
+                <div className="p-5 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg">🔔</span>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">브라우저 푸시 알림</p>
+                        <p className="text-xs text-slate-400 mt-0.5">실시간으로 새 공고를 알려드려요</p>
+                      </div>
+                    </div>
+                    <button
+                      disabled={pushLoading}
+                      onClick={() => handlePushToggle(!pushEnabled)}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-300"} ${pushLoading ? "opacity-50" : ""}`}
+                    >
+                      <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-7" : "translate-x-1"}`} />
+                    </button>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {(isInd ? IND_INTERESTS : BIZ_INTERESTS).map(item => (
-                  <button key={item} onClick={() => toggleInterest(item)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
-                      interests.includes(item) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300"
-                    }`}
-                  >{item}</button>
-                ))}
+
+                {/* 카카오톡 알림 (카카오 로그인 사용자만) */}
+                {isKakaoUser && (
+                  <div className="p-5 bg-yellow-50 rounded-xl border border-yellow-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">💬</span>
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">카카오톡 알림</p>
+                          <p className="text-xs text-slate-400 mt-0.5">카카오톡으로 맞춤 공고를 받아보세요</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setKakaoEnabled(!kakaoEnabled)}
+                        className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${kakaoEnabled ? "bg-yellow-500" : "bg-slate-300"}`}
+                      >
+                        <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${kakaoEnabled ? "translate-x-7" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-2.5 p-4 bg-indigo-50 rounded-xl">
+                  <span className="text-sm mt-0.5">💡</span>
+                  <p className="text-sm text-indigo-600 leading-relaxed">평일 오전 9시에 나에게 딱 맞는 공고를 보내드려요. 설정은 언제든 변경 가능해요.</p>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Q4: 구체적 니즈 */}
-          <div>
-            <p className="text-[12px] font-bold text-slate-700 mb-2">구체적으로 찾는 지원금 <span className="font-normal text-slate-400">(선택)</span></p>
-            <textarea
-              value={customNeeds}
-              onChange={e => setCustomNeeds(e.target.value)}
-              placeholder={isInd ? "예: 전세 자금 대출 지원, 청년 월세 지원" : "예: 해외 수출 바우처, R&D 기술개발 자금"}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[12px] placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
-              rows={2}
-            />
-          </div>
-
-          {/* 구분선 */}
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-[12px] font-bold text-slate-700 mb-3">알림 받을 방법</p>
-
-            {/* 이메일 */}
-            <div className="space-y-2 mb-3">
-              <p className="text-[11px] font-bold text-slate-500">이메일</p>
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="email@example.com"
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[12px] outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
-
-            {/* 푸시 */}
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-bold text-slate-500">브라우저 푸시</p>
+          {/* 하단 버튼 */}
+          <div className="mt-6">
+            {step < TOTAL_STEPS ? (
               <button
-                disabled={pushLoading}
-                onClick={() => handlePushToggle(!pushEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-200"} ${pushLoading ? "opacity-50" : ""}`}
+                onClick={goNext}
+                disabled={!canNext()}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-200"
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                {step === 4 ? (customNeeds ? "다음" : "건너뛰기") : "다음"}
               </button>
-            </div>
-            <p className="text-[10px] text-slate-400 mb-2">평일 오전 9시에 맞춤 공고를 알려드립니다</p>
+            ) : (
+              <button
+                onClick={handleSave}
+                disabled={loading}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-200"
+              >
+                {loading ? "설정 중..." : "맞춤 알림 설정 완료"}
+              </button>
+            )}
           </div>
-
-          {/* 저장 */}
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-200"
-          >
-            {loading ? "저장 중..." : "맞춤 알림 설정 완료"}
-          </button>
         </div>
       </div>
     </div>

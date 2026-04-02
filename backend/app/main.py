@@ -3492,8 +3492,21 @@ def api_get_analysis(announcement_id: int, _: None = Depends(_verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _verify_api_key_or_admin(authorization: Optional[str] = Header(None), x_api_key: Optional[str] = Header(None)):
+    """API Key 또는 admin JWT 둘 중 하나로 인증"""
+    if x_api_key and BLOG_API_KEY and x_api_key == BLOG_API_KEY:
+        return
+    if authorization:
+        try:
+            _verify_admin(authorization)
+            return
+        except Exception:
+            pass
+    raise HTTPException(status_code=401, detail="API Key 또는 admin 인증이 필요합니다.")
+
+
 @app.post("/api/v1/announcements/{announcement_id}/analyze")
-def api_analyze_announcement(announcement_id: int, _: None = Depends(_verify_admin)):
+def api_analyze_announcement(announcement_id: int, _: None = Depends(_verify_api_key_or_admin)):
     """공고 원문 크롤링 + AI 분석 + DB 저장 (admin 전용)"""
     conn = get_db_connection()
     try:

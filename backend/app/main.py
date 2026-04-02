@@ -1829,16 +1829,23 @@ def api_plan_subscribe(
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # 이미 구독 중인지 확인
+    # 사용자 조회
     cur.execute("SELECT plan, billing_key FROM users WHERE business_number = %s", (bn,))
     user = cur.fetchone()
     if not user:
         conn.close()
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
-    if u.get("billing_key") and u.get("plan") in ("lite", "pro"):
+    current_plan = u.get("plan") or "free"
+
+    # 동일 플랜 재구독 차단 (상위 플랜 업그레이드는 허용)
+    if u.get("billing_key") and current_plan == target:
         conn.close()
-        raise HTTPException(status_code=400, detail="이미 구독 중입니다.")
+        raise HTTPException(status_code=400, detail="이미 동일한 플랜을 구독 중입니다.")
+    # 하위 플랜으로 변경 차단 (PRO → LITE)
+    if current_plan == "pro" and target == "lite":
+        conn.close()
+        raise HTTPException(status_code=400, detail="PRO에서 LITE로 변경은 구독 해지 후 재가입해주세요.")
 
     # 무료 체험 기간: LITE 30일, PRO 7일
     now = datetime.datetime.utcnow()

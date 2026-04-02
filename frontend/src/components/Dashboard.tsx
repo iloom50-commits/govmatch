@@ -773,12 +773,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </span>
             </div>
           </div>
-          {!["basic", "pro", "biz", "lite"].includes(planStatus.plan) && onUpgrade && (
+          {!["pro", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
               className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold hover:bg-amber-600 transition-all active:scale-95"
             >
-              {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
+              {planStatus.plan === "expired" ? "플랜 시작하기" : ["lite", "basic"].includes(planStatus.plan) ? "PRO 업그레이드" : "업그레이드"}
             </button>
           )}
           {/* PRO 전문가 에이전트 → FAB의 "전문가 상담 에이전트"로 통합 */}

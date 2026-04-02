@@ -105,17 +105,59 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [isProfileIncomplete, step]);
 
-  // 비로그인 공고 로드 (기업 + 개인 각각 fetch하여 합침)
-  useEffect(() => {
-    Promise.all([
-      fetch(`${API}/api/announcements/public?page=1&size=100&target_type=business`).then(r => r.json()),
-      fetch(`${API}/api/announcements/public?page=1&size=100&target_type=individual`).then(r => r.json()),
-    ]).then(([bizData, indData]) => {
+  // 비로그인 공고 로드 (localStorage 캐시 → 즉시 표시 → 백그라운드 갱신)
+  const [publicPage, setPublicPage] = useState(1);
+  const [publicHasMore, setPublicHasMore] = useState(true);
+  const [publicLoading, setPublicLoading] = useState(false);
+
+  const loadPublicMore = useCallback(async (page: number, append = false) => {
+    if (publicLoading) return;
+    setPublicLoading(true);
+    try {
+      const [bizData, indData] = await Promise.all([
+        fetch(`${API}/api/announcements/public?page=${page}&size=20&target_type=business`).then(r => r.json()),
+        fetch(`${API}/api/announcements/public?page=${page}&size=20&target_type=individual`).then(r => r.json()),
+      ]);
       const biz = bizData.status === "SUCCESS" ? bizData.data : [];
       const ind = indData.status === "SUCCESS" ? indData.data : [];
-      setPublicMatches([...biz, ...ind]);
-    }).catch(() => {});
+      const newItems = [...biz, ...ind];
+      if (newItems.length === 0) { setPublicHasMore(false); }
+      setPublicMatches(prev => append ? [...prev, ...newItems] : newItems);
+      // 첫 페이지는 캐시 저장 (재방문 시 즉시 표시용)
+      if (page === 1 && newItems.length > 0) {
+        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems, ts: Date.now() })); } catch {}
+      }
+    } catch {} finally { setPublicLoading(false); }
+  }, [publicLoading]);
+
+  useEffect(() => {
+    // 캐시된 공고가 있으면 즉시 표시 (30분 이내)
+    try {
+      const cached = localStorage.getItem("pub_cache");
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < 30 * 60 * 1000 && data?.length > 0) {
+          setPublicMatches(data);
+        }
+      }
+    } catch {}
+    // 백그라운드에서 최신 데이터 fetch
+    loadPublicMore(1);
   }, []);
+
+  // 무한스크롤 감지
+  useEffect(() => {
+    if (step !== "BROWSE" || !publicHasMore) return;
+    const handleScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400 && !publicLoading && publicHasMore) {
+        const nextPage = publicPage + 1;
+        setPublicPage(nextPage);
+        loadPublicMore(nextPage, true);
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [step, publicPage, publicLoading, publicHasMore, loadPublicMore]);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
   useEffect(() => {
@@ -273,7 +315,7 @@ export default function Home() {
     }
   };
 
-  // Onboarding complete → register + save profile + match
+  // Onboarding complete → register (간소화: 이메일만으로 바로 가입) + match
   const handleOnboardingComplete = async (data: any) => {
     setStep("LOADING");
 
@@ -291,9 +333,9 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: data.email,
-            password: `social_${Date.now()}`,
+            password: data.password || `social_${Date.now()}`,
             business_number: bn,
-            company_name: data.company_name,
+            company_name: data.company_name || "",
             referred_by: referralCode || undefined,
           }),
         });
@@ -313,53 +355,38 @@ export default function Home() {
         setPlanStatus(regData.plan);
       }
 
-      const profilePayload = {
-        business_number: bn,
-        company_name: data.company_name,
-        establishment_date: data.establishment_date || (data.user_type === "individual" ? null : new Date().toISOString().split("T")[0]),
-        address_city: data.address_city,
-        industry_code: data.user_type === "individual" ? null : "00000",
-        revenue_bracket: data.revenue_bracket || (data.user_type === "individual" ? null : "1억 미만"),
-        employee_count_bracket: data.employee_count_bracket || (data.user_type === "individual" ? null : "5인 미만"),
-        interests: data.interests,
-        user_type: data.user_type || "business",
-        age_range: data.age_range || null,
-        income_level: data.income_level || null,
-        family_type: data.family_type || null,
-        employment_status: data.employment_status || null,
-      };
-
-      await fetch(`${API}/api/save-profile`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(profilePayload),
-      });
-
-      await fetch(`${API}/api/notification-settings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      // 프로필 데이터가 있으면 저장 (온보딩에서 입력한 경우)
+      if (data.user_type || data.address_city || data.interests) {
+        const profilePayload = {
           business_number: bn,
-          email: data.email,
-          channel: "EMAIL",
-          is_active: data.notification_enabled,
-        }),
-      });
+          company_name: data.company_name,
+          establishment_date: data.establishment_date || (data.user_type === "individual" ? null : new Date().toISOString().split("T")[0]),
+          address_city: data.address_city,
+          industry_code: data.user_type === "individual" ? null : "00000",
+          revenue_bracket: data.revenue_bracket || (data.user_type === "individual" ? null : "1억 미만"),
+          employee_count_bracket: data.employee_count_bracket || (data.user_type === "individual" ? null : "5인 미만"),
+          interests: data.interests,
+          user_type: data.user_type || "business",
+          age_range: data.age_range || null,
+          income_level: data.income_level || null,
+          family_type: data.family_type || null,
+          employment_status: data.employment_status || null,
+        };
 
-      if (data.push_enabled) {
-        subscribePush(bn);
+        await fetch(`${API}/api/save-profile`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(profilePayload),
+        });
       }
 
       const meRes = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
       if (meRes.ok) setProfileData((await meRes.json()).user);
 
-      toast("프로필 설정이 완료되었습니다! AI 매칭을 시작합니다.", "success");
+      toast("가입이 완료되었습니다!", "success");
       await performMatching(bn, true);
     } catch {
       toast("처리 중 오류가 발생했습니다.", "error");

@@ -23,10 +23,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
-  // PortOne iframe 잔여물 강제 정리
+  // PortOne iframe 잔여물 정리
   const cleanupPortone = () => {
     document.getElementById("imp-iframe-wrapper")?.remove();
-    document.getElementById("portone-force-close")?.remove();
     document.querySelectorAll("iframe[src*='portone'], iframe[src*='iamport']").forEach(el => {
       (el as HTMLElement).closest("div[style*='z-index']")?.remove();
     });
@@ -37,69 +36,53 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     try {
       const token = getToken();
 
-      // PortOne 호출 + 에러 다이얼로그 감지 시 강제 닫기 버튼 추가
-      const billingKeyResponse = await Promise.race([
-        PortOne.requestIssueBillingKey({
-          storeId: STORE_ID,
-          channelKey: CHANNEL_KEY,
-          billingKeyMethod: "CARD",
-        }),
-        new Promise<{ code: string; message: string }>((resolve) => {
-          const interval = setInterval(() => {
-            const wrapper = document.getElementById("imp-iframe-wrapper");
-            if (!wrapper) return;
-            if (document.getElementById("portone-force-close")) return;
-            // 강제 닫기 버튼 추가 (PortOne iframe 위에 z-100000)
-            const btn = document.createElement("button");
-            btn.id = "portone-force-close";
-            btn.textContent = "✕ 닫기";
-            Object.assign(btn.style, {
-              position: "fixed", top: "12px", right: "12px", zIndex: "100000",
-              padding: "12px 28px", background: "#ef4444", color: "white",
-              border: "none", borderRadius: "12px", fontWeight: "bold",
-              fontSize: "16px", cursor: "pointer",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-            });
-            btn.onclick = () => {
-              wrapper.remove();
-              btn.remove();
-              clearInterval(interval);
-              resolve({ code: "FORCE_CLOSED", message: "" });
-            };
-            document.body.appendChild(btn);
-          }, 2000);
-        }),
-      ]);
+      console.log("[Payment] requestIssueBillingKey 호출...", { storeId: STORE_ID, channelKey: CHANNEL_KEY });
+      const billingKeyResponse = await PortOne.requestIssueBillingKey({
+        storeId: STORE_ID,
+        channelKey: CHANNEL_KEY,
+        billingKeyMethod: "CARD",
+      });
+      console.log("[Payment] billingKeyResponse:", JSON.stringify(billingKeyResponse));
 
-      if (billingKeyResponse?.code) {
+      const billingKey = (billingKeyResponse as any)?.billingKey;
+      console.log("[Payment] billingKey:", billingKey, "code:", billingKeyResponse?.code);
+
+      // 사용자 취소
+      if (billingKeyResponse?.code === "USER_CANCEL") {
         cleanupPortone();
-        if (billingKeyResponse.code !== "USER_CANCEL" && billingKeyResponse.code !== "FORCE_CLOSED") {
-          toast(billingKeyResponse.message || "카드 등록 실패", "error");
-        }
-        onClose();
+        setLoading(false);
         return;
       }
 
-      const billingKey = (billingKeyResponse as any)?.billingKey;
+      // 빌링키가 없으면 에러
       if (!billingKey) {
         cleanupPortone();
-        onClose();
-        toast("카드 등록에 실패했습니다.", "error");
+        console.log("[Payment] 빌링키 없음, 에러:", billingKeyResponse?.code, billingKeyResponse?.message);
+        toast(billingKeyResponse?.message || "카드 등록에 실패했습니다. 다시 시도해주세요.", "error");
+        setLoading(false);
         return;
+      }
+
+      // 빌링키가 발급됐으면 PG 에러가 있어도 진행 (테스트 환경 호환)
+      if (billingKeyResponse?.code) {
+        console.log("[Payment] PG 경고 (빌링키 발급됨):", billingKeyResponse.code, billingKeyResponse.message);
       }
 
       // 백엔드로 빌링키 전달 → 무료 체험 시작
+      console.log("[Payment] 백엔드 subscribe 호출...");
       const res = await fetch(`${API}/api/plan/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan }),
       });
       const data = await res.json();
-      if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); return; }
-      toast(data.message, "success");
+      console.log("[Payment] subscribe 응답:", res.status, JSON.stringify(data));
+      if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); setLoading(false); return; }
+      toast(data.message || "구독이 시작되었습니다!", "success");
       onSuccess(data.token, data.plan);
     } catch (err: unknown) {
       cleanupPortone();
+      console.error("[Payment] 에러:", err);
       const msg = err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.";
       toast(msg, "error");
     } finally {
@@ -129,13 +112,16 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
   };
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${loading ? "pointer-events-none" : ""}`}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={loading ? undefined : onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
 
         <div className="relative z-10 p-5 sm:p-7">
+          {/* 닫기 버튼 (우상단) */}
+          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-lg z-20">✕</button>
+
           {/* Header */}
           <div className="text-center mb-5">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1">
@@ -165,7 +151,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
           {/* ── 유료 플랜 ── */}
           <div className="mb-4 space-y-3">
-            {/* 개인 LITE or 사업자 LITE */}
+            {/* 개인 LITE or 사업자 LITE — 이미 LITE/PRO면 숨김 */}
+            {!["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") && (
             <div className="rounded-xl border-2 border-indigo-200 overflow-hidden hover:border-indigo-400 transition-all">
               <div className="bg-indigo-50 px-4 py-2.5 border-b border-indigo-200 flex items-center justify-between">
                 <div>
@@ -200,8 +187,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <p className="text-[9px] text-slate-400 text-center mt-1.5">카드 등록 후 1개월 무료, 이후 월 {isIndividual ? "2,900" : "4,900"}원 자동결제</p>
               </div>
             </div>
+            )}
 
-            {/* 사업자 PRO — 사업자/both만 표시 */}
+            {/* 사업자 PRO — 사업자/both만 표시, LITE 사용자도 PRO 업그레이드 가능 */}
             {isBusiness && (
               <div className="rounded-xl border-2 border-violet-200 overflow-hidden hover:border-violet-400 transition-all relative">
                 <div className="absolute -top-0.5 right-3 px-2 py-0.5 bg-violet-600 text-white text-[9px] font-bold rounded-b-md">

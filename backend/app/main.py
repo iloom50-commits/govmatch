@@ -3519,8 +3519,8 @@ def _format_analysis_response(announcement_id: int, analysis: dict, announcement
 
 
 @app.get("/api/v1/announcements/{announcement_id}/analysis")
-def api_get_analysis(announcement_id: int, _: None = Depends(_verify_api_key)):
-    """저장된 분석 데이터 조회 (블로그봇용)"""
+def api_get_analysis(announcement_id: int, raw: bool = False, _: None = Depends(_verify_api_key)):
+    """저장된 분석 데이터 조회 (블로그봇용). raw=true면 DB 원본 데이터 포함"""
     conn = get_db_connection()
     try:
         from app.services.doc_analysis_service import get_deep_analysis
@@ -3537,8 +3537,19 @@ def api_get_analysis(announcement_id: int, _: None = Depends(_verify_api_key)):
             raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
 
         result = _format_analysis_response(announcement_id, analysis, dict(ann))
+        response = {"status": "SUCCESS", "data": result}
+
+        # raw=true면 DB 원본 데이터도 포함 (디버그용)
+        if raw:
+            response["_raw"] = {
+                "parsed_sections": analysis.get("parsed_sections", {}),
+                "deep_analysis": analysis.get("deep_analysis", {}),
+                "full_text_length": len(analysis.get("full_text") or ""),
+                "full_text_preview": (analysis.get("full_text") or "")[:500],
+            }
+
         conn.close()
-        return {"status": "SUCCESS", "data": result}
+        return response
     except HTTPException:
         raise
     except Exception as e:

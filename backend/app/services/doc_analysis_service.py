@@ -57,6 +57,92 @@ _ATTACHMENT_EXTS = {".pdf", ".hwp", ".hwpx", ".docx", ".doc", ".zip"}
 _DOWNLOAD_PATTERNS = ["filedown", "download", "atchfile", "file_down", "cmm/fms"]
 
 
+# 정부24/bizinfo 등 "바로가기" 링크 패턴
+_REDIRECT_PATTERNS = [
+    # 정부24: 원본 사이트로 이동하는 바로가기
+    re.compile(r'href=["\']([^"\']*(?:applySvc|goOutLink|redirect|moveUrl)[^"\']*)["\']', re.I),
+]
+_REDIRECT_TEXT_PATTERNS = ["바로가기", "원문보기", "신청하기", "신청 바로가기", "홈페이지 바로가기", "상세보기"]
+
+# 정부24 가이드 등 무시할 첨부파일 패턴
+_IGNORE_ATTACHMENT_PATTERNS = [
+    "guide", "이용안내", "매뉴얼", "manual", "user_guide", "userguide",
+    "Government24", "정부24", "이용가이드",
+]
+
+
+def _is_ignorable_attachment(name: str, content_preview: bytes = b"") -> bool:
+    """사이트 공통 가이드 등 무시할 첨부파일인지 판별"""
+    name_lower = name.lower()
+    for pat in _IGNORE_ATTACHMENT_PATTERNS:
+        if pat.lower() in name_lower:
+            return True
+    # content 첫 500바이트에서 Government24 등이 발견되면 무시
+    if content_preview:
+        preview_text = content_preview[:500].decode("utf-8", errors="ignore").lower()
+        if "government24" in preview_text or "user guide" in preview_text:
+            return True
+    return False
+
+
+def discover_redirect_links(page_url: str) -> List[str]:
+    """
+    정부24/bizinfo 등 공고 페이지에서 '바로가기' 링크를 찾아 원본 사이트 URL을 추출.
+    Returns: [원본 사이트 URL 리스트]
+    """
+    if not page_url:
+        return []
+    try:
+        resp = requests.get(page_url, headers=_HEADERS, timeout=15, allow_redirects=True)
+        resp.encoding = "utf-8"
+    except Exception as e:
+        print(f"[Crawler] Redirect page fetch failed: {e}")
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    base_url = f"{urlparse(page_url).scheme}://{urlparse(page_url).netloc}"
+    redirect_urls = []
+    seen = set()
+
+    # 방법 1: "바로가기" 텍스트가 있는 링크
+    for a_tag in soup.find_all("a", href=True):
+        text = a_tag.get_text(strip=True)
+        href = a_tag["href"].strip()
+
+        if any(pat in text for pat in _REDIRECT_TEXT_PATTERNS):
+            # javascript: onclick 처리
+            if href.startswith("javascript:"):
+                onclick = a_tag.get("onclick", "")
+                url_match = re.search(r"['\"]((https?://[^'\"]+))['\"]", onclick)
+                if url_match:
+                    href = url_match.group(1)
+                else:
+                    continue
+
+            full_url = href if href.startswith("http") else urljoin(base_url, href)
+            # 같은 사이트 내부 링크는 제외 (정부24 내부)
+            if urlparse(full_url).netloc == urlparse(page_url).netloc:
+                continue
+            if full_url not in seen:
+                seen.add(full_url)
+                redirect_urls.append(full_url)
+                print(f"[Crawler] Found redirect: {text[:20]} -> {full_url[:80]}")
+
+    # 방법 2: meta refresh 또는 iframe으로 외부 URL이 있는 경우
+    for meta in soup.find_all("meta", attrs={"http-equiv": "refresh"}):
+        content = meta.get("content", "")
+        url_match = re.search(r"url=(.+)", content, re.I)
+        if url_match:
+            url = url_match.group(1).strip().strip("'\"")
+            if url.startswith("http") and urlparse(url).netloc != urlparse(page_url).netloc:
+                if url not in seen:
+                    seen.add(url)
+                    redirect_urls.append(url)
+
+    print(f"[Crawler] Found {len(redirect_urls)} redirect links from {page_url[:60]}")
+    return redirect_urls
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 1단계: 첨부파일 감지 + 다운로드
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -261,28 +347,69 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
     source_type = "html"
     attachment_names = []
 
-    # 1) 첨부파일에서 텍스트 추출 시도
-    attachments = discover_attachments(page_url)
-    for att in attachments:
-        if att["type"] in ("pdf", "hwp", "hwpx", "docx", "ole", "unknown"):
-            content, detected = download_attachment(att["url"])
-            if not content:
+    def _process_attachments(url: str, label: str = ""):
+        """주어진 URL에서 첨부파일을 찾아 텍스트 추출"""
+        nonlocal source_type
+        found = 0
+        attachments = discover_attachments(url)
+        for att in attachments:
+            # 사이트 공통 가이드 파일 무시
+            if _is_ignorable_attachment(att["name"]):
+                print(f"[Crawler] Skipping ignorable: {att['name']}")
                 continue
 
-            # unknown이면 magic bytes로 재판별
-            if att["type"] == "unknown":
-                detected = _detect_file_type(content, "")
-            else:
-                detected = att["type"]
+            if att["type"] in ("pdf", "hwp", "hwpx", "docx", "ole", "unknown"):
+                content, detected = download_attachment(att["url"])
+                if not content:
+                    continue
 
-            text = extract_text_from_bytes(content, detected, max_chars)
-            if text and len(text) > 100:
-                all_texts.append(f"[첨부: {att['name']}]\n{text}")
-                source_type = detected
-                attachment_names.append(att["name"])
-                print(f"[Crawler] Extracted {len(text)} chars from {att['name']} ({detected})")
+                # 다운로드된 내용도 가이드인지 확인
+                if _is_ignorable_attachment(att["name"], content[:500]):
+                    print(f"[Crawler] Skipping (content check): {att['name']}")
+                    continue
 
-    # 2) 첨부파일에서 충분한 텍스트를 못 얻으면 HTML 본문도 추가
+                if att["type"] == "unknown":
+                    detected = _detect_file_type(content, "")
+                else:
+                    detected = att["type"]
+
+                text = extract_text_from_bytes(content, detected, max_chars)
+                if text and len(text) > 100:
+                    prefix = f"[{label}첨부: {att['name']}]" if label else f"[첨부: {att['name']}]"
+                    all_texts.append(f"{prefix}\n{text}")
+                    source_type = detected
+                    attachment_names.append(att["name"])
+                    found += 1
+                    print(f"[Crawler] Extracted {len(text)} chars from {att['name']} ({detected})")
+        return found
+
+    # 1) 공고 페이지에서 직접 첨부파일 추출
+    _process_attachments(page_url)
+
+    # 2) 첨부파일이 부족하면 "바로가기" 링크를 따라가서 원본 사이트 크롤링
+    total_from_step1 = sum(len(t) for t in all_texts)
+    if total_from_step1 < 500:
+        redirect_urls = discover_redirect_links(page_url)
+        for rurl in redirect_urls[:3]:  # 최대 3개 원본 사이트 탐색
+            print(f"[Crawler] Following redirect -> {rurl[:80]}")
+
+            # 원본 사이트에서 첨부파일 추출
+            found = _process_attachments(rurl, "원본사이트 ")
+
+            # 첨부파일이 없으면 원본 사이트 HTML 본문 추출
+            if found == 0:
+                html_text, _ = extract_text_from_url(rurl)
+                if html_text and len(html_text) > 200:
+                    all_texts.append(f"[원본사이트 본문]\n{html_text}")
+                    if not attachment_names:
+                        source_type = "redirect_html"
+                    print(f"[Crawler] Extracted {len(html_text)} chars from redirect HTML")
+
+            # 충분한 텍스트를 얻었으면 중단
+            if sum(len(t) for t in all_texts) >= 500:
+                break
+
+    # 3) 그래도 부족하면 공고 페이지 HTML 본문 추출
     total_from_attachments = sum(len(t) for t in all_texts)
     if total_from_attachments < 500:
         html_text, _ = extract_text_from_url(page_url)
@@ -291,7 +418,7 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
             if not attachment_names:
                 source_type = "html"
 
-    # 3) 그래도 부족하면 summary_text fallback
+    # 4) 그래도 부족하면 summary_text fallback
     total_text = sum(len(t) for t in all_texts)
     if total_text < 200 and summary_text:
         all_texts.append(f"[요약 정보]\n{summary_text}")

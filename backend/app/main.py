@@ -3407,6 +3407,136 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     return {"status": "SUCCESS", "message": f"프로필이 업데이트되었습니다.{price_notice}"}
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 공고 분석 API (블로그봇 + 앱 공용)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BLOG_API_KEY = os.getenv("BLOG_API_KEY", "")
+
+def _verify_api_key(x_api_key: Optional[str] = Header(None)):
+    """블로그봇용 API Key 인증"""
+    if not BLOG_API_KEY:
+        raise HTTPException(status_code=500, detail="BLOG_API_KEY가 설정되지 않았습니다.")
+    if x_api_key != BLOG_API_KEY:
+        raise HTTPException(status_code=401, detail="유효하지 않은 API Key입니다.")
+
+
+def _format_analysis_response(announcement_id: int, analysis: dict, announcement: dict) -> dict:
+    """분석 데이터를 블로그봇/앱 공용 응답 스키마로 변환"""
+    da = analysis.get("deep_analysis", {}) or {}
+    ps = analysis.get("parsed_sections", {}) or {}
+
+    # 신청 절차 파싱
+    steps_raw = da.get("application_steps") or ps.get("신청절차") or ps.get("신청방법") or []
+    application_steps = []
+    if isinstance(steps_raw, list):
+        for i, s in enumerate(steps_raw):
+            if isinstance(s, dict):
+                application_steps.append({"step": i + 1, "title": s.get("title", ""), "detail": s.get("detail", s.get("description", ""))})
+            elif isinstance(s, str):
+                application_steps.append({"step": i + 1, "title": s, "detail": ""})
+    elif isinstance(steps_raw, str):
+        for i, line in enumerate(steps_raw.split("\n")):
+            if line.strip():
+                application_steps.append({"step": i + 1, "title": line.strip(), "detail": ""})
+
+    # 제출서류 파싱
+    docs_raw = da.get("required_documents") or ps.get("제출서류") or ps.get("구비서류") or []
+    if isinstance(docs_raw, str):
+        docs_raw = [d.strip() for d in docs_raw.replace(",", "\n").split("\n") if d.strip()]
+
+    return {
+        "announcement_id": announcement_id,
+        "title": announcement.get("title", ""),
+        "eligibility_detail": da.get("eligibility_detail") or da.get("target_description") or ps.get("지원대상") or ps.get("자격요건") or "",
+        "required_documents": docs_raw if isinstance(docs_raw, list) else [],
+        "application_method": da.get("application_method") or ps.get("신청방법") or "",
+        "application_url": da.get("application_url") or announcement.get("origin_url") or "",
+        "application_steps": application_steps,
+        "support_detail": da.get("support_detail") or ps.get("지원내용") or ps.get("지원금액") or "",
+        "selection_criteria": da.get("selection_criteria") or ps.get("선정기준") or "",
+        "target_age": da.get("target_age") or "",
+        "target_region": da.get("target_region") or announcement.get("region") or "",
+        "target_family": da.get("target_family") or "",
+        "deadline_date": str(announcement.get("deadline_date") or ""),
+        "department": announcement.get("department") or "",
+        "category": announcement.get("category") or "",
+        "origin_url": announcement.get("origin_url") or "",
+        "analyzed_at": str(analysis.get("updated_at") or datetime.datetime.utcnow().isoformat()),
+        "source": analysis.get("source_type") or "unknown",
+        "has_full_text": bool(analysis.get("full_text")),
+    }
+
+
+@app.get("/api/v1/announcements/{announcement_id}/analysis")
+def api_get_analysis(announcement_id: int, _: None = Depends(_verify_api_key)):
+    """저장된 분석 데이터 조회 (블로그봇용)"""
+    conn = get_db_connection()
+    try:
+        from app.services.doc_analysis_service import get_deep_analysis
+        analysis = get_deep_analysis(announcement_id, conn)
+        if not analysis:
+            conn.close()
+            raise HTTPException(status_code=404, detail="분석 데이터가 없습니다. POST /analyze로 분석을 먼저 실행하세요.")
+
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
+        ann = cur.fetchone()
+        if not ann:
+            conn.close()
+            raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+
+        result = _format_analysis_response(announcement_id, analysis, dict(ann))
+        conn.close()
+        return {"status": "SUCCESS", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/announcements/{announcement_id}/analyze")
+def api_analyze_announcement(announcement_id: int, _: None = Depends(_verify_admin)):
+    """공고 원문 크롤링 + AI 분석 + DB 저장 (admin 전용)"""
+    conn = get_db_connection()
+    try:
+        from app.services.doc_analysis_service import ensure_analysis, get_deep_analysis
+
+        # 이미 분석됐으면 바로 반환
+        existing = get_deep_analysis(announcement_id, conn)
+        if existing and existing.get("full_text"):
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
+            ann = cur.fetchone()
+            if ann:
+                result = _format_analysis_response(announcement_id, existing, dict(ann))
+                conn.close()
+                return {"status": "SUCCESS", "cached": True, "data": result}
+
+        # 실시간 분석
+        analysis = ensure_analysis(announcement_id, conn)
+        if not analysis:
+            conn.close()
+            raise HTTPException(status_code=422, detail="분석 실패: 원문 접근 불가 또는 AI 분석 오류")
+
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
+        ann = cur.fetchone()
+        if not ann:
+            conn.close()
+            raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+
+        result = _format_analysis_response(announcement_id, analysis, dict(ann))
+        conn.close()
+        return {"status": "SUCCESS", "cached": False, "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 from app.services.sync_service import sync_service
 
 def _run_sync_in_thread():

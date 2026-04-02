@@ -739,7 +739,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {planStatus.label}
             </span>
             {planStatus.days_left != null && planStatus.days_left > 0 && (
-              <span className="text-[11px] font-semibold text-slate-400">D-{planStatus.days_left}</span>
+              <span className="text-[11px] font-semibold text-slate-400">
+                {((planStatus.plan === "pro" && planStatus.days_left <= 7) || (planStatus.plan === "lite" && planStatus.days_left <= 30)) ? "무료체험 " : ""}D-{planStatus.days_left}
+              </span>
             )}
           </div>
           {/* 기능별 상태 요약 */}

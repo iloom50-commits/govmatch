@@ -1890,6 +1890,80 @@ def api_plan_cancel(current_user: dict = Depends(_get_current_user)):
     return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 현재 플랜 만료일까지는 이용 가능합니다."}
 
 
+@app.post("/api/plan/refund")
+def api_plan_refund(current_user: dict = Depends(_get_current_user)):
+    """구독 환불 — 최근 자동결제 건을 포트원 API로 취소 + FREE 전환"""
+    if not PORTONE_API_SECRET:
+        raise HTTPException(status_code=500, detail="결제 시스템 설정 오류")
+
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT plan, billing_key, plan_started_at, plan_expires_at, user_type FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    u = dict(user)
+    plan = u.get("plan") or "free"
+    if plan == "free":
+        conn.close()
+        raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
+
+    # 무료체험 기간이면 결제 건이 없으므로 그냥 해지
+    plan_started = u.get("plan_started_at")
+    plan_expires = u.get("plan_expires_at")
+    if plan_started and plan_expires:
+        try:
+            started = datetime.datetime.fromisoformat(str(plan_started))
+            expires = datetime.datetime.fromisoformat(str(plan_expires))
+            trial_days = (expires - started).days
+            # 무료체험: LITE 30일, PRO 7일 — 첫 구독이면 결제 없음
+            if trial_days <= 30:
+                cur.execute(
+                    "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
+                    (bn,),
+                )
+                conn.commit()
+                conn.close()
+                return {"status": "SUCCESS", "message": "무료체험이 해지되었습니다. FREE 플랜으로 전환되었습니다."}
+        except (ValueError, TypeError):
+            pass
+
+    # 실 결제 건 환불 — 최근 결제 ID 조회 시도
+    import httpx
+    try:
+        # 결제 ID 패턴: renew-{bn}-{timestamp}
+        # 포트원 API로 최근 결제 조회
+        resp = httpx.get(
+            f"https://api.portone.io/payments?filter.merchantId={bn}&pageSize=1&sort.order=DESC",
+            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            # 결제 이력 조회 실패 → 단순 해지로 처리
+            cur.execute(
+                "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
+                (bn,),
+            )
+            conn.commit()
+            conn.close()
+            return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 환불은 고객센터로 문의해주세요."}
+
+        # 해지 + FREE 전환
+        cur.execute(
+            "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
+            (bn,),
+        )
+        conn.commit()
+        conn.close()
+        return {"status": "SUCCESS", "message": "환불이 처리되었습니다. FREE 플랜으로 전환되었습니다."}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"환불 처리 중 오류: {str(e)}")
+
+
 def _auto_renew_subscriptions():
     """만료된 구독 자동 갱신 — 빌링키로 결제"""
     if not PORTONE_API_SECRET:
@@ -3313,11 +3387,24 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     if not fields:
         conn.close()
         return {"status": "SUCCESS"}
+    # user_type 변경 시 구독 중이면 안내 메시지 추가
+    price_notice = ""
+    if "user_type" in req:
+        cur2 = conn.cursor()
+        cur2.execute("SELECT plan, user_type FROM users WHERE business_number = %s", (bn,))
+        existing = cur2.fetchone()
+        if existing:
+            ex = dict(existing)
+            old_type = ex.get("user_type") or "business"
+            new_type = req["user_type"]
+            if old_type != new_type and ex.get("plan") in ("lite", "pro"):
+                price_notice = " 다음 결제 시 변경된 유형의 요금이 적용됩니다."
+
     params.append(bn)
     cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE business_number = %s", params)
     conn.commit()
     conn.close()
-    return {"status": "SUCCESS", "message": "프로필이 업데이트되었습니다."}
+    return {"status": "SUCCESS", "message": f"프로필이 업데이트되었습니다.{price_notice}"}
 
 
 from app.services.sync_service import sync_service

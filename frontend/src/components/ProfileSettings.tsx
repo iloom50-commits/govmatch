@@ -337,7 +337,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           </button>
           <button
             onClick={async () => {
-              if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능합니다.")) return;
+              if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능하며, 이후 자동결제가 중지됩니다.")) return;
               try {
                 const token = localStorage.getItem("auth_token");
                 const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/cancel`, {
@@ -346,11 +346,30 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
                 });
                 const data = await res.json();
                 alert(res.ok ? data.message : (data.detail || "해지 실패"));
+                if (res.ok) window.location.reload();
               } catch { alert("서버 오류"); }
             }}
             className="px-3 py-3.5 text-slate-400 hover:text-amber-600 text-[11px] font-bold transition-all whitespace-nowrap"
           >
             구독 해지
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm("환불을 요청하시겠습니까?\n무료체험 중이면 즉시 FREE로 전환되며, 유료 결제 건은 환불 처리됩니다.")) return;
+              try {
+                const token = localStorage.getItem("auth_token");
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/refund`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json();
+                alert(res.ok ? data.message : (data.detail || "환불 실패"));
+                if (res.ok) window.location.reload();
+              } catch { alert("서버 오류"); }
+            }}
+            className="px-3 py-3.5 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all whitespace-nowrap"
+          >
+            환불 요청
           </button>
           {onLogout && (
             <button

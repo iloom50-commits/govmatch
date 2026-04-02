@@ -853,17 +853,27 @@ def get_deep_analysis(announcement_id: int, db_conn) -> Optional[Dict[str, Any]]
         return None
 
 
-def ensure_analysis(announcement_id: int, db_conn) -> Optional[Dict[str, Any]]:
+def ensure_analysis(announcement_id: int, db_conn, force: bool = False) -> Optional[Dict[str, Any]]:
     """
     분석 데이터가 있으면 반환, 없으면 실시간 분석 후 반환.
-    상담 시작 전 호출하는 통합 함수.
+    force=True면 기존 데이터를 삭제하고 재크롤링+재분석.
 
     Returns: 분석 데이터 dict 또는 None (분석 불가)
     """
-    # 1) 이미 분석된 데이터 확인
-    existing = get_deep_analysis(announcement_id, db_conn)
-    if existing and existing.get("full_text"):
-        return existing
+    # force면 기존 분석 삭제
+    if force:
+        try:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = %s", (announcement_id,))
+            db_conn.commit()
+            print(f"[DocAnalysis] Force: deleted existing analysis for #{announcement_id}")
+        except Exception:
+            db_conn.rollback()
+    else:
+        # 이미 분석된 데이터 확인
+        existing = get_deep_analysis(announcement_id, db_conn)
+        if existing and existing.get("full_text"):
+            return existing
 
     # 2) 공고 정보 조회
     cur = db_conn.cursor()

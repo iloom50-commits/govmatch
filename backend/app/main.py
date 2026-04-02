@@ -3589,8 +3589,8 @@ def api_analyze_announcement(announcement_id: int, force: bool = False, _: None 
                     conn.close()
                     return {"status": "SUCCESS", "cached": True, "data": result}
 
-        # 실시간 분석
-        analysis = ensure_analysis(announcement_id, conn)
+        # 실시간 분석 (force면 재크롤링+재분석)
+        analysis = ensure_analysis(announcement_id, conn, force=force)
         if not analysis:
             conn.close()
             raise HTTPException(status_code=422, detail="분석 실패: 원문 접근 불가 또는 AI 분석 오류")

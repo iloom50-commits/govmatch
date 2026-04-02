@@ -3422,37 +3422,91 @@ def _format_analysis_response(announcement_id: int, analysis: dict, announcement
     da = analysis.get("deep_analysis", {}) or {}
     ps = analysis.get("parsed_sections", {}) or {}
 
-    # 신청 절차 파싱
-    steps_raw = da.get("application_steps") or ps.get("신청절차") or ps.get("신청방법") or []
-    application_steps = []
-    if isinstance(steps_raw, list):
-        for i, s in enumerate(steps_raw):
-            if isinstance(s, dict):
-                application_steps.append({"step": i + 1, "title": s.get("title", ""), "detail": s.get("detail", s.get("description", ""))})
-            elif isinstance(s, str):
-                application_steps.append({"step": i + 1, "title": s, "detail": ""})
-    elif isinstance(steps_raw, str):
-        for i, line in enumerate(steps_raw.split("\n")):
-            if line.strip():
-                application_steps.append({"step": i + 1, "title": line.strip(), "detail": ""})
+    # eligibility_detail: deep_analysis 구조체 또는 parsed_sections 텍스트
+    elig = da.get("eligibility_detail")
+    if isinstance(elig, dict):
+        # 구조체를 읽기 좋은 텍스트로도 변환
+        elig_text = ""
+        parts = []
+        if elig.get("region") and elig["region"] != "전국":
+            parts.append(f"지역: {elig['region']}")
+        if elig.get("business_types"):
+            parts.append(f"대상: {', '.join(elig['business_types'])}")
+        if elig.get("other_conditions"):
+            parts.extend(elig["other_conditions"])
+        elig_text = " / ".join(parts) if parts else ""
+        elig_combined = elig_text or ps.get("eligibility") or ""
+    else:
+        elig_combined = elig or ps.get("eligibility") or ""
 
-    # 제출서류 파싱
-    docs_raw = da.get("required_documents") or ps.get("제출서류") or ps.get("구비서류") or []
-    if isinstance(docs_raw, str):
-        docs_raw = [d.strip() for d in docs_raw.replace(",", "\n").split("\n") if d.strip()]
+    # 제출서류: deep_analysis.required_documents (list of dict) 또는 parsed_sections.required_docs (text)
+    docs_raw = da.get("required_documents") or []
+    docs_list = []
+    if isinstance(docs_raw, list):
+        for d in docs_raw:
+            if isinstance(d, dict):
+                docs_list.append(d.get("doc_name", str(d)))
+            elif isinstance(d, str):
+                docs_list.append(d)
+    if not docs_list:
+        # fallback: parsed_sections에서 추출
+        ps_docs = ps.get("required_docs") or ""
+        if isinstance(ps_docs, str) and ps_docs:
+            docs_list = [line.strip().lstrip("- ·•◦") for line in ps_docs.split("\n") if line.strip() and len(line.strip()) > 1]
+
+    # 신청방법
+    app_method = ps.get("application_method") or ""
+    if isinstance(app_method, str) and app_method:
+        app_method_text = app_method
+    else:
+        app_method_text = da.get("application_method") or ""
+
+    # 신청절차 → steps 파싱
+    application_steps = []
+    timeline_raw = ps.get("timeline") or ""
+    if isinstance(timeline_raw, str) and timeline_raw:
+        for i, line in enumerate(timeline_raw.split("\n")):
+            line = line.strip().lstrip("- ·•◦0123456789.)")
+            if line and len(line) > 2:
+                application_steps.append({"step": i + 1, "title": line, "detail": ""})
+
+    # 지원내용
+    support_raw = ps.get("support_details") or ""
+    support_summary = da.get("support_summary") or {}
+    if isinstance(support_summary, dict) and support_summary.get("amount"):
+        support_text = f"{support_summary.get('amount', '')} ({support_summary.get('duration', '')}, {support_summary.get('method', '')})"
+    elif isinstance(support_raw, str) and support_raw:
+        support_text = support_raw[:500]
+    else:
+        support_text = ""
+
+    # 선정기준
+    eval_raw = ps.get("evaluation_criteria") or ""
+    eval_weights = da.get("evaluation_weights") or []
+    if isinstance(eval_weights, list) and eval_weights:
+        sel_criteria = " / ".join(f"{e.get('criteria','')}({e.get('weight','')})" for e in eval_weights if isinstance(e, dict))
+    elif isinstance(eval_raw, str):
+        sel_criteria = eval_raw[:300]
+    else:
+        sel_criteria = ""
 
     return {
         "announcement_id": announcement_id,
         "title": announcement.get("title", ""),
-        "eligibility_detail": da.get("eligibility_detail") or da.get("target_description") or ps.get("지원대상") or ps.get("자격요건") or "",
-        "required_documents": docs_raw if isinstance(docs_raw, list) else [],
-        "application_method": da.get("application_method") or ps.get("신청방법") or "",
+        "eligibility_detail": elig_combined,
+        "eligibility_raw": ps.get("eligibility") or "",
+        "exclusions": ps.get("exclusions") or "",
+        "required_documents": docs_list,
+        "application_method": app_method_text,
         "application_url": da.get("application_url") or announcement.get("origin_url") or "",
         "application_steps": application_steps,
-        "support_detail": da.get("support_detail") or ps.get("지원내용") or ps.get("지원금액") or "",
-        "selection_criteria": da.get("selection_criteria") or ps.get("선정기준") or "",
+        "support_detail": support_text,
+        "support_summary": support_summary if isinstance(support_summary, dict) else {},
+        "selection_criteria": sel_criteria,
+        "bonus_items": da.get("bonus_items") or [],
+        "key_warnings": da.get("key_warnings") or [],
         "target_age": da.get("target_age") or "",
-        "target_region": da.get("target_region") or announcement.get("region") or "",
+        "target_region": da.get("target_region") or (da.get("eligibility_detail", {}) or {}).get("region", "") or announcement.get("region") or "",
         "target_family": da.get("target_family") or "",
         "deadline_date": str(announcement.get("deadline_date") or ""),
         "department": announcement.get("department") or "",
@@ -3506,22 +3560,23 @@ def _verify_api_key_or_admin(authorization: Optional[str] = Header(None), x_api_
 
 
 @app.post("/api/v1/announcements/{announcement_id}/analyze")
-def api_analyze_announcement(announcement_id: int, _: None = Depends(_verify_api_key_or_admin)):
-    """공고 원문 크롤링 + AI 분석 + DB 저장 (admin 전용)"""
+def api_analyze_announcement(announcement_id: int, force: bool = False, _: None = Depends(_verify_api_key_or_admin)):
+    """공고 원문 크롤링 + AI 분석 + DB 저장"""
     conn = get_db_connection()
     try:
         from app.services.doc_analysis_service import ensure_analysis, get_deep_analysis
 
-        # 이미 분석됐으면 바로 반환
-        existing = get_deep_analysis(announcement_id, conn)
-        if existing and existing.get("full_text"):
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
-            ann = cur.fetchone()
-            if ann:
-                result = _format_analysis_response(announcement_id, existing, dict(ann))
-                conn.close()
-                return {"status": "SUCCESS", "cached": True, "data": result}
+        # 이미 분석됐으면 바로 반환 (force=True면 재분석)
+        if not force:
+            existing = get_deep_analysis(announcement_id, conn)
+            if existing and existing.get("full_text"):
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
+                ann = cur.fetchone()
+                if ann:
+                    result = _format_analysis_response(announcement_id, existing, dict(ann))
+                    conn.close()
+                    return {"status": "SUCCESS", "cached": True, "data": result}
 
         # 실시간 분석
         analysis = ensure_analysis(announcement_id, conn)

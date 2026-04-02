@@ -200,6 +200,11 @@ def get_matches_for_user(user_profile):
             # 완전 커스텀 입력 → 그대로 키워드로 사용
             interest_keywords.append(tag)
 
+    # 맞춤 키워드 추가 (custom_keywords)
+    custom_kw_raw = user_profile.get("custom_keywords") or ""
+    custom_kw_list = [k.strip() for k in custom_kw_raw.split(",") if k.strip()]
+    interest_keywords.extend(custom_kw_list)
+
     is_soho = _is_soho(user_profile)
     # 관심지역: 쉼표 구분 문자열 → 정규화된 리스트
     raw_city = user_profile.get("address_city", "")
@@ -541,6 +546,10 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     user_interests_raw = user_profile.get("interests") or ""
     user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
 
+    # 맞춤 키워드
+    custom_kw_raw = user_profile.get("custom_keywords") or ""
+    custom_kw_list = [k.strip() for k in custom_kw_raw.split(",") if k.strip()]
+
     # 키워드 리스트 준비
     age_keywords = AGE_KEYWORD_MAP.get(user_age, [])
     income_keywords = INCOME_KEYWORD_MAP.get(user_income, [])
@@ -646,6 +655,14 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
                 if tag.lower() in theme:
                     score += 5.0
                     break
+
+        # H-2. 맞춤 키워드 매칭 (최대 15점)
+        if custom_kw_list:
+            kw_matched = [kw for kw in custom_kw_list if kw.lower() in search_text]
+            if kw_matched:
+                kw_score = min(15.0, len(set(kw_matched)) * 5.0)
+                score += kw_score
+                reasons.append(f'"{kw_matched[0]}" 키워드 매칭')
 
         # I. 마감일 가중치 (최대 5점) — 상시모집이 대부분이므로 마감 있는 건 부스트
         if ad.get("deadline_date"):

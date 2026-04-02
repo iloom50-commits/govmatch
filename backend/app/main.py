@@ -144,6 +144,25 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 개인 매칭용 프로필 컬럼 추가
+        for col_def in [
+            "gender VARCHAR(10) DEFAULT ''",
+            "age_range VARCHAR(20) DEFAULT ''",
+            "income_level VARCHAR(30) DEFAULT ''",
+            "family_type VARCHAR(30) DEFAULT ''",
+            "employment_status VARCHAR(30) DEFAULT ''",
+            "founded_date VARCHAR(20) DEFAULT ''",
+            "is_pre_founder BOOLEAN DEFAULT FALSE",
+            "certifications TEXT DEFAULT ''",
+            "custom_keywords TEXT DEFAULT ''",
+        ]:
+            try:
+                col_name = col_def.split()[0]
+                cursor.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_def}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         # kakao_refresh_token 컬럼 추가 (카카오톡 메시지 발송용)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_refresh_token TEXT")
@@ -1674,6 +1693,16 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
             "user_type": u.get("user_type"),
             "is_social": bool(u.get("kakao_id")),
             "social_provider": u.get("kakao_id", "").split(":")[0] if u.get("kakao_id") else None,
+            "custom_needs": u.get("custom_needs"),
+            "custom_keywords": u.get("custom_keywords"),
+            "gender": u.get("gender"),
+            "age_range": u.get("age_range"),
+            "income_level": u.get("income_level"),
+            "family_type": u.get("family_type"),
+            "employment_status": u.get("employment_status"),
+            "founded_date": u.get("founded_date"),
+            "is_pre_founder": u.get("is_pre_founder"),
+            "certifications": u.get("certifications"),
         },
         "plan": plan_status,
     }
@@ -3264,7 +3293,13 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     cur = conn.cursor()
     fields = []
     params = []
-    for key in ["user_type", "address_city", "revenue_bracket", "employee_count_bracket", "interests", "custom_needs"]:
+    allowed_keys = [
+        "user_type", "address_city", "revenue_bracket", "employee_count_bracket",
+        "interests", "custom_needs", "custom_keywords",
+        "gender", "age_range", "income_level", "family_type", "employment_status",
+        "founded_date", "is_pre_founder", "certifications",
+    ]
+    for key in allowed_keys:
         if key in req and req[key] is not None:
             fields.append(f"{key} = %s")
             params.append(req[key])

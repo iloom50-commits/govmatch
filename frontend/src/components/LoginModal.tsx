@@ -16,7 +16,11 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
+  const [showReset, setShowReset] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetPw, setResetPw] = useState("");
+  const [resetPwConfirm, setResetPwConfirm] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +44,29 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
     }
   };
 
+  const handleReset = async () => {
+    if (!resetEmail) { toast("이메일을 입력해주세요.", "error"); return; }
+    if (!resetPw || resetPw.length < 6) { toast("비밀번호를 6자 이상 입력해주세요.", "error"); return; }
+    if (resetPw !== resetPwConfirm) { toast("비밀번호가 일치하지 않습니다.", "error"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail, new_password: resetPw }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast(data.message, "success");
+        setShowReset(false);
+        setForm({ ...form, email: resetEmail });
+      } else {
+        toast(data.detail || "재설정 실패", "error");
+      }
+    } catch { toast("서버 오류", "error"); }
+    finally { setLoading(false); }
+  };
+
   const inputClass =
     "w-full p-3.5 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-medium outline-none";
 
@@ -60,7 +87,66 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
             </p>
           </div>
 
-          {!showEmail ? (
+          {showReset ? (
+            <>
+              <button
+                onClick={() => setShowReset(false)}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 font-bold transition-all mb-4"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                로그인으로 돌아가기
+              </button>
+
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-bold text-slate-900">비밀번호 재설정</h3>
+                <p className="text-xs text-slate-400 mt-1">가입한 이메일로 새 비밀번호를 설정하세요</p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">이메일</label>
+                  <input
+                    type="email"
+                    placeholder="가입한 이메일"
+                    className={inputClass}
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호</label>
+                  <input
+                    type="password"
+                    placeholder="6자 이상"
+                    className={inputClass}
+                    value={resetPw}
+                    onChange={(e) => setResetPw(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호 확인</label>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 재입력"
+                    className={inputClass}
+                    value={resetPwConfirm}
+                    onChange={(e) => setResetPwConfirm(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleReset()}
+                  />
+                </div>
+                <button
+                  onClick={handleReset}
+                  disabled={loading}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? "처리 중..." : "비밀번호 재설정"}
+                </button>
+              </div>
+            </>
+          ) : !showEmail ? (
             <>
               {/* 소셜 로그인 아이콘 */}
               <div className="flex items-center justify-center gap-5 mb-5">
@@ -158,10 +244,10 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
                   처음이신가요? 30초 무료가입
                 </button>
                 <button
-                  onClick={onClose}
-                  className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-all"
+                  onClick={() => { setShowReset(true); setResetEmail(form.email); }}
+                  className="text-xs text-slate-400 hover:text-indigo-600 font-medium transition-all"
                 >
-                  나중에 하기
+                  비밀번호를 잊으셨나요?
                 </button>
               </div>
             </>

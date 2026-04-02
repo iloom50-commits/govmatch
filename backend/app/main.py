@@ -1216,31 +1216,27 @@ def api_find_email(req: FindEmailRequest):
 
 class ResetPasswordRequest(BaseModel):
     email: str
-    company_name: str
-    business_number: str  # 추가 검증
     new_password: str
 
 
 @app.post("/api/auth/reset-password")
 def api_reset_password(req: ResetPasswordRequest):
+    if not req.email:
+        raise HTTPException(status_code=400, detail="이메일을 입력해주세요.")
     if not req.new_password or len(req.new_password) < 6:
         raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 합니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT business_number FROM users WHERE email = %s AND company_name = %s AND business_number = %s",
-        (req.email, req.company_name, req.business_number),
-    )
+    cursor.execute("SELECT business_number FROM users WHERE email = %s", (req.email,))
     user = cursor.fetchone()
     if not user:
         conn.close()
-        raise HTTPException(status_code=404, detail="일치하는 계정을 찾을 수 없습니다. 이메일, 회사명, 사업자번호를 확인해 주세요.")
+        raise HTTPException(status_code=404, detail="등록된 이메일을 찾을 수 없습니다.")
     new_hash = _hash_password(req.new_password)
-    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s AND business_number = %s",
-                   (new_hash, req.email, req.business_number))
+    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hash, req.email))
     conn.commit()
     conn.close()
-    return {"status": "SUCCESS", "message": "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해 주세요."}
+    return {"status": "SUCCESS", "message": "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해주세요."}
 
 
 @app.post("/api/auth/register")

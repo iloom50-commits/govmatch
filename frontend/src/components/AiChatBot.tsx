@@ -367,15 +367,23 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       }
 
       const data = await res.json();
+      const announcements = data.announcements || [];
       const aiMsg: ChatMessage = {
         role: "assistant",
         text: data.reply || "응답을 처리할 수 없습니다.",
         choices: data.choices || [],
-        announcements: data.announcements || [],
+        announcements: [],
         done: data.done || false,
       };
 
       setMessages([...chatHistory, aiMsg]);
+
+      // 관련 공고가 있으면 메인 대시보드에 표시
+      if (announcements.length > 0) {
+        window.dispatchEvent(new CustomEvent("consultant-match-result", {
+          detail: { matches: announcements, profile: null }
+        }));
+      }
     } catch {
       toast("서버 연결에 실패했습니다.", "error");
     }

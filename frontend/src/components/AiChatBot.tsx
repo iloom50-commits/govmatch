@@ -1198,7 +1198,7 @@ ${convHtml}
                   </p>
                   {isPro ? (
                     <div className="mt-2 px-2 py-1 bg-violet-100 rounded-lg inline-block">
-                      <span className="text-[11px] font-bold text-violet-700">매칭 실행 시 AI 1건 차감</span>
+                      <span className="text-[11px] font-bold text-violet-700">PRO — 무제한 이용 가능</span>
                     </div>
                   ) : (
                     <div className="mt-2 px-2 py-1 bg-slate-100 rounded-lg inline-block">
@@ -1419,7 +1419,7 @@ ${convHtml}
                 </svg>
                 맞춤 지원사업 매칭 실행
               </button>
-              <p className="text-center text-[12px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>
+              {!isPro && <p className="text-center text-[12px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>}
             </div>
           </>
         ) : (

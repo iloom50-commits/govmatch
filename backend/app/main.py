@@ -3368,6 +3368,42 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
     finally:
         conn.close()
 
+@app.post("/api/ai/parse-interests")
+def api_parse_interests(req: dict):
+    """사용자가 입력한 자유 텍스트를 카테고리로 매핑 (Gemini)"""
+    text = (req.get("text") or "").strip()
+    user_type = req.get("user_type", "business")
+    if not text:
+        return {"status": "SUCCESS", "interests": []}
+
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"status": "SUCCESS", "interests": [text]}
+
+    biz_cats = "창업지원,기술개발,수출마케팅,고용지원,시설개선,정책자금,디지털전환,판로개척,교육훈련,에너지환경,소상공인,R&D"
+    ind_cats = "취업,주거,교육,청년,출산,육아,다자녀,장학금,의료,장애,저소득,노인,문화"
+    cats = ind_cats if user_type == "individual" else biz_cats
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        resp = model.generate_content(
+            f"사용자가 관심분야를 다음과 같이 입력했습니다: \"{text}\"\n\n"
+            f"아래 카테고리 목록에서 관련된 것을 모두 골라 JSON 배열로만 반환하세요. 카테고리 목록: [{cats}]\n"
+            f"반드시 목록에 있는 정확한 단어만 사용하세요. 해당하는 것이 없으면 빈 배열 []을 반환하세요.\n"
+            f"JSON 배열만 반환. 다른 텍스트 없이.",
+            generation_config={"temperature": 0}
+        )
+        import json as _json
+        parsed = _json.loads(resp.text.strip().strip("`").replace("json\n", ""))
+        valid = [c for c in parsed if c in cats]
+        return {"status": "SUCCESS", "interests": valid if valid else [text]}
+    except Exception as e:
+        print(f"[ParseInterests] Error: {e}")
+        return {"status": "SUCCESS", "interests": [text]}
+
+
 @app.put("/api/profile")
 def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user)):
     """프로필 간편 업데이트 (알림 설정에서 호출)"""

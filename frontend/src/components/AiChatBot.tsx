@@ -649,18 +649,35 @@ ${convHtml}
   };
 
   // 폼에서 직접 매칭 실행
-  const handleFormSubmit = () => {
+  const handleFormSubmit = async () => {
     if (!isFormValid()) {
       toast("모든 항목을 입력해 주세요.", "error");
       return;
     }
+
+    // AI 관심분야 매핑: 자유 텍스트 → 카테고리
+    let mappedInterests = formProfile.interests.join(",");
+    const rawText = formProfile.interests.join(",");
+    if (rawText) {
+      try {
+        const res = await fetch(`${API}/api/ai/parse-interests`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: rawText, user_type: isIndividual ? "individual" : "business" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.interests?.length) mappedInterests = data.interests.join(",");
+        }
+      } catch {}
+    }
+
     const profile = {
       ...formProfile,
-      // 개인 모드: 기업 전용 필드 자동 설정
       industry_code: isIndividual ? "" : formProfile.industry_code,
       revenue_bracket: isIndividual ? "1억 미만" : formProfile.revenue_bracket,
       employee_count_bracket: isIndividual ? "5인 미만" : formProfile.employee_count_bracket,
-      interests: formProfile.interests.join(","),
+      interests: mappedInterests,
     };
     executeMatching(profile, [{
       role: "assistant" as const,
@@ -1383,28 +1400,19 @@ ${convHtml}
                 </div>
               </div>
 
-              {/* 관심분야 (멀티셀렉트 칩) */}
+              {/* 관심분야 — 자유 텍스트 입력 → AI 매핑 */}
               <div>
-                <label className="block text-[14px] font-bold text-slate-700 mb-1.5.5">
+                <label className="block text-[14px] font-bold text-slate-700 mb-1.5">
                   관심분야 <span className="text-red-400">*</span>
-                  <span className="font-normal text-slate-400 ml-1">(복수 선택 가능)</span>
                 </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(isIndividual ? INDIVIDUAL_INTEREST_OPTIONS : INTEREST_OPTIONS).map((interest) => (
-                    <button
-                      key={interest}
-                      type="button"
-                      onClick={() => toggleInterest(interest)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${
-                        formProfile.interests.includes(interest)
-                          ? "bg-violet-600 text-white border-violet-600"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-violet-300 hover:text-violet-600"
-                      }`}
-                    >
-                      {interest}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  value={formProfile.interests.join(", ")}
+                  onChange={(e) => updateForm("interests", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                  placeholder={isIndividual ? "예: 취업, 주거, 청년 지원" : "예: AI 기술개발, 해외진출, 정부 보조금"}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">자유롭게 입력하세요. AI가 자동으로 분류합니다.</p>
               </div>
             </div>
 

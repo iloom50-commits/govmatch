@@ -111,6 +111,8 @@ interface RelatedAnnouncement {
   support_amount?: string;
   deadline_date?: string;
   department?: string;
+  category?: string;
+  summary_text?: string;
 }
 
 interface ChatMessage {
@@ -190,6 +192,9 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   const [consultantProfile, setConsultantProfile] = useState<Record<string, any> | null>(null);
   const [matchingInProgress, setMatchingInProgress] = useState(false);
   const [formProfile, setFormProfile] = useState<FormProfile>({ ...EMPTY_FORM });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDone, setIsDone] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 드래그 이동
@@ -372,13 +377,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
         role: "assistant",
         text: data.reply || "응답을 처리할 수 없습니다.",
         choices: data.choices || [],
-        announcements: [],
+        announcements,
         done: data.done || false,
       };
 
       setMessages([...chatHistory, aiMsg]);
 
-      // 관련 공고가 있으면 메인 대시보드에 표시
+      // 관련 공고가 있으면 메인 대시보드에도 표시
       if (announcements.length > 0) {
         window.dispatchEvent(new CustomEvent("consultant-match-result", {
           detail: { matches: announcements, profile: null }
@@ -551,6 +556,9 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     setConsultantProfile(null);
     setFormProfile({ ...EMPTY_FORM });
     setConsultantTab("form");
+    setIsFullscreen(false);
+    setIsDone(false);
+    setShowReport(false);
   };
 
   const handleReset = () => {
@@ -559,6 +567,48 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     setConsultantProfile(null);
     setFormProfile({ ...EMPTY_FORM });
     setConsultantTab("form");
+    setIsFullscreen(false);
+    setIsDone(false);
+    setShowReport(false);
+  };
+
+  // 상담 종료 → 보고서 생성
+  const handleEndConsultation = () => {
+    setIsDone(true);
+    const endMsg: ChatMessage = {
+      role: "assistant",
+      text: "상담이 종료되었습니다. 상담 보고서를 확인하시려면 아래 버튼을 눌러주세요.",
+      choices: [],
+      done: true,
+    };
+    setMessages((prev) => [...prev, endMsg]);
+  };
+
+  // 보고서 HTML 생성
+  const generateReportHtml = () => {
+    const now = new Date().toLocaleString("ko-KR");
+    const modeLabel = mode === "consultant" ? "전문가 매칭 상담" : "자유 상담";
+    const convHtml = messages
+      .filter((m) => !m.done && m.text)
+      .map((m) => {
+        if (m.role === "user") {
+          return `<div style="margin:12px 0;padding:10px 14px;background:#f0f4ff;border-radius:10px;border-left:3px solid #6366f1"><strong style="color:#4f46e5">Q.</strong> ${m.text.replace(/</g, "&lt;")}</div>`;
+        }
+        const html = renderMarkdown(m.text);
+        return `<div style="margin:12px 0;padding:10px 14px;background:#fafafa;border-radius:10px;border-left:3px solid #10b981"><strong style="color:#059669">A.</strong> <div style="margin-top:6px">${html}</div></div>`;
+      })
+      .join("");
+
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>상담 보고서</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:800px;margin:0 auto;padding:20px;color:#1e293b}
+h1{font-size:20px;border-bottom:2px solid #6366f1;padding-bottom:8px}
+.meta{color:#64748b;font-size:13px;margin-bottom:20px}
+@media print{body{padding:10px}}</style></head><body>
+<h1>${modeLabel} 보고서</h1>
+<div class="meta">${now}</div>
+${convHtml}
+<div style="margin-top:30px;padding-top:15px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;text-align:center">지원금GO AI 상담 보고서 · govmatch.kr</div>
+</body></html>`;
   };
 
   // 폼 필드 업데이트
@@ -1005,9 +1055,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
       <div
         data-chat-panel
         className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col pointer-events-auto ${
-          dragPos ? "fixed rounded-2xl" : "relative w-full sm:w-[420px] lg:w-[380px] h-full animate-in slide-in-from-left duration-300"
+          isFullscreen
+            ? "fixed inset-0 w-full h-full rounded-none z-[60]"
+            : dragPos
+              ? "fixed rounded-2xl"
+              : "relative w-full sm:w-[420px] lg:w-[380px] h-full animate-in slide-in-from-left duration-300"
         }`}
-        style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
+        style={!isFullscreen && dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >
 
         {/* Header — 드래그 핸들 */}
@@ -1038,6 +1092,17 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
                 <svg className="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
                 </svg>
+              </button>
+              <button onClick={() => { setIsFullscreen(!isFullscreen); setDragPos(null); }} className="p-1.5 hover:bg-white/20 rounded-lg transition-all hidden lg:block" title={isFullscreen ? "축소" : "전체화면"}>
+                {isFullscreen ? (
+                  <svg className="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                  </svg>
+                )}
               </button>
               <button onClick={handleClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-all">
                 <svg className="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1403,21 +1468,40 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
                       )}
                     </div>
 
-                    {/* Related announcements — 제목 + 링크만 (메인 화면 공고 카드로 이동) */}
+                    {/* Related announcements — 공고 카드 + AI 상세 공고분석 버튼 */}
                     {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
-                      <div className="mt-2 space-y-1">
+                      <div className="mt-3 space-y-2">
                         <p className="text-[10px] font-semibold text-indigo-500 px-1">관련 공고</p>
                         {msg.announcements.map((ann) => (
-                          <button
-                            key={ann.announcement_id}
-                            onClick={() => goToAnnouncement(ann)}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-indigo-50 transition-all group flex items-center gap-1.5"
-                          >
-                            <span className="text-indigo-400 text-[10px] shrink-0">&rarr;</span>
-                            <span className="text-[11px] font-medium text-indigo-700 truncate group-hover:text-indigo-900 group-hover:underline">
-                              {ann.title}
-                            </span>
-                          </button>
+                          <div key={ann.announcement_id} className="p-3 bg-white rounded-xl border border-slate-200 hover:border-indigo-200 transition-all shadow-sm">
+                            <p className="text-[12px] font-bold text-slate-800 leading-snug mb-1.5">{ann.title}</p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500 mb-2">
+                              {ann.support_amount && <span>{ann.support_amount}</span>}
+                              {ann.deadline_date && <span>마감 {ann.deadline_date}</span>}
+                              {ann.department && <span>{ann.department}</span>}
+                            </div>
+                            {ann.summary_text && (
+                              <p className="text-[11px] text-slate-600 leading-relaxed mb-2 line-clamp-2">{ann.summary_text}</p>
+                            )}
+                            <button
+                              onClick={() => {
+                                setOpen(false);
+                                window.dispatchEvent(new CustomEvent("open-ai-consult", {
+                                  detail: { announcement: {
+                                    announcement_id: ann.announcement_id,
+                                    title: ann.title,
+                                    support_amount: ann.support_amount,
+                                    deadline_date: ann.deadline_date,
+                                    department: ann.department,
+                                    category: ann.category,
+                                  }}
+                                }));
+                              }}
+                              className="w-full py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-[11px] font-bold hover:bg-indigo-100 transition-all active:scale-[0.98]"
+                            >
+                              AI 상세 공고분석
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -1467,52 +1551,127 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
 
             {/* Input area */}
             <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-2.5">
-              {mode !== "free" && userMsgCount > 0 && (
-                <div className={`text-[10px] font-medium mb-1.5 text-right ${isAtMsgLimit ? "text-rose-500" : "text-slate-400"}`}>
-                  {isAtMsgLimit ? "메시지 한도에 도달했습니다" : `${userMsgCount} / ${CONSULT_MSG_LIMIT}`}
-                </div>
-              )}
-              {isAtMsgLimit && mode !== "free" ? (
-                <div className="text-center py-2 px-3 bg-rose-50 border border-rose-200 rounded-xl">
-                  <p className="text-rose-600 text-[11px] font-bold">상담 메시지 한도({CONSULT_MSG_LIMIT}회)를 모두 사용했습니다.</p>
-                  <p className="text-rose-500 text-[10px] mt-0.5">새 공고에서 상담을 시작해 주세요.</p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                        e.preventDefault();
-                        handleSend(input);
-                      }
-                    }}
-                    placeholder={mode === "consultant" ? "고객사 정보를 입력하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
-                    disabled={loading || matchingInProgress}
-                    className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
-                      mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
-                    }`}
-                  />
+              {isDone ? (
+                <div className="space-y-2">
                   <button
-                    onClick={() => handleSend(input)}
-                    disabled={loading || matchingInProgress || !input.trim()}
-                    className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
+                    onClick={() => setShowReport(true)}
+                    className={`w-full py-2.5 text-white rounded-xl font-bold text-[13px] transition-all active:scale-[0.98] ${
                       mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
                     }`}
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                    </svg>
+                    상담 보고서 보기
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="w-full py-2 text-slate-400 text-[12px] font-medium hover:text-slate-600 transition-all"
+                  >
+                    새 상담 시작
                   </button>
                 </div>
+              ) : (
+                <>
+                  {mode !== "free" && userMsgCount > 0 && (
+                    <div className={`text-[10px] font-medium mb-1.5 text-right ${isAtMsgLimit ? "text-rose-500" : "text-slate-400"}`}>
+                      {isAtMsgLimit ? "메시지 한도에 도달했습니다" : `${userMsgCount} / ${CONSULT_MSG_LIMIT}`}
+                    </div>
+                  )}
+                  {isAtMsgLimit && mode !== "free" ? (
+                    <div className="text-center py-2 px-3 bg-rose-50 border border-rose-200 rounded-xl">
+                      <p className="text-rose-600 text-[11px] font-bold">상담 메시지 한도({CONSULT_MSG_LIMIT}회)를 모두 사용했습니다.</p>
+                      <p className="text-rose-500 text-[10px] mt-0.5">새 공고에서 상담을 시작해 주세요.</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            handleSend(input);
+                          }
+                        }}
+                        placeholder={mode === "consultant" ? "고객사 정보를 입력하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
+                        disabled={loading || matchingInProgress}
+                        className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
+                          mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
+                        }`}
+                      />
+                      <button
+                        onClick={() => handleSend(input)}
+                        disabled={loading || matchingInProgress || !input.trim()}
+                        className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
+                          mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
+                        }`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {/* 상담 종료 버튼 */}
+                  {messages.length >= 2 && !loading && !matchingInProgress && (
+                    <button
+                      onClick={handleEndConsultation}
+                      className="w-full mt-2 py-1.5 text-slate-400 hover:text-slate-600 text-[11px] font-medium transition-all text-center hover:bg-slate-50 rounded-lg"
+                    >
+                      상담 종료
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </>
         )}
       </div>
+
+      {/* 상담 보고서 모달 */}
+      {showReport && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowReport(false)} />
+          <div className="relative w-full max-w-2xl max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0">
+              <div>
+                <p className="text-[14px] font-bold text-slate-800">상담 보고서</p>
+                <p className="text-[11px] text-slate-500">{new Date().toLocaleString("ko-KR")}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const w = window.open("", "_blank");
+                    if (w) { w.document.write(generateReportHtml()); w.document.close(); w.print(); }
+                  }}
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 transition-all"
+                >
+                  인쇄 / PDF
+                </button>
+                <button onClick={() => setShowReport(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {messages.filter((m) => !m.done && m.text).map((m, i) => (
+                <div key={i} className={`mb-3 p-3 rounded-xl ${m.role === "user" ? "bg-indigo-50 border-l-[3px] border-indigo-400" : "bg-slate-50 border-l-[3px] border-emerald-400"}`}>
+                  <p className="text-[10px] font-bold mb-1" style={{ color: m.role === "user" ? "#4f46e5" : "#059669" }}>
+                    {m.role === "user" ? "Q." : "A."}
+                  </p>
+                  {m.role === "user" ? (
+                    <p className="text-[13px] text-slate-700">{m.text}</p>
+                  ) : (
+                    <div className="text-[13px] text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(m.text)) }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

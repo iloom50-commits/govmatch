@@ -526,17 +526,19 @@ def chat_free(
 
         # 관련 공고 정보 첨부
         ann_ids = result.get("announcement_ids", [])
-        related = [{"announcement_id": m["announcement_id"], "title": m["title"],
-                     "support_amount": m.get("support_amount"), "deadline_date": str(m.get("deadline_date", "")),
-                     "department": m.get("department")}
-                    for m in matched if m["announcement_id"] in ann_ids]
+        def _to_related(m):
+            return {
+                "announcement_id": m["announcement_id"], "title": m["title"],
+                "support_amount": m.get("support_amount"), "deadline_date": str(m.get("deadline_date", "")),
+                "department": m.get("department"), "category": m.get("category"),
+                "summary_text": (m.get("summary_text") or "")[:120],
+            }
+
+        related = [_to_related(m) for m in matched if m["announcement_id"] in ann_ids]
 
         # Gemini가 announcement_ids를 비운 경우, 검색된 상위 공고를 fallback으로 첨부
         if not related and matched:
-            related = [{"announcement_id": m["announcement_id"], "title": m["title"],
-                         "support_amount": m.get("support_amount"), "deadline_date": str(m.get("deadline_date", "")),
-                         "department": m.get("department")}
-                        for m in matched[:5]]
+            related = [_to_related(m) for m in matched[:5]]
 
         return {
             "reply": result.get("message", ""),

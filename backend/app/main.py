@@ -2306,8 +2306,14 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     try:
         from app.services.doc_analysis_service import ensure_analysis
         deep = ensure_analysis(req.announcement_id, conn)
+        if deep:
+            ps = deep.get("parsed_sections", {}) or {}
+            filled = [k for k, v in ps.items() if v]
+            print(f"[Consult] Analysis OK for #{req.announcement_id}: source={deep.get('source_type')}, filled_sections={filled}")
+        else:
+            print(f"[Consult] Analysis returned None for #{req.announcement_id}")
     except Exception as e:
-        print(f"[Consult] ensure_analysis error: {e}")
+        print(f"[Consult] ensure_analysis error for #{req.announcement_id}: {e}")
         import traceback; traceback.print_exc()
         deep = {}
 

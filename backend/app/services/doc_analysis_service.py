@@ -873,7 +873,19 @@ def ensure_analysis(announcement_id: int, db_conn, force: bool = False) -> Optio
         # 이미 분석된 데이터 확인
         existing = get_deep_analysis(announcement_id, db_conn)
         if existing and existing.get("full_text"):
-            return existing
+            # parsed_sections가 실질적으로 비어있으면 재분석
+            ps = existing.get("parsed_sections", {}) or {}
+            has_content = any(bool(v) for v in ps.values())
+            if has_content:
+                return existing
+            else:
+                print(f"[DocAnalysis] #{announcement_id}: parsed_sections empty, re-analyzing...")
+                try:
+                    cur = db_conn.cursor()
+                    cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = %s", (announcement_id,))
+                    db_conn.commit()
+                except Exception:
+                    db_conn.rollback()
 
     # 2) 공고 정보 조회
     cur = db_conn.cursor()

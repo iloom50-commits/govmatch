@@ -214,7 +214,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "business";
@@ -978,32 +978,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
           {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
-          {/* 컨설턴트 매칭 결과 배너 */}
+          {/* 컨설턴트 매칭 → 내 매칭 복원 버튼 */}
           {consultantResult && (
-            <div className="p-4 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-xl animate-in slide-in-from-top duration-300 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-violet-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9zm3.75 11.625a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-bold text-violet-800">
-                      AI 컨설턴트 매칭 결과 — {consultantResult.profile?.company_name || "고객사"}
-                    </p>
-                    <p className="text-[11px] text-violet-600 font-medium">
-                      {consultantResult.matches.length}건의 맞춤 지원사업 | 소재지: {consultantResult.profile?.address_city || "-"} | 매출: {consultantResult.profile?.revenue_bracket || "-"} | 인원: {consultantResult.profile?.employee_count_bracket || "-"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={onClearConsultant}
-                  className="px-3 py-1.5 bg-white border border-violet-200 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-50 transition-all active:scale-95 flex-shrink-0"
-                >
-                  내 매칭으로 돌아가기
-                </button>
-              </div>
+            <div className="flex justify-end">
+              <button
+                onClick={onClearConsultant}
+                className="px-3 py-1.5 bg-white border border-violet-200 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-50 transition-all active:scale-95"
+              >
+                내 매칭으로 돌아가기
+              </button>
             </div>
           )}
 
@@ -1054,13 +1037,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
-              {consultantResult ? (
-                <span className="text-violet-600">컨설턴트 매칭</span>
-              ) : (
-                <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
-              )}
+              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
               <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                {consultantResult ? `${consultantResult.profile?.company_name || "고객사"} 맞춤 결과` : "AI가 구석구석 모든 지원금을 찾아서 알려 드립니다"}
+                AI가 구석구석 모든 지원금을 찾아서 알려 드립니다
               </span>
             </h2>
 
@@ -1171,6 +1150,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     {s.label}
                   </button>
                 ))}
+                {onRefresh && (
+                  <button
+                    onClick={onRefresh}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all active:scale-95"
+                    title="공고 새로고침"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
 

@@ -592,6 +592,7 @@ export default function Home() {
             onUpgrade={() => setShowPayment(true)}
             consultantResult={consultantResult}
             onClearConsultant={() => setConsultantResult(null)}
+            onRefresh={() => { setConsultantResult(null); performMatching(businessNumber, true); }}
           />
         </div>
       )}

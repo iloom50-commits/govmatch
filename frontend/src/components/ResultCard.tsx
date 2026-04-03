@@ -148,6 +148,7 @@ const SOURCE_KR: Record<string, string> = {
 function getDDayInfo(dateStr?: string): { text: string; days: number | null; urgency: "expired" | "critical" | "warning" | "normal" | "open" } {
   if (!dateStr) return { text: "상시모집", days: null, urgency: "open" };
   const target = new Date(dateStr);
+  if (isNaN(target.getTime())) return { text: "상시모집", days: null, urgency: "open" };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));

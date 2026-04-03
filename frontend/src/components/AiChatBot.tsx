@@ -1254,13 +1254,13 @@ ${convHtml}
               <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-xl">
                 <button
                   onClick={() => setConsultantTab("form")}
-                  className="flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all bg-white text-violet-700 shadow-sm"
+                  className="flex-1 py-2 text-[13px] font-bold rounded-lg transition-all bg-white text-violet-700 shadow-sm"
                 >
                   직접 입력
                 </button>
                 <button
                   onClick={() => switchToConsultantChat()}
-                  className="flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all text-slate-500 hover:text-slate-700"
+                  className="flex-1 py-2 text-[13px] font-bold rounded-lg transition-all text-slate-500 hover:text-slate-700"
                 >
                   대화로 입력
                 </button>
@@ -1271,7 +1271,7 @@ ${convHtml}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {/* 이름/기업명 */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[13px] font-bold text-slate-700 mb-1.5">
                   {isIndividual ? "이름" : "기업명"} <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -1279,13 +1279,13 @@ ${convHtml}
                   value={formProfile.company_name}
                   onChange={(e) => updateForm("company_name", e.target.value)}
                   placeholder={isIndividual ? "예: 홍길동" : "예: (주)테스트기업"}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[15px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
                 />
               </div>
 
               {/* 생년월일/설립일 */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[13px] font-bold text-slate-700 mb-1.5">
                   {isIndividual ? "생년월일" : "설립일"} <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -1299,7 +1299,7 @@ ${convHtml}
               {/* 업종 — 사업자만 */}
               {!isIndividual && (
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">업종 <span className="text-red-400">*</span></label>
+                  <label className="block text-[13px] font-bold text-slate-700 mb-1.5">업종 <span className="text-red-400">*</span></label>
                   <select
                     value={formProfile.industry_code}
                     onChange={(e) => updateForm("industry_code", e.target.value)}
@@ -1317,11 +1317,11 @@ ${convHtml}
               {!isIndividual && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">매출규모 <span className="text-red-400">*</span></label>
+                    <label className="block text-[13px] font-bold text-slate-700 mb-1.5">매출규모 <span className="text-red-400">*</span></label>
                     <select
                       value={formProfile.revenue_bracket}
                       onChange={(e) => updateForm("revenue_bracket", e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
+                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[14px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
                     >
                       <option value="">선택</option>
                       {REVENUE_OPTIONS.map((opt) => (
@@ -1330,11 +1330,11 @@ ${convHtml}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">직원수 <span className="text-red-400">*</span></label>
+                    <label className="block text-[13px] font-bold text-slate-700 mb-1.5">직원수 <span className="text-red-400">*</span></label>
                     <select
                       value={formProfile.employee_count_bracket}
                       onChange={(e) => updateForm("employee_count_bracket", e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
+                      className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-[14px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all appearance-none"
                     >
                       <option value="">선택</option>
                       {EMPLOYEE_OPTIONS.map((opt) => (
@@ -1347,7 +1347,7 @@ ${convHtml}
 
               {/* 관심지역 — 복수선택 */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[13px] font-bold text-slate-700 mb-1.5">
                   관심지역 <span className="text-red-400">*</span>
                   <span className="font-normal text-slate-400 ml-1">(복수 선택 가능)</span>
                 </label>
@@ -1369,7 +1369,7 @@ ${convHtml}
                             updateForm("address_city", next.length === 0 ? "전국" : next.join(","));
                           }
                         }}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all active:scale-95 ${
+                        className={`px-3 py-1.5 rounded-lg text-[13px] font-semibold border transition-all active:scale-95 ${
                           selected
                             ? "bg-violet-600 text-white border-violet-600"
                             : "bg-white text-slate-600 border-slate-200 hover:border-violet-300"
@@ -1384,7 +1384,7 @@ ${convHtml}
 
               {/* 관심분야 (멀티셀렉트 칩) */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                <label className="block text-[13px] font-bold text-slate-700 mb-1.5.5">
                   관심분야 <span className="text-red-400">*</span>
                   <span className="font-normal text-slate-400 ml-1">(복수 선택 가능)</span>
                 </label>
@@ -1412,14 +1412,14 @@ ${convHtml}
               <button
                 onClick={handleFormSubmit}
                 disabled={!isFormValid() || matchingInProgress}
-                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[15px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
                 맞춤 지원사업 매칭 실행
               </button>
-              <p className="text-center text-[11px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>
+              <p className="text-center text-[12px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>
             </div>
           </>
         ) : (
@@ -1430,7 +1430,7 @@ ${convHtml}
                 <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-xl">
                   <button
                     onClick={() => setConsultantTab("form")}
-                    className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                    className={`flex-1 py-2 text-[13px] font-bold rounded-lg transition-all ${
                       consultantTab === "form"
                         ? "bg-white text-violet-700 shadow-sm"
                         : "text-slate-500 hover:text-slate-700"
@@ -1440,7 +1440,7 @@ ${convHtml}
                   </button>
                   <button
                     onClick={() => setConsultantTab("chat")}
-                    className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                    className={`flex-1 py-2 text-[13px] font-bold rounded-lg transition-all ${
                       consultantTab === "chat"
                         ? "bg-white text-violet-700 shadow-sm"
                         : "text-slate-500 hover:text-slate-700"

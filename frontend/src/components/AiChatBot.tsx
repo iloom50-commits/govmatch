@@ -183,6 +183,7 @@ interface AiChatBotProps {
 
 export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBotProps) {
   const isIndividual = userType === "individual";
+  const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ChatMode>("select");
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");

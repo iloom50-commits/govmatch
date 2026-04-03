@@ -15,7 +15,7 @@ interface LoginModalProps {
 export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: LoginModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [showEmail, setShowEmail] = useState(false);
+  const [tab, setTab] = useState<"login" | "register">("login");
   const [showReset, setShowReset] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
   const [resetEmail, setResetEmail] = useState("");
@@ -87,6 +87,32 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
             </p>
           </div>
 
+          {/* 탭 */}
+          {!showReset && (
+            <div className="flex mb-5 bg-slate-100 rounded-xl p-1">
+              <button
+                onClick={() => setTab("login")}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                  tab === "login"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                로그인
+              </button>
+              <button
+                onClick={() => setTab("register")}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                  tab === "register"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                30초 무료가입
+              </button>
+            </div>
+          )}
+
           {showReset ? (
             <>
               <button
@@ -146,70 +172,9 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
                 </button>
               </div>
             </>
-          ) : !showEmail ? (
-            <>
-              {/* 소셜 로그인 아이콘 */}
-              <div className="flex items-center justify-center gap-5 mb-5">
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
-                  className="w-14 h-14 bg-[#FEE500] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-md"
-                  title="카카오 로그인"
-                >
-                  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#191919">
-                    <path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/naver`}
-                  className="w-14 h-14 bg-[#03C75A] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-md"
-                  title="네이버 로그인"
-                >
-                  <span className="text-white text-xl font-black">N</span>
-                </button>
-                <button
-                  onClick={() => window.location.href = `${API}/api/auth/social/google`}
-                  className="w-14 h-14 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-50 transition-all active:scale-95 shadow-md"
-                  title="Google 로그인"
-                >
-                  <svg viewBox="0 0 24 24" className="w-6 h-6">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* 이메일 로그인 */}
-              <button
-                onClick={() => setShowEmail(true)}
-                className="w-full py-3 bg-slate-900 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all active:scale-[0.98]"
-              >
-                이메일로 시작하기
-              </button>
-
-              <div className="text-center mt-4">
-                <button
-                  onClick={onClose}
-                  className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-all"
-                >
-                  나중에 하기
-                </button>
-              </div>
-            </>
-          ) : (
+          ) : tab === "login" ? (
             <>
               {/* 이메일 로그인 폼 */}
-              <button
-                onClick={() => setShowEmail(false)}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 font-bold transition-all mb-4"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                다른 방법으로 로그인
-              </button>
-
               <form onSubmit={handleSubmit} className="space-y-3">
                 <EmailInput
                   value={form.email}
@@ -236,18 +201,44 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
                 </button>
               </form>
 
-              <div className="flex justify-between mt-4">
-                <button
-                  onClick={onGoToRegister}
-                  className="text-xs text-slate-400 hover:text-indigo-600 font-bold transition-all"
-                >
-                  처음이신가요? 30초 무료가입
-                </button>
+              <div className="text-center mt-4">
                 <button
                   onClick={() => { setShowReset(true); setResetEmail(form.email); }}
                   className="text-xs text-slate-400 hover:text-indigo-600 font-medium transition-all"
                 >
                   비밀번호를 잊으셨나요?
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 회원가입 안내 */}
+              <div className="text-center space-y-4">
+                <div className="space-y-2 text-left">
+                  {[
+                    { icon: "🎯", text: "내 조건에 맞는 지원금 자동 매칭" },
+                    { icon: "🔔", text: "새 공고 & 마감 임박 알림" },
+                    { icon: "💬", text: "AI 상담으로 자격요건 즉시 확인" },
+                  ].map((item) => (
+                    <div key={item.text} className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-lg">
+                      <span className="text-base">{item.icon}</span>
+                      <span className="text-[13px] font-medium text-slate-700">{item.text}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={onGoToRegister}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                >
+                  30초 무료가입 시작하기
+                </button>
+
+                <button
+                  onClick={onClose}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-all"
+                >
+                  나중에 하기
                 </button>
               </div>
             </>

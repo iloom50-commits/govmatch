@@ -873,19 +873,32 @@ def ensure_analysis(announcement_id: int, db_conn, force: bool = False) -> Optio
         # 이미 분석된 데이터 확인
         existing = get_deep_analysis(announcement_id, db_conn)
         if existing and existing.get("full_text"):
-            # parsed_sections가 실질적으로 비어있으면 재분석
             ps = existing.get("parsed_sections", {}) or {}
             has_content = any(bool(v) for v in ps.values())
-            if has_content:
+            source = existing.get("source_type", "")
+            text_len = len(existing.get("full_text") or "")
+
+            # 재분석이 필요한 경우:
+            # 1) parsed_sections가 비어있음
+            # 2) summary만으로 분석됨 (첨부파일/HTML 원문 미수집)
+            # 3) full_text가 너무 짧음 (500자 미만 = 요약 수준)
+            needs_reanalysis = (
+                not has_content
+                or source in ("summary", "")
+                or text_len < 500
+            )
+
+            if not needs_reanalysis:
                 return existing
-            else:
-                print(f"[DocAnalysis] #{announcement_id}: parsed_sections empty, re-analyzing...")
-                try:
-                    cur = db_conn.cursor()
-                    cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = %s", (announcement_id,))
-                    db_conn.commit()
-                except Exception:
-                    db_conn.rollback()
+
+            reason = "parsed_sections empty" if not has_content else f"source={source}, text_len={text_len}"
+            print(f"[DocAnalysis] #{announcement_id}: {reason}, re-analyzing...")
+            try:
+                cur = db_conn.cursor()
+                cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = %s", (announcement_id,))
+                db_conn.commit()
+            except Exception:
+                db_conn.rollback()
 
     # 2) 공고 정보 조회
     cur = db_conn.cursor()

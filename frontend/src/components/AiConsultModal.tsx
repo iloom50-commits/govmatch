@@ -92,6 +92,9 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingStartTime, setLoadingStartTime] = useState<number>(0);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const [isDone, setIsDone] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
@@ -156,9 +159,48 @@ export default function AiConsultModal({ planStatus }: AiConsultModalProps) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
+  // 프로그레시브 로딩 (단계별 진행바 + 메시지)
+  useEffect(() => {
+    if (!loading) {
+      setLoadingProgress(0);
+      setLoadingMessage("");
+      return;
+    }
+
+    const steps = messages.length === 0
+      ? [
+          { at: 0, pct: 10, msg: "공고 원문을 가져오는 중..." },
+          { at: 3000, pct: 25, msg: "첨부파일(PDF/HWP) 다운로드 중..." },
+          { at: 8000, pct: 45, msg: "문서 내용을 추출하고 있습니다..." },
+          { at: 15000, pct: 65, msg: "AI가 지원요건을 정리하고 있습니다..." },
+          { at: 25000, pct: 80, msg: "분석 결과를 정리하는 중..." },
+          { at: 35000, pct: 90, msg: "거의 다 됐어요! 잠시만요..." },
+          { at: 50000, pct: 95, msg: "응답을 생성하고 있습니다..." },
+        ]
+      : [
+          { at: 0, pct: 30, msg: "답변을 준비하고 있습니다..." },
+          { at: 3000, pct: 60, msg: "AI가 분석 중..." },
+          { at: 8000, pct: 85, msg: "거의 다 됐어요!" },
+        ];
+
+    // 즉시 첫 단계 적용
+    setLoadingProgress(steps[0].pct);
+    setLoadingMessage(steps[0].msg);
+
+    const timers = steps.slice(1).map((step) =>
+      setTimeout(() => {
+        setLoadingProgress(step.pct);
+        setLoadingMessage(step.msg);
+      }, step.at)
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [loading, messages.length]);
+
   const sendToAI = useCallback(async (chatHistory: ChatMessage[]) => {
     if (!announcement) return;
     setLoading(true);
+    setLoadingStartTime(Date.now());
     const token = localStorage.getItem("auth_token");
 
     try {
@@ -385,25 +427,20 @@ ${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? 
             </div>
           ))}
 
-          {/* Loading indicator */}
+          {/* Loading indicator — 프로그레스 바 + 단계별 메시지 */}
           {loading && (
             <div className="flex justify-start">
-              <div className="px-4 py-3 bg-slate-100 rounded-2xl rounded-bl-md">
-                {messages.length === 0 ? (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                      <p className="text-[12px] font-semibold text-indigo-600">공고문 분석 중...</p>
-                    </div>
-                    <p className="text-[11px] text-slate-400">첨부파일을 수집하고 정밀 분석하고 있습니다</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                )}
+              <div className="w-full max-w-[280px] px-4 py-3.5 bg-slate-100 rounded-2xl rounded-bl-md space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-semibold text-indigo-600">{loadingMessage || "준비 중..."}</p>
+                  <span className="text-[11px] font-bold text-indigo-400 tabular-nums">{loadingProgress}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${loadingProgress}%` }}
+                  />
+                </div>
               </div>
             </div>
           )}

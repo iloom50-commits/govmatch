@@ -585,12 +585,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       {/* 이메일 가입 */}
-      <div className="relative z-10 text-center">
+      <div className="relative z-10">
         <button
           onClick={() => onLoginRequired?.()}
-          className="text-[11px] text-slate-400 hover:text-indigo-600 font-bold transition-all"
+          className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all active:scale-[0.98]"
         >
-          이메일로 로그인/가입 →
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          이메일로 로그인/가입
         </button>
       </div>
 

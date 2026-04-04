@@ -1450,10 +1450,28 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 
-def _social_login_or_register(provider: str, social_id: str, email: str, name: str, kakao_refresh_token: str = ""):
+def _social_login_or_register(provider: str, social_id: str, email: str, name: str, kakao_refresh_token: str = "", gender: str = "", birth_year: str = ""):
     """소셜 로그인: 기존 사용자면 로그인, 신규면 자동 가입"""
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # 성별 정규화: kakao "male"/"female" → DB "남성"/"여성"
+    gender_map = {"male": "남성", "female": "여성", "M": "남성", "F": "여성"}
+    normalized_gender = gender_map.get(gender, gender)
+
+    # 출생연도 → 연령대 매핑
+    age_range_val = ""
+    if birth_year:
+        try:
+            age = datetime.datetime.now().year - int(birth_year)
+            if age < 20: age_range_val = "10대"
+            elif age < 30: age_range_val = "20대"
+            elif age < 40: age_range_val = "30대"
+            elif age < 50: age_range_val = "40대"
+            elif age < 60: age_range_val = "50대"
+            else: age_range_val = "60대 이상"
+        except (ValueError, TypeError):
+            pass
 
     # 1. 이미 같은 이메일로 가입된 사용자 확인
     cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -1472,6 +1490,13 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
         if kakao_refresh_token and provider == "kakao":
             updates.append("kakao_refresh_token = %s")
             params.append(kakao_refresh_token)
+        # 성별/연령대가 비어있으면 소셜에서 받은 값으로 채움
+        if normalized_gender and not u.get("gender"):
+            updates.append("gender = %s")
+            params.append(normalized_gender)
+        if age_range_val and not u.get("age_range"):
+            updates.append("age_range = %s")
+            params.append(age_range_val)
         if updates:
             params.append(u["user_id"])
             cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s", params)
@@ -1482,10 +1507,10 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
         import hashlib as _hashlib
         cursor.execute(
             """INSERT INTO users (business_number, company_name, email, password_hash, plan,
-               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id)
-               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s)
+               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range)
+               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s)
                RETURNING user_id, business_number""",
-            (bn, name or "", email, "", now_iso, now_iso, f"{provider}:{social_id}")
+            (bn, name or "", email, "", now_iso, now_iso, f"{provider}:{social_id}", normalized_gender, age_range_val)
         )
         row = cursor.fetchone()
         ref_code = _hashlib.md5(f'{bn}{row["user_id"]}'.encode()).hexdigest()[:8].upper()
@@ -1583,8 +1608,15 @@ async def api_social_callback(req: SocialCallbackRequest):
         account = user_data.get("kakao_account", {})
         email = account.get("email", f"kakao_{kakao_id}@kakao.local")
         name = account.get("profile", {}).get("nickname", "")
+        # 카카오에서 성별/출생연도 추출
+        kakao_gender = account.get("gender", "")  # "male" or "female"
+        kakao_birthyear = account.get("birthyear", "")  # "1990" 등
 
-        token, plan_status, u, is_new = _social_login_or_register("kakao", kakao_id, email, name, kakao_refresh_token=kakao_refresh_token)
+        token, plan_status, u, is_new = _social_login_or_register(
+            "kakao", kakao_id, email, name,
+            kakao_refresh_token=kakao_refresh_token,
+            gender=kakao_gender, birth_year=kakao_birthyear
+        )
 
     elif req.provider == "naver":
         async with httpx.AsyncClient() as client:

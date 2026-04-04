@@ -221,6 +221,21 @@ def init_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 시스템 활동 이력 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS system_logs (
+                    id SERIAL PRIMARY KEY,
+                    action VARCHAR(50) NOT NULL,
+                    category VARCHAR(30) NOT NULL DEFAULT 'system',
+                    detail TEXT DEFAULT '',
+                    result VARCHAR(20) DEFAULT 'success',
+                    count_affected INT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_action ON system_logs(action)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at)")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -230,6 +245,21 @@ def init_database():
         print("  DB connection OK (PostgreSQL/Supabase)")
     except Exception as e:
         print(f"  DB connection error (app will continue): {e}")
+
+
+def _log_system(action: str, category: str = "system", detail: str = "", result: str = "success", count: int = 0):
+    """시스템 활동 이력을 DB에 저장 (수집/분석/알림/매칭 등)"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO system_logs (action, category, detail, result, count_affected) VALUES (%s, %s, %s, %s, %s)",
+            (action[:50], category[:30], (detail or "")[:500], result[:20], count)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def _log_event(event_type: str, business_number: str = "", detail: str = "", ip: str = "", ua: str = ""):
@@ -363,7 +393,9 @@ async def _daily_sync_loop():
             t = threading.Thread(target=_run_reanalyze_in_thread, args=(300,), daemon=True)
             t.start()
             print("[Scheduler] Step 3/3: AI 재분석 백그라운드 실행 중")
+            _log_system("scheduler_run", "system", "일일 스케줄러 전체 실행 완료", "success")
         except Exception as e:
+            _log_system("scheduler_run", "system", f"스케줄러 오류: {e}", "error")
             print(f"[Scheduler] sync error: {e}")
 
 
@@ -2256,8 +2288,10 @@ def _auto_renew_subscriptions():
 
         conn.close()
         if renewed or failed:
+            _log_system("auto_renew", "payment", f"성공 {renewed}건, 실패 {failed}건 (총 {len(expired_users)}명)", "success" if failed == 0 else "partial", renewed)
             print(f"[renew] 자동 갱신 완료: 성공 {renewed}건, 실패 {failed}건")
     except Exception as e:
+        _log_system("auto_renew", "payment", f"오류: {e}", "error")
         print(f"[renew] 오류: {e}")
 
 
@@ -3394,6 +3428,51 @@ def api_get_strategy_reports(limit: int = 5):
     return {"status": "SUCCESS", "data": rows}
 
 
+@app.get("/api/admin/system-logs", dependencies=[Depends(_verify_admin)])
+def api_get_system_logs(category: Optional[str] = None, limit: int = 50):
+    """시스템 활동 이력 조회"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if category:
+            cursor.execute(
+                "SELECT * FROM system_logs WHERE category = %s ORDER BY created_at DESC LIMIT %s",
+                (category, min(limit, 200))
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM system_logs ORDER BY created_at DESC LIMIT %s",
+                (min(limit, 200),)
+            )
+        rows = [dict(r) for r in cursor.fetchall()]
+        for r in rows:
+            if r.get("created_at"):
+                r["created_at"] = str(r["created_at"])
+
+        # 카테고리별 최근 실행 요약
+        cursor.execute("""
+            SELECT category, action,
+                   MAX(created_at) as last_run,
+                   COUNT(*) as total_runs,
+                   SUM(CASE WHEN result = 'success' THEN 1 ELSE 0 END) as success_count,
+                   SUM(CASE WHEN result = 'error' THEN 1 ELSE 0 END) as error_count
+            FROM system_logs
+            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY category, action
+            ORDER BY last_run DESC
+        """)
+        summary = [dict(r) for r in cursor.fetchall()]
+        for s in summary:
+            if s.get("last_run"):
+                s["last_run"] = str(s["last_run"])
+
+        conn.close()
+        return {"status": "SUCCESS", "data": rows, "summary": summary}
+    except Exception as e:
+        conn.close()
+        return {"status": "SUCCESS", "data": [], "summary": [], "note": f"테이블 미생성: {e}"}
+
+
 @app.get("/api/admin/system-sources", dependencies=[Depends(_verify_admin)])
 def get_system_sources():
     from app.services.public_api_service import gov_api_service
@@ -3545,8 +3624,10 @@ def _run_manual_sync_in_thread():
     try:
         loop.run_until_complete(admin_scraper.run_all())
         manual_sync_status["last_result"] = "완료"
+        _log_system("manual_sync", "collection", "수동 URL 수집 완료", "success")
     except Exception as e:
         manual_sync_status["last_result"] = f"오류: {e}"
+        _log_system("manual_sync", "collection", f"수동 URL 수집 오류: {e}", "error")
     finally:
         manual_sync_status["running"] = False
         manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
@@ -3706,6 +3787,7 @@ def _run_reanalyze_in_thread(limit: int):
     reanalyze_status["last_result"] = f"완료: {success}/{len(rows)}건 분석"
     reanalyze_status["last_time"] = datetime.datetime.now().isoformat()
     loop.close()
+    _log_system("reanalyze", "analysis", f"{success}/{len(rows)}건 AI 재분석 완료", "success", success)
     print(f"[Reanalyze] Done: {success}/{len(rows)} announcements enriched")
 
 
@@ -4180,8 +4262,10 @@ def _run_sync_in_thread():
     try:
         loop.run_until_complete(sync_service.sync_all())
         sync_status["last_result"] = "완료"
+        _log_system("api_sync", "collection", "전체 API 데이터 수집 완료", "success")
     except Exception as e:
         sync_status["last_result"] = f"오류: {e}"
+        _log_system("api_sync", "collection", f"API 수집 오류: {e}", "error")
     finally:
         sync_status["running"] = False
         sync_status["last_time"] = datetime.datetime.now().isoformat()
@@ -4277,6 +4361,7 @@ def admin_push_test():
         except WebPushException:
             failed += 1
 
+    _log_system("push_test", "notification", f"발송 {sent}건, 실패 {failed}건", "success" if failed == 0 else "partial", sent)
     return {"status": "SUCCESS", "message": f"발송 {sent}건, 실패 {failed}건"}
 
 
@@ -4390,6 +4475,7 @@ async def api_send_digest():
     from app.services.notification_service import notification_service
     results = await notification_service.generate_daily_digest()
     sent_count = sum(1 for r in results if r.get("email_sent"))
+    _log_system("send_digest", "notification", f"{len(results)}명 대상, {sent_count}건 이메일 발송", "success", sent_count)
     return {
         "status": "SUCCESS",
         "message": f"다이제스트 생성 완료: {len(results)}명 대상, {sent_count}건 이메일 발송",

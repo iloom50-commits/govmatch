@@ -175,10 +175,13 @@ export default function AdminPage() {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy' | 'logs'>('overview');
   const [strategyReport, setStrategyReport] = useState<string>('');
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [reportHistory, setReportHistory] = useState<{id:number;report:string;created_at:string}[]>([]);
+  const [systemLogs, setSystemLogs] = useState<any[]>([]);
+  const [logSummary, setLogSummary] = useState<any[]>([]);
+  const [logCategory, setLogCategory] = useState<string>('');
   const [urls, setUrls] = useState<AdminURL[]>([]);
   const [apis, setApis] = useState<SourceItem[]>([]);
   const [scrapers, setScrapers] = useState<SourceItem[]>([]);
@@ -265,6 +268,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   useEffect(() => { if (activeTab === 'strategy') loadReportHistory(); }, [activeTab]);
+
+  const loadSystemLogs = async (cat?: string) => {
+    try {
+      const url = cat ? `${API_URL}/api/admin/system-logs?category=${cat}&limit=100` : `${API_URL}/api/admin/system-logs?limit=100`;
+      const res = await authFetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (data.status === 'SUCCESS') {
+        setSystemLogs(data.data || []);
+        setLogSummary(data.summary || []);
+      }
+    } catch {}
+  };
+
+  useEffect(() => { if (activeTab === 'logs') loadSystemLogs(logCategory || undefined); }, [activeTab, logCategory]);
 
   const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -534,6 +551,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <FiTrendingUp size={15} /> AI 전략
             </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'logs'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FiRefreshCw size={15} /> 활동 이력
+            </button>
           </div>
         </header>
 
@@ -620,6 +647,85 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <p className="text-xs mt-1">사용자 행동 데이터를 기반으로 서비스 활성화 전략을 제안합니다</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ═══════════ Logs Tab ═══════════ */}
+        {activeTab === 'logs' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-lg font-black text-slate-900">시스템 활동 이력</h2>
+              <div className="flex gap-2">
+                {['', 'collection', 'analysis', 'notification', 'payment', 'system'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setLogCategory(cat)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      logCategory === cat ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat === '' ? '전체' : cat === 'collection' ? '수집' : cat === 'analysis' ? '분석' : cat === 'notification' ? '알림' : cat === 'payment' ? '결제' : '시스템'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 요약 카드 */}
+            {logSummary.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {logSummary.slice(0, 8).map((s: any, i: number) => (
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-3">
+                    <div className="text-[11px] text-slate-400 font-bold uppercase">{s.category} / {s.action}</div>
+                    <div className="text-sm font-bold text-slate-800 mt-1">
+                      {s.success_count}건 성공 {s.error_count > 0 && <span className="text-red-500">/ {s.error_count} 실패</span>}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">최근: {s.last_run?.slice(0, 16).replace('T', ' ')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 이력 테이블 */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase">시간</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase">카테고리</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase">작업</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase">상세</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase">결과</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {systemLogs.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">아직 기록된 활동이 없습니다. 수집/분석/알림 실행 후 이력이 쌓입니다.</td></tr>
+                  ) : systemLogs.map((log: any) => (
+                    <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{log.created_at?.slice(0, 16).replace('T', ' ')}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          log.category === 'collection' ? 'bg-blue-50 text-blue-600' :
+                          log.category === 'analysis' ? 'bg-violet-50 text-violet-600' :
+                          log.category === 'notification' ? 'bg-amber-50 text-amber-600' :
+                          log.category === 'payment' ? 'bg-emerald-50 text-emerald-600' :
+                          'bg-slate-100 text-slate-500'
+                        }`}>{log.category}</span>
+                      </td>
+                      <td className="px-4 py-2 text-xs font-medium text-slate-700">{log.action}</td>
+                      <td className="px-4 py-2 text-xs text-slate-500 max-w-xs truncate">{log.detail}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          log.result === 'success' ? 'bg-green-50 text-green-600' :
+                          log.result === 'error' ? 'bg-red-50 text-red-600' :
+                          'bg-yellow-50 text-yellow-600'
+                        }`}>{log.result}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

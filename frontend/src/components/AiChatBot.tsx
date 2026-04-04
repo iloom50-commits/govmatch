@@ -163,6 +163,7 @@ interface FormProfile {
   employee_count_bracket: string;
   address_city: string;
   interests: string[];
+  _interestInput?: string;
 }
 
 const EMPTY_FORM: FormProfile = {
@@ -649,27 +650,10 @@ ${convHtml}
   };
 
   // 폼에서 직접 매칭 실행
-  const handleFormSubmit = async () => {
+  const handleFormSubmit = () => {
     if (!isFormValid()) {
       toast("모든 항목을 입력해 주세요.", "error");
       return;
-    }
-
-    // AI 관심분야 매핑: 자유 텍스트 → 카테고리
-    let mappedInterests = formProfile.interests.join(",");
-    const rawText = formProfile.interests.join(",");
-    if (rawText) {
-      try {
-        const res = await fetch(`${API}/api/ai/parse-interests`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: rawText, user_type: isIndividual ? "individual" : "business" }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.interests?.length) mappedInterests = data.interests.join(",");
-        }
-      } catch {}
     }
 
     const profile = {
@@ -677,7 +661,7 @@ ${convHtml}
       industry_code: isIndividual ? "" : formProfile.industry_code,
       revenue_bracket: isIndividual ? "1억 미만" : formProfile.revenue_bracket,
       employee_count_bracket: isIndividual ? "5인 미만" : formProfile.employee_count_bracket,
-      interests: mappedInterests,
+      interests: formProfile.interests.join(","),
     };
     executeMatching(profile, [{
       role: "assistant" as const,
@@ -1400,19 +1384,54 @@ ${convHtml}
                 </div>
               </div>
 
-              {/* 관심분야 — 자유 텍스트 입력 → AI 매핑 */}
+              {/* 관심분야 — 자동완성 입력 */}
               <div>
                 <label className="block text-[14px] font-bold text-slate-700 mb-1.5">
                   관심분야 <span className="text-red-400">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={formProfile.interests.join(", ")}
-                  onChange={(e) => updateForm("interests", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
-                  placeholder={isIndividual ? "예: 취업, 주거, 청년 지원" : "예: AI 기술개발, 해외진출, 정부 보조금"}
-                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">자유롭게 입력하세요. AI가 자동으로 분류합니다.</p>
+                {/* 선택된 태그 */}
+                {formProfile.interests.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {formProfile.interests.map((tag) => (
+                      <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-100 text-violet-700 rounded-full text-[13px] font-semibold">
+                        {tag}
+                        <button type="button" onClick={() => updateForm("interests", formProfile.interests.filter(t => t !== tag))} className="hover:text-violet-900 text-violet-400">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* 입력 + 드롭다운 */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formProfile._interestInput || ""}
+                    onChange={(e) => updateForm("_interestInput", e.target.value)}
+                    placeholder={isIndividual ? "입력하면 추천이 나타납니다" : "입력하면 추천이 나타납니다"}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
+                  />
+                  {formProfile._interestInput && formProfile._interestInput.length > 0 && (() => {
+                    const q = (formProfile._interestInput || "").toLowerCase();
+                    const options = (isIndividual ? INDIVIDUAL_INTEREST_OPTIONS : INTEREST_OPTIONS)
+                      .filter(opt => opt.toLowerCase().includes(q) && !formProfile.interests.includes(opt));
+                    return options.length > 0 ? (
+                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                        {options.map(opt => (
+                          <button
+                            key={opt} type="button"
+                            onClick={() => {
+                              updateForm("interests", [...formProfile.interests, opt]);
+                              updateForm("_interestInput", "");
+                            }}
+                            className="w-full px-3 py-2 text-left text-[14px] text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-all"
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
               </div>
             </div>
 

@@ -21,6 +21,8 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
   const [resetEmail, setResetEmail] = useState("");
   const [resetPw, setResetPw] = useState("");
   const [resetPwConfirm, setResetPwConfirm] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetCodeSent, setResetCodeSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,8 +46,29 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
     }
   };
 
+  const handleRequestCode = async () => {
+    if (!resetEmail) { toast("이메일을 입력해주세요.", "error"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/auth/reset-password/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast("인증코드가 이메일로 발송되었습니다.", "success");
+        setResetCodeSent(true);
+      } else {
+        toast(data.detail || "요청 실패", "error");
+      }
+    } catch { toast("서버 오류", "error"); }
+    finally { setLoading(false); }
+  };
+
   const handleReset = async () => {
     if (!resetEmail) { toast("이메일을 입력해주세요.", "error"); return; }
+    if (!resetCode) { toast("인증코드를 입력해주세요.", "error"); return; }
     if (!resetPw || resetPw.length < 6) { toast("비밀번호를 6자 이상 입력해주세요.", "error"); return; }
     if (resetPw !== resetPwConfirm) { toast("비밀번호가 일치하지 않습니다.", "error"); return; }
     setLoading(true);
@@ -53,12 +76,14 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
       const res = await fetch(`${API}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail, new_password: resetPw }),
+        body: JSON.stringify({ email: resetEmail, new_password: resetPw, code: resetCode }),
       });
       const data = await res.json();
       if (res.ok) {
         toast(data.message, "success");
         setShowReset(false);
+        setResetCodeSent(false);
+        setResetCode("");
         setForm({ ...form, email: resetEmail });
       } else {
         toast(data.detail || "재설정 실패", "error");
@@ -107,43 +132,72 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
               <div className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">이메일</label>
-                  <input
-                    type="email"
-                    placeholder="가입한 이메일"
-                    className={inputClass}
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    autoFocus
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      placeholder="가입한 이메일"
+                      className={`${inputClass} flex-1`}
+                      value={resetEmail}
+                      onChange={(e) => { setResetEmail(e.target.value); setResetCodeSent(false); }}
+                      autoFocus
+                      disabled={resetCodeSent}
+                    />
+                    <button
+                      onClick={handleRequestCode}
+                      disabled={loading || !resetEmail}
+                      className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-200 transition-all disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {resetCodeSent ? "재발송" : "인증코드"}
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호</label>
-                  <input
-                    type="password"
-                    placeholder="6자 이상"
-                    className={inputClass}
-                    value={resetPw}
-                    onChange={(e) => setResetPw(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호 확인</label>
-                  <input
-                    type="password"
-                    placeholder="비밀번호 재입력"
-                    className={inputClass}
-                    value={resetPwConfirm}
-                    onChange={(e) => setResetPwConfirm(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleReset()}
-                  />
-                </div>
-                <button
-                  onClick={handleReset}
-                  disabled={loading}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
-                >
-                  {loading ? "처리 중..." : "비밀번호 재설정"}
-                </button>
+                {resetCodeSent && (
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">인증코드</label>
+                    <input
+                      type="text"
+                      placeholder="6자리 인증코드 입력"
+                      className={inputClass}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      maxLength={6}
+                      autoFocus
+                    />
+                    <p className="text-[10px] text-slate-400 ml-1">이메일로 발송된 6자리 코드를 입력하세요 (10분 유효)</p>
+                  </div>
+                )}
+                {resetCodeSent && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호</label>
+                      <input
+                        type="password"
+                        placeholder="6자 이상"
+                        className={inputClass}
+                        value={resetPw}
+                        onChange={(e) => setResetPw(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">새 비밀번호 확인</label>
+                      <input
+                        type="password"
+                        placeholder="비밀번호 재입력"
+                        className={inputClass}
+                        value={resetPwConfirm}
+                        onChange={(e) => setResetPwConfirm(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleReset()}
+                      />
+                    </div>
+                    <button
+                      onClick={handleReset}
+                      disabled={loading || resetCode.length !== 6}
+                      className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {loading ? "처리 중..." : "비밀번호 재설정"}
+                    </button>
+                  </>
+                )}
               </div>
             </>
           ) : !showEmail ? (

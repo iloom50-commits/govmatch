@@ -653,6 +653,32 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+# ── Rate Limiting (인메모리) ──
+import threading
+_rate_store: dict = {}  # {key: [timestamp, ...]}
+_rate_lock = threading.Lock()
+
+def _rate_limit_check(key: str, max_requests: int, window_seconds: int) -> bool:
+    """Rate limit 검사. True이면 허용, False이면 차단"""
+    now = datetime.datetime.utcnow()
+    with _rate_lock:
+        if key not in _rate_store:
+            _rate_store[key] = []
+        # 윈도우 밖 기록 제거
+        cutoff = now - datetime.timedelta(seconds=window_seconds)
+        _rate_store[key] = [t for t in _rate_store[key] if t > cutoff]
+        if len(_rate_store[key]) >= max_requests:
+            return False
+        _rate_store[key].append(now)
+        return True
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 # ── 보안 AI 에이전트 — 실시간 이상 감지 ──
 import collections
 import threading
@@ -1008,6 +1034,7 @@ def _set_cache(key: str, data):
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
 @app.get("/api/announcements/public")
 def api_announcements_public(
+    request: Request,
     page: int = 1,
     size: int = 20,
     region: Optional[str] = None,
@@ -1016,6 +1043,10 @@ def api_announcements_public(
     target_type: Optional[str] = None,
 ):
     """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
+    # Rate limiting: IP당 분당 30회
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"public:ip:{ip}", 30, 60):
+        raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
     if size > 200:
         size = 200
     offset = (max(1, page) - 1) * size
@@ -1217,21 +1248,113 @@ def api_find_email(req: FindEmailRequest):
 class ResetPasswordRequest(BaseModel):
     email: str
     new_password: str
+    code: Optional[str] = None  # 인증코드
+
+class ResetCodeRequest(BaseModel):
+    email: str
+
+# 비밀번호 재설정 인증코드 저장 (메모리, {email: {code, expires, attempts}})
+_reset_codes: dict = {}
+# Rate limiting: {ip: [timestamps]}
+_reset_rate: dict = {}
+
+def _send_reset_email(to_email: str, code: str):
+    """비밀번호 재설정 인증코드 이메일 발송"""
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    if not smtp_user or not smtp_password:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(
+            f"지원금AI 비밀번호 재설정 인증코드입니다.\n\n"
+            f"인증코드: {code}\n\n"
+            f"이 코드는 10분간 유효합니다.\n"
+            f"본인이 요청하지 않았다면 이 이메일을 무시하세요.",
+            "plain", "utf-8"
+        )
+        msg["Subject"] = "[지원금AI] 비밀번호 재설정 인증코드"
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False
+
+@app.post("/api/auth/reset-password/request")
+def api_request_reset_code(req: ResetCodeRequest, request: Request):
+    """1단계: 인증코드 발송 요청"""
+    if not req.email:
+        raise HTTPException(status_code=400, detail="이메일을 입력해주세요.")
+    # Rate limiting: IP당 분당 3회
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.datetime.utcnow()
+    if client_ip in _reset_rate:
+        _reset_rate[client_ip] = [t for t in _reset_rate[client_ip] if (now - t).seconds < 300]
+        if len(_reset_rate[client_ip]) >= 3:
+            raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
+    else:
+        _reset_rate[client_ip] = []
+    _reset_rate[client_ip].append(now)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT business_number FROM users WHERE email = %s", (req.email,))
+    user = cursor.fetchone()
+    conn.close()
+    # 계정 존재 여부와 관계없이 동일 응답 (열거 방지)
+    if user:
+        import random
+        code = f"{random.randint(100000, 999999)}"
+        _reset_codes[req.email] = {
+            "code": code,
+            "expires": now + datetime.timedelta(minutes=10),
+            "attempts": 0,
+        }
+        _send_reset_email(req.email, code)
+    return {"status": "SUCCESS", "message": "등록된 이메일이면 인증코드가 발송됩니다."}
 
 
 @app.post("/api/auth/reset-password")
 def api_reset_password(req: ResetPasswordRequest):
+    """2단계: 인증코드 확인 후 비밀번호 변경"""
     if not req.email:
         raise HTTPException(status_code=400, detail="이메일을 입력해주세요.")
+    if not req.code:
+        raise HTTPException(status_code=400, detail="인증코드를 입력해주세요.")
     if not req.new_password or len(req.new_password) < 6:
         raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 합니다.")
+
+    # 인증코드 검증
+    stored = _reset_codes.get(req.email)
+    if not stored:
+        raise HTTPException(status_code=400, detail="인증코드를 먼저 요청해주세요.")
+    if stored["attempts"] >= 5:
+        del _reset_codes[req.email]
+        raise HTTPException(status_code=400, detail="인증 시도 횟수를 초과했습니다. 다시 요청해주세요.")
+    if datetime.datetime.utcnow() > stored["expires"]:
+        del _reset_codes[req.email]
+        raise HTTPException(status_code=400, detail="인증코드가 만료되었습니다. 다시 요청해주세요.")
+    if req.code != stored["code"]:
+        stored["attempts"] += 1
+        raise HTTPException(status_code=400, detail="인증코드가 올바르지 않습니다.")
+
+    # 인증 성공 → 비밀번호 변경
+    del _reset_codes[req.email]
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT business_number FROM users WHERE email = %s", (req.email,))
     user = cursor.fetchone()
     if not user:
         conn.close()
-        raise HTTPException(status_code=404, detail="등록된 이메일을 찾을 수 없습니다.")
+        raise HTTPException(status_code=400, detail="처리 중 오류가 발생했습니다.")
     new_hash = _hash_password(req.new_password)
     cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hash, req.email))
     conn.commit()
@@ -1240,7 +1363,11 @@ def api_reset_password(req: ResetPasswordRequest):
 
 
 @app.post("/api/auth/register")
-def api_register(req: RegisterRequest):
+def api_register(req: RegisterRequest, request: Request):
+    # Rate limiting: IP당 시간당 5회
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"register:ip:{ip}", 5, 3600):
+        raise HTTPException(status_code=429, detail="회원가입 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.")
     if not req.email or "@" not in req.email:
         raise HTTPException(status_code=400, detail="올바른 이메일을 입력해 주세요.")
     if not req.password or len(req.password) < 6:
@@ -1346,7 +1473,13 @@ def api_register(req: RegisterRequest):
 
 
 @app.post("/api/auth/login")
-def api_login(req: LoginRequest):
+def api_login(req: LoginRequest, request: Request):
+    # Rate limiting: IP당 분당 10회, 이메일당 분당 5회
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"login:ip:{ip}", 10, 60):
+        raise HTTPException(status_code=429, detail="로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.")
+    if req.email and not _rate_limit_check(f"login:email:{req.email}", 5, 60):
+        raise HTTPException(status_code=429, detail="로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.")
     if not req.email or not req.password:
         raise HTTPException(status_code=400, detail="이메일과 비밀번호를 입력해 주세요.")
 
@@ -1357,11 +1490,11 @@ def api_login(req: LoginRequest):
     conn.close()
 
     if not user:
-        raise HTTPException(status_code=401, detail="등록되지 않은 이메일입니다.")
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     u = dict(user)
     if not u.get("password_hash"):
-        raise HTTPException(status_code=401, detail="비밀번호가 설정되지 않은 계정입니다. 회원가입을 진행해 주세요.")
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     if not _verify_password(req.password, u["password_hash"]):
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
@@ -1639,8 +1772,14 @@ async def api_social_callback(req: SocialCallbackRequest):
         naver_id = user_data.get("id", "")
         email = user_data.get("email", f"naver_{naver_id}@naver.local")
         name = user_data.get("name", user_data.get("nickname", ""))
+        # 네이버에서 성별/출생연도 추출: gender="M"/"F", birthyear="1990"
+        naver_gender = user_data.get("gender", "")
+        naver_birthyear = user_data.get("birthyear", "")
 
-        token, plan_status, u, is_new = _social_login_or_register("naver", naver_id, email, name)
+        token, plan_status, u, is_new = _social_login_or_register(
+            "naver", naver_id, email, name,
+            gender=naver_gender, birth_year=naver_birthyear
+        )
 
     elif req.provider == "google":
         async with httpx.AsyncClient() as client:
@@ -1718,7 +1857,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
             "establishment_date": str(u["establishment_date"]) if u.get("establishment_date") else "",
             "referral_code": u.get("referral_code"),
             "merit_months": u.get("merit_months", 0),
-            "user_type": u.get("user_type"),
+            "user_type": u.get("user_type") or None,
             "is_social": bool(u.get("kakao_id")),
             "social_provider": u.get("kakao_id", "").split(":")[0] if u.get("kakao_id") else None,
             "custom_needs": u.get("custom_needs"),
@@ -3355,6 +3494,9 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
     """
     UPSERT logic for user profile. Requires password re-verification for existing users.
     """
+    # 소유권 검증: 자신의 프로필만 수정 가능
+    if profile.business_number != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -3450,6 +3592,11 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
         "gender", "age_range", "income_level", "family_type", "employment_status",
         "founded_date", "is_pre_founder", "certifications",
     ]
+    # user_type 값 검증
+    if "user_type" in req and req["user_type"] not in ("individual", "business", "both", None):
+        conn.close()
+        raise HTTPException(status_code=400, detail="유효하지 않은 user_type입니다. (individual, business, both 중 선택)")
+
     for key in allowed_keys:
         if key in req and req[key] is not None:
             fields.append(f"{key} = %s")
@@ -3800,10 +3947,13 @@ def admin_push_test():
 
 
 @app.post("/api/match")
-def api_match_programs(request: BusinessNumberRequest):
+def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depends(_get_current_user)):
     """
     Fetches user profile and runs the hybrid matching engine.
     """
+    # 소유권 검증: 자신의 business_number만 매칭 가능
+    if request.business_number != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE business_number = %s", (request.business_number,))
@@ -3872,10 +4022,12 @@ def api_save_notification_settings(settings: NotificationSettings):
         conn.close()
 
 @app.get("/api/notification-settings/{bn}")
-def api_get_notification_settings(bn: str):
+def api_get_notification_settings(bn: str, current_user: dict = Depends(_get_current_user)):
     """
     Retrieves user notification preferences.
     """
+    if bn != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM notification_settings WHERE business_number = %s", (bn,))
@@ -3916,7 +4068,9 @@ class SavedBulk(BaseModel):
 
 
 @app.post("/api/saved/bulk")
-def api_save_bulk(body: SavedBulk):
+def api_save_bulk(body: SavedBulk, current_user: dict = Depends(_get_current_user)):
+    if body.business_number != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     inserted = 0
@@ -3939,7 +4093,9 @@ def api_save_bulk(body: SavedBulk):
 
 
 @app.get("/api/saved/{bn}")
-def api_get_saved(bn: str):
+def api_get_saved(bn: str, current_user: dict = Depends(_get_current_user)):
+    if bn != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -3957,10 +4113,11 @@ def api_get_saved(bn: str):
 
 
 @app.delete("/api/saved/{saved_id}")
-def api_delete_saved(saved_id: int):
+def api_delete_saved(saved_id: int, current_user: dict = Depends(_get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM saved_announcements WHERE id = %s", (saved_id,))
+    # 소유권 확인 후 삭제
+    cursor.execute("DELETE FROM saved_announcements WHERE id = %s AND business_number = %s", (saved_id, current_user["bn"]))
     conn.commit()
     deleted = cursor.rowcount
     conn.close()

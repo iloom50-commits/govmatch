@@ -576,7 +576,11 @@ export default function Home() {
         </>
       )}
 
-      {step === "LOADING" && <SkeletonLoader />}
+      {step === "LOADING" && (
+        <div className="flex-1 flex items-center justify-center">
+          <SkeletonLoader />
+        </div>
+      )}
 
       {step === "PROFILE" && (
         <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} />

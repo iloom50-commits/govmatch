@@ -197,11 +197,57 @@ def init_database():
         conn.commit()
         _seed_keyword_synonyms(conn)
 
+        # 사용자 행동 이벤트 로그 테이블
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_events (
+                id SERIAL PRIMARY KEY,
+                business_number VARCHAR(20),
+                event_type VARCHAR(50) NOT NULL,
+                event_detail TEXT DEFAULT '',
+                ip_address VARCHAR(50) DEFAULT '',
+                user_agent TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_type ON user_events(event_type)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_bn ON user_events(business_number)
+        """)
+        # AI 전략 보고서 캐시 테이블
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS strategy_reports (
+                id SERIAL PRIMARY KEY,
+                report_type VARCHAR(50) NOT NULL DEFAULT 'weekly',
+                report_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
         conn.close()
         print("  DB connection OK (PostgreSQL/Supabase)")
     except Exception as e:
         print(f"  DB connection error (app will continue): {e}")
+
+
+def _log_event(event_type: str, business_number: str = "", detail: str = "", ip: str = "", ua: str = ""):
+    """사용자 행동 이벤트를 DB에 비동기 저장"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO user_events (business_number, event_type, event_detail, ip_address, user_agent) VALUES (%s, %s, %s, %s, %s)",
+            (business_number[:20] if business_number else "", event_type, (detail or "")[:500], (ip or "")[:50], (ua or "")[:200])
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # 로깅 실패가 서비스에 영향 주면 안 됨
 
 
 def _seed_keyword_synonyms(conn):
@@ -1463,6 +1509,7 @@ def api_register(req: RegisterRequest, request: Request):
 
         conn.commit()
         token = _create_jwt(user_id, req.business_number, req.email, "free", None)
+        _log_event("signup", req.business_number, f"email={req.email}", _get_client_ip(request), request.headers.get("user-agent", ""))
         return {
             "status": "SUCCESS",
             "token": token,
@@ -1497,8 +1544,10 @@ def api_login(req: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     if not _verify_password(req.password, u["password_hash"]):
+        _log_event("login_fail", u.get("business_number", ""), f"email={req.email}", ip)
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
 
+    _log_event("login", u.get("business_number", ""), f"email={req.email},plan={u.get('plan','free')},type={u.get('user_type','')}", ip, request.headers.get("user-agent", ""))
     plan = u.get("plan") or "free"
     # trial → free 마이그레이션 (기존 사용자 호환)
     if plan == "trial":
@@ -1807,6 +1856,7 @@ async def api_social_callback(req: SocialCallbackRequest):
     else:
         raise HTTPException(status_code=400, detail="지원하지 않는 로그인 방식입니다.")
 
+    _log_event("social_login" if not is_new else "social_signup", u.get("business_number", ""), f"provider={req.provider},email={u.get('email','')}")
     return {
         "status": "SUCCESS",
         "token": token,
@@ -1970,6 +2020,7 @@ def api_plan_upgrade(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
 
+    _log_event("upgrade", current_user["bn"], f"plan={target_plan},price={price},trial={req.free_trial}")
     return {
         "status": "SUCCESS",
         "token": new_token,
@@ -3060,6 +3111,207 @@ def get_admin_analytics():
     }
 
 
+@app.post("/api/admin/strategy-report", dependencies=[Depends(_verify_admin)])
+def api_generate_strategy_report():
+    """AI가 사용자 행동 데이터를 분석하여 활성화 전략 보고서 생성"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # ── 데이터 수집 ──
+    # 1. 전체 사용자 수 & 최근 7일 신규
+    cursor.execute("SELECT COUNT(*) as total FROM users")
+    total_users = cursor.fetchone()["total"]
+    cursor.execute("SELECT COUNT(*) as cnt FROM users WHERE updated_at >= CURRENT_DATE - INTERVAL '7 days'")
+    new_users_7d = cursor.fetchone()["cnt"]
+
+    # 2. 이벤트 퍼널 (최근 30일)
+    event_counts = {}
+    try:
+        cursor.execute("""
+            SELECT event_type, COUNT(*) as cnt
+            FROM user_events
+            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY event_type ORDER BY cnt DESC
+        """)
+        for r in cursor.fetchall():
+            event_counts[r["event_type"]] = r["cnt"]
+    except Exception:
+        pass
+
+    # 3. 플랜 분포
+    cursor.execute("SELECT COALESCE(plan,'free') as plan, COUNT(*) as cnt FROM users GROUP BY plan")
+    plan_dist = {r["plan"] or "free": r["cnt"] for r in cursor.fetchall()}
+
+    # 4. 유형 분포
+    cursor.execute("SELECT COALESCE(user_type,'unknown') as utype, COUNT(*) as cnt FROM users GROUP BY user_type")
+    type_dist = {r["utype"] or "unknown": r["cnt"] for r in cursor.fetchall()}
+
+    # 5. 지역 분포 (상위 10)
+    cursor.execute("""
+        SELECT COALESCE(address_city,'미입력') as city, COUNT(*) as cnt
+        FROM users GROUP BY address_city ORDER BY cnt DESC LIMIT 10
+    """)
+    region_dist = {r["city"]: r["cnt"] for r in cursor.fetchall()}
+
+    # 6. AI 상담 통계
+    cursor.execute("SELECT COUNT(*) as total FROM ai_consult_logs")
+    ai_total = cursor.fetchone()["total"]
+    cursor.execute("SELECT COUNT(*) as cnt FROM ai_consult_logs WHERE feedback='helpful'")
+    ai_helpful = cursor.fetchone()["cnt"]
+    cursor.execute("SELECT COUNT(*) as cnt FROM ai_consult_logs WHERE feedback='inaccurate'")
+    ai_inaccurate = cursor.fetchone()["cnt"]
+
+    # 7. 일별 가입 추이
+    cursor.execute("""
+        SELECT DATE(updated_at) as d, COUNT(*) as cnt FROM users
+        WHERE updated_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(updated_at) ORDER BY d
+    """)
+    signup_trend = [{"date": str(r["d"]), "count": r["cnt"]} for r in cursor.fetchall()]
+
+    # 8. 최근 이벤트 로그 샘플 (행동 패턴 파악용)
+    event_samples = []
+    try:
+        cursor.execute("""
+            SELECT event_type, COUNT(DISTINCT business_number) as unique_users, COUNT(*) as total,
+                   MIN(created_at) as first_at, MAX(created_at) as last_at
+            FROM user_events
+            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY event_type ORDER BY total DESC
+        """)
+        for r in cursor.fetchall():
+            event_samples.append({
+                "type": r["event_type"], "unique_users": r["unique_users"],
+                "total": r["total"], "first": str(r["first_at"])[:10], "last": str(r["last_at"])[:10]
+            })
+    except Exception:
+        pass
+
+    # 9. 전환율 계산
+    signups = event_counts.get("signup", 0) + event_counts.get("social_signup", 0)
+    logins = event_counts.get("login", 0) + event_counts.get("social_login", 0)
+    matchings = event_counts.get("matching", 0)
+    upgrades = event_counts.get("upgrade", 0)
+
+    conn.close()
+
+    # ── Gemini로 전략 보고서 생성 ──
+    data_summary = f"""
+## 지원금AI 서비스 현황 데이터 (최근 30일)
+
+### 사용자 현황
+- 전체 사용자: {total_users}명
+- 최근 7일 신규 가입: {new_users_7d}명
+- 플랜 분포: {json.dumps(plan_dist, ensure_ascii=False)}
+- 유형 분포: {json.dumps(type_dist, ensure_ascii=False)}
+- 지역 분포 (Top10): {json.dumps(region_dist, ensure_ascii=False)}
+
+### 행동 퍼널 (30일)
+- 가입: {signups}건
+- 로그인: {logins}건
+- 매칭 실행: {matchings}건
+- 유료 전환: {upgrades}건
+- 전환율: 가입→로그인 {f'{logins/signups*100:.0f}%' if signups > 0 else 'N/A'}, 로그인→매칭 {f'{matchings/logins*100:.0f}%' if logins > 0 else 'N/A'}, 매칭→결제 {f'{upgrades/matchings*100:.0f}%' if matchings > 0 else 'N/A'}
+
+### 이벤트 상세
+{json.dumps(event_samples, ensure_ascii=False, indent=2)}
+
+### 일별 가입 추이
+{json.dumps(signup_trend, ensure_ascii=False)}
+
+### AI 상담
+- 총 상담: {ai_total}건
+- 도움됨: {ai_helpful}건, 부정확: {ai_inaccurate}건
+- 만족도: {f'{ai_helpful/(ai_helpful+ai_inaccurate)*100:.0f}%' if (ai_helpful+ai_inaccurate) > 0 else 'N/A'}
+"""
+
+    prompt = f"""당신은 SaaS 서비스 성장 전략 전문가입니다.
+
+아래는 "지원금AI" (govmatch.kr) 서비스의 실제 데이터입니다.
+이 서비스는 AI 기반 정부 지원금/보조금 자동 매칭 서비스입니다.
+사업자(기업)와 개인 사용자 모두를 대상으로 합니다.
+
+{data_summary}
+
+위 데이터를 기반으로 아래 형식의 전략 보고서를 작성해주세요.
+반드시 **데이터에 기반한 구체적 수치**를 인용하고, **실행 가능한 액션**을 제시하세요.
+
+## 보고서 형식
+
+### 1. 핵심 지표 요약
+- 현재 서비스 상태를 3줄로 요약
+
+### 2. 퍼널 분석 & 병목 지점
+- 가입→로그인→매칭→결제 각 단계별 전환율 분석
+- 가장 큰 이탈 지점과 원인 추정
+
+### 3. 사용자 세그먼트 인사이트
+- 어떤 유형(기업/개인)이 더 활발한지
+- 어떤 지역이 성장 잠재력이 높은지
+
+### 4. 즉시 실행 가능한 개선 액션 (TOP 5)
+- 각 액션에 예상 효과와 구현 난이도(상/중/하) 포함
+
+### 5. 중장기 성장 전략
+- 3개월, 6개월 목표와 로드맵
+
+한국어로 작성하세요. 마크다운 형식으로 작성하세요.
+"""
+
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content(prompt)
+            report_text = response.text
+        else:
+            report_text = f"# Gemini API 키 미설정\n\n데이터 요약:\n{data_summary}"
+    except Exception as e:
+        report_text = f"# AI 분석 오류\n\n{str(e)}\n\n## 데이터 요약\n{data_summary}"
+
+    # 보고서 캐시 저장
+    try:
+        conn2 = get_db_connection()
+        cur2 = conn2.cursor()
+        cur2.execute(
+            "INSERT INTO strategy_reports (report_type, report_data) VALUES (%s, %s)",
+            ("weekly", report_text)
+        )
+        conn2.commit()
+        conn2.close()
+    except Exception:
+        pass
+
+    return {
+        "status": "SUCCESS",
+        "report": report_text,
+        "data_summary": {
+            "total_users": total_users,
+            "new_users_7d": new_users_7d,
+            "funnel": {"signups": signups, "logins": logins, "matchings": matchings, "upgrades": upgrades},
+            "plan_distribution": plan_dist,
+            "type_distribution": type_dist,
+            "region_distribution": region_dist,
+        }
+    }
+
+
+@app.get("/api/admin/strategy-reports", dependencies=[Depends(_verify_admin)])
+def api_get_strategy_reports(limit: int = 5):
+    """저장된 전략 보고서 이력 조회"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, report_type, report_data, created_at FROM strategy_reports ORDER BY created_at DESC LIMIT %s",
+        (limit,)
+    )
+    rows = [{"id": r["id"], "type": r["report_type"], "report": r["report_data"], "created_at": str(r["created_at"])} for r in cursor.fetchall()]
+    conn.close()
+    return {"status": "SUCCESS", "data": rows}
+
+
 @app.get("/api/admin/system-sources", dependencies=[Depends(_verify_admin)])
 def get_system_sources():
     from app.services.public_api_service import gov_api_service
@@ -3987,6 +4239,7 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
             except (json.JSONDecodeError, TypeError):
                 pass
 
+    _log_event("matching", request.business_number, f"type={user_type},count={len(matches)},top_score={matches[0].get('match_score',0) if matches else 0}")
     return {"status": "SUCCESS", "data": matches}
 
 @app.post("/api/notification-settings")

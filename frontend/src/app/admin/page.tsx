@@ -175,7 +175,10 @@ export default function AdminPage() {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy'>('overview');
+  const [strategyReport, setStrategyReport] = useState<string>('');
+  const [strategyLoading, setStrategyLoading] = useState(false);
+  const [reportHistory, setReportHistory] = useState<{id:number;report:string;created_at:string}[]>([]);
   const [urls, setUrls] = useState<AdminURL[]>([]);
   const [apis, setApis] = useState<SourceItem[]>([]);
   const [scrapers, setScrapers] = useState<SourceItem[]>([]);
@@ -239,6 +242,29 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }, [authFetch, onLogout]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const generateStrategy = async () => {
+    setStrategyLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/strategy-report`, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        setStrategyReport(data.report);
+        toast('AI 전략 보고서가 생성되었습니다.', 'success');
+      }
+    } catch { toast('보고서 생성 실패', 'error'); }
+    finally { setStrategyLoading(false); }
+  };
+
+  const loadReportHistory = async () => {
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/strategy-reports`);
+      const data = await res.json();
+      if (data.status === 'SUCCESS') setReportHistory(data.data);
+    } catch {}
+  };
+
+  useEffect(() => { if (activeTab === 'strategy') loadReportHistory(); }, [activeTab]);
 
   const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -498,6 +524,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <FiBarChart2 size={15} /> 사용 분석
             </button>
+            <button
+              onClick={() => setActiveTab('strategy')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'strategy'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FiTrendingUp size={15} /> AI 전략
+            </button>
           </div>
         </header>
 
@@ -523,6 +559,69 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         {/* ═══════════ Analytics Tab ═══════════ */}
         {activeTab === 'analytics' && analytics && <AnalyticsPanel data={analytics} />}
+
+        {/* ═══════════ Strategy Tab ═══════════ */}
+        {activeTab === 'strategy' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-slate-900">AI 성장 전략 보고서</h2>
+              <button
+                onClick={generateStrategy}
+                disabled={strategyLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {strategyLoading ? (
+                  <><span className="animate-spin">&#9881;</span> AI 분석 중... (30초~1분)</>
+                ) : (
+                  <><FiTrendingUp size={16} /> 새 보고서 생성</>
+                )}
+              </button>
+            </div>
+
+            {strategyReport && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 md:p-8">
+                <div
+                  className="prose prose-sm max-w-none prose-headings:text-slate-900 prose-h2:text-lg prose-h3:text-base prose-p:text-slate-600 prose-li:text-slate-600 prose-strong:text-slate-800"
+                  dangerouslySetInnerHTML={{
+                    __html: strategyReport
+                      .replace(/^### (.*$)/gm, '<h3 class="font-bold mt-6 mb-2">$1</h3>')
+                      .replace(/^## (.*$)/gm, '<h2 class="font-black mt-8 mb-3 text-indigo-900 border-b border-indigo-100 pb-2">$1</h2>')
+                      .replace(/^# (.*$)/gm, '<h1 class="font-black mt-6 mb-4 text-xl">$1</h1>')
+                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                      .replace(/^- (.*$)/gm, '<li class="ml-4">$1</li>')
+                      .replace(/^(\d+)\. (.*$)/gm, '<li class="ml-4"><strong>$1.</strong> $2</li>')
+                      .replace(/\n\n/g, '<br/><br/>')
+                      .replace(/\n/g, '<br/>')
+                  }}
+                />
+              </div>
+            )}
+
+            {reportHistory.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-500">이전 보고서</h3>
+                {reportHistory.map((r) => (
+                  <details key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <summary className="px-4 py-3 cursor-pointer hover:bg-slate-50 text-sm font-medium text-slate-700">
+                      {r.created_at.slice(0, 16).replace('T', ' ')} 보고서
+                    </summary>
+                    <div className="px-4 pb-4 text-xs text-slate-500 whitespace-pre-wrap max-h-96 overflow-y-auto">
+                      {r.report}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+
+            {!strategyReport && !strategyLoading && reportHistory.length === 0 && (
+              <div className="text-center py-16 text-slate-400">
+                <FiTrendingUp size={48} className="mx-auto mb-4 opacity-30" />
+                <p className="text-sm font-medium">&quot;새 보고서 생성&quot; 버튼을 눌러 AI 전략 분석을 시작하세요</p>
+                <p className="text-xs mt-1">사용자 행동 데이터를 기반으로 서비스 활성화 전략을 제안합니다</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ═══════════ Overview Tab ═══════════ */}
         {activeTab === 'overview' && <>

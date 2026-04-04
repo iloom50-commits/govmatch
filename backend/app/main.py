@@ -3112,101 +3112,65 @@ def get_admin_analytics():
 
 
 def _fetch_ga4_data() -> dict:
-    """GA4 API에서 최근 30일 트래픽 데이터 조회"""
+    """GA4 REST API로 최근 30일 트래픽 데이터 조회 (경량 방식)"""
     try:
         ga4_creds_json = os.getenv("GA4_SERVICE_ACCOUNT_JSON", "")
         ga4_property_id = os.getenv("GA4_PROPERTY_ID", "")
         if not ga4_creds_json or not ga4_property_id:
             return {"error": "GA4 환경변수 미설정"}
 
-        from google.analytics.data_v1beta import BetaAnalyticsDataClient
-        from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
         from google.oauth2 import service_account
+        import google.auth.transport.requests
 
         creds_dict = json.loads(ga4_creds_json)
         credentials = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=["https://www.googleapis.com/auth/analytics.readonly"]
         )
-        client = BetaAnalyticsDataClient(credentials=credentials)
+        credentials.refresh(google.auth.transport.requests.Request())
+        token = credentials.token
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        base_url = f"https://analyticsdata.googleapis.com/v1beta/properties/{ga4_property_id}:runReport"
 
-        # 1. 기본 트래픽 지표 (30일)
-        req1 = RunReportRequest(
-            property=f"properties/{ga4_property_id}",
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-            metrics=[
-                Metric(name="activeUsers"),
-                Metric(name="sessions"),
-                Metric(name="screenPageViews"),
-                Metric(name="averageSessionDuration"),
-                Metric(name="bounceRate"),
-                Metric(name="newUsers"),
-            ],
-        )
-        res1 = client.run_report(req1)
-        row = res1.rows[0] if res1.rows else None
+        def _run_report(dimensions, metrics, limit=0):
+            body = {
+                "dateRanges": [{"startDate": "30daysAgo", "endDate": "today"}],
+                "metrics": [{"name": m} for m in metrics],
+            }
+            if dimensions:
+                body["dimensions"] = [{"name": d} for d in dimensions]
+            if limit:
+                body["limit"] = limit
+            r = requests.post(base_url, headers=headers, json=body, timeout=15)
+            return r.json() if r.status_code == 200 else {}
+
+        # 1. 기본 지표
+        res1 = _run_report([], ["activeUsers", "sessions", "screenPageViews", "averageSessionDuration", "bounceRate", "newUsers"])
         basic = {}
-        if row:
-            for i, m in enumerate(res1.metric_headers):
-                basic[m.name] = row.metric_values[i].value
+        if res1.get("rows"):
+            for i, m in enumerate(res1.get("metricHeaders", [])):
+                basic[m["name"]] = res1["rows"][0]["metricValues"][i]["value"]
 
-        # 2. 일별 방문자 추이
-        req2 = RunReportRequest(
-            property=f"properties/{ga4_property_id}",
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-            dimensions=[Dimension(name="date")],
-            metrics=[Metric(name="activeUsers"), Metric(name="sessions")],
-        )
-        res2 = client.run_report(req2)
+        # 2. 일별 추이
+        res2 = _run_report(["date"], ["activeUsers", "sessions"])
         daily = []
-        for r in res2.rows:
-            d = r.dimension_values[0].value
-            daily.append({"date": f"{d[:4]}-{d[4:6]}-{d[6:]}", "users": int(r.metric_values[0].value), "sessions": int(r.metric_values[1].value)})
+        for r in res2.get("rows", []):
+            d = r["dimensionValues"][0]["value"]
+            daily.append({"date": f"{d[:4]}-{d[4:6]}-{d[6:]}", "users": int(r["metricValues"][0]["value"]), "sessions": int(r["metricValues"][1]["value"])})
         daily.sort(key=lambda x: x["date"])
 
-        # 3. 유입 경로별
-        req3 = RunReportRequest(
-            property=f"properties/{ga4_property_id}",
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-            dimensions=[Dimension(name="sessionDefaultChannelGroup")],
-            metrics=[Metric(name="sessions"), Metric(name="activeUsers")],
-        )
-        res3 = client.run_report(req3)
-        channels = []
-        for r in res3.rows:
-            channels.append({"channel": r.dimension_values[0].value, "sessions": int(r.metric_values[0].value), "users": int(r.metric_values[1].value)})
+        # 3. 유입 경로
+        res3 = _run_report(["sessionDefaultChannelGroup"], ["sessions", "activeUsers"])
+        channels = [{"channel": r["dimensionValues"][0]["value"], "sessions": int(r["metricValues"][0]["value"]), "users": int(r["metricValues"][1]["value"])} for r in res3.get("rows", [])]
 
-        # 4. 디바이스별
-        req4 = RunReportRequest(
-            property=f"properties/{ga4_property_id}",
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-            dimensions=[Dimension(name="deviceCategory")],
-            metrics=[Metric(name="sessions"), Metric(name="bounceRate")],
-        )
-        res4 = client.run_report(req4)
-        devices = []
-        for r in res4.rows:
-            devices.append({"device": r.dimension_values[0].value, "sessions": int(r.metric_values[0].value), "bounce_rate": r.metric_values[1].value})
+        # 4. 디바이스
+        res4 = _run_report(["deviceCategory"], ["sessions", "bounceRate"])
+        devices = [{"device": r["dimensionValues"][0]["value"], "sessions": int(r["metricValues"][0]["value"]), "bounce_rate": r["metricValues"][1]["value"]} for r in res4.get("rows", [])]
 
         # 5. 인기 페이지
-        req5 = RunReportRequest(
-            property=f"properties/{ga4_property_id}",
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-            dimensions=[Dimension(name="pagePath")],
-            metrics=[Metric(name="screenPageViews"), Metric(name="activeUsers")],
-            limit=10,
-        )
-        res5 = client.run_report(req5)
-        pages = []
-        for r in res5.rows:
-            pages.append({"path": r.dimension_values[0].value, "views": int(r.metric_values[0].value), "users": int(r.metric_values[1].value)})
+        res5 = _run_report(["pagePath"], ["screenPageViews", "activeUsers"], limit=10)
+        pages = [{"path": r["dimensionValues"][0]["value"], "views": int(r["metricValues"][0]["value"]), "users": int(r["metricValues"][1]["value"])} for r in res5.get("rows", [])]
 
-        return {
-            "basic": basic,
-            "daily_trend": daily,
-            "channels": channels,
-            "devices": devices,
-            "top_pages": pages,
-        }
+        return {"basic": basic, "daily_trend": daily, "channels": channels, "devices": devices, "top_pages": pages}
     except Exception as e:
         return {"error": str(e)}
 

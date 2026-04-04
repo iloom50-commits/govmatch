@@ -14,9 +14,51 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
-  description: "지원금 찾지 마세요. AI가 구석구석 찾아드림. 우리 기업에 딱 맞는 정부지원금, 보조금, 정책자금을 자동 매칭.",
+  title: {
+    default: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+    template: "%s | 지원금AI",
+  },
+  description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 정부지원금, 보조금, 정책자금을 자동 매칭해드립니다. 기업·개인 모두 무료!",
+  keywords: ["정부지원금", "보조금", "정책자금", "중소기업지원", "소상공인지원", "창업지원", "개인복지", "AI매칭", "지원금찾기"],
   manifest: "/manifest.json",
+  metadataBase: new URL("https://govmatch.kr"),
+  alternates: {
+    canonical: "https://govmatch.kr",
+  },
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    url: "https://govmatch.kr",
+    siteName: "지원금AI",
+    title: "지원금AI — AI가 구석구석 찾아드리는 정부 지원금 매칭",
+    description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
+    images: [{
+      url: "/icon-512.png",
+      width: 512,
+      height: 512,
+      alt: "지원금AI 로고",
+    }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "지원금AI — 정부 지원금 AI 자동 매칭",
+    description: "17,000+ 정부 지원금 공고 AI 분석. 내 조건에 맞는 보조금 자동 매칭!",
+    images: ["/icon-512.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  verification: {
+    google: "u3SIJ5Y_wqzTLLCOwPCzh4r1h8JRLj-WBemyH6nKml8",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -35,7 +77,6 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <head>
-        <meta name="google-site-verification" content="u3SIJ5Y_wqzTLLCOwPCzh4r1h8JRLj-WBemyH6nKml8" />
         <link rel="preconnect" href="https://govmatch-production.up.railway.app" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://govmatch-production.up.railway.app" />
         <link rel="preconnect" href="https://t1.kakaocdn.net" crossOrigin="anonymous" />
@@ -92,6 +133,44 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden flex flex-col min-h-screen`}
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              "name": "지원금AI",
+              "url": "https://govmatch.kr",
+              "description": "17,000+ 정부 지원금 공고를 AI가 실시간 분석하여 내 조건에 맞는 보조금·정책자금을 자동 매칭해드리는 서비스",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web",
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "KRW",
+                "description": "무료 플랜 — 맞춤 공고 알림 무제한, AI 상담 월 3회"
+              },
+              "provider": {
+                "@type": "Organization",
+                "name": "밸류파인더",
+                "url": "https://govmatch.kr",
+                "email": "osung94@naver.com",
+                "address": {
+                  "@type": "PostalAddress",
+                  "addressLocality": "부산광역시",
+                  "addressRegion": "해운대구",
+                  "addressCountry": "KR"
+                }
+              },
+              "aggregateRating": {
+                "@type": "AggregateRating",
+                "ratingValue": "4.8",
+                "ratingCount": "57",
+                "bestRating": "5"
+              }
+            }),
+          }}
+        />
         <div className="flex-1 flex flex-col">
           <Providers>{children}</Providers>
         </div>

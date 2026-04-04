@@ -182,6 +182,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [logSummary, setLogSummary] = useState<any[]>([]);
   const [logCategory, setLogCategory] = useState<string>('');
+  const [logDailyTrend, setLogDailyTrend] = useState<any[]>([]);
+  const [logFunnel, setLogFunnel] = useState<Record<string, any>>({});
+  const [logHourly, setLogHourly] = useState<any[]>([]);
   const [urls, setUrls] = useState<AdminURL[]>([]);
   const [apis, setApis] = useState<SourceItem[]>([]);
   const [scrapers, setScrapers] = useState<SourceItem[]>([]);
@@ -277,6 +280,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       if (data.status === 'SUCCESS') {
         setSystemLogs(data.data || []);
         setLogSummary(data.summary || []);
+        setLogDailyTrend(data.daily_trend || []);
+        setLogFunnel(data.funnel || {});
+        setLogHourly(data.hourly_activity || []);
       }
     } catch {}
   };
@@ -684,6 +690,126 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 ))}
               </div>
             )}
+
+            {/* 차트 영역 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 일별 시스템 활동 추이 */}
+              {logDailyTrend.length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">일별 시스템 활동 (14일)</h3>
+                  <div className="flex items-end gap-1 h-28">
+                    {logDailyTrend.map((d: any, i: number) => {
+                      const total = (d.collection || 0) + (d.analysis || 0) + (d.notification || 0) + (d.payment || 0) + (d.system || 0);
+                      const maxVal = Math.max(...logDailyTrend.map((x: any) => (x.collection||0)+(x.analysis||0)+(x.notification||0)+(x.payment||0)+(x.system||0)), 1);
+                      const h = Math.max((total / maxVal) * 100, 4);
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${d.date}: ${total}건`}>
+                          <div className="w-full rounded-t" style={{height: `${h}%`}}>
+                            <div className="w-full h-full rounded-t flex flex-col-reverse">
+                              {d.collection > 0 && <div className="bg-blue-400 rounded-t" style={{height: `${(d.collection/total)*100}%`}} />}
+                              {d.analysis > 0 && <div className="bg-violet-400" style={{height: `${(d.analysis/total)*100}%`}} />}
+                              {d.notification > 0 && <div className="bg-amber-400" style={{height: `${(d.notification/total)*100}%`}} />}
+                              {d.system > 0 && <div className="bg-slate-300 rounded-t" style={{height: `${(d.system/total)*100}%`}} />}
+                            </div>
+                          </div>
+                          <span className="text-[8px] text-slate-400">{d.date.slice(5)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-3 mt-2 justify-center">
+                    <span className="flex items-center gap-1 text-[9px] text-slate-500"><span className="w-2 h-2 bg-blue-400 rounded-full"/>수집</span>
+                    <span className="flex items-center gap-1 text-[9px] text-slate-500"><span className="w-2 h-2 bg-violet-400 rounded-full"/>분석</span>
+                    <span className="flex items-center gap-1 text-[9px] text-slate-500"><span className="w-2 h-2 bg-amber-400 rounded-full"/>알림</span>
+                    <span className="flex items-center gap-1 text-[9px] text-slate-500"><span className="w-2 h-2 bg-slate-300 rounded-full"/>시스템</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 사용자 행동 퍼널 */}
+              {Object.keys(logFunnel).length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">사용자 행동 퍼널 (30일)</h3>
+                  <div className="space-y-2">
+                    {[
+                      {key: 'signup', label: '가입', alt: 'social_signup'},
+                      {key: 'login', label: '로그인', alt: 'social_login'},
+                      {key: 'matching', label: '매칭 실행'},
+                      {key: 'upgrade', label: '유료 전환'},
+                    ].map((step, i) => {
+                      const main = logFunnel[step.key]?.count || 0;
+                      const alt = step.alt ? (logFunnel[step.alt]?.count || 0) : 0;
+                      const total = main + alt;
+                      const maxFunnel = Math.max(
+                        (logFunnel['signup']?.count || 0) + (logFunnel['social_signup']?.count || 0),
+                        (logFunnel['login']?.count || 0) + (logFunnel['social_login']?.count || 0),
+                        1
+                      );
+                      const pct = Math.max((total / maxFunnel) * 100, 3);
+                      return (
+                        <div key={step.key} className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-slate-500 w-16 text-right">{step.label}</span>
+                          <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full flex items-center px-2 ${
+                                i === 0 ? 'bg-indigo-500' : i === 1 ? 'bg-blue-500' : i === 2 ? 'bg-emerald-500' : 'bg-amber-500'
+                              }`}
+                              style={{width: `${pct}%`}}
+                            >
+                              <span className="text-[10px] text-white font-bold">{total}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 시간대별 활동 */}
+              {logHourly.length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">시간대별 사용자 활동 (7일)</h3>
+                  <div className="flex items-end gap-0.5 h-20">
+                    {Array.from({length: 24}, (_, h) => {
+                      const found = logHourly.find((x: any) => x.hour === h);
+                      const cnt = found?.count || 0;
+                      const maxH = Math.max(...logHourly.map((x: any) => x.count), 1);
+                      const barH = Math.max((cnt / maxH) * 100, 2);
+                      return (
+                        <div key={h} className="flex-1 flex flex-col items-center" title={`${h}시: ${cnt}건`}>
+                          <div className="w-full bg-indigo-400 rounded-t transition-all" style={{height: `${barH}%`, opacity: cnt > 0 ? 1 : 0.15}} />
+                          {h % 4 === 0 && <span className="text-[7px] text-slate-400 mt-0.5">{h}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[9px] text-slate-400 text-center mt-1">시간 (0~23)</div>
+                </div>
+              )}
+
+              {/* 카테고리별 성공/실패 도넛 */}
+              {logSummary.length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">카테고리별 실행 현황 (30일)</h3>
+                  <div className="space-y-2">
+                    {logSummary.slice(0, 6).map((s: any, i: number) => {
+                      const total = (s.success_count || 0) + (s.error_count || 0);
+                      const successPct = total > 0 ? ((s.success_count || 0) / total) * 100 : 0;
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 w-24 truncate">{s.action}</span>
+                          <div className="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                            <div className="h-full bg-emerald-400 rounded-full" style={{width: `${successPct}%`}} />
+                          </div>
+                          <span className="text-[10px] text-slate-500 w-16 text-right">{s.success_count}/{total}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 이력 테이블 */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">

@@ -3466,11 +3466,67 @@ def api_get_system_logs(category: Optional[str] = None, limit: int = 50):
             if s.get("last_run"):
                 s["last_run"] = str(s["last_run"])
 
+        # 일별 시스템 활동 추이 (14일)
+        daily_trend = []
+        try:
+            cursor.execute("""
+                SELECT DATE(created_at) as log_date, category, COUNT(*) as cnt
+                FROM system_logs
+                WHERE created_at >= CURRENT_DATE - INTERVAL '14 days'
+                GROUP BY DATE(created_at), category
+                ORDER BY log_date
+            """)
+            trend_raw = {}
+            for r in cursor.fetchall():
+                d = str(r["log_date"])
+                if d not in trend_raw:
+                    trend_raw[d] = {"date": d, "collection": 0, "analysis": 0, "notification": 0, "payment": 0, "system": 0}
+                cat = r["category"]
+                if cat in trend_raw[d]:
+                    trend_raw[d][cat] = r["cnt"]
+            daily_trend = sorted(trend_raw.values(), key=lambda x: x["date"])
+        except Exception:
+            pass
+
+        # 사용자 행동 퍼널 (30일, user_events 테이블)
+        funnel = {}
+        try:
+            cursor.execute("""
+                SELECT event_type, COUNT(*) as cnt, COUNT(DISTINCT business_number) as unique_users
+                FROM user_events
+                WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+                GROUP BY event_type
+            """)
+            for r in cursor.fetchall():
+                funnel[r["event_type"]] = {"count": r["cnt"], "unique_users": r["unique_users"]}
+        except Exception:
+            pass
+
+        # 시간대별 사용자 활동 (user_events)
+        hourly = []
+        try:
+            cursor.execute("""
+                SELECT EXTRACT(HOUR FROM created_at)::int as hr, COUNT(*) as cnt
+                FROM user_events
+                WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                GROUP BY hr ORDER BY hr
+            """)
+            hourly = [{"hour": r["hr"], "count": r["cnt"]} for r in cursor.fetchall()]
+        except Exception:
+            pass
+
         conn.close()
-        return {"status": "SUCCESS", "data": rows, "summary": summary}
+        return {
+            "status": "SUCCESS",
+            "data": rows,
+            "summary": summary,
+            "daily_trend": daily_trend,
+            "funnel": funnel,
+            "hourly_activity": hourly,
+        }
     except Exception as e:
         conn.close()
-        return {"status": "SUCCESS", "data": [], "summary": [], "note": f"테이블 미생성: {e}"}
+        return {"status": "SUCCESS", "data": [], "summary": [], "daily_trend": [], "funnel": {}, "hourly_activity": [], "note": f"테이블 미생성: {e}"}
 
 
 @app.get("/api/admin/system-sources", dependencies=[Depends(_verify_admin)])

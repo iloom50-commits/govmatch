@@ -1253,7 +1253,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-20 overflow-hidden">
               {filteredMatches.map((res, idx) => (
                 <div
-                  key={res.announcement_id ?? idx}
+                  key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
                   style={{ animationDelay: `${idx * 80}ms` }}
                 >

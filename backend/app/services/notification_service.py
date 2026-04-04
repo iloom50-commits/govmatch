@@ -138,49 +138,38 @@ class NotificationService:
         """매칭 결과를 HTML 이메일 본문으로 변환"""
         today_str = datetime.date.today().strftime("%Y년 %m월 %d일")
 
-        rows = ""
-        for m in matches:
-            rows += f"""
-            <tr>
-              <td style="padding:12px 16px; border-bottom:1px solid #eee;">
-                <a href="{m['url']}" style="color:#2563eb; font-weight:600; text-decoration:none;">
-                  {m['program_title']}
-                </a>
-              </td>
-              <td style="padding:12px 16px; border-bottom:1px solid #eee; text-align:center;">
-                <span style="background:#dbeafe; color:#1e40af; padding:4px 12px; border-radius:20px; font-weight:700;">
-                  {m['score']}점
-                </span>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding:8px 16px 16px; color:#64748b; font-size:13px; border-bottom:2px solid #f1f5f9;">
-                {m['reasoning']}
-              </td>
-            </tr>"""
+        APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
+
+        # 맞춤 공고 (최대 5건)
+        top_matches = matches[:5]
+        custom_rows = ""
+        for m in top_matches:
+            title = m['program_title']
+            # 금액/D-day 정보가 있으면 표시
+            extra = []
+            if m.get('support_amount'):
+                extra.append(m['support_amount'])
+            if m.get('d_day'):
+                extra.append(m['d_day'])
+            suffix = f" ({', '.join(extra)})" if extra else ""
+            custom_rows += f'<p style="margin:0 0 8px; color:#1e293b; font-size:14px; line-height:1.6;">  {title}{suffix}</p>\n'
 
         return f"""
-        <div style="max-width:600px; margin:0 auto; font-family:'Pretendard',sans-serif;">
-          <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb); padding:32px; border-radius:16px 16px 0 0;">
-            <h1 style="color:white; margin:0; font-size:22px;">AI 매칭 비서 데일리 리포트</h1>
-            <p style="color:#93c5fd; margin:8px 0 0; font-size:14px;">{today_str} | {company_name}</p>
+        <div style="max-width:520px; margin:0 auto; font-family:-apple-system,'Pretendard',sans-serif; color:#1e293b;">
+          <div style="padding:28px 24px 20px; border-bottom:2px solid #e2e8f0;">
+            <p style="margin:0; font-size:18px; font-weight:700;">지원금GO</p>
+            <p style="margin:4px 0 0; font-size:13px; color:#64748b;">{today_str} | {company_name}</p>
           </div>
-          <div style="background:white; padding:24px; border:1px solid #e2e8f0; border-top:none;">
-            <p style="color:#334155; font-size:15px; margin-bottom:20px;">
-              오늘 <strong>{company_name}</strong>에 맞춤 추천된 지원사업 <strong>{len(matches)}건</strong>을 안내드립니다.
-            </p>
-            <table style="width:100%; border-collapse:collapse;">
-              <thead>
-                <tr style="background:#f8fafc;">
-                  <th style="padding:12px 16px; text-align:left; color:#64748b; font-size:13px;">지원사업</th>
-                  <th style="padding:12px 16px; text-align:center; color:#64748b; font-size:13px; width:80px;">점수</th>
-                </tr>
-              </thead>
-              <tbody>{rows}</tbody>
-            </table>
+          <div style="padding:24px;">
+            <p style="margin:0 0 16px; font-size:15px; font-weight:700;">맞춤 공고 {len(top_matches)}건</p>
+            {custom_rows}
+            {f'<p style="margin:16px 0; font-size:15px; font-weight:700;">추천 공고도 확인해보세요</p>' if len(matches) > 5 else ''}
+            <div style="margin:24px 0; text-align:center;">
+              <a href="{APP_URL}" style="display:inline-block; padding:12px 32px; background:#2563eb; color:white; text-decoration:none; border-radius:8px; font-size:14px; font-weight:700;">자세히 보기</a>
+            </div>
           </div>
-          <div style="background:#f8fafc; padding:20px; border-radius:0 0 16px 16px; border:1px solid #e2e8f0; border-top:none; text-align:center;">
-            <p style="color:#94a3b8; font-size:11px; margin:0;">AI 매칭 비서 | 자동 발송 알림</p>
+          <div style="padding:16px 24px; border-top:1px solid #f1f5f9; text-align:center;">
+            <p style="margin:0; font-size:11px; color:#94a3b8;">지원금GO | 자동 발송 알림</p>
           </div>
         </div>"""
 
@@ -191,7 +180,7 @@ class NotificationService:
             return False
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[AI 매칭 비서] {company_name} 맞춤 지원사업 {len(matches)}건 안내"
+        msg["Subject"] = f"[지원금GO] {company_name} 맞춤 공고 {len(matches)}건"
         msg["From"] = self.smtp_from
         msg["To"] = to_email
 
@@ -233,11 +222,12 @@ class NotificationService:
         if not subs:
             return 0
 
+        APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
         top = matches[0] if matches else {}
         payload = json.dumps({
-            "title": f"[AI 매칭] {company_name} 맞춤 공고 {len(matches)}건",
+            "title": f"맞춤 공고 {len(matches)}건 도착",
             "body": top.get("program_title", "새로운 지원사업이 매칭되었습니다."),
-            "url": top.get("url", "/"),
+            "url": APP_URL,
         }, ensure_ascii=False)
 
         sent = 0

@@ -759,7 +759,7 @@ import collections
 import threading
 
 class SecurityAgent:
-    """실시간 보안 모니터링 에이전트"""
+    """실시간 보안 모니터링 에이전트 — 봇/크롤러 감지 강화"""
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -769,6 +769,10 @@ class SecurityAgent:
         self._failed_logins: dict[str, list] = {}
         # 차단된 IP
         self._blocked_ips: set = set()
+        # IP별 공개 API 페이지네이션 추적 (크롤링 감지)
+        self._pagination_tracker: dict[str, list] = {}
+        # IP별 고유 경로 추적 (비정상 순회 감지)
+        self._path_tracker: dict[str, set] = {}
         # SQL 인젝션 패턴
         self._sqli_patterns = [
             "union select", "drop table", "insert into", "delete from",
@@ -780,6 +784,16 @@ class SecurityAgent:
             "<script", "javascript:", "onerror=", "onload=", "eval(",
             "document.cookie", "alert(", "<svg", "<iframe",
         ]
+        # 봇/크롤러 User-Agent 패턴
+        self._bot_ua_patterns = [
+            "python-requests", "scrapy", "crawl", "spider", "bot",
+            "curl", "wget", "httpie", "postman", "insomnia",
+            "go-http-client", "java/", "libwww", "httpclient",
+            "aiohttp", "node-fetch", "axios/", "got/",
+            "headless", "phantom", "puppeteer", "playwright",
+        ]
+        # 허용 봇 (검색 엔진)
+        self._allowed_bots = ["googlebot", "bingbot", "yandexbot", "naverbot", "daumoa"]
         # 이벤트 로그 (최근 100건)
         self._events: list = []
         self._MAX_EVENTS = 100
@@ -787,6 +801,8 @@ class SecurityAgent:
         self.RATE_LIMIT = 120       # 1분간 최대 요청 수
         self.FAILED_LOGIN_LIMIT = 5  # 5회 실패 시 차단
         self.BLOCK_DURATION = 300    # 5분 차단
+        self.CRAWL_PAGE_LIMIT = 10  # 5분 내 공개 API 10페이지 이상 요청 시 차단
+        self.PATH_SCAN_LIMIT = 50   # 5분 내 50개 이상 고유 경로 접근 시 차단
 
     def _log_event(self, severity: str, event_type: str, ip: str, detail: str):
         entry = {
@@ -811,15 +827,32 @@ class SecurityAgent:
             if not counter[key]:
                 del counter[key]
 
-    def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "") -> str | None:
+    def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
         now = time.time()
+        ua_lower = (user_agent or "").lower()
 
         # 1. 차단된 IP 확인
         if ip in self._blocked_ips:
             return "IP_BLOCKED"
 
-        # 2. Rate Limiting
+        # 2. 봇/크롤러 User-Agent 감지
+        if ua_lower:
+            # 허용된 검색 엔진 봇은 통과
+            is_allowed_bot = any(b in ua_lower for b in self._allowed_bots)
+            if not is_allowed_bot:
+                is_bot = any(p in ua_lower for p in self._bot_ua_patterns)
+                if is_bot:
+                    self._log_event("HIGH", "BOT_DETECTED", ip, f"UA: {user_agent[:100]}, path={path}")
+                    _log_system("bot_detected", "system", f"IP={ip}, UA={user_agent[:80]}, path={path}", "blocked")
+                    self._blocked_ips.add(ip)
+                    threading.Timer(self.BLOCK_DURATION * 2, lambda: self._blocked_ips.discard(ip)).start()
+                    return "BOT_BLOCKED"
+            # User-Agent가 비어있으면 의심
+            if not ua_lower.strip():
+                self._log_event("MEDIUM", "EMPTY_UA", ip, f"path={path}")
+
+        # 3. Rate Limiting
         with self._lock:
             if ip not in self._request_counts:
                 self._request_counts[ip] = []
@@ -828,27 +861,60 @@ class SecurityAgent:
             if len(self._request_counts.get(ip, [])) > self.RATE_LIMIT:
                 self._blocked_ips.add(ip)
                 self._log_event("HIGH", "RATE_LIMIT", ip, f"{len(self._request_counts[ip])} req/min on {path}")
-                # 자동 차단 해제 예약
+                _log_system("rate_limit_block", "system", f"IP={ip}, {len(self._request_counts[ip])} req/min", "blocked")
                 threading.Timer(self.BLOCK_DURATION, lambda: self._blocked_ips.discard(ip)).start()
                 return "RATE_LIMITED"
 
-        # 3. SQL 인젝션 패턴 감지
+        # 4. 공개 API 크롤링 감지 (페이지네이션 남용)
+        if "/api/announcements/public" in path:
+            with self._lock:
+                if ip not in self._pagination_tracker:
+                    self._pagination_tracker[ip] = []
+                self._pagination_tracker[ip].append(now)
+                self._cleanup_old(self._pagination_tracker, window=300)
+                page_count = len(self._pagination_tracker.get(ip, []))
+                if page_count > self.CRAWL_PAGE_LIMIT:
+                    self._blocked_ips.add(ip)
+                    self._log_event("CRITICAL", "CRAWL_DETECTED", ip, f"{page_count} public API pages in 5min")
+                    _log_system("crawl_blocked", "system", f"IP={ip}, {page_count} pages/5min", "blocked")
+                    threading.Timer(self.BLOCK_DURATION * 4, lambda: self._blocked_ips.discard(ip)).start()
+                    return "CRAWL_BLOCKED"
+
+        # 5. 비정상 경로 스캔 감지 (다수의 고유 경로 접근)
+        if path.startswith("/api/"):
+            with self._lock:
+                if ip not in self._path_tracker:
+                    self._path_tracker[ip] = set()
+                self._path_tracker[ip].add(path)
+                # 5분마다 리셋
+                if len(self._path_tracker[ip]) > self.PATH_SCAN_LIMIT:
+                    self._blocked_ips.add(ip)
+                    self._log_event("HIGH", "PATH_SCAN", ip, f"{len(self._path_tracker[ip])} unique paths")
+                    _log_system("path_scan_blocked", "system", f"IP={ip}, {len(self._path_tracker[ip])} unique paths", "blocked")
+                    threading.Timer(self.BLOCK_DURATION * 2, lambda: self._blocked_ips.discard(ip)).start()
+                    self._path_tracker[ip] = set()
+                    return "SCAN_BLOCKED"
+
+        # 6. SQL 인젝션 패턴 감지
         check_str = f"{query} {body}".lower()
         for pattern in self._sqli_patterns:
             if pattern in check_str:
                 self._log_event("HIGH", "SQLI_ATTEMPT", ip, f"pattern='{pattern}' path={path}")
-                return None  # 차단하지는 않음 (파라미터 바인딩으로 안전), 로깅만
+                return None  # 파라미터 바인딩으로 안전, 로깅만
 
-        # 4. XSS 패턴 감지
+        # 7. XSS 패턴 감지
         for pattern in self._xss_patterns:
             if pattern in check_str:
                 self._log_event("MEDIUM", "XSS_ATTEMPT", ip, f"pattern='{pattern}' path={path}")
                 return None  # 로깅만
 
-        # 5. 민감 경로 접근 감지
-        suspicious_paths = ["/.env", "/.git", "/wp-admin", "/phpmyadmin", "/admin.php"]
+        # 8. 민감 경로 접근 감지
+        suspicious_paths = ["/.env", "/.git", "/wp-admin", "/phpmyadmin", "/admin.php", "/.aws", "/config.json"]
         if path in suspicious_paths:
             self._log_event("MEDIUM", "SUSPICIOUS_PATH", ip, path)
+            self._blocked_ips.add(ip)
+            threading.Timer(self.BLOCK_DURATION, lambda: self._blocked_ips.discard(ip)).start()
+            return "SUSPICIOUS_BLOCKED"
 
         return None
 
@@ -886,19 +952,23 @@ security_agent = SecurityAgent()
 # 보안 미들웨어 — 모든 요청을 에이전트가 검사
 class SecurityAgentMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
-        ip = request.client.host if request.client else "unknown"
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
         path = request.url.path
         method = request.method
         query = str(request.query_params)
+        user_agent = request.headers.get("user-agent", "")
 
         # 요청 검사
-        block_reason = security_agent.check_request(ip, path, method, query)
-        if block_reason == "IP_BLOCKED":
+        block_reason = security_agent.check_request(ip, path, method, query, user_agent=user_agent)
+        if block_reason in ("IP_BLOCKED", "SUSPICIOUS_BLOCKED"):
             return StarletteResponse(content='{"detail":"접근이 차단되었습니다."}',
                                      status_code=403, media_type="application/json")
-        if block_reason == "RATE_LIMITED":
+        if block_reason in ("RATE_LIMITED", "CRAWL_BLOCKED", "SCAN_BLOCKED"):
             return StarletteResponse(content='{"detail":"요청이 너무 많습니다. 잠시 후 다시 시도하세요."}',
                                      status_code=429, media_type="application/json")
+        if block_reason == "BOT_BLOCKED":
+            return StarletteResponse(content='{"detail":"자동화된 접근이 감지되어 차단되었습니다."}',
+                                     status_code=403, media_type="application/json")
 
         response = await call_next(request)
 
@@ -1122,8 +1192,10 @@ def api_announcements_public(
     ip = _get_client_ip(request)
     if not _rate_limit_check(f"public:ip:{ip}", 30, 60):
         raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
-    if size > 200:
-        size = 200
+    if size > 50:
+        size = 50  # 크롤링 방지: 최대 50건
+    if page > 20:
+        raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
     offset = (max(1, page) - 1) * size
 
     # 검색 없는 기본 조회는 캐시 활용

@@ -3,7 +3,7 @@ import os
 import asyncio
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -198,35 +198,32 @@ def init_database():
         _seed_keyword_synonyms(conn)
 
         # 사용자 행동 이벤트 로그 테이블
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_events (
-                id SERIAL PRIMARY KEY,
-                business_number VARCHAR(20),
-                event_type VARCHAR(50) NOT NULL,
-                event_detail TEXT DEFAULT '',
-                ip_address VARCHAR(50) DEFAULT '',
-                user_agent TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_events_type ON user_events(event_type)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_events_bn ON user_events(business_number)
-        """)
-        # AI 전략 보고서 캐시 테이블
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS strategy_reports (
-                id SERIAL PRIMARY KEY,
-                report_type VARCHAR(50) NOT NULL DEFAULT 'weekly',
-                report_data TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_events (
+                    id SERIAL PRIMARY KEY,
+                    business_number VARCHAR(20),
+                    event_type VARCHAR(50) NOT NULL,
+                    event_detail TEXT DEFAULT '',
+                    ip_address VARCHAR(50) DEFAULT '',
+                    user_agent TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_events_type ON user_events(event_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_events_created ON user_events(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_events_bn ON user_events(business_number)")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS strategy_reports (
+                    id SERIAL PRIMARY KEY,
+                    report_type VARCHAR(50) NOT NULL DEFAULT 'weekly',
+                    report_data TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         conn.commit()
         conn.close()

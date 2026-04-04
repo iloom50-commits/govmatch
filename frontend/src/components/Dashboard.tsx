@@ -699,78 +699,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
       />
 
-      {/* PWA 앱 설치 유도 — Android/Chrome */}
-      {!isPwaInstalled && deferredPrompt && (
-        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="text-lg">📲</span>
-            <div>
-              <p className="text-[11px] font-bold text-slate-800">AI맞춤 알림 받기</p>
-            </div>
-          </div>
-          <button
-            onClick={handlePwaInstall}
-            className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
-          >
-            <span className="text-xs">⬇️</span>
-            지원금AI 설치
-          </button>
-        </div>
-      )}
+      {/* PWA 설치는 우측 상단 버튼으로 통합 — 로그인 후 사이드바에서도 제거 */}
 
-      {/* PWA 설치 안내 — iOS Safari */}
-      {!isPwaInstalled && isIos && !deferredPrompt && !iosBannerDismissed && (
-        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
-          <button
-            onClick={() => { setIosBannerDismissed(true); sessionStorage.setItem("ios_pwa_dismissed", "1"); }}
-            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
-            aria-label="닫기"
-          >✕</button>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="text-lg">📲</span>
-            <div>
-              <p className="text-[11px] font-bold text-slate-800">홈 화면에 추가하기</p>
-              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
-            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
-              <span className="text-sm">□↑</span>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-              Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
-              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* PWA 설치 안내 — Android Chrome 수동 (로그인 후) */}
-      {!isPwaInstalled && isAndroid && !deferredPrompt && !androidBannerDismissed && (
-        <div className="relative z-10 p-3 bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg border border-indigo-100/60">
-          <button
-            onClick={() => { setAndroidBannerDismissed(true); sessionStorage.setItem("android_pwa_dismissed", "1"); }}
-            className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 text-sm leading-none"
-            aria-label="닫기"
-          >✕</button>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="text-lg">📲</span>
-            <div>
-              <p className="text-[11px] font-bold text-slate-800">홈 화면에 설치하기</p>
-              <p className="text-[11px] text-slate-500">앱처럼 바로 실행할 수 있어요</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 p-2 bg-white/80 rounded-lg border border-slate-100">
-            <div className="flex items-center justify-center w-7 h-7 bg-indigo-100 rounded-lg shrink-0">
-              <span className="text-sm font-bold">⋮</span>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-              Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
-              <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
-            </p>
-          </div>
-        </div>
-      )}
+      {/* PWA 설치 안내 — 우측 상단 버튼으로 통합, 사이드바 제거 */}
 
       {(upcomingSaved.length > 0 || savedItems.length > 0) && (
         <div className="space-y-3 relative z-10">
@@ -924,7 +855,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
-              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
+              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
               <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
                 AI가 구석구석 모든 지원금을 찾아서 알려 드립니다
               </span>

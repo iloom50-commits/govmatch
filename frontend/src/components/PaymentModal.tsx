@@ -177,14 +177,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 </div>
               </div>
               <div className="px-4 pb-3">
-                <button
-                  disabled={loading}
-                  onClick={() => handleSubscribe("lite")}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
-                >
-                  {loading ? "처리 중..." : "1개월 무료 체험 시작"}
-                </button>
-                <p className="text-[9px] text-slate-400 text-center mt-1.5">카드 등록 후 1개월 무료, 이후 월 {isIndividual ? "2,900" : "4,900"}원 자동결제</p>
+                <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">
+                  곧 오픈 예정
+                </div>
+                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">현재 오픈 기념 무료 이용 중 — 유료 플랜은 곧 오픈됩니다</p>
               </div>
             </div>
             )}
@@ -219,14 +215,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                   </div>
                 </div>
                 <div className="px-4 pb-3">
-                  <button
-                    disabled={loading}
-                    onClick={() => handleSubscribe("pro")}
-                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50"
-                  >
-                    {loading ? "처리 중..." : "1주일 무료 체험 시작"}
-                  </button>
-                  <p className="text-[9px] text-slate-400 text-center mt-1.5">카드 등록 후 1주일 무료, 이후 월 49,000원 자동결제</p>
+                  <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">
+                    곧 오픈 예정
+                  </div>
+                  <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">현재 오픈 기념 무료 이용 중 — 유료 플랜은 곧 오픈됩니다</p>
                 </div>
               </div>
             )}

@@ -296,9 +296,10 @@ export default function Home() {
       setProfileData(meData.user);
 
       if (!meData.user.interests && !meData.user.industry_code) {
-        // 프로필 미완성 → 전체 공고 목록으로 (온보딩 스킵)
+        // 프로필 미완성 → 전체 공고 + 맞춤설정 모달 즉시 표시
         setStep("RESULTS");
         setMatches(publicMatches);
+        setShowProfileNudge(true);
         return;
       }
 

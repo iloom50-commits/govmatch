@@ -545,55 +545,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <p className="text-[11px] text-slate-500 font-medium">구석구석 찾아드립니다</p>
       </div>
 
-      {/* 구분선 */}
-      <div className="relative z-10 flex items-center gap-3">
-        <div className="flex-1 h-px bg-slate-200/60" />
-        <span className="text-[11px] text-slate-400 font-bold">무료로 시작하기</span>
-        <div className="flex-1 h-px bg-slate-200/60" />
-      </div>
-
-      {/* 소셜 로그인 */}
-      <div className="relative z-10 space-y-2">
-        <button
-          onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
-          className="w-full py-2.5 bg-[#FEE500] text-[#191919] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:brightness-95 transition-all active:scale-[0.98]"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-            <path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" />
-          </svg>
-          카카오로 시작하기
-        </button>
-        <button
-          onClick={() => window.location.href = `${API}/api/auth/social/naver`}
-          className="w-full py-2.5 bg-[#03C75A] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:brightness-95 transition-all active:scale-[0.98]"
-        >
-          <span className="text-sm font-black">N</span>
-          네이버로 시작하기
-        </button>
-        <button
-          onClick={() => window.location.href = `${API}/api/auth/social/google`}
-          className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all active:scale-[0.98]"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-          </svg>
-          Google로 시작하기
-        </button>
-      </div>
-
-      {/* 이메일 가입 */}
+      {/* CTA 버튼 — 로그인 모달로 연결 */}
       <div className="relative z-10">
         <button
           onClick={() => onLoginRequired?.()}
-          className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all active:scale-[0.98]"
+          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-200"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          이메일로 로그인/가입
+          무료로 맞춤 지원사업 알림받기
         </button>
       </div>
 

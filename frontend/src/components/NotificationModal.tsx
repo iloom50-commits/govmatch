@@ -12,7 +12,15 @@ const EMPLOYEE = ["5인 미만", "5인~10인", "10인~30인", "30인~50인", "50
 
 const GENDERS = ["남성", "여성"];
 const AGE_RANGES = ["20대", "30대", "40대", "50대", "60대 이상"];
-const INCOME_LEVELS = ["기초생활", "차상위", "중위50%이하", "중위75%이하", "중위100%이하", "해당없음"];
+// 화면 표시용 금액 범위 → DB 저장값 매핑
+const INCOME_DISPLAY = [
+  { label: "월 100만원 이하", value: "기초생활" },
+  { label: "월 100~200만원", value: "차상위" },
+  { label: "월 200~300만원", value: "중위50%이하" },
+  { label: "월 300~400만원", value: "중위75%이하" },
+  { label: "월 400~500만원", value: "중위100%이하" },
+  { label: "월 500만원 이상", value: "해당없음" },
+];
 const FAMILY_TYPES = ["1인가구", "다자녀", "한부모", "신혼부부", "다문화", "일반"];
 const EMPLOYMENT_STATUSES = ["재직자", "구직자", "자영업", "프리랜서", "학생", "해당없음"];
 
@@ -410,7 +418,7 @@ export default function NotificationModal({
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">소득수준</p>
                   <div className="flex flex-wrap gap-2">
-                    {INCOME_LEVELS.map(l => <ChipRect key={l} label={l} selected={incomeLevel === l} onClick={() => setIncomeLevel(incomeLevel === l ? "" : l)} />)}
+                    {INCOME_DISPLAY.map(({ label, value }) => <ChipRect key={value} label={label} selected={incomeLevel === value} onClick={() => setIncomeLevel(incomeLevel === value ? "" : value)} />)}
                   </div>
                 </div>
                 {/* 가구유형 */}

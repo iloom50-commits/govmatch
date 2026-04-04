@@ -456,15 +456,24 @@ export default function NotificationModal({
                     {EMPLOYEE.map(e => <ChipRect key={e} label={e} selected={employeeBracket === e} onClick={() => setEmployeeBracket(employeeBracket === e ? "" : e)} />)}
                   </div>
                 </div>
-                {/* 설립일 */}
+                {/* 설립일 — 숫자 8자리 자동 포맷 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">설립일</p>
                   {!isPreFounder && (
                     <input
-                      type="date"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
                       value={foundedDate}
-                      onChange={e => setFoundedDate(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200"
+                      onChange={e => {
+                        const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 8);
+                        let formatted = raw;
+                        if (raw.length >= 5) formatted = raw.slice(0, 4) + "-" + raw.slice(4);
+                        if (raw.length >= 7) formatted = raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6);
+                        setFoundedDate(formatted);
+                      }}
+                      placeholder="예: 20230315"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-indigo-200"
                     />
                   )}
                   <label className="flex items-center gap-2 mt-2 cursor-pointer">

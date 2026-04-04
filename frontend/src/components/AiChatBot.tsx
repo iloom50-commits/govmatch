@@ -1291,10 +1291,19 @@ ${convHtml}
                   {isIndividual ? "생년월일" : "설립일"} <span className="text-red-400">*</span>
                 </label>
                 <input
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
                   value={formProfile.establishment_date}
-                  onChange={(e) => updateForm("establishment_date", e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 8);
+                    let formatted = raw;
+                    if (raw.length >= 5) formatted = raw.slice(0, 4) + "-" + raw.slice(4);
+                    if (raw.length >= 7) formatted = raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6);
+                    updateForm("establishment_date", formatted);
+                  }}
+                  placeholder={isIndividual ? "예: 19900101" : "예: 20230315"}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
                 />
               </div>
 

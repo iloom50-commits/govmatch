@@ -609,7 +609,7 @@ h1{font-size:20px;border-bottom:2px solid #6366f1;padding-bottom:8px}
 <h1>${modeLabel} 보고서</h1>
 <div class="meta">${now}</div>
 ${convHtml}
-<div style="margin-top:30px;padding-top:15px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;text-align:center">지원금GO AI 상담 보고서 · govmatch.kr</div>
+<div style="margin-top:30px;padding-top:15px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;text-align:center">지원금AI AI 상담 보고서 · govmatch.kr</div>
 </body></html>`;
   };
 

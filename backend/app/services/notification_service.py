@@ -157,7 +157,7 @@ class NotificationService:
         return f"""
         <div style="max-width:520px; margin:0 auto; font-family:-apple-system,'Pretendard',sans-serif; color:#1e293b;">
           <div style="padding:28px 24px 20px; border-bottom:2px solid #e2e8f0;">
-            <p style="margin:0; font-size:18px; font-weight:700;">지원금GO</p>
+            <p style="margin:0; font-size:18px; font-weight:700;">지원금AI</p>
             <p style="margin:4px 0 0; font-size:13px; color:#64748b;">{today_str} | {company_name}</p>
           </div>
           <div style="padding:24px;">
@@ -169,7 +169,7 @@ class NotificationService:
             </div>
           </div>
           <div style="padding:16px 24px; border-top:1px solid #f1f5f9; text-align:center;">
-            <p style="margin:0; font-size:11px; color:#94a3b8;">지원금GO | 자동 발송 알림</p>
+            <p style="margin:0; font-size:11px; color:#94a3b8;">지원금AI | 자동 발송 알림</p>
           </div>
         </div>"""
 
@@ -180,7 +180,7 @@ class NotificationService:
             return False
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[지원금GO] {company_name} 맞춤 공고 {len(matches)}건"
+        msg["Subject"] = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
         msg["From"] = self.smtp_from
         msg["To"] = to_email
 
@@ -312,7 +312,7 @@ class NotificationService:
                     data={"template_object": json.dumps({
                         "object_type": "feed",
                         "content": {
-                            "title": f"[지원금GO] {company_name} 맞춤 공고 {len(matches)}건",
+                            "title": f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건",
                             "description": desc + (f"\n외 {more}건" if more > 0 else ""),
                             "image_url": "https://govmatch.kr/og-image.png",
                             "link": {"web_url": link_url, "mobile_web_url": link_url},

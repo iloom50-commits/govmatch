@@ -160,7 +160,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                 (window as any).Kakao.Share.sendDefault({
                   objectType: "feed",
                   content: {
-                    title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+                    title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
                     description: shareText,
                     imageUrl: `${window.location.origin}/icon-512.png`,
                     link: { mobileWebUrl: url, webUrl: url },
@@ -189,7 +189,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
           <button
             onClick={() => {
               if (navigator.share) {
-                navigator.share({ title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림", text: shareText, url });
+                navigator.share({ title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림", text: shareText, url });
               } else {
                 navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("공유 텍스트가 복사되었습니다!", "success"));
               }
@@ -611,7 +611,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
           >
             <span className="text-xs">⬇️</span>
-            지원금GO 설치
+            지원금AI 설치
           </button>
         </div>
       )}
@@ -674,7 +674,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => window.location.origin}
-        shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금GO에서 확인해보세요!"
+        shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금AI에서 확인해보세요!"
         toast={toast}
       />
     </div>
@@ -796,7 +796,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}`}
-            shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금GO에서 확인해보세요!"
+            shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금AI에서 확인해보세요!"
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (
@@ -826,7 +826,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition-all active:scale-95 shadow-md flex items-center justify-center gap-1.5"
           >
             <span className="text-xs">⬇️</span>
-            지원금GO 설치
+            지원금AI 설치
           </button>
         </div>
       )}
@@ -940,7 +940,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
-      {/* 모바일 상단 지원금GO 로고 제거 — 검색창 위 로고와 중복 */}
+      {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}
       {!isPublic && sidebarOpen && (
@@ -1020,7 +1020,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
-              {/* 지원금GO 설치 */}
+              {/* 지원금AI 설치 */}
               {!isPwaInstalled && (
                 <button
                   onClick={() => {
@@ -1029,7 +1029,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   }}
                   className="ml-auto flex items-center justify-center gap-1.5 py-2 px-4 text-[13px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none"
                 >
-                  <span className="text-[13px]">⬇️</span><span>지원금GO 설치</span>
+                  <span className="text-[13px]">⬇️</span><span>지원금AI 설치</span>
                 </button>
               )}
             </div>

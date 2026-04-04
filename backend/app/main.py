@@ -2001,7 +2001,7 @@ def _auto_renew_subscriptions():
                     },
                     json={
                         "billingKey": u["billing_key"],
-                        "orderName": f"지원금GO {plan.upper()} 월 구독",
+                        "orderName": f"지원금AI {plan.upper()} 월 구독",
                         "amount": {"total": price, "currency": "KRW"},
                     },
                     timeout=15,
@@ -3747,7 +3747,7 @@ def admin_push_test():
     sent = 0
     failed = 0
     payload = json.dumps({
-        "title": "지원금GO",
+        "title": "지원금AI",
         "body": "새로운 맞춤 공고가 등록되었습니다!",
         "url": "/",
     }, ensure_ascii=False)

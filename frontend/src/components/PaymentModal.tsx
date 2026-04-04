@@ -96,7 +96,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 상담 혜택!";
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({ title: "지원금GO — AI 맞춤 지원금 매칭", text, url });
+        await navigator.share({ title: "지원금AI — AI 맞춤 지원금 매칭", text, url });
       } else {
         await navigator.clipboard.writeText(`${text}\n${url}`);
         toast("공유 링크가 복사되었습니다!", "success");

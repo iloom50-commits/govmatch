@@ -5,13 +5,13 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: '지원금GO', body: '새로운 알림이 있습니다.', url: '/' };
+  let data = { title: '지원금AI', body: '새로운 알림이 있습니다.', url: '/' };
   try {
     data = event.data.json();
   } catch (e) { /* use defaults */ }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || '지원금집사', {
+    self.registration.showNotification(data.title || '지원금AI', {
       body: data.body,
       icon: '/icon-192.png',
       badge: '/icon-128.png',

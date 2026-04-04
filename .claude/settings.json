@@ -51,7 +51,23 @@
       "WebFetch(domain:www.vadahub.go.kr)",
       "WebFetch(domain:www.bizinfo.go.kr)",
       "WebFetch(domain:www.data.go.kr)",
-      "WebFetch(domain:www.gpters.org)"
+      "WebFetch(domain:www.gpters.org)",
+      "Bash(curl -s \"https://govmatch-production.up.railway.app/api/announcements/public?page=1&size=30&target_type=business\")",
+      "Bash(TOKEN6=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo1NiwiYm4iOiIzMzM0NDQ1NTUwIiwiZW1haWwiOiJ0ZXN0ZmluYWwzQGdvdm1hdGNoLmtyIiwicGxhbiI6ImZyZWUiLCJ0cmlhbF9lbmRzX2F0IjpudWxsLCJleHAiOjE3NzU3OTY1NzR9.-2iRNP5ZAmYxOpRY-PU3atn-9xqRIQGmBpfjFAhjeZI\")",
+      "Bash(__NEW_LINE_b7e9e83599650f66__ PYTHONUTF8=1 python -c \":*)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" \"https://govmatch-production.up.railway.app/api/announcements/public?page=1&size=1&target_type=business\")",
+      "Bash(TOKEN7=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo1NywiYm4iOiI5OTkwMDAxMTEwIiwiZW1haWwiOiJ0ZXN0cmVkZXBsb3lAZ292bWF0Y2gua3IiLCJwbGFuIjoiZnJlZSIsInRyaWFsX2VuZHNfYXQiOm51bGwsImV4cCI6MTc3NTgwMjk1Nn0.ILzRohG0PdG2I26T-EvwFW8mAY5BoTIxohKnf_AQZ-I\")",
+      "Bash(__NEW_LINE_33cddc16e80e20bb__ PYTHONUTF8=1 python -c \":*)",
+      "Bash(TOKEN9=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo1OSwiYm4iOiI3Nzc3ODg4ODAwIiwiZW1haWwiOiJjcmF3bHRlc3RAZ292bWF0Y2gua3IiLCJwbGFuIjoiZnJlZSIsInRyaWFsX2VuZHNfYXQiOm51bGwsImV4cCI6MTc3NTgwNjI1OH0.PP578swKp17J1hTpwqgU7MfABlxRItweLBSDq8JGCqs\")",
+      "Bash(__NEW_LINE_a05ff0d6f2e41686__ PYTHONUTF8=1 python -c \":*)",
+      "Bash(start \"https://govmatch.kr\")",
+      "Bash(curl -s \"https://govmatch.kr\")",
+      "Bash(grep -n \"관심분야\" frontend/src/components/*.tsx)",
+      "Bash(grep -n \"INDIVIDUAL_INTEREST_OPTIONS\\\\|INTEREST_OPTIONS\" frontend/src/components/*.tsx)",
+      "Bash(taskkill //F //PID 16448)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" \"http://localhost:3000\")",
+      "Bash(grep -r \"og-image\\\\|icon-512\\\\|icon-192\" /c/Users/osung/.gemini/antigravity/scratch/Auto_Gov_Macting/frontend/src --include=*.tsx --include=*.ts -n)",
+      "Bash(ls -lh /c/Users/osung/.gemini/antigravity/scratch/Auto_Gov_Macting/frontend/public/*.png /c/Users/osung/.gemini/antigravity/scratch/Auto_Gov_Macting/frontend/public/*.ico)"
     ],
     "additionalDirectories": [
       "C:\\DevLogs\\Auto_Gov_Macting"

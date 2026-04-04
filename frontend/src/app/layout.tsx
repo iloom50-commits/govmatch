@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "지원금GO — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+  title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
   description: "지원금 찾지 마세요. AI가 구석구석 찾아드림. 우리 기업에 딱 맞는 정부지원금, 보조금, 정책자금을 자동 매칭.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "지원금GO",
+    title: "지원금AI",
   },
   other: {
     "mobile-web-app-capable": "yes",
@@ -36,6 +36,9 @@ export default function RootLayout({
     <html lang="ko">
       <head>
         <meta name="google-site-verification" content="u3SIJ5Y_wqzTLLCOwPCzh4r1h8JRLj-WBemyH6nKml8" />
+        <link rel="preconnect" href="https://govmatch-production.up.railway.app" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://govmatch-production.up.railway.app" />
+        <link rel="preconnect" href="https://t1.kakaocdn.net" crossOrigin="anonymous" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="theme-color" content="#2563eb" />
         {/* Google Analytics 4 */}
@@ -71,15 +74,17 @@ export default function RootLayout({
             `,
           }}
         />
-        <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js" crossOrigin="anonymous" />
+        <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js" crossOrigin="anonymous" async />
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              document.addEventListener('DOMContentLoaded', function() {
+              function _initKakao() {
                 if (window.Kakao && !window.Kakao.isInitialized()) {
                   window.Kakao.init('832265e411dd686c3fcf925f3558d8f0');
                 }
-              });
+              }
+              if (document.readyState === 'complete') _initKakao();
+              else window.addEventListener('load', _initKakao);
             `,
           }}
         />

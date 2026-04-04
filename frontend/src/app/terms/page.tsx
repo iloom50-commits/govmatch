@@ -7,7 +7,7 @@ export default function TermsPage() {
       <section className="space-y-6 text-sm leading-relaxed">
         <div>
           <h2 className="text-lg font-bold mb-2">제1조 (목적)</h2>
-          <p>이 약관은 밸류파인더(이하 &quot;회사&quot;)가 운영하는 지원금GO(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+          <p>이 약관은 밸류파인더(이하 &quot;회사&quot;)가 운영하는 지원금AI(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
         </div>
 
         <div>

@@ -339,7 +339,7 @@ ${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? 
   <div>${m.role === "user" ? m.text.replace(/</g, "&lt;") : renderMarkdown(m.text)}</div>
 </div>`).join("")}
 </div>
-<div class="footer">지원금GO — AI 맞춤 지원금 매칭 (govmatch.kr) | 본 보고서는 AI가 생성한 참고용 자료이며, 최종 판단은 주관기관의 심사에 따릅니다.</div>
+<div class="footer">지원금AI — AI 맞춤 지원금 매칭 (govmatch.kr) | 본 보고서는 AI가 생성한 참고용 자료이며, 최종 판단은 주관기관의 심사에 따릅니다.</div>
 </body></html>`;
 
     const printWindow = window.open("", "_blank");

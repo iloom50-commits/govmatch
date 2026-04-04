@@ -25,12 +25,12 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
                 kakao.Share.sendDefault({
                   objectType: "feed",
                   content: {
-                    title: "지원금GO — AI 맞춤 지원금 매칭",
+                    title: "지원금AI — AI 맞춤 지원금 매칭",
                     description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
                     imageUrl: "https://govmatch.kr/icon-512.png",
                     link: { mobileWebUrl: url, webUrl: url },
                   },
-                  buttons: [{ title: "지원금GO 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
+                  buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
                 });
               } else {
                 window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
@@ -55,7 +55,7 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
             onClick={(e) => {
               e.stopPropagation();
               if (navigator.share) {
-                navigator.share({ title: "지원금GO — AI 맞춤 지원금 매칭", text: shareText, url });
+                navigator.share({ title: "지원금AI — AI 맞춤 지원금 매칭", text: shareText, url });
               } else {
                 navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
               }

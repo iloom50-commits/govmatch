@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "지원금GO — AI가 구석구석 모든 지원금을 찾아서 알려 드립니다",
-  "short_name": "지원금GO",
+  "name": "지원금AI — AI가 구석구석 모든 지원금을 찾아서 알려 드립니다",
+  "short_name": "지원금AI",
   "description": "AI가 우리 기업에 딱 맞는 정부지원금을 자동으로 찾아드립니다.",
   "start_url": "/",
   "display": "standalone",

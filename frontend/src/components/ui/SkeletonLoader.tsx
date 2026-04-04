@@ -1,6 +1,26 @@
 "use client";
 
+import { useState, useEffect } from "react";
+
+const MESSAGES = [
+  { title: "AI가 공고를 분석하고 있어요", sub: "수만 건의 지원금 공고를 살펴보는 중..." },
+  { title: "나에게 딱 맞는 지원금 찾는 중", sub: "조건에 맞는 공고를 골라내고 있어요" },
+  { title: "거의 다 됐어요!", sub: "맞춤 결과를 정리하고 있어요" },
+  { title: "조금만 더 기다려주세요", sub: "최적의 공고를 선별하고 있어요" },
+];
+
 export default function SkeletonLoader() {
+  const [msgIdx, setMsgIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMsgIdx(prev => (prev < MESSAGES.length - 1 ? prev + 1 : prev));
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const { title, sub } = MESSAGES[msgIdx];
+
   return (
     <div className="w-full max-w-md p-8 bg-white rounded-[2rem] shadow-2xl border border-indigo-50 animate-in fade-in zoom-in duration-500">
       <div className="flex flex-col items-center text-center">
@@ -37,7 +57,7 @@ export default function SkeletonLoader() {
             </g>
           </svg>
         </div>
-        
+
         <div className="w-full space-y-4 mb-8">
           <div className="h-4 bg-slate-100 rounded-full w-3/4 mx-auto animate-pulse"></div>
           <div className="h-3 bg-slate-50 rounded-full w-1/2 mx-auto animate-pulse delay-75"></div>
@@ -47,7 +67,7 @@ export default function SkeletonLoader() {
           <div className="h-16 bg-slate-50 rounded-2xl animate-pulse"></div>
           <div className="h-16 bg-slate-50 rounded-2xl animate-pulse delay-150"></div>
         </div>
-        
+
         <div className="w-full h-14 bg-indigo-50/50 rounded-2xl mt-8 flex items-center justify-center">
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div>
@@ -55,10 +75,10 @@ export default function SkeletonLoader() {
             <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-200"></div>
           </div>
         </div>
-        
-        <div className="mt-8 space-y-1">
-          <p className="text-sm font-black text-slate-800 uppercase tracking-widest">Processing</p>
-          <p className="text-xs text-slate-400 font-medium tracking-tight">잠시만 기다려 주세요...</p>
+
+        <div className="mt-8 space-y-1.5 transition-all duration-500">
+          <p className="text-sm font-black text-slate-800 tracking-tight">{title}</p>
+          <p className="text-xs text-slate-400 font-medium">{sub}</p>
         </div>
       </div>
     </div>

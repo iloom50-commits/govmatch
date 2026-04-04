@@ -3,10 +3,16 @@
 import { useState, useEffect } from "react";
 
 const MESSAGES = [
-  { title: "AI가 공고를 분석하고 있어요", sub: "수만 건의 지원금 공고를 살펴보는 중..." },
+  { title: "AI가 구석구석 모든 지원금을 찾고 있어요", sub: "수만 건의 지원금 공고를 살펴보는 중..." },
   { title: "나에게 딱 맞는 지원금 찾는 중", sub: "조건에 맞는 공고를 골라내고 있어요" },
   { title: "거의 다 됐어요!", sub: "맞춤 결과를 정리하고 있어요" },
   { title: "조금만 더 기다려주세요", sub: "최적의 공고를 선별하고 있어요" },
+];
+
+const HIGHLIGHTS = [
+  { num: "17,000+", label: "정부 지원금 공고", desc: "실시간 분석" },
+  { num: "AI", label: "자동 매칭", desc: "내 조건에 딱 맞게" },
+  { num: "24/7", label: "새 공고 알림", desc: "놓치지 않게" },
 ];
 
 export default function SkeletonLoader() {
@@ -15,7 +21,7 @@ export default function SkeletonLoader() {
   useEffect(() => {
     const timer = setInterval(() => {
       setMsgIdx(prev => (prev < MESSAGES.length - 1 ? prev + 1 : prev));
-    }, 2000);
+    }, 2500);
     return () => clearInterval(timer);
   }, []);
 
@@ -24,8 +30,8 @@ export default function SkeletonLoader() {
   return (
     <div className="w-full max-w-md p-8 bg-white rounded-[2rem] shadow-2xl border border-indigo-50 animate-in fade-in zoom-in duration-500">
       <div className="flex flex-col items-center text-center">
-        {/* 컴퓨터 타이핑 봇 */}
-        <div className="relative mb-8">
+        {/* 로봇 캐릭터 */}
+        <div className="relative mb-6">
           <svg width="120" height="100" viewBox="0 0 70 60" fill="none" style={{ overflow: "visible", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.15))" }}>
             <path d="M 5 50 L 65 50" stroke="#06B6D4" strokeWidth="2" opacity="0.6" style={{ filter: "drop-shadow(0 0 4px #22D3EE)" }} />
             <path d="M 10 54 L 60 54" stroke="#06B6D4" strokeWidth="1" opacity="0.3" />
@@ -58,25 +64,40 @@ export default function SkeletonLoader() {
           </svg>
         </div>
 
-        <div className="w-full space-y-4 mb-8">
-          <div className="h-4 bg-slate-100 rounded-full w-3/4 mx-auto animate-pulse"></div>
-          <div className="h-3 bg-slate-50 rounded-full w-1/2 mx-auto animate-pulse delay-75"></div>
+        {/* 핵심 가치 제안 */}
+        <p className="text-base font-black text-slate-900 tracking-tight mb-1">
+          AI가 구석구석 모든 지원금을 찾아서 알려 드립니다
+        </p>
+        <p className="text-xs text-slate-400 font-medium mb-6">
+          내 조건에 딱 맞는 지원금 매칭 + 새 공고 알림까지, 무료!
+        </p>
+
+        {/* 핵심 수치 3가지 */}
+        <div className="w-full grid grid-cols-3 gap-2 mb-6">
+          {HIGHLIGHTS.map((h, i) => (
+            <div
+              key={h.label}
+              className="bg-gradient-to-b from-indigo-50/80 to-white rounded-xl p-3 border border-indigo-100/50 animate-in fade-in duration-500"
+              style={{ animationDelay: `${i * 200}ms` }}
+            >
+              <p className="text-lg font-black text-indigo-600 leading-tight">{h.num}</p>
+              <p className="text-[11px] font-bold text-slate-700 mt-0.5">{h.label}</p>
+              <p className="text-[10px] text-slate-400">{h.desc}</p>
+            </div>
+          ))}
         </div>
 
-        <div className="w-full grid grid-cols-2 gap-4">
-          <div className="h-16 bg-slate-50 rounded-2xl animate-pulse"></div>
-          <div className="h-16 bg-slate-50 rounded-2xl animate-pulse delay-150"></div>
-        </div>
-
-        <div className="w-full h-14 bg-indigo-50/50 rounded-2xl mt-8 flex items-center justify-center">
+        {/* 로딩 인디케이터 */}
+        <div className="w-full h-12 bg-indigo-50/50 rounded-2xl flex items-center justify-center">
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-100"></div>
-            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-200"></div>
+            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
           </div>
         </div>
 
-        <div className="mt-8 space-y-1.5 transition-all duration-500">
+        {/* 상태 메시지 */}
+        <div className="mt-5 space-y-1 transition-all duration-500">
           <p className="text-sm font-black text-slate-800 tracking-tight">{title}</p>
           <p className="text-xs text-slate-400 font-medium">{sub}</p>
         </div>

@@ -100,24 +100,69 @@ function getSteps(userType: UserType) {
   return steps;
 }
 
-// ── 관심분야 자동완성 ──
-function InterestAutocomplete({ options, selected, onSelect }: { options: string[]; selected: string[]; onSelect: (opt: string) => void }) {
+// ── 관심분야 자동완성 + AI fallback ──
+
+function InterestAutocomplete({ options, selected, onSelect, userType }: { options: string[]; selected: string[]; onSelect: (opt: string) => void; userType?: string }) {
   const [input, setInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const filtered = input ? options.filter(opt => opt.toLowerCase().includes(input.toLowerCase()) && !selected.includes(opt)) : [];
+
+  const handleAiFallback = async () => {
+    if (!input.trim() || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch(`${API}/api/ai/parse-interests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input.trim(), user_type: userType || "business" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mapped = (data.interests || []) as string[];
+        mapped.forEach((item: string) => { if (!selected.includes(item)) onSelect(item); });
+        if (mapped.length === 0) onSelect(input.trim());
+      } else {
+        onSelect(input.trim());
+      }
+    } catch {
+      onSelect(input.trim());
+    } finally {
+      setAiLoading(false);
+      setInput("");
+    }
+  };
+
   return (
     <div className="relative">
       <input
-        type="text" value={input} onChange={(e) => setInput(e.target.value)}
+        type="text" value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (filtered.length > 0) { onSelect(filtered[0]); setInput(""); }
+            else if (input.trim()) handleAiFallback();
+          }
+        }}
         placeholder="입력하면 추천이 나타납니다"
         className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all"
       />
-      {filtered.length > 0 && (
+      {input && filtered.length > 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
           {filtered.map(opt => (
             <button key={opt} type="button" onClick={() => { onSelect(opt); setInput(""); }}
               className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
             >{opt}</button>
           ))}
+        </div>
+      )}
+      {input && input.length >= 2 && filtered.length === 0 && (
+        <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-3">
+          <button type="button" onClick={handleAiFallback} disabled={aiLoading}
+            className="w-full text-left text-sm text-indigo-600 font-semibold hover:text-indigo-800 transition-all disabled:opacity-50"
+          >
+            {aiLoading ? "AI가 분석 중..." : `"${input}" → AI가 자동 분류합니다 (Enter)`}
+          </button>
         </div>
       )}
     </div>
@@ -521,6 +566,7 @@ export default function NotificationModal({
                     ]}
                     selected={interests}
                     onSelect={(opt) => setInterests(prev => [...prev, opt])}
+                    userType={isInd ? "individual" : "business"}
                   />
                   <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
                 </div>

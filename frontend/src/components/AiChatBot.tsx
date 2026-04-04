@@ -1409,13 +1409,38 @@ ${convHtml}
                     ))}
                   </div>
                 )}
-                {/* 입력 + 드롭다운 */}
+                {/* 입력 + 드롭다운 + AI fallback */}
                 <div className="relative">
                   <input
                     type="text"
                     value={formProfile._interestInput || ""}
                     onChange={(e) => updateForm("_interestInput", e.target.value)}
-                    placeholder={isIndividual ? "입력하면 추천이 나타납니다" : "입력하면 추천이 나타납니다"}
+                    onKeyDown={async (e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const q = (formProfile._interestInput || "").toLowerCase();
+                      const options = (isIndividual ? INDIVIDUAL_INTEREST_OPTIONS : INTEREST_OPTIONS)
+                        .filter(opt => opt.toLowerCase().includes(q) && !formProfile.interests.includes(opt));
+                      if (options.length > 0) {
+                        updateForm("interests", [...formProfile.interests, options[0]]);
+                        updateForm("_interestInput", "");
+                      } else if (formProfile._interestInput?.trim()) {
+                        try {
+                          const res = await fetch(`${API}/api/ai/parse-interests`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: formProfile._interestInput.trim(), user_type: isIndividual ? "individual" : "business" }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            const mapped = (data.interests || []) as string[];
+                            const newInterests = [...formProfile.interests, ...mapped.filter((m: string) => !formProfile.interests.includes(m))];
+                            updateForm("interests", newInterests);
+                          }
+                        } catch {}
+                        updateForm("_interestInput", "");
+                      }
+                    }}
+                    placeholder="입력하면 추천이 나타납니다"
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
                   />
                   {formProfile._interestInput && formProfile._interestInput.length > 0 && (() => {
@@ -1437,10 +1462,14 @@ ${convHtml}
                           </button>
                         ))}
                       </div>
-                    ) : null;
+                    ) : (q.length >= 2 ? (
+                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-3">
+                        <p className="text-sm text-violet-600 font-semibold">"{formProfile._interestInput}" → Enter로 AI 자동 분류</p>
+                      </div>
+                    ) : null);
                   })()}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
+                <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다. 없으면 Enter로 AI가 자동 분류합니다.</p>
               </div>
             </div>
 

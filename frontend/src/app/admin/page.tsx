@@ -220,11 +220,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         return;
       }
 
-      const urlData = await urlRes.json();
-      const systemData = await systemRes.json();
-      const statsData = await statsRes.json();
-      const usersData = await usersRes.json();
-      const analyticsData = await analyticsRes.json();
+      const urlData = await urlRes.json().catch(() => ({}));
+      const systemData = await systemRes.json().catch(() => ({}));
+      const statsData = await statsRes.json().catch(() => ({}));
+      const usersData = await usersRes.json().catch(() => ({}));
+      const analyticsData = await analyticsRes.json().catch(() => ({}));
 
       if (urlData.status === 'SUCCESS') setUrls(urlData.data);
       if (systemData.status === 'SUCCESS') {

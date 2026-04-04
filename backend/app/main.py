@@ -2970,6 +2970,24 @@ def get_admin_analytics():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    def _safe_query(query, default=None):
+        """테이블이 없어도 안전하게 쿼리 실행"""
+        try:
+            cursor.execute(query)
+            return cursor.fetchall()
+        except Exception:
+            conn.rollback()
+            return default if default is not None else []
+
+    def _safe_scalar(query, field="total", default=0):
+        try:
+            cursor.execute(query)
+            row = cursor.fetchone()
+            return row[field] if row else default
+        except Exception:
+            conn.rollback()
+            return default
+
     # 1. 일별 가입 추이 (최근 30일)
     cursor.execute("""
         SELECT DATE(updated_at) as reg_date, COUNT(*) as cnt
@@ -2999,38 +3017,25 @@ def get_admin_analytics():
     type_dist = [{"type": r["utype"] or "business", "count": r["cnt"]} for r in cursor.fetchall()]
 
     # 4. AI 상담 일별 추이 (최근 30일)
-    cursor.execute("""
+    ai_usage_trend = [{"date": str(r["chat_date"]), "count": r["cnt"]} for r in _safe_query("""
         SELECT DATE(created_at) as chat_date, COUNT(*) as cnt
         FROM ai_consult_logs
         WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE(created_at)
-        ORDER BY chat_date
-    """)
-    ai_usage_trend = [{"date": str(r["chat_date"]), "count": r["cnt"]} for r in cursor.fetchall()]
+        GROUP BY DATE(created_at) ORDER BY chat_date
+    """)]
 
     # 5. AI 상담 총 통계
-    cursor.execute("SELECT COUNT(*) as total FROM ai_consult_logs")
-    ai_total = cursor.fetchone()["total"]
-    cursor.execute("""
-        SELECT COUNT(*) as cnt FROM ai_consult_logs
-        WHERE feedback = 'helpful'
-    """)
-    ai_helpful = cursor.fetchone()["cnt"]
-    cursor.execute("""
-        SELECT COUNT(*) as cnt FROM ai_consult_logs
-        WHERE feedback = 'inaccurate'
-    """)
-    ai_inaccurate = cursor.fetchone()["cnt"]
+    ai_total = _safe_scalar("SELECT COUNT(*) as total FROM ai_consult_logs")
+    ai_helpful = _safe_scalar("SELECT COUNT(*) as total FROM ai_consult_logs WHERE feedback = 'helpful'")
+    ai_inaccurate = _safe_scalar("SELECT COUNT(*) as total FROM ai_consult_logs WHERE feedback = 'inaccurate'")
 
     # 6. 알림 발송 통계 (최근 30일)
-    cursor.execute("""
+    notif_raw = _safe_query("""
         SELECT DATE(sent_at) as send_date, status, COUNT(*) as cnt
         FROM notification_logs
         WHERE sent_at >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE(sent_at), status
-        ORDER BY send_date
+        GROUP BY DATE(sent_at), status ORDER BY send_date
     """)
-    notif_raw = cursor.fetchall()
     notif_by_date = {}
     for r in notif_raw:
         d = str(r["send_date"])
@@ -3043,22 +3048,17 @@ def get_admin_analytics():
     notif_trend = sorted(notif_by_date.values(), key=lambda x: x["date"])
 
     # 7. 총 알림 발송 수
-    cursor.execute("SELECT COUNT(*) as total FROM notification_logs")
-    notif_total = cursor.fetchone()["total"]
-    cursor.execute("SELECT COUNT(*) as cnt FROM notification_logs WHERE status = 'sent'")
-    notif_success = cursor.fetchone()["cnt"]
+    notif_total = _safe_scalar("SELECT COUNT(*) as total FROM notification_logs")
+    notif_success = _safe_scalar("SELECT COUNT(*) as total FROM notification_logs WHERE status = 'sent'")
 
     # 8. 저장 공고 수 (북마크)
-    cursor.execute("SELECT COUNT(*) as total FROM saved_announcements")
-    saved_total = cursor.fetchone()["total"]
+    saved_total = _safe_scalar("SELECT COUNT(*) as total FROM saved_announcements")
 
     # 9. 푸시 구독자 수
-    cursor.execute("SELECT COUNT(*) as total FROM push_subscriptions")
-    push_total = cursor.fetchone()["total"]
+    push_total = _safe_scalar("SELECT COUNT(*) as total FROM push_subscriptions")
 
     # 10. 알림 활성 사용자 수
-    cursor.execute("SELECT COUNT(*) as cnt FROM notification_settings WHERE is_active = true")
-    notif_active = cursor.fetchone()["cnt"]
+    notif_active = _safe_scalar("SELECT COUNT(*) as total FROM notification_settings WHERE is_active = true")
 
     # 11. 지역별 사용자 분포
     cursor.execute("""

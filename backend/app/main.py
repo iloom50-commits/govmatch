@@ -3111,6 +3111,106 @@ def get_admin_analytics():
     }
 
 
+def _fetch_ga4_data() -> dict:
+    """GA4 API에서 최근 30일 트래픽 데이터 조회"""
+    try:
+        ga4_creds_json = os.getenv("GA4_SERVICE_ACCOUNT_JSON", "")
+        ga4_property_id = os.getenv("GA4_PROPERTY_ID", "")
+        if not ga4_creds_json or not ga4_property_id:
+            return {"error": "GA4 환경변수 미설정"}
+
+        from google.analytics.data_v1beta import BetaAnalyticsDataClient
+        from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
+        from google.oauth2 import service_account
+
+        creds_dict = json.loads(ga4_creds_json)
+        credentials = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=["https://www.googleapis.com/auth/analytics.readonly"]
+        )
+        client = BetaAnalyticsDataClient(credentials=credentials)
+
+        # 1. 기본 트래픽 지표 (30일)
+        req1 = RunReportRequest(
+            property=f"properties/{ga4_property_id}",
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+            metrics=[
+                Metric(name="activeUsers"),
+                Metric(name="sessions"),
+                Metric(name="screenPageViews"),
+                Metric(name="averageSessionDuration"),
+                Metric(name="bounceRate"),
+                Metric(name="newUsers"),
+            ],
+        )
+        res1 = client.run_report(req1)
+        row = res1.rows[0] if res1.rows else None
+        basic = {}
+        if row:
+            for i, m in enumerate(res1.metric_headers):
+                basic[m.name] = row.metric_values[i].value
+
+        # 2. 일별 방문자 추이
+        req2 = RunReportRequest(
+            property=f"properties/{ga4_property_id}",
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+            dimensions=[Dimension(name="date")],
+            metrics=[Metric(name="activeUsers"), Metric(name="sessions")],
+        )
+        res2 = client.run_report(req2)
+        daily = []
+        for r in res2.rows:
+            d = r.dimension_values[0].value
+            daily.append({"date": f"{d[:4]}-{d[4:6]}-{d[6:]}", "users": int(r.metric_values[0].value), "sessions": int(r.metric_values[1].value)})
+        daily.sort(key=lambda x: x["date"])
+
+        # 3. 유입 경로별
+        req3 = RunReportRequest(
+            property=f"properties/{ga4_property_id}",
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+            dimensions=[Dimension(name="sessionDefaultChannelGroup")],
+            metrics=[Metric(name="sessions"), Metric(name="activeUsers")],
+        )
+        res3 = client.run_report(req3)
+        channels = []
+        for r in res3.rows:
+            channels.append({"channel": r.dimension_values[0].value, "sessions": int(r.metric_values[0].value), "users": int(r.metric_values[1].value)})
+
+        # 4. 디바이스별
+        req4 = RunReportRequest(
+            property=f"properties/{ga4_property_id}",
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+            dimensions=[Dimension(name="deviceCategory")],
+            metrics=[Metric(name="sessions"), Metric(name="bounceRate")],
+        )
+        res4 = client.run_report(req4)
+        devices = []
+        for r in res4.rows:
+            devices.append({"device": r.dimension_values[0].value, "sessions": int(r.metric_values[0].value), "bounce_rate": r.metric_values[1].value})
+
+        # 5. 인기 페이지
+        req5 = RunReportRequest(
+            property=f"properties/{ga4_property_id}",
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+            dimensions=[Dimension(name="pagePath")],
+            metrics=[Metric(name="screenPageViews"), Metric(name="activeUsers")],
+            limit=10,
+        )
+        res5 = client.run_report(req5)
+        pages = []
+        for r in res5.rows:
+            pages.append({"path": r.dimension_values[0].value, "views": int(r.metric_values[0].value), "users": int(r.metric_values[1].value)})
+
+        return {
+            "basic": basic,
+            "daily_trend": daily,
+            "channels": channels,
+            "devices": devices,
+            "top_pages": pages,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.post("/api/admin/strategy-report", dependencies=[Depends(_verify_admin)])
 def api_generate_strategy_report():
     """AI가 사용자 행동 데이터를 분석하여 활성화 전략 보고서 생성"""
@@ -3195,10 +3295,31 @@ def api_generate_strategy_report():
 
     conn.close()
 
+    # ── GA4 데이터 조회 ──
+    ga4 = _fetch_ga4_data()
+    ga4_section = ""
+    if "error" not in ga4:
+        basic = ga4.get("basic", {})
+        ga4_section = f"""
+### Google Analytics 트래픽 데이터 (30일)
+- 활성 사용자: {basic.get('activeUsers', 'N/A')}명
+- 세션 수: {basic.get('sessions', 'N/A')}
+- 페이지뷰: {basic.get('screenPageViews', 'N/A')}
+- 평균 세션 시간: {float(basic.get('averageSessionDuration', 0)):.0f}초
+- 이탈률: {float(basic.get('bounceRate', 0))*100:.1f}%
+- 신규 사용자: {basic.get('newUsers', 'N/A')}명
+- 일별 방문 추이: {json.dumps(ga4.get('daily_trend', [])[-7:], ensure_ascii=False)}
+- 유입 경로: {json.dumps(ga4.get('channels', []), ensure_ascii=False)}
+- 디바이스별: {json.dumps(ga4.get('devices', []), ensure_ascii=False)}
+- 인기 페이지: {json.dumps(ga4.get('top_pages', [])[:5], ensure_ascii=False)}
+"""
+    else:
+        ga4_section = f"\n### Google Analytics\n- 연동 상태: {ga4.get('error', '미설정')}\n"
+
     # ── Gemini로 전략 보고서 생성 ──
     data_summary = f"""
 ## 지원금AI 서비스 현황 데이터 (최근 30일)
-
+{ga4_section}
 ### 사용자 현황
 - 전체 사용자: {total_users}명
 - 최근 7일 신규 가입: {new_users_7d}명

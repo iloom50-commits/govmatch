@@ -513,30 +513,16 @@ export default function NotificationModal({
                       ))}
                     </div>
                   )}
-                  {/* 입력 + 드롭다운 */}
+                  {/* 입력 + 드롭다운 (관심분야 + 맞춤키워드 통합) */}
                   <InterestAutocomplete
-                    options={isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS}
+                    options={[
+                      ...(isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS),
+                      ...(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS),
+                    ]}
                     selected={interests}
                     onSelect={(opt) => setInterests(prev => [...prev, opt])}
                   />
                   <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
-                </div>
-
-                {/* 맞춤 키워드 */}
-                <div className="border-t border-slate-100 pt-4">
-                  <p className="text-sm font-bold text-slate-600 mb-2">맞춤 키워드 <span className="font-normal text-slate-400">(선택)</span></p>
-                  <div className="flex flex-wrap gap-2">
-                    {(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS).map(kw => (
-                      <button
-                        key={kw}
-                        onClick={() => toggleKeyword(kw)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${
-                          customKeywords.includes(kw) ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-400 border-slate-200 hover:border-emerald-300"
-                        }`}
-                      >{kw}</button>
-                    ))}
-                  </div>
-                  {customKeywords.length > 0 && <p className="text-xs text-emerald-500 font-semibold mt-1">{customKeywords.length}개 선택됨</p>}
                 </div>
 
                 {/* 알림 on/off */}

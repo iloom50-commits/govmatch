@@ -533,23 +533,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
-    <div className="glass p-4 md:p-5 rounded-2xl space-y-4 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border relative">
+    <div className="glass p-3 md:p-4 rounded-2xl space-y-2.5 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border relative">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       {/* 핵심 기능 소개 */}
-      <div className="relative z-10 space-y-2.5 pt-3">
+      <div className="relative z-10 space-y-1.5 pt-2">
         {[
           { icon: "🎯", title: "AI 맞춤 매칭", desc: "내 조건에 딱 맞는 공고만" },
           { icon: "💬", title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
           { icon: "📝", title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
           { icon: "🔔", title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
         ].map((item) => (
-          <div key={item.title} className="flex items-start gap-3 p-3 bg-white/60 rounded-xl border border-slate-100/80">
-            <span className="text-lg flex-shrink-0 mt-0.5">{item.icon}</span>
+          <div key={item.title} className="flex items-center gap-2.5 px-2.5 py-2 bg-white/60 rounded-lg border border-slate-100/80">
+            <span className="text-base flex-shrink-0">{item.icon}</span>
             <div>
-              <p className="text-[12px] font-bold text-slate-800">{item.title}</p>
-              <p className="text-[11px] text-slate-500 font-medium">{item.desc}</p>
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">{item.title}</p>
+              <p className="text-[10px] text-slate-500 font-medium leading-tight">{item.desc}</p>
             </div>
           </div>
         ))}

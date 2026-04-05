@@ -91,40 +91,13 @@ export default function ApiPartnershipPage() {
     }
   };
 
-  const plans = [
-    {
-      name: "Free",
-      price: "무료",
-      features: ["일 100건 조회", "기본 공고 데이터", "테스트용"],
-      color: "border-slate-200",
-      bg: "bg-slate-50",
-      text: "text-slate-700",
-    },
-    {
-      name: "Basic",
-      price: "월 29만원",
-      features: ["일 1,000건 조회", "AI 매칭 포함", "이메일 지원", "SLA 99%"],
-      color: "border-indigo-300",
-      bg: "bg-indigo-50",
-      text: "text-indigo-700",
-      popular: true,
-    },
-    {
-      name: "Pro",
-      price: "월 99만원",
-      features: ["무제한 조회", "AI 매칭+분석", "전담 매니저", "SLA 99.9%"],
-      color: "border-violet-300",
-      bg: "bg-violet-50",
-      text: "text-violet-700",
-    },
-    {
-      name: "Enterprise",
-      price: "맞춤 협의",
-      features: ["맞춤 데이터", "전용 인프라", "온프레미스 가능", "계약 협의"],
-      color: "border-amber-300",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-    },
+  const apiFeatures = [
+    "정부지원금/보조금/정책자금 공고 데이터 (기업+개인)",
+    "AI 기반 자격요건 분석 및 조건 매칭",
+    "공고 상세 정보 (자격요건, 제출서류, 신청방법 등)",
+    "실시간 새 공고 알림 연동",
+    "RESTful API (JSON) + Swagger 문서 제공",
+    "사용량에 따른 맞춤 요금 협의",
   ];
 
   const inputClass = "w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400";
@@ -192,31 +165,28 @@ export default function ApiPartnershipPage() {
         </div>
       </section>
 
-      {/* Plans */}
+      {/* API 제공 항목 + 문의 안내 */}
       <section id="plans" className="max-w-5xl mx-auto px-4 py-16">
-        <h2 className="text-xl font-black text-slate-900 text-center mb-8">API 요금제</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {plans.map((p) => (
-            <div key={p.name} className={`rounded-2xl border-2 ${p.color} overflow-hidden relative ${p.popular ? "shadow-lg scale-105" : ""}`}>
-              {p.popular && (
-                <div className="absolute -top-0.5 right-3 px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-bold rounded-b-md">
-                  인기
-                </div>
-              )}
-              <div className={`${p.bg} px-4 py-4 border-b ${p.color}`}>
-                <p className={`text-lg font-black ${p.text}`}>{p.name}</p>
-                <p className={`text-sm font-bold ${p.text} mt-1`}>{p.price}</p>
+        <h2 className="text-xl font-black text-slate-900 text-center mb-2">API 제공 항목</h2>
+        <p className="text-sm text-slate-500 text-center mb-8">사용량과 요구사항에 따라 맞춤 요금을 안내드립니다</p>
+        <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-indigo-200 overflow-hidden">
+          <div className="bg-indigo-50 px-6 py-4 border-b border-indigo-200">
+            <p className="font-bold text-indigo-700">제공 기능</p>
+          </div>
+          <div className="px-6 py-5 space-y-3">
+            {apiFeatures.map((f) => (
+              <div key={f} className="flex items-center gap-3 text-sm">
+                <span className="text-indigo-500 text-base">&#10003;</span>
+                <span className="text-slate-700">{f}</span>
               </div>
-              <div className="px-4 py-4 space-y-2 bg-white">
-                {p.features.map((f) => (
-                  <div key={f} className="flex items-center gap-2 text-xs">
-                    <span className="text-emerald-500">&#10003;</span>
-                    <span className="text-slate-600">{f}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 text-center">
+            <p className="text-xs text-slate-500 mb-3">무료 테스트 API Key 발급 가능 | 사용량에 따른 맞춤 요금 협의</p>
+            <a href="#contact" className="inline-block px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all">
+              제휴 문의하기
+            </a>
+          </div>
         </div>
       </section>
 

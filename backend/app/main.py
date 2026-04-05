@@ -5458,6 +5458,130 @@ def api_partnership_chat(req: dict, request: Request):
         return {"status": "SUCCESS", "answer": "현재 상담이 일시적으로 불가합니다. 하단 문의 폼을 이용해주세요."}
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 고객 상담
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class SupportInquiry(BaseModel):
+    name: str
+    email: str
+    category: str
+    message: str
+
+
+@app.post("/api/support/inquiry")
+def api_support_inquiry(req: SupportInquiry, request: Request):
+    """고객 문의 접수"""
+    if not req.name or not req.email or not req.message:
+        raise HTTPException(status_code=400, detail="필수 항목을 입력해주세요.")
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"support:ip:{ip}", 5, 3600):
+        raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS support_inquiries (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(200) NOT NULL,
+                category VARCHAR(50) DEFAULT '',
+                message TEXT NOT NULL,
+                status VARCHAR(20) DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute(
+            "INSERT INTO support_inquiries (name, email, category, message) VALUES (%s, %s, %s, %s)",
+            (req.name, req.email, req.category or "", req.message)
+        )
+        conn.commit()
+        _log_system("support_inquiry", "system", f"{req.name} ({req.email}) - {req.category}", "success")
+    except Exception:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="문의 접수 중 오류가 발생했습니다.")
+    finally:
+        conn.close()
+    return {"status": "SUCCESS", "message": "문의가 접수되었습니다. 빠르게 답변드리겠습니다."}
+
+
+@app.get("/api/admin/support-inquiries", dependencies=[Depends(_verify_admin)])
+def api_get_support_inquiries():
+    """관리자: 고객 문의 목록"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM support_inquiries ORDER BY created_at DESC LIMIT 50")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            if r.get("created_at"):
+                r["created_at"] = str(r["created_at"])
+        conn.close()
+        return {"status": "SUCCESS", "data": rows}
+    except Exception:
+        conn.close()
+        return {"status": "SUCCESS", "data": []}
+
+
+@app.post("/api/support/chat")
+def api_support_chat(req: dict, request: Request):
+    """고객 상담 AI 챗봇"""
+    message = (req.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="메시지를 입력해주세요.")
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"schat:ip:{ip}", 15, 60):
+        raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
+
+    system_prompt = """당신은 "지원금AI" 고객 상담 챗봇입니다.
+친절하고 쉬운 말로 사용자를 도와주세요.
+
+[서비스 안내]
+- 지원금AI는 정부 지원금/보조금/정책자금을 AI가 자동 매칭해주는 무료 서비스입니다.
+- 기업(사업자)과 개인 모두 이용 가능합니다.
+- 17,000+ 공고를 실시간 분석합니다.
+
+[주요 기능]
+- 무료 회원가입 → 프로필 설정 → AI 자동 매칭
+- 맞춤 공고 알림 (무료)
+- AI 상담: 공고별 자격요건/신청방법 상세 안내
+- 유료 플랜: LITE(월 2,900~4,900원), PRO(월 49,000원)
+
+[자주 묻는 질문]
+- 회원가입: 이메일 또는 소셜(카카오/네이버/구글) 로그인
+- 매칭이 안 될 때: 프로필 설정(지역, 업종, 매출 등)을 정확히 입력해야 합니다
+- 결제: 현재 오픈 기념 무료 이용 중, 유료 플랜은 곧 오픈 예정
+- 알림: 새 공고 등록 시 자동 알림 (이메일/푸시)
+- 환불: 결제 후 7일 이내 전액 환불 가능
+
+[답변 규칙]
+1. 친근하고 쉬운 말로 답변
+2. 해결이 어려운 문제는 "문의 폼을 작성해주시면 담당자가 직접 도와드리겠습니다"로 안내
+3. 한국어로 답변
+4. 답변은 간결하게 (3~5문장)"""
+
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "SUCCESS", "answer": "현재 상담 서비스 준비 중입니다. 하단 문의 폼을 이용해주세요."}
+
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
+        history = req.get("history", [])
+        context = ""
+        if history:
+            context = "\n".join([f"{'사용자' if h['role']=='user' else 'AI'}: {h['content']}" for h in history[-5:]])
+            context = f"\n\n[이전 대화]\n{context}"
+
+        response = model.generate_content(f"{system_prompt}{context}\n\n사용자 질문: {message}")
+        return {"status": "SUCCESS", "answer": response.text.strip()}
+    except Exception:
+        return {"status": "SUCCESS", "answer": "일시적으로 상담이 불가합니다. 하단 문의 폼을 이용해주세요."}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

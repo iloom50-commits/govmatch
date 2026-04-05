@@ -184,6 +184,8 @@ export default function RootLayout({
               <a href="/terms" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">이용약관</a>
               <a href="/privacy" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">개인정보 처리방침</a>
               <a href="/refund" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">환불 정책</a>
+              <a href="/api-partnership" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">API 제휴</a>
+              <a href="/support" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">고객상담</a>
             </p>
             <p className="pt-1 text-slate-300">&copy; {new Date().getFullYear()} 밸류파인더. All rights reserved.</p>
           </div>

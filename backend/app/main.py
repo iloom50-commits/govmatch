@@ -5310,6 +5310,154 @@ def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_curr
     return {"status": "SUCCESS", "report": d}
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# API 제휴 관련
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PartnershipInquiry(BaseModel):
+    company_name: str
+    contact_name: str
+    email: str
+    phone: Optional[str] = ""
+    purpose: str
+    expected_volume: Optional[str] = ""
+    message: Optional[str] = ""
+
+
+@app.post("/api/partnership/inquiry")
+def api_partnership_inquiry(req: PartnershipInquiry, request: Request):
+    """API 제휴 문의 접수"""
+    if not req.company_name or not req.email or not req.purpose:
+        raise HTTPException(status_code=400, detail="필수 항목을 입력해주세요.")
+    # Rate limit: IP당 시간당 3회
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"partnership:ip:{ip}", 3, 3600):
+        raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS partnership_inquiries (
+                id SERIAL PRIMARY KEY,
+                company_name VARCHAR(200) NOT NULL,
+                contact_name VARCHAR(100) NOT NULL,
+                email VARCHAR(200) NOT NULL,
+                phone VARCHAR(50) DEFAULT '',
+                purpose TEXT NOT NULL,
+                expected_volume VARCHAR(100) DEFAULT '',
+                message TEXT DEFAULT '',
+                status VARCHAR(20) DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute(
+            """INSERT INTO partnership_inquiries (company_name, contact_name, email, phone, purpose, expected_volume, message)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (req.company_name, req.contact_name, req.email, req.phone or "", req.purpose, req.expected_volume or "", req.message or "")
+        )
+        conn.commit()
+        _log_system("partnership_inquiry", "system", f"{req.company_name} ({req.email})", "success")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="문의 접수 중 오류가 발생했습니다.")
+    finally:
+        conn.close()
+
+    return {"status": "SUCCESS", "message": "제휴 문의가 접수되었습니다. 담당자가 빠르게 연락드리겠습니다."}
+
+
+@app.get("/api/admin/partnership-inquiries", dependencies=[Depends(_verify_admin)])
+def api_get_partnership_inquiries():
+    """관리자: 제휴 문의 목록 조회"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM partnership_inquiries ORDER BY created_at DESC LIMIT 50")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            if r.get("created_at"):
+                r["created_at"] = str(r["created_at"])
+        conn.close()
+        return {"status": "SUCCESS", "data": rows}
+    except Exception:
+        conn.close()
+        return {"status": "SUCCESS", "data": []}
+
+
+@app.post("/api/partnership/chat")
+def api_partnership_chat(req: dict, request: Request):
+    """API 제휴 상담 챗봇 (Gemini 기반)"""
+    message = (req.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="메시지를 입력해주세요.")
+    # Rate limit
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"pchat:ip:{ip}", 10, 60):
+        raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
+
+    system_prompt = """당신은 "지원금AI" 서비스의 API 제휴 상담 전문가입니다.
+비즈니스 파트너에게 전문적이고 친절하게 응대하세요.
+
+[서비스 정보]
+- 서비스명: 지원금AI (govmatch.kr)
+- 제공: 17,000+ 정부 지원금 공고 데이터 + AI 매칭 엔진
+- 운영: 밸류파인더 (대표 권오성)
+
+[API 제공 데이터]
+- 정부지원금/보조금/정책자금 공고 데이터 (기업+개인)
+- AI 기반 자격요건 분석 및 매칭
+- 공고 상세 정보 (자격요건, 제출서류, 신청방법 등)
+- 실시간 새 공고 알림
+
+[API 요금제]
+- Free: 일 100건 조회, 기본 공고 데이터
+- Basic (월 29만원): 일 1,000건, AI 매칭 포함, 이메일 지원
+- Pro (월 99만원): 무제한, AI 매칭+분석, 전담 매니저, SLA 보장
+- Enterprise: 맞춤 협의
+
+[연동 방식]
+- RESTful API (JSON)
+- API Key 인증
+- Swagger 문서 제공
+- 연동 가이드 및 샘플 코드 제공
+
+[자주 묻는 질문]
+- 테스트 API Key는 무료로 발급 가능
+- 데이터는 매일 자동 업데이트
+- SLA: Basic 99%, Pro 99.9%
+- 결제: 월 자동결제 (카드/계좌이체)
+
+답변 규칙:
+1. 비즈니스 톤으로 전문적이게 답변
+2. 구체적 제휴 논의가 필요하면 문의 폼 작성을 안내
+3. 기술적 질문에는 상세하게 답변
+4. 모르는 것은 "담당자가 상세히 안내드리겠습니다"로 안내
+5. 한국어로 답변"""
+
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "SUCCESS", "answer": "현재 상담 서비스 준비 중입니다. 하단 문의 폼을 이용해주세요."}
+
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
+        history = req.get("history", [])
+        chat_messages = [{"role": "user", "parts": [system_prompt + "\n\n사용자 질문: " + message]}]
+        if history:
+            # 이전 대화 컨텍스트 포함 (최근 5건)
+            context = "\n".join([f"{'사용자' if h['role']=='user' else 'AI'}: {h['content']}" for h in history[-5:]])
+            chat_messages = [{"role": "user", "parts": [system_prompt + f"\n\n[이전 대화]\n{context}\n\n사용자 질문: " + message]}]
+
+        response = model.generate_content(chat_messages[0]["parts"][0])
+        answer = response.text.strip()
+        return {"status": "SUCCESS", "answer": answer}
+    except Exception as e:
+        return {"status": "SUCCESS", "answer": "현재 상담이 일시적으로 불가합니다. 하단 문의 폼을 이용해주세요."}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

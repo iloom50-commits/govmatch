@@ -185,6 +185,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [logDailyTrend, setLogDailyTrend] = useState<any[]>([]);
   const [logFunnel, setLogFunnel] = useState<Record<string, any>>({});
   const [logHourly, setLogHourly] = useState<any[]>([]);
+  const [partnerInquiries, setPartnerInquiries] = useState<any[]>([]);
   const [urls, setUrls] = useState<AdminURL[]>([]);
   const [apis, setApis] = useState<SourceItem[]>([]);
   const [scrapers, setScrapers] = useState<SourceItem[]>([]);
@@ -213,12 +214,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [urlRes, systemRes, statsRes, usersRes, analyticsRes] = await Promise.all([
+      const [urlRes, systemRes, statsRes, usersRes, analyticsRes, partnerRes] = await Promise.all([
         authFetch(`${API_URL}/api/admin/urls`),
         authFetch(`${API_URL}/api/admin/system-sources`),
         authFetch(`${API_URL}/api/admin/stats`),
         authFetch(`${API_URL}/api/admin/users`),
         authFetch(`${API_URL}/api/admin/analytics`),
+        authFetch(`${API_URL}/api/admin/partnership-inquiries`),
       ]);
 
       if (urlRes.status === 401 || statsRes.status === 401) {
@@ -240,6 +242,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       if (statsData.status === 'SUCCESS') setStats(statsData.data);
       if (usersData.status === 'SUCCESS') setUsers(usersData.data);
       if (analyticsData.status === 'SUCCESS') setAnalytics(analyticsData.data);
+      const partnerData = await partnerRes.json().catch(() => ({}));
+      if (partnerData.status === 'SUCCESS') setPartnerInquiries(partnerData.data || []);
     } catch (err) {
       console.error('Failed to fetch admin data', err);
     } finally {
@@ -1147,6 +1151,39 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       <td className="px-5 py-3 text-right text-slate-500">
                         {stats.total_announcements > 0 ? ((s.count / stats.total_announcements) * 100).toFixed(1) : 0}%
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* 제휴 문의 */}
+        {partnerInquiries.length > 0 && (
+          <section>
+            <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <FiMail className="text-violet-600" /> API 제휴 문의 <span className="text-xs text-violet-500 font-normal">{partnerInquiries.length}건</span>
+            </h2>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-slate-500">회사명</th>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-slate-500">담당자</th>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-slate-500">이메일</th>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-slate-500">목적</th>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-slate-500">접수일</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {partnerInquiries.map((p: any) => (
+                    <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-2 text-xs font-medium text-slate-800">{p.company_name}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{p.contact_name}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{p.email}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{p.purpose}</td>
+                      <td className="px-3 py-2 text-xs text-slate-400">{p.created_at?.slice(0, 10)}</td>
                     </tr>
                   ))}
                 </tbody>

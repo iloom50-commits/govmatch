@@ -1352,20 +1352,24 @@ def api_announcements_public(
     cursor.execute("SELECT DISTINCT category FROM announcements WHERE category IS NOT NULL ORDER BY category")
     categories = [r["category"] for r in cursor.fetchall()]
 
-    # 카테고리별 건수 (마감 전 공고만, target_type 필터 적용)
-    cat_where = ["(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)"]
-    cat_params: list = []
-    if target_type:
-        cat_where.append("(target_type = %s OR target_type = 'both')")
-        cat_params.append(target_type)
-    cat_where_sql = " AND ".join(cat_where)
-    cursor.execute(
-        f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
-            FROM announcements WHERE {cat_where_sql}
-            GROUP BY COALESCE(category, '기타') ORDER BY cnt DESC""",
-        cat_params,
-    )
-    category_counts = {r["cat"]: r["cnt"] for r in cursor.fetchall()}
+    # 카테고리별 건수 — 캐시 활용 (5분)
+    cat_cache_key = f"cat_counts:{target_type or 'all'}"
+    category_counts = _get_cached(cat_cache_key)
+    if not category_counts:
+        cat_where = ["(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)"]
+        cat_params: list = []
+        if target_type:
+            cat_where.append("(target_type = %s OR target_type = 'both')")
+            cat_params.append(target_type)
+        cat_where_sql = " AND ".join(cat_where)
+        cursor.execute(
+            f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
+                FROM announcements WHERE {cat_where_sql}
+                GROUP BY COALESCE(category, '기타') ORDER BY cnt DESC""",
+            cat_params,
+        )
+        category_counts = {r["cat"]: r["cnt"] for r in cursor.fetchall()}
+        _set_cache(cat_cache_key, category_counts)
 
     conn.close()
 

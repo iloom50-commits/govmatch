@@ -116,8 +116,8 @@ export default function Home() {
     if (publicLoading) return;
     setPublicLoading(true);
     try {
-      // 비로그인: 충분한 데이터를 로드하여 페이지네이션 활용
-      const size = page === 1 ? 100 : 20;
+      // 비로그인: 백엔드 최대 50건 제한에 맞춤
+      const size = 50;
       const [bizData, indData] = await Promise.all([
         fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=business`).then(r => r.json()),
         fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=individual`).then(r => r.json()),

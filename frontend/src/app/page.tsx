@@ -134,7 +134,7 @@ export default function Home() {
       }
       // 첫 페이지는 캐시 저장 (재방문 시 즉시 표시용)
       if (page === 1 && newItems.length > 0) {
-        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems.slice(0, 40), ts: Date.now() })); } catch {}
+        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems, ts: Date.now() })); } catch {}
       }
     } catch {} finally { setPublicLoading(false); }
   }, [publicLoading]);

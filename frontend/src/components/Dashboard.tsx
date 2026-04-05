@@ -569,32 +569,32 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
-    <div className="glass p-4 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-hidden w-full max-w-full box-border relative">
+    <div className="glass p-5 rounded-2xl space-y-4 shadow-xl border border-white/40 overflow-hidden w-full max-w-full box-border relative">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       {/* 핵심 기능 소개 */}
-      <div className="relative z-10 space-y-1.5 pt-1">
+      <div className="relative z-10 space-y-2 pt-1">
         {[
           { icon: "🎯", title: "AI 맞춤 매칭", desc: "내 조건에 딱 맞는 공고만" },
           { icon: "💬", title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
           { icon: "📝", title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
           { icon: "🔔", title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
         ].map((item) => (
-          <div key={item.title} className="flex items-center gap-2.5 px-3 py-2 bg-white/60 rounded-xl border border-slate-100/80">
-            <span className="text-base flex-shrink-0">{item.icon}</span>
+          <div key={item.title} className="flex items-center gap-3 px-3 py-2.5 bg-white/60 rounded-xl border border-slate-100/80">
+            <span className="text-lg flex-shrink-0">{item.icon}</span>
             <div>
-              <p className="text-[11px] font-bold text-slate-800 leading-snug">{item.title}</p>
-              <p className="text-[10px] text-slate-500 font-medium leading-snug">{item.desc}</p>
+              <p className="text-[12px] font-bold text-slate-800">{item.title}</p>
+              <p className="text-[11px] text-slate-500 font-medium">{item.desc}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* 통계 */}
-      <div className="relative z-10 px-3 py-2.5 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
-        <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-0.5">AI가 분석한 지원사업</p>
-        <p className="text-lg font-black text-indigo-700">{(totalAnnouncementCount > 0 ? totalAnnouncementCount : 14000).toLocaleString()}건+</p>
+      <div className="relative z-10 px-4 py-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
+        <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">AI가 분석한 지원사업</p>
+        <p className="text-xl font-black text-indigo-700">{(totalAnnouncementCount > 0 ? totalAnnouncementCount : 14000).toLocaleString()}건+</p>
       </div>
 
       {/* CTA 버튼 */}

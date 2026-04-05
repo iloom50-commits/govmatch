@@ -833,8 +833,15 @@ class SecurityAgent:
             if not counter[key]:
                 del counter[key]
 
+    # SmartDoc 연동 등 내부 서비스 API 경로 — 보안 검사 예외
+    _whitelisted_paths = ("/api/announcements/search", "/for-smartdoc")
+
     def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
+        # 화이트리스트 경로는 보안 검사 건너뛰기
+        if any(wp in path for wp in self._whitelisted_paths):
+            return None
+
         now = time.time()
         ua_lower = (user_agent or "").lower()
 

@@ -53,6 +53,42 @@ function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => 
   );
 }
 
+// 비로그인 CTA 버튼 + 말풍선
+function PublicNudgeButton({ onClick }: { onClick: () => void }) {
+  const [showBubble, setShowBubble] = useState(false);
+
+  useEffect(() => {
+    let count = 0;
+    const show = () => {
+      if (count >= 3) return;
+      setShowBubble(true);
+      count++;
+      setTimeout(() => setShowBubble(false), 8000);
+    };
+    const timer1 = setTimeout(show, 15000);
+    const timer2 = setInterval(show, 120000);
+    return () => { clearTimeout(timer1); clearInterval(timer2); };
+  }, []);
+
+  return (
+    <div className="relative z-10">
+      {showBubble && (
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+          가입 즉시 7일 무료체험!
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+        </div>
+      )}
+      <button
+        onClick={onClick}
+        className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all active:scale-95 text-xs shadow-md"
+      >
+        <span className="text-sm">🔔</span>
+        <span className="tracking-tight">(무료가입) AI맞춤 알림</span>
+      </button>
+    </div>
+  );
+}
+
 const REVENUE_KR: Record<string, string> = {
   UNDER_1B: "1억 미만",
   "1B_5B": "1억~5억",
@@ -563,15 +599,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       {/* CTA 버튼 — 로그인 모달로 연결 */}
-      <div className="relative z-10 space-y-2">
-        <button
-          onClick={() => onLoginRequired?.()}
-          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-200"
-        >
-          무료 가입하기
-        </button>
-        <p className="text-[10px] text-indigo-400 text-center font-medium">가입 즉시 7일 무료체험 시작</p>
-      </div>
+      <PublicNudgeButton onClick={() => onLoginRequired?.()} />
 
       {/* PWA 설치는 우측 상단 버튼으로 통합 — 좌측 패널에서 제거 */}
 

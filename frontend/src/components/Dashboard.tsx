@@ -616,7 +616,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
       >
         <span className="text-sm">🤝</span>
-        <span className="tracking-tight">API 제휴 · 협업 제안</span>
+        <span className="tracking-tight">API 제공 · 협업 제안 하기</span>
       </a>
     </div>
   );
@@ -818,7 +818,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           className="w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
         >
           <span className="text-sm">🤝</span>
-          <span className="tracking-tight">API 제휴 · 협업 제안</span>
+          <span className="tracking-tight">API 제공 · 협업 제안 하기</span>
         </a>
       </div>
     </div>

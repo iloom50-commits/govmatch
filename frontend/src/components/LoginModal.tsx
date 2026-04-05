@@ -105,7 +105,7 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
         <div className="relative z-10 p-6 sm:p-8">
           <div className="text-center mb-5">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-3">
-              가입하면 바로 이용 가능
+              무료가입하면 바로 이용 가능
             </h2>
             <div className="flex flex-col gap-1.5 text-left max-w-[260px] mx-auto mb-1">
               <div className="flex items-center gap-2 text-[12px]">

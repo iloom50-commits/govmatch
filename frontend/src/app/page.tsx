@@ -109,7 +109,8 @@ export default function Home() {
   const [publicPage, setPublicPage] = useState(1);
   const [publicHasMore, setPublicHasMore] = useState(true);
   const [publicLoading, setPublicLoading] = useState(false);
-  const [publicCategoryCounts, setPublicCategoryCounts] = useState<Record<string, number>>({});
+  const [publicCategoryCountsBiz, setPublicCategoryCountsBiz] = useState<Record<string, number>>({});
+  const [publicCategoryCountsInd, setPublicCategoryCountsInd] = useState<Record<string, number>>({});
 
   const loadPublicMore = useCallback(async (page: number, append = false) => {
     if (publicLoading) return;
@@ -126,12 +127,10 @@ export default function Home() {
       const newItems = [...biz, ...ind];
       if (newItems.length === 0) { setPublicHasMore(false); }
       setPublicMatches(prev => append ? [...prev, ...newItems] : newItems);
-      // 카테고리별 전체 건수 병합
+      // 카테고리별 전체 건수 (기업/개인 분리)
       if (page === 1) {
-        const merged: Record<string, number> = {};
-        for (const [cat, cnt] of Object.entries(bizData.category_counts || {})) { merged[cat] = (merged[cat] || 0) + (cnt as number); }
-        for (const [cat, cnt] of Object.entries(indData.category_counts || {})) { merged[cat] = (merged[cat] || 0) + (cnt as number); }
-        setPublicCategoryCounts(merged);
+        setPublicCategoryCountsBiz(bizData.category_counts || {});
+        setPublicCategoryCountsInd(indData.category_counts || {});
       }
       // 첫 페이지는 캐시 저장 (재방문 시 즉시 표시용)
       if (page === 1 && newItems.length > 0) {
@@ -471,7 +470,8 @@ export default function Home() {
             onLogout={() => {}}
             isPublic={true}
             onLoginRequired={() => setShowLoginModal(true)}
-            categoryCounts={publicCategoryCounts}
+            categoryCountsBiz={publicCategoryCountsBiz}
+            categoryCountsInd={publicCategoryCountsInd}
             onRefresh={() => { setPublicPage(1); loadPublicMore(1); }}
           />
         </div>

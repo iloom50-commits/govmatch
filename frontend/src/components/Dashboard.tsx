@@ -250,7 +250,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCounts }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCounts?: Record<string, number> }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number> }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "business";
@@ -556,14 +556,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const searchedMatches = baseMatches;
 
   const tabCounts = useMemo(() => {
-    // categoryCounts(API 전체 건수)가 있으면 사용, 없으면 로드된 데이터에서 계산
-    if (categoryCounts && Object.keys(categoryCounts).length > 0) {
-      const counts: Record<string, number> = { all: Object.values(categoryCounts).reduce((a, b) => a + b, 0) };
+    // majorTab에 따라 해당 target_type의 카테고리 건수 사용
+    const activeCounts = majorTab === "business" ? categoryCountsBiz : categoryCountsInd;
+    if (activeCounts && Object.keys(activeCounts).length > 0) {
+      const counts: Record<string, number> = { all: Object.values(activeCounts).reduce((a, b) => a + b, 0) };
       currentTabs.forEach((g: { key: string; categories: string[] }) => {
         if (g.key === "all") return;
         counts[g.key] = g.categories.reduce((sum, gc) => {
           const gcLower = gc.toLowerCase();
-          for (const [cat, cnt] of Object.entries(categoryCounts)) {
+          for (const [cat, cnt] of Object.entries(activeCounts)) {
             if (cat.toLowerCase().includes(gcLower) || gcLower.includes(cat.toLowerCase())) {
               sum += cnt;
             }
@@ -582,7 +583,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       }).length;
     });
     return counts;
-  }, [searchedMatches, currentTabs, categoryCounts]);
+  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (

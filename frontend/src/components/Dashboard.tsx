@@ -558,18 +558,19 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 통계 */}
       <div className="relative z-10 p-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
         <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">AI가 분석한 지원사업</p>
-        <p className="text-lg font-black text-indigo-700">{(totalAnnouncementCount || matches.length || 0).toLocaleString()}건</p>
+        <p className="text-lg font-black text-indigo-700">{(totalAnnouncementCount > 0 ? totalAnnouncementCount : 14000).toLocaleString()}건+</p>
         <p className="text-[11px] text-slate-500 font-medium">구석구석 찾아드립니다</p>
       </div>
 
       {/* CTA 버튼 — 로그인 모달로 연결 */}
-      <div className="relative z-10">
+      <div className="relative z-10 space-y-2">
         <button
           onClick={() => onLoginRequired?.()}
           className="w-full py-3.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-200"
         >
-          무료로 맞춤 지원사업 알림받기
+          무료 가입하기
         </button>
+        <p className="text-[10px] text-indigo-400 text-center font-medium">가입 즉시 7일 무료체험 시작</p>
       </div>
 
       {/* PWA 설치는 우측 상단 버튼으로 통합 — 좌측 패널에서 제거 */}

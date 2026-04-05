@@ -1074,7 +1074,11 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _decode_jwt(token)
 
 
-# ── 플랜 v3: 개인·사업자 분리 (2026-03-26 확정) ──
+# ── 플랜 v4: 플랜 차별화 강화 (2026-04-05 확정) ──
+# FREE: 공고AI 1회/월, 저장/알림 불가
+# LITE: 공고AI 20회/월, 저장/알림 가능, 가입 시 7일 무료체험
+# PRO (전문가용): 무제한, 전문가 에이전트
+#
 # 자유AI 상담 (자유Q&A + 컨설턴트) 건수 제한 — PRO 전용
 PLAN_LIMITS = {
     "free": 0,
@@ -1086,12 +1090,12 @@ PLAN_LIMITS = {
 }
 
 # 공고AI 상담 건수 제한
-# free: 3회/월 (개인·사업자 동일), lite: 10회/월, pro: 무제한
+# free: 1회/월, lite: 20회/월, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 3,
-    "lite_trial": 3,   # legacy
-    "lite": 10,
-    "basic": 10,       # legacy → LITE 취급
+    "free": 1,
+    "lite_trial": 20,  # LITE 체험도 20회
+    "lite": 20,
+    "basic": 20,       # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
@@ -1582,6 +1586,14 @@ def api_register(req: RegisterRequest, request: Request):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
+            # 가입 시 LITE 7일 무료체험 자동 부여 (추천인이 없는 경우)
+            if not req.referred_by:
+                trial_end = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat()
+                cursor.execute(
+                    "UPDATE users SET plan='lite', plan_started_at=%s, plan_expires_at=%s WHERE user_id=%s",
+                    (now_iso, trial_end, user_id)
+                )
+
             # 가입 시 추천인 보상: LITE 1개월 무료 (최대 5회 — merit_months로 추적)
             if req.referred_by:
                 cursor.execute("SELECT user_id, plan, plan_expires_at, merit_months FROM users WHERE referral_code = %s", (req.referred_by,))
@@ -1615,12 +1627,18 @@ def api_register(req: RegisterRequest, request: Request):
                     )
 
         conn.commit()
-        token = _create_jwt(user_id, req.business_number, req.email, "free", None)
-        _log_event("signup", req.business_number, f"email={req.email}", _get_client_ip(request), request.headers.get("user-agent", ""))
+        # 가입 후 실제 플랜 상태 조회 (체험/추천 적용 반영)
+        cursor2 = conn.cursor()
+        cursor2.execute("SELECT plan, plan_expires_at FROM users WHERE user_id=%s", (user_id,))
+        signup_user = cursor2.fetchone()
+        signup_plan = signup_user["plan"] if signup_user else "free"
+        signup_expires = str(signup_user["plan_expires_at"]) if signup_user and signup_user["plan_expires_at"] else None
+        token = _create_jwt(user_id, req.business_number, req.email, signup_plan, signup_expires)
+        _log_event("signup", req.business_number, f"email={req.email},plan={signup_plan}", _get_client_ip(request), request.headers.get("user-agent", ""))
         return {
             "status": "SUCCESS",
             "token": token,
-            "plan": _get_plan_status("free", None, 0),
+            "plan": _get_plan_status(signup_plan, signup_expires, 0),
         }
     finally:
         conn.close()
@@ -4626,8 +4644,23 @@ class SavedBulk(BaseModel):
 def api_save_bulk(body: SavedBulk, current_user: dict = Depends(_get_current_user)):
     if body.business_number != current_user["bn"]:
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
+    # FREE 플랜: 저장 불가
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT plan, plan_expires_at FROM users WHERE business_number=%s", (current_user["bn"],))
+    u = cursor.fetchone()
+    if u:
+        plan = u["plan"] or "free"
+        if plan != "free" and u["plan_expires_at"]:
+            import datetime as _dt
+            try:
+                if _dt.datetime.fromisoformat(str(u["plan_expires_at"])) < _dt.datetime.utcnow():
+                    plan = "free"
+            except Exception:
+                pass
+        if plan == "free":
+            conn.close()
+            raise HTTPException(status_code=403, detail="LITE_REQUIRED")
     inserted = 0
     try:
         for aid in body.announcement_ids:

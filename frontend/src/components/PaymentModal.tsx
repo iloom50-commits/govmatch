@@ -144,14 +144,21 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </div>
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="text-emerald-500">&#10003;</span>
-                <span className="text-slate-700 font-medium">공고AI 상담 — 월 3회</span>
+                <span className="text-slate-700 font-medium">공고AI 상담 — 월 1회</span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-slate-300">&#10007;</span>
+                <span className="text-slate-400 font-medium">마감 알림 (카톡/이메일) — 불가</span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-slate-300">&#10007;</span>
+                <span className="text-slate-400 font-medium">공고 저장/일정관리 — 불가</span>
               </div>
             </div>
           </div>
 
-          {/* ── 유료 플랜 ── */}
+          {/* ── LITE 플랜 ── */}
           <div className="mb-4 space-y-3">
-            {/* 개인 LITE or 사업자 LITE — 이미 LITE/PRO면 숨김 */}
             {!["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") && (
             <div className="rounded-xl border-2 border-indigo-200 overflow-hidden hover:border-indigo-400 transition-all">
               <div className="bg-indigo-50 px-4 py-2.5 border-b border-indigo-200 flex items-center justify-between">
@@ -169,7 +176,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               <div className="px-4 py-3 space-y-1.5">
                 <div className="flex items-center gap-2 text-[12px]">
                   <span className="text-indigo-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>월 10회</strong></span>
+                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>월 20회</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-indigo-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">마감 알림 (카톡/이메일) — <strong>발송</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-indigo-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">공고 저장/일정관리 — <strong>사용 가능</strong></span>
                 </div>
                 <div className="flex items-center gap-2 text-[12px]">
                   <span className="text-indigo-500">&#10003;</span>
@@ -180,55 +195,17 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">
                   곧 오픈 예정
                 </div>
-                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">현재 오픈 기념 무료 이용 중 — 유료 플랜은 곧 오픈됩니다</p>
+                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">가입 시 7일 무료체험 제공</p>
               </div>
             </div>
             )}
 
-            {/* 사업자 PRO — 사업자/both만 표시, LITE 사용자도 PRO 업그레이드 가능 */}
-            {isBusiness && (
-              <div className="rounded-xl border-2 border-violet-200 overflow-hidden hover:border-violet-400 transition-all relative">
-                <div className="absolute -top-0.5 right-3 px-2 py-0.5 bg-violet-600 text-white text-[9px] font-bold rounded-b-md">
-                  전문가용
-                </div>
-                <div className="bg-violet-50 px-4 py-2.5 border-b border-violet-200 flex items-center justify-between">
-                  <div>
-                    <span className="text-[13px] font-bold text-violet-700">PRO</span>
-                    <span className="text-[11px] text-violet-500 ml-1.5">상담사·컨설턴트</span>
-                  </div>
-                  <span className="text-[14px] font-black text-violet-700">
-                    49,000<span className="text-[10px] font-medium text-violet-400">원/월</span>
-                  </span>
-                </div>
-                <div className="px-4 py-3 space-y-1.5">
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <span className="text-violet-500">&#10003;</span>
-                    <span className="text-slate-700 font-medium">공고AI 상담 — <strong>무제한</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <span className="text-violet-500">&#10003;</span>
-                    <span className="text-slate-700 font-medium">자유AI 상담 — <strong>무제한</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <span className="text-violet-500">&#10003;</span>
-                    <span className="text-slate-700 font-medium">고객 매칭 · 리포트</span>
-                  </div>
-                </div>
-                <div className="px-4 pb-3">
-                  <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">
-                    곧 오픈 예정
-                  </div>
-                  <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">현재 오픈 기념 무료 이용 중 — 유료 플랜은 곧 오픈됩니다</p>
-                </div>
-              </div>
-            )}
-
-            {/* both 표시 */}
-            {isBusiness && (
-              <p className="text-[10px] text-slate-400 text-center">
-                * 사업자 유료 플랜에는 개인 지원금 기능이 포함됩니다
-              </p>
-            )}
+            {/* 전문가 파트너 프로그램 링크 */}
+            <div className="text-center pt-1">
+              <a href="/api-partnership" className="text-[11px] text-violet-500 hover:text-violet-700 font-bold underline underline-offset-2">
+                컨설턴트/전문가이신가요? PRO 파트너 프로그램 알아보기 &rarr;
+              </a>
+            </div>
           </div>
 
           {/* ── 친구 추천 ── */}

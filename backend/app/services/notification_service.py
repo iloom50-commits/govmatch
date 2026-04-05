@@ -35,7 +35,7 @@ class NotificationService:
         return bool(self.smtp_user and self.smtp_password)
 
     async def get_target_users(self):
-        """푸시 구독이 있거나 이메일 알림이 활성화된 사용자만 조회"""
+        """LITE 이상 플랜 + 푸시 구독이 있거나 이메일 알림이 활성화된 사용자만 조회"""
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
         cursor.execute("""
@@ -43,8 +43,10 @@ class NotificationService:
             FROM users u
             LEFT JOIN notification_settings ns ON u.business_number = ns.business_number
             LEFT JOIN push_subscriptions ps ON u.business_number = ps.business_number
-            WHERE (ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
-               OR ps.id IS NOT NULL
+            WHERE ((ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
+               OR ps.id IS NOT NULL)
+              AND u.plan IN ('lite', 'lite_trial', 'basic', 'pro', 'biz')
+              AND (u.plan_expires_at IS NULL OR u.plan_expires_at > NOW())
         """)
         users = cursor.fetchall()
         conn.close()

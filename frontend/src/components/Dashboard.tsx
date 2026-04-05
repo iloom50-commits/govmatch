@@ -409,7 +409,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { document.body.style.overflow = ""; };
   }, [sidebarOpen]);
 
+  const isFree = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
+
   const toggleSelect = (id: number) => {
+    if (isFree) {
+      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
+      onUpgrade?.();
+      return;
+    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -419,6 +426,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const handleBulkSave = async () => {
     if (!bn || selectedIds.size === 0) return;
+    if (isFree) {
+      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
+      onUpgrade?.();
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`${API}/api/saved/bulk`, {
@@ -656,7 +668,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 (planStatus.consult_limit || 0) >= 999999 ? "text-emerald-600" :
                 (planStatus.consult_limit || 0) > 0 ? "text-amber-600" : "text-slate-400"
               }`}>
-                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.consult_limit}회 무료` : "LITE부터"}
+                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `월 ${planStatus.consult_limit}회` : "LITE부터"}
+              </span>
+            </div>
+            {/* 저장/알림 */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">저장 · 알림</span>
+              <span className={`font-bold ${isFree ? "text-slate-400" : "text-emerald-600"}`}>
+                {isFree ? "LITE부터" : "사용 가능"}
               </span>
             </div>
             {/* 자유AI + 컨설턴트 */}

@@ -125,7 +125,7 @@ export default function Home() {
     try {
       let url = `${API}/api/announcements/public?page=${page}&size=20&target_type=${targetType}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
-      else if (category && category !== "all") url += `&search=${encodeURIComponent(category)}`;
+      else if (category && category !== "all") url += `&category=${encodeURIComponent(category)}`;
       const res = await fetch(url);
       const d = await res.json();
       if (d.status === "SUCCESS") {

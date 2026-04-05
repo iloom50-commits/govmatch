@@ -1232,8 +1232,8 @@ def api_announcements_public(
         where_clauses.append("region = %s")
         params.append(region)
     if category:
-        where_clauses.append("category = %s")
-        params.append(category)
+        where_clauses.append("category ILIKE %s")
+        params.append(f"%{category}%")
     if search:
         # 공백으로 단어 분리
         words = search.strip().split()

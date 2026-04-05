@@ -440,7 +440,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (!isPublic || !onLoadPublicTab) return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
-    const category = activeTab === "all" ? "all" : (group?.categories?.[0] || "all");
+    // 한국어 카테고리 키워드를 찾아서 전달 (ILIKE 검색용)
+    const category = activeTab === "all" ? "all" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "all");
     onLoadPublicTab(targetType, category, currentPage, searchQuery.trim() || undefined);
   }, [isPublic, majorTab, activeTab, currentPage, onLoadPublicTab]);
 

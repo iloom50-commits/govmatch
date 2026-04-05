@@ -696,7 +696,7 @@ def health_check():
     return {"status": "ok"}
 
 
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001")
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함
 for _o in list(_cors_origins):
@@ -710,7 +710,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 
@@ -5586,6 +5586,90 @@ def api_support_chat(req: dict, request: Request):
         return {"status": "SUCCESS", "answer": response.text.strip()}
     except Exception:
         return {"status": "SUCCESS", "answer": "일시적으로 상담이 불가합니다. 하단 문의 폼을 이용해주세요."}
+
+
+# ── SmartDoc 연동 API ──
+
+@app.get("/api/announcements/search")
+def api_announcements_search(keyword: str = "", limit: int = 20):
+    """SmartDoc용 공고 검색 — title, department, deadline_date, support_amount 반환"""
+    limit = min(limit, 100)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if keyword.strip():
+            words = keyword.strip().split()
+            where_parts = []
+            params = []
+            for w in words:
+                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s)")
+                params.extend([f"%{w}%", f"%{w}%", f"%{w}%"])
+            where_sql = " AND ".join(where_parts)
+            cur.execute(
+                f"""SELECT announcement_id, title, department, deadline_date, support_amount
+                    FROM announcements
+                    WHERE {where_sql}
+                    ORDER BY
+                        CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0 ELSE 1 END,
+                        deadline_date ASC NULLS LAST,
+                        created_at DESC
+                    LIMIT %s""",
+                params + [limit],
+            )
+        else:
+            cur.execute(
+                """SELECT announcement_id, title, department, deadline_date, support_amount
+                   FROM announcements
+                   ORDER BY
+                       CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0 ELSE 1 END,
+                       deadline_date ASC NULLS LAST,
+                       created_at DESC
+                   LIMIT %s""",
+                [limit],
+            )
+        rows = cur.fetchall()
+        return {"status": "SUCCESS", "data": [dict(r) for r in rows], "total": len(rows)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/announcements/{announcement_id}/for-smartdoc")
+def api_announcement_for_smartdoc(announcement_id: int):
+    """SmartDoc용 공고 상세 — 원문/분석 데이터 반환"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT announcement_id, title, department, deadline_date, support_amount,
+                      summary_text, eligibility_logic, origin_url, category, region,
+                      target_type, origin_source
+               FROM announcements WHERE announcement_id = %s""",
+            (announcement_id,),
+        )
+        ann = cur.fetchone()
+        if not ann:
+            raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+
+        result = dict(ann)
+
+        # deep_analysis 데이터가 있으면 full_text, evaluation_weights 등 포함
+        try:
+            from app.services.doc_analysis_service import get_deep_analysis
+            analysis = get_deep_analysis(announcement_id, conn)
+            if analysis:
+                parsed = analysis.get("parsed_sections", {})
+                deep = analysis.get("deep_analysis", {})
+                result["full_text"] = analysis.get("full_text", "")
+                result["evaluation_weights"] = deep.get("evaluation_weights") or parsed.get("evaluation_weights")
+                result["form_templates"] = deep.get("form_templates") or parsed.get("form_templates")
+                result["eligibility_detail"] = deep.get("eligibility") or parsed.get("eligibility")
+                result["budget_info"] = deep.get("budget") or parsed.get("budget")
+        except Exception:
+            pass
+
+        return {"status": "SUCCESS", "data": result}
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

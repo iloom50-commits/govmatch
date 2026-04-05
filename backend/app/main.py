@@ -698,6 +698,12 @@ def health_check():
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+# www 서브도메인 자동 포함
+for _o in list(_cors_origins):
+    if "://" in _o and "://www." not in _o:
+        _www = _o.replace("://", "://www.", 1)
+        if _www not in _cors_origins:
+            _cors_origins.append(_www)
 
 app.add_middleware(
     CORSMiddleware,

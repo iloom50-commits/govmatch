@@ -978,7 +978,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             {/* 하위 카테고리 탭 + 정렬 */}
             <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-lg border border-white/80 shadow-sm">
               {/* Mobile: 드롭다운 */}
-              <div className="relative sm:hidden">
+              <div className="relative sm:hidden flex-shrink-0">
                 <select
                   value={activeTab}
                   onChange={(e) => setActiveTab(e.target.value)}
@@ -993,7 +993,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     if (tab.key !== "all" && count === 0) return null;
                     return (
                       <option key={tab.key} value={tab.key}>
-                        {tab.label} ({count})
+                        {tab.label} ({count.toLocaleString()})
                       </option>
                     );
                   })}
@@ -1003,8 +1003,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </svg>
               </div>
 
-              {/* Desktop: 하위 카테고리 탭 버튼 */}
-              <div className="hidden sm:flex items-center gap-1">
+              {/* Desktop: 하위 카테고리 탭 — 가로 스크롤 */}
+              <div className="hidden sm:flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {currentTabs.map((tab) => {
                   const count = tabCounts[tab.key] || 0;
                   if (tab.key !== "all" && count === 0) return null;
@@ -1026,14 +1026,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                           ? "bg-white/20 text-white/80"
                           : "bg-slate-100 text-slate-400"
                       }`}>
-                        {count}
+                        {count.toLocaleString()}
                       </span>
                     </button>
                   );
                 })}
               </div>
 
-              <div className="ml-auto flex-shrink-0 h-6 w-px bg-slate-200" />
+              <div className="flex-shrink-0 h-6 w-px bg-slate-200" />
 
               <div className="flex items-center gap-1 flex-shrink-0">
                 {([

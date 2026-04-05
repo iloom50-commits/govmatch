@@ -245,7 +245,12 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           )}
           {/* D-day 뱃지 — 인라인 */}
           <span className={`ml-auto px-2 py-0.5 rounded-full border text-[12px] font-bold whitespace-nowrap ${URGENCY_STYLES[dDay.urgency]}`}>
-            {dDay.text}{res.deadline_date ? ` ~${res.deadline_date.slice(5)}` : ""}
+            {res.deadline_date ? (() => {
+              const d = new Date(res.deadline_date);
+              if (isNaN(d.getTime())) return dDay.text;
+              const days = ["일","월","화","수","목","금","토"];
+              return `~${d.getMonth()+1}월 ${d.getDate()}일(${days[d.getDay()]})`;
+            })() : dDay.text}
           </span>
         </div>
 

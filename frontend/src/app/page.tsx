@@ -114,9 +114,11 @@ export default function Home() {
     if (publicLoading) return;
     setPublicLoading(true);
     try {
+      // 비로그인: 충분한 데이터를 로드하여 페이지네이션 활용
+      const size = page === 1 ? 100 : 20;
       const [bizData, indData] = await Promise.all([
-        fetch(`${API}/api/announcements/public?page=${page}&size=20&target_type=business`).then(r => r.json()),
-        fetch(`${API}/api/announcements/public?page=${page}&size=20&target_type=individual`).then(r => r.json()),
+        fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=business`).then(r => r.json()),
+        fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=individual`).then(r => r.json()),
       ]);
       const biz = bizData.status === "SUCCESS" ? bizData.data : [];
       const ind = indData.status === "SUCCESS" ? indData.data : [];
@@ -125,7 +127,7 @@ export default function Home() {
       setPublicMatches(prev => append ? [...prev, ...newItems] : newItems);
       // 첫 페이지는 캐시 저장 (재방문 시 즉시 표시용)
       if (page === 1 && newItems.length > 0) {
-        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems, ts: Date.now() })); } catch {}
+        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems.slice(0, 40), ts: Date.now() })); } catch {}
       }
     } catch {} finally { setPublicLoading(false); }
   }, [publicLoading]);

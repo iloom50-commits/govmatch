@@ -877,7 +877,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {isPublic ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>
 
-        <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16">
+        <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0">
           {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
           {/* 컨설턴트 매칭 → 내 매칭 복원 버튼 */}

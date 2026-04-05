@@ -250,7 +250,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number> }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, publicTotal, onLoadPublicTab }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, publicTotal?: number, onLoadPublicTab?: (targetType: string, category: string, page: number, search?: string) => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "business";
@@ -435,6 +435,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭/검색 변경 시 페이지 리셋
   useEffect(() => { setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
 
+  // 비로그인: 탭/페이지 변경 시 서버에서 데이터 로드
+  useEffect(() => {
+    if (!isPublic || !onLoadPublicTab) return;
+    const targetType = majorTab === "business" ? "business" : "individual";
+    const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
+    const category = activeTab === "all" ? "all" : (group?.categories?.[0] || "all");
+    onLoadPublicTab(targetType, category, currentPage, searchQuery.trim() || undefined);
+  }, [isPublic, majorTab, activeTab, currentPage, onLoadPublicTab]);
+
+  // 비로그인: 검색 시에도 서버 호출
+  useEffect(() => {
+    if (!isPublic || !onLoadPublicTab || !searchQuery.trim()) return;
+    const targetType = majorTab === "business" ? "business" : "individual";
+    onLoadPublicTab(targetType, "all", 1, searchQuery.trim());
+  }, [isPublic, searchQuery, majorTab, onLoadPublicTab]);
+
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {
     if (sidebarOpen) {
@@ -523,6 +539,19 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [searchQuery, searchResults, displayMatches]);
 
   const filteredMatches = useMemo(() => {
+    // 비로그인: 서버에서 이미 필터링/정렬된 데이터 그대로 사용
+    if (isPublic && onLoadPublicTab) {
+      let result = [...baseMatches];
+      if (sortKey === "deadline") {
+        result.sort((a, b) => {
+          if (!a.deadline_date) return 1;
+          if (!b.deadline_date) return -1;
+          return new Date(a.deadline_date).getTime() - new Date(b.deadline_date).getTime();
+        });
+      }
+      return result;
+    }
+
     let result = [...baseMatches];
 
     if (activeTab !== "all") {
@@ -537,10 +566,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       }
     }
 
-    // 검색 중이면 백엔드 관련성 정렬 유지
-    // 비로그인(isPublic)이고 "최신"이면 API 정렬(지원금 우선) 유지
     if (!searchQuery.trim()) {
-      if (sortKey === "latest" && !isPublic) {
+      if (sortKey === "latest") {
         result.sort((a, b) => b.announcement_id - a.announcement_id);
       } else if (sortKey === "deadline") {
         result.sort((a, b) => {
@@ -552,7 +579,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery]);
+  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery, isPublic, onLoadPublicTab]);
 
   const searchedMatches = baseMatches;
 
@@ -1155,7 +1182,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           ) : (
             <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
-              {filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((res, idx) => (
+              {(isPublic && onLoadPublicTab ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
@@ -1173,7 +1200,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               ))}
             </div>
             {(() => {
-              const totalPages = Math.ceil(filteredMatches.length / ITEMS_PER_PAGE);
+              const totalItems = (isPublic && publicTotal) ? publicTotal : filteredMatches.length;
+              const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
               if (totalPages <= 1) return <div className="pb-20" />;
               const maxVisible = 7;
               let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));

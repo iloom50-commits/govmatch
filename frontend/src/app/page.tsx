@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import LoginModal from "@/components/LoginModal";
 import Dashboard from "@/components/Dashboard";
 import OnboardingWizard from "@/components/OnboardingWizard";
@@ -106,67 +106,45 @@ export default function Home() {
   }, [isProfileIncomplete, step]);
 
   // 비로그인 공고 로드 (localStorage 캐시 → 즉시 표시 → 백그라운드 갱신)
-  const [publicPage, setPublicPage] = useState(1);
-  const [publicHasMore, setPublicHasMore] = useState(true);
-  const [publicLoading, setPublicLoading] = useState(false);
   const [publicCategoryCountsBiz, setPublicCategoryCountsBiz] = useState<Record<string, number>>({});
   const [publicCategoryCountsInd, setPublicCategoryCountsInd] = useState<Record<string, number>>({});
+  const [publicTotal, setPublicTotal] = useState(0);
 
-  const loadPublicMore = useCallback(async (page: number, append = false) => {
-    if (publicLoading) return;
-    setPublicLoading(true);
-    try {
-      // 비로그인: 백엔드 최대 50건 제한에 맞춤
-      const size = 50;
-      const [bizData, indData] = await Promise.all([
-        fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=business`).then(r => r.json()),
-        fetch(`${API}/api/announcements/public?page=${page}&size=${size}&target_type=individual`).then(r => r.json()),
-      ]);
-      const biz = bizData.status === "SUCCESS" ? bizData.data : [];
-      const ind = indData.status === "SUCCESS" ? indData.data : [];
-      const newItems = [...biz, ...ind];
-      if (newItems.length === 0) { setPublicHasMore(false); }
-      setPublicMatches(prev => append ? [...prev, ...newItems] : newItems);
-      // 카테고리별 전체 건수 (기업/개인 분리)
-      if (page === 1) {
-        setPublicCategoryCountsBiz(bizData.category_counts || {});
-        setPublicCategoryCountsInd(indData.category_counts || {});
-      }
-      // 첫 페이지는 캐시 저장 (재방문 시 즉시 표시용)
-      if (page === 1 && newItems.length > 0) {
-        try { localStorage.setItem("pub_cache", JSON.stringify({ data: newItems, ts: Date.now() })); } catch {}
-      }
-    } catch {} finally { setPublicLoading(false); }
-  }, [publicLoading]);
+  // 비로그인: 탭/페이지 변경 시 서버에서 데이터 로드
+  const publicDataCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
-  useEffect(() => {
-    // 캐시된 공고가 있으면 즉시 표시 (30분 이내)
+  const loadPublicTab = useCallback(async (targetType: string, category: string, page: number, search?: string) => {
+    const cacheKey = `${targetType}:${category}:${page}:${search || ""}`;
+    if (publicDataCache.current[cacheKey]) {
+      const cached = publicDataCache.current[cacheKey];
+      setPublicMatches(cached.data);
+      setPublicTotal(cached.total);
+      return;
+    }
+    setPublicMatches([]); // 로딩 시작 (스켈레톤 표시)
     try {
-      const cached = localStorage.getItem("pub_cache");
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < 30 * 60 * 1000 && data?.length > 0) {
-          setPublicMatches(data);
+      let url = `${API}/api/announcements/public?page=${page}&size=20&target_type=${targetType}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      else if (category && category !== "all") url += `&search=${encodeURIComponent(category)}`;
+      const res = await fetch(url);
+      const d = await res.json();
+      if (d.status === "SUCCESS") {
+        setPublicMatches(d.data || []);
+        setPublicTotal(d.total || 0);
+        publicDataCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
+        // 카테고리 건수 저장 (첫 요청 시)
+        if (d.category_counts) {
+          if (targetType === "business") setPublicCategoryCountsBiz(d.category_counts);
+          else setPublicCategoryCountsInd(d.category_counts);
         }
       }
     } catch {}
-    // 백그라운드에서 최신 데이터 fetch
-    loadPublicMore(1);
   }, []);
 
-  // 무한스크롤 감지
+  // 초기 로드
   useEffect(() => {
-    if (step !== "BROWSE" || !publicHasMore) return;
-    const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400 && !publicLoading && publicHasMore) {
-        const nextPage = publicPage + 1;
-        setPublicPage(nextPage);
-        loadPublicMore(nextPage, true);
-      }
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [step, publicPage, publicLoading, publicHasMore, loadPublicMore]);
+    loadPublicTab("business", "all", 1);
+  }, []);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
   useEffect(() => {
@@ -472,7 +450,9 @@ export default function Home() {
             onLoginRequired={() => setShowLoginModal(true)}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
-            onRefresh={() => { setPublicPage(1); loadPublicMore(1); }}
+            publicTotal={publicTotal}
+            onLoadPublicTab={loadPublicTab}
+            onRefresh={() => loadPublicTab("business", "all", 1)}
           />
         </div>
       )}

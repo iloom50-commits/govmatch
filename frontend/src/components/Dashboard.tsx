@@ -231,7 +231,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [displayLimit, setDisplayLimit] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
@@ -394,6 +395,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [bn]);
 
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
+
+  // 탭/검색 변경 시 페이지 리셋
+  useEffect(() => { setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {
@@ -565,6 +569,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금AI에서 확인해보세요!"
         toast={toast}
       />
+
+      <a
+        href="/api-partnership"
+        className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
+      >
+        <span className="text-sm">🤝</span>
+        <span className="tracking-tight">API 제휴 · 협업 제안</span>
+      </a>
     </div>
   );
 
@@ -752,6 +764,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </a>
         </div>
         {/* 드롭다운 제거 — 마이페이지 클릭 시 바로 ProfileSettings 모달 열림 */}
+        <a
+          href="/api-partnership"
+          onClick={() => setSidebarOpen(false)}
+          className="w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
+        >
+          <span className="text-sm">🤝</span>
+          <span className="tracking-tight">API 제휴 · 협업 제안</span>
+        </a>
       </div>
     </div>
   );
@@ -1071,7 +1091,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           ) : (
             <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
-              {filteredMatches.slice(0, displayLimit).map((res, idx) => (
+              {filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
@@ -1088,19 +1108,47 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </div>
               ))}
             </div>
-            {filteredMatches.length > displayLimit && (
-              <div className="text-center pb-20">
-                <button
-                  onClick={() => setDisplayLimit(prev => prev + 20)}
-                  className="px-8 py-3 bg-white border-2 border-indigo-200 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 hover:border-indigo-300 transition-all active:scale-[0.98]"
-                >
-                  더 보기 ({filteredMatches.length - displayLimit}건 남음)
-                </button>
-              </div>
-            )}
-            {filteredMatches.length <= displayLimit && filteredMatches.length > 0 && (
-              <div className="pb-20" />
-            )}
+            {(() => {
+              const totalPages = Math.ceil(filteredMatches.length / ITEMS_PER_PAGE);
+              if (totalPages <= 1) return <div className="pb-20" />;
+              const maxVisible = 7;
+              let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+              let endPage = startPage + maxVisible - 1;
+              if (endPage > totalPages) { endPage = totalPages; startPage = Math.max(1, endPage - maxVisible + 1); }
+              const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+              const goTo = (p: number) => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
+              return (
+                <div className="flex items-center justify-center gap-1.5 py-6 pb-20">
+                  <button
+                    onClick={() => goTo(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  >
+                    이전
+                  </button>
+                  {pages.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => goTo(p)}
+                      className={`w-9 h-9 text-sm font-bold rounded-lg transition-all ${
+                        p === currentPage
+                          ? "bg-indigo-600 text-white shadow-md"
+                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => goTo(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  >
+                    다음
+                  </button>
+                </div>
+              );
+            })()}
             </>
           )}
 

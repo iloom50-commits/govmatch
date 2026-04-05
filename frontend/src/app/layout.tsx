@@ -158,7 +158,7 @@ export default function RootLayout({
                 "address": {
                   "@type": "PostalAddress",
                   "addressLocality": "부산광역시",
-                  "addressRegion": "해운대구",
+                  "addressRegion": "부산진구",
                   "addressCountry": "KR"
                 }
               },
@@ -175,19 +175,28 @@ export default function RootLayout({
           <Providers>{children}</Providers>
         </div>
         <footer className="w-full border-t border-slate-200/60 bg-slate-50/80">
-          <div className="max-w-4xl mx-auto px-4 py-6 text-[11px] text-slate-400 leading-relaxed space-y-1">
-            <p className="font-semibold text-slate-500">밸류파인더 | 대표 권오성</p>
-            <p>사업자등록번호 141-17-02215 | 경영 컨설팅업</p>
-            <p>부산광역시 해운대구 센텀중앙로 145, 109동 3405호</p>
-            <p>이메일 osung94@naver.com</p>
-            <p className="pt-2 flex gap-3">
+          <div className="max-w-5xl mx-auto px-4 py-5 text-[11px] text-slate-400 leading-relaxed">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-semibold text-slate-500">밸류파인더</span>
+              <span className="text-slate-300">|</span>
+              <span>대표 권오성</span>
+              <span className="text-slate-300">|</span>
+              <span>사업자등록번호 141-17-02215</span>
+              <span className="text-slate-300">|</span>
+              <span>AI솔루션 개발 및 기술경영 컨설팅</span>
+              <span className="text-slate-300">|</span>
+              <span>부산 부산진구 서면문화로27, 유원골든타워 1905호</span>
+              <span className="text-slate-300">|</span>
+              <span>osung94@naver.com</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
               <a href="/terms" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">이용약관</a>
               <a href="/privacy" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">개인정보 처리방침</a>
               <a href="/refund" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">환불 정책</a>
               <a href="/api-partnership" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">API 제휴</a>
               <a href="/support" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">고객상담</a>
-            </p>
-            <p className="pt-1 text-slate-300">&copy; {new Date().getFullYear()} 밸류파인더. All rights reserved.</p>
+              <span className="text-slate-300 ml-auto">&copy; {new Date().getFullYear()} 밸류파인더. All rights reserved.</span>
+            </div>
           </div>
         </footer>
       </body>

@@ -472,6 +472,7 @@ export default function Home() {
             isPublic={true}
             onLoginRequired={() => setShowLoginModal(true)}
             categoryCounts={publicCategoryCounts}
+            onRefresh={() => { setPublicPage(1); loadPublicMore(1); }}
           />
         </div>
       )}

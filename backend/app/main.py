@@ -1217,7 +1217,7 @@ def api_announcements_public(
 
     # 검색 없는 기본 조회는 캐시 활용
     if not search and not region and not category:
-        cache_key = f"pub:{target_type}:{page}:{size}"
+        cache_key = f"pub:v2:{target_type}:{page}:{size}"
         cached = _get_cached(cache_key)
         if cached:
             return cached
@@ -1382,7 +1382,7 @@ def api_announcements_public(
 
     # 기본 조회 캐시 저장
     if not search and not region and not category:
-        cache_key = f"pub:{target_type}:{page}:{size}"
+        cache_key = f"pub:v2:{target_type}:{page}:{size}"
         _set_cache(cache_key, result)
 
     return result

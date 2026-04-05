@@ -4522,7 +4522,7 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
         ind_matches = get_individual_matches_for_user(user_dict)
         matches = biz_matches + ind_matches
         matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
-        matches = matches[:30]
+        matches = matches[:40]
     else:
         matches = get_matches_for_user(user_dict)
 

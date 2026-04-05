@@ -231,6 +231,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(20);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
@@ -1068,12 +1069,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-20 overflow-hidden">
-              {filteredMatches.map((res, idx) => (
+            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
+              {filteredMatches.slice(0, displayLimit).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
-                  style={{ animationDelay: `${idx * 80}ms` }}
+                  style={{ animationDelay: `${Math.min(idx, 10) * 80}ms` }}
                 >
                   <ResultCard
                     res={res}
@@ -1086,6 +1088,20 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </div>
               ))}
             </div>
+            {filteredMatches.length > displayLimit && (
+              <div className="text-center pb-20">
+                <button
+                  onClick={() => setDisplayLimit(prev => prev + 20)}
+                  className="px-8 py-3 bg-white border-2 border-indigo-200 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 hover:border-indigo-300 transition-all active:scale-[0.98]"
+                >
+                  더 보기 ({filteredMatches.length - displayLimit}건 남음)
+                </button>
+              </div>
+            )}
+            {filteredMatches.length <= displayLimit && filteredMatches.length > 0 && (
+              <div className="pb-20" />
+            )}
+            </>
           )}
 
           {selectedIds.size > 0 && (

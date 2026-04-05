@@ -441,7 +441,7 @@ def get_matches_for_user(user_profile):
         if cat_counts.get(cat, 0) < CATEGORY_CAP:
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
             final.append(r)
-        if len(final) >= 20:
+        if len(final) >= 40:
             break
 
     # 2차: 금융·경영 카테고리 최소 1건 보장 (유용한 지원을 놓치지 않도록)
@@ -706,7 +706,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         if cat_counts.get(cat, 0) < INDIVIDUAL_CATEGORY_CAP:
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
             final.append(r)
-        if len(final) >= 30:
+        if len(final) >= 40:
             break
 
     for r in final:

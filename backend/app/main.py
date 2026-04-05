@@ -1328,9 +1328,12 @@ def api_announcements_public(
             WHERE {where_sql}
             ORDER BY
                 {relevance_order}
-                CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
-                deadline_date ASC NULLS LAST,
-                created_at DESC
+                CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 2
+                     WHEN deadline_date IS NULL THEN 1 ELSE 0 END,
+                CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
+                CASE WHEN region = '전국' OR region IS NULL THEN 0 ELSE 1 END,
+                created_at DESC,
+                deadline_date ASC NULLS LAST
             LIMIT %s OFFSET %s""",
         params + relevance_params + [size, offset],
     )

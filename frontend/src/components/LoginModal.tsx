@@ -103,13 +103,24 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
 
         <div className="relative z-10 p-6 sm:p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
-              무료 가입으로 시작하세요
+          <div className="text-center mb-5">
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-3">
+              가입하면 바로 이용 가능
             </h2>
-            <p className="text-slate-500 text-xs font-medium">
-              내 조건에 딱 맞는 지원금 매칭 + 새 공고 알림까지, 무료!
-            </p>
+            <div className="flex flex-col gap-1.5 text-left max-w-[260px] mx-auto mb-1">
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
+                <span className="text-slate-700 font-medium">이 공고, 내가 지원 가능한지 <strong>AI 즉시 판별</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
+                <span className="text-slate-700 font-medium">내 조건에 맞는 공고 <strong>자동 매칭</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
+                <span className="text-slate-700 font-medium">저장 · 알림 · 일정관리 <strong>7일 무료 체험</strong></span>
+              </div>
+            </div>
           </div>
 
           {showReset ? (
@@ -202,30 +213,30 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
             </>
           ) : !showEmail ? (
             <>
-              {/* 4개 아이콘: 카카오, 네이버, Google, 이메일 */}
-              <div className="flex items-center justify-center gap-5 mb-6">
+              {/* 소셜 로그인 */}
+              <div className="flex items-center justify-center gap-4 mb-5">
                 <button
                   onClick={() => window.location.href = `${API}/api/auth/social/kakao`}
-                  className="w-14 h-14 bg-[#FEE500] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-md"
+                  className="w-11 h-11 bg-[#FEE500] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-sm"
                   title="카카오"
                 >
-                  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#191919">
+                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#191919">
                     <path d="M12 3C6.48 3 2 6.58 2 10.9c0 2.78 1.86 5.22 4.65 6.6l-.96 3.56c-.08.3.26.54.52.37l4.23-2.82c.51.05 1.03.09 1.56.09 5.52 0 10-3.58 10-7.9C22 6.58 17.52 3 12 3z" />
                   </svg>
                 </button>
                 <button
                   onClick={() => window.location.href = `${API}/api/auth/social/naver`}
-                  className="w-14 h-14 bg-[#03C75A] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-md"
+                  className="w-11 h-11 bg-[#03C75A] rounded-full flex items-center justify-center hover:brightness-95 transition-all active:scale-95 shadow-sm"
                   title="네이버"
                 >
-                  <span className="text-white text-xl font-black">N</span>
+                  <span className="text-white text-base font-black">N</span>
                 </button>
                 <button
                   onClick={() => window.location.href = `${API}/api/auth/social/google`}
-                  className="w-14 h-14 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-50 transition-all active:scale-95 shadow-md"
+                  className="w-11 h-11 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
                   title="Google"
                 >
-                  <svg viewBox="0 0 24 24" className="w-6 h-6">
+                  <svg viewBox="0 0 24 24" className="w-5 h-5">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
@@ -234,10 +245,10 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
                 </button>
                 <button
                   onClick={() => setShowEmail(true)}
-                  className="w-14 h-14 bg-slate-900 rounded-full flex items-center justify-center hover:bg-indigo-600 transition-all active:scale-95 shadow-md"
+                  className="w-11 h-11 bg-slate-900 rounded-full flex items-center justify-center hover:bg-indigo-600 transition-all active:scale-95 shadow-sm"
                   title="이메일"
                 >
-                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </button>

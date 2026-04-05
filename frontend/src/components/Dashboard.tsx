@@ -537,9 +537,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       }
     }
 
-    // 검색 중이면 백엔드 관련성 정렬 유지, 아닐 때만 프론트 정렬
+    // 검색 중이면 백엔드 관련성 정렬 유지
+    // 비로그인(isPublic)이고 "최신"이면 API 정렬(지원금 우선) 유지
     if (!searchQuery.trim()) {
-      if (sortKey === "latest") {
+      if (sortKey === "latest" && !isPublic) {
         result.sort((a, b) => b.announcement_id - a.announcement_id);
       } else if (sortKey === "deadline") {
         result.sort((a, b) => {

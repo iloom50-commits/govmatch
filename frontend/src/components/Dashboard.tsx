@@ -250,7 +250,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, publicTotal, onLoadPublicTab }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, publicTotal?: number, onLoadPublicTab?: (targetType: string, category: string, page: number, search?: string) => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number> }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "business";
@@ -433,24 +433,43 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
 
   // 탭/검색 변경 시 페이지 리셋
-  useEffect(() => { setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
+  useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
 
-  // 비로그인: 탭/페이지 변경 시 서버에서 데이터 로드
+  // 비로그인: Dashboard에서 직접 API 호출
+  const [publicData, setPublicData] = useState<any[]>([]);
+  const [publicServerTotal, setPublicServerTotal] = useState(0);
+  const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
+
   useEffect(() => {
-    if (!isPublic || !onLoadPublicTab) return;
+    if (!isPublic) return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
-    // 한국어 카테고리 키워드를 찾아서 전달 (ILIKE 검색용)
-    const category = activeTab === "all" ? "all" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "all");
-    onLoadPublicTab(targetType, category, currentPage, searchQuery.trim() || undefined);
-  }, [isPublic, majorTab, activeTab, currentPage, onLoadPublicTab]);
+    const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
+    const search = searchQuery.trim();
+    const page = currentPage;
 
-  // 비로그인: 검색 시에도 서버 호출
-  useEffect(() => {
-    if (!isPublic || !onLoadPublicTab || !searchQuery.trim()) return;
-    const targetType = majorTab === "business" ? "business" : "individual";
-    onLoadPublicTab(targetType, "all", 1, searchQuery.trim());
-  }, [isPublic, searchQuery, majorTab, onLoadPublicTab]);
+    const cacheKey = `${targetType}:${catKeyword}:${page}:${search}`;
+    if (publicCache.current[cacheKey]) {
+      setPublicData(publicCache.current[cacheKey].data);
+      setPublicServerTotal(publicCache.current[cacheKey].total);
+      return;
+    }
+
+    let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    else if (catKeyword) url += `&category=${encodeURIComponent(catKeyword)}`;
+
+    fetch(url)
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === "SUCCESS") {
+          setPublicData(d.data || []);
+          setPublicServerTotal(d.total || 0);
+          publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
+        }
+      })
+      .catch(() => {});
+  }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {
@@ -541,8 +560,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const filteredMatches = useMemo(() => {
     // 비로그인: 서버에서 이미 필터링/정렬된 데이터 그대로 사용
-    if (isPublic && onLoadPublicTab) {
-      let result = [...baseMatches];
+    if (isPublic && publicData.length > 0) {
+      let result = [...publicData];
       if (sortKey === "deadline") {
         result.sort((a, b) => {
           if (!a.deadline_date) return 1;
@@ -580,7 +599,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery, isPublic, onLoadPublicTab]);
+  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery, isPublic, publicData]);
 
   const searchedMatches = baseMatches;
 
@@ -1183,7 +1202,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           ) : (
             <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
-              {(isPublic && onLoadPublicTab ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
+              {(isPublic && publicData.length > 0 ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
@@ -1201,7 +1220,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               ))}
             </div>
             {(() => {
-              const totalItems = (isPublic && publicTotal) ? publicTotal : filteredMatches.length;
+              const totalItems = (isPublic && publicServerTotal > 0) ? publicServerTotal : filteredMatches.length;
               const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
               if (totalPages <= 1) return <div className="pb-20" />;
               const maxVisible = 7;

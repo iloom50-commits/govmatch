@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import LoginModal from "@/components/LoginModal";
 import Dashboard from "@/components/Dashboard";
 import OnboardingWizard from "@/components/OnboardingWizard";
@@ -108,42 +108,16 @@ export default function Home() {
   // 비로그인 공고 로드 (localStorage 캐시 → 즉시 표시 → 백그라운드 갱신)
   const [publicCategoryCountsBiz, setPublicCategoryCountsBiz] = useState<Record<string, number>>({});
   const [publicCategoryCountsInd, setPublicCategoryCountsInd] = useState<Record<string, number>>({});
-  const [publicTotal, setPublicTotal] = useState(0);
 
-  // 비로그인: 탭/페이지 변경 시 서버에서 데이터 로드
-  const publicDataCache = useRef<Record<string, { data: any[]; total: number }>>({});
-
-  const loadPublicTab = useCallback(async (targetType: string, category: string, page: number, search?: string) => {
-    const cacheKey = `${targetType}:${category}:${page}:${search || ""}`;
-    if (publicDataCache.current[cacheKey]) {
-      const cached = publicDataCache.current[cacheKey];
-      setPublicMatches(cached.data);
-      setPublicTotal(cached.total);
-      return;
-    }
-    setPublicMatches([]); // 로딩 시작 (스켈레톤 표시)
-    try {
-      let url = `${API}/api/announcements/public?page=${page}&size=20&target_type=${targetType}`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      else if (category && category !== "all") url += `&category=${encodeURIComponent(category)}`;
-      const res = await fetch(url);
-      const d = await res.json();
-      if (d.status === "SUCCESS") {
-        setPublicMatches(d.data || []);
-        setPublicTotal(d.total || 0);
-        publicDataCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
-        // 카테고리 건수 저장 (첫 요청 시)
-        if (d.category_counts) {
-          if (targetType === "business") setPublicCategoryCountsBiz(d.category_counts);
-          else setPublicCategoryCountsInd(d.category_counts);
-        }
-      }
-    } catch {}
-  }, []);
-
-  // 초기 로드
+  // 비로그인: 카테고리 건수만 초기 로드 (데이터 로딩은 Dashboard에서 직접)
   useEffect(() => {
-    loadPublicTab("business", "all", 1);
+    Promise.all([
+      fetch(`${API}/api/announcements/public?page=1&size=1&target_type=business`).then(r => r.json()),
+      fetch(`${API}/api/announcements/public?page=1&size=1&target_type=individual`).then(r => r.json()),
+    ]).then(([biz, ind]) => {
+      if (biz.category_counts) setPublicCategoryCountsBiz(biz.category_counts);
+      if (ind.category_counts) setPublicCategoryCountsInd(ind.category_counts);
+    }).catch(() => {});
   }, []);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
@@ -450,9 +424,6 @@ export default function Home() {
             onLoginRequired={() => setShowLoginModal(true)}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
-            publicTotal={publicTotal}
-            onLoadPublicTab={loadPublicTab}
-            onRefresh={() => loadPublicTab("business", "all", 1)}
           />
         </div>
       )}

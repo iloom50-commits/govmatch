@@ -1696,11 +1696,11 @@ def api_login(req: LoginRequest, request: Request):
         user = cursor.fetchone()
 
         if not user:
-            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+            raise HTTPException(status_code=404, detail="등록되지 않은 이메일입니다.")
 
         u = dict(user)
         if not u.get("password_hash"):
-            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+            raise HTTPException(status_code=401, detail="소셜 로그인으로 가입된 계정입니다. 카카오/네이버/Google로 로그인해주세요.")
 
         if not _verify_password(req.password, u["password_hash"]):
             _log_event("login_fail", u.get("business_number", ""), f"email={req.email}", ip)

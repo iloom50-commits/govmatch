@@ -48,7 +48,8 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
       }
 
       // 2. 계정 없음 → 가입 모드
-      if (loginData.detail?.includes("이메일") || loginRes.status === 401) {
+      // 404 = 등록되지 않은 이메일 → 자동 가입 모드
+      if (loginRes.status === 404) {
         if (!needConfirm) {
           // 비밀번호 확인 입력 요청
           setNeedConfirm(true);

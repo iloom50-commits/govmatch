@@ -192,10 +192,14 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 </div>
               </div>
               <div className="px-4 pb-3">
-                <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">
-                  곧 오픈 예정
-                </div>
-                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">가입 시 7일 무료체험 제공</p>
+                <button
+                  onClick={() => handleSubscribe("lite")}
+                  disabled={loading}
+                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? "처리 중..." : "LITE 시작하기"}
+                </button>
+                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">30일 무료체험 후 자동결제</p>
               </div>
             </div>
             )}

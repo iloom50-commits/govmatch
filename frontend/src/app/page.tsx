@@ -575,7 +575,7 @@ export default function Home() {
       {step === "RESULTS" && (
         <div className="flex justify-center">
           <Dashboard
-            matches={isProfileIncomplete ? [] : matches}
+            matches={matches}
             profile={profileData}
             onEditProfile={handleEditProfile}
             onLogout={handleLogout}
@@ -584,8 +584,6 @@ export default function Home() {
             consultantResult={consultantResult}
             onClearConsultant={() => setConsultantResult(null)}
             onRefresh={() => { setConsultantResult(null); performMatching(businessNumber, true); }}
-            isPublic={isProfileIncomplete || false}
-            onLoginRequired={isProfileIncomplete ? handleEditProfile : undefined}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
           />

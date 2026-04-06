@@ -440,8 +440,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [publicServerTotal, setPublicServerTotal] = useState(0);
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
+  const usePublicData = isPublic || (!isPublic && matches.length === 0);
+
   useEffect(() => {
-    if (!isPublic) return;
+    if (!usePublicData) return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
     const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
@@ -559,8 +561,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [searchQuery, searchResults, displayMatches]);
 
   const filteredMatches = useMemo(() => {
-    // 비로그인: 서버에서 이미 필터링/정렬된 데이터 그대로 사용
-    if (isPublic && publicData.length > 0) {
+    // 비로그인 또는 프로필 미완성: 서버에서 이미 필터링/정렬된 데이터 사용
+    if (usePublicData && publicData.length > 0) {
       let result = [...publicData];
       if (sortKey === "deadline") {
         result.sort((a, b) => {
@@ -1122,7 +1124,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </p>
           )}
 
-          {filteredMatches.length === 0 && !searchLoading && !(isPublic && publicData.length === 0 && !searchQuery.trim()) ? (
+          {filteredMatches.length === 0 && !searchLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               {/* 봇 캐릭터 — 컴퓨터 치는 장면 */}
               {!searchQuery.trim() && matches.length === 0 ? (
@@ -1202,7 +1204,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           ) : (
             <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
-              {(isPublic && publicData.length > 0 ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
+              {(usePublicData && publicData.length > 0 ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}
                   className="animate-in fade-in slide-in-from-bottom-6 duration-700"
@@ -1220,7 +1222,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               ))}
             </div>
             {(() => {
-              const totalItems = (isPublic && publicServerTotal > 0) ? publicServerTotal : filteredMatches.length;
+              const totalItems = (usePublicData && publicServerTotal > 0) ? publicServerTotal : filteredMatches.length;
               const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
               if (totalPages <= 1) return <div className="pb-20" />;
               const maxVisible = 7;

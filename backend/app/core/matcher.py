@@ -163,7 +163,12 @@ def get_matches_for_user(user_profile):
     # SQL 1차 필터: 마감 공고 제외 + deadline 없는 공고는 최근 60일 이내만
     # target_type 필터: business 매칭은 business/both만, individual은 individual/both만
     query = """
-    SELECT * FROM announcements
+    SELECT announcement_id, title, region, category, department,
+           support_amount, deadline_date, origin_source, created_at,
+           COALESCE(target_type, 'business') AS target_type,
+           origin_url, summary_text, eligibility_logic,
+           established_years_limit, revenue_limit, employee_limit
+    FROM announcements
     WHERE (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
@@ -498,7 +503,12 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
 
     # SQL: 개인 대상 서비스만 조회 (individual + both), 마감 전 또는 상시모집
     query = """
-    SELECT * FROM announcements
+    SELECT announcement_id, title, region, category, department,
+           support_amount, deadline_date, origin_source, created_at,
+           COALESCE(target_type, 'individual') AS target_type,
+           origin_url, summary_text, eligibility_logic,
+           established_years_limit, revenue_limit, employee_limit
+    FROM announcements
     WHERE target_type IN ('individual', 'both')
     AND (
         (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)

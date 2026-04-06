@@ -4575,14 +4575,14 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     if user_type == "individual":
         matches = get_individual_matches_for_user(user_dict)
     elif user_type == "both":
-        # 기업+개인 모두 매칭하여 합산
         biz_matches = get_matches_for_user(user_dict)
         ind_matches = get_individual_matches_for_user(user_dict)
         matches = biz_matches + ind_matches
         matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
-        matches = matches[:40]
     else:
         matches = get_matches_for_user(user_dict)
+    # 상위 100건만 반환 (점수순 정렬 후, 프론트에서 20건씩 페이지네이션)
+    matches = matches[:100]
 
     # AI 추출 데이터 보완 (프론트엔드 대응)
     for match in matches:

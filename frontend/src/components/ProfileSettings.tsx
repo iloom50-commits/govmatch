@@ -29,6 +29,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
   const rawCity = profile.address_city || "";
   const [formData, setFormData] = useState({
     ...profile,
+    user_type: profile.user_type || "business",
     revenue: REVENUE_MIGRATE[rawRev] || rawRev || "1억 미만",
     employees: EMP_MIGRATE[rawEmp] || rawEmp || "5인 미만",
     industry_code: profile.industry_code || "",
@@ -110,7 +111,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
         {/* Header */}
         <div className="px-5 sm:px-6 lg:px-8 pt-4 pb-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">기업 정보 수정</h2>
+            <h2 className="text-lg font-black text-slate-900 tracking-tight">{formData.user_type === "individual" ? "개인 정보 수정" : "기업 정보 수정"}</h2>
           </div>
           <button onClick={onClose} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -135,6 +136,31 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
               </div>
             </div>
           )}
+
+          {/* 사용자 유형 */}
+          <div className="space-y-3">
+            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">사용자 유형</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: "individual", label: "개인", desc: "복지·교육·주거 등" },
+                { key: "business", label: "사업자", desc: "기업지원·R&D·창업 등" },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, user_type: opt.key })}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    formData.user_type === opt.key
+                      ? "border-indigo-500 bg-indigo-50"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <p className={`text-sm font-bold ${formData.user_type === opt.key ? "text-indigo-700" : "text-slate-700"}`}>{opt.label}</p>
+                  <p className="text-[11px] text-slate-400">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Location — 복수선택 */}
           <div className="space-y-3">

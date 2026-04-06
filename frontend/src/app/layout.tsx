@@ -158,7 +158,7 @@ export default function RootLayout({
                 "address": {
                   "@type": "PostalAddress",
                   "addressLocality": "부산광역시",
-                  "addressRegion": "부산진구",
+                  "addressRegion": "해운대구",
                   "addressCountry": "KR"
                 }
               },
@@ -185,7 +185,9 @@ export default function RootLayout({
               <span className="text-slate-300">|</span>
               <span>AI솔루션 개발 및 기술경영 컨설팅</span>
               <span className="text-slate-300">|</span>
-              <span>부산 부산진구 서면문화로27, 유원골든타워 1905호</span>
+              <span>부산광역시 해운대구 센텀중앙로 145, 109동 3405호</span>
+              <span className="text-slate-300">|</span>
+              <span>Tel 010-5565-2299</span>
               <span className="text-slate-300">|</span>
               <span>osung94@naver.com</span>
             </div>

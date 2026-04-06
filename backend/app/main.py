@@ -1207,13 +1207,17 @@ def api_announcements_public(
     """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
     # Rate limiting: IP당 분당 30회
     ip = _get_client_ip(request)
-    if not _rate_limit_check(f"public:ip:{ip}", 30, 60):
+    if not _rate_limit_check(f"public:ip:{ip}", 60, 60):
         raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.")
+    if size < 1:
+        size = 1
     if size > 50:
         size = 50  # 크롤링 방지: 최대 50건
-    if page > 20:
+    if page < 1:
+        page = 1
+    if page > 50:
         raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
-    offset = (max(1, page) - 1) * size
+    offset = (page - 1) * size
 
     # 검색 없는 기본 조회는 캐시 활용
     if not search and not region and not category:

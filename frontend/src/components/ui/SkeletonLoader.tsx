@@ -87,14 +87,23 @@ export default function SkeletonLoader() {
           ))}
         </div>
 
-        {/* 로딩 인디케이터 */}
-        <div className="w-full h-12 bg-indigo-50/50 rounded-2xl flex items-center justify-center">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
-            <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-          </div>
+        {/* 진행바 */}
+        <div className="w-full h-2 bg-indigo-100 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500 rounded-full"
+            style={{
+              animation: "progressBar 3s ease-in-out infinite",
+              backgroundSize: "200% 100%",
+            }}
+          />
         </div>
+        <style jsx>{`
+          @keyframes progressBar {
+            0% { width: 5%; background-position: 0% 50%; }
+            50% { width: 80%; background-position: 100% 50%; }
+            100% { width: 95%; background-position: 0% 50%; }
+          }
+        `}</style>
 
         {/* 상태 메시지 */}
         <div className="mt-5 space-y-1 transition-all duration-500">

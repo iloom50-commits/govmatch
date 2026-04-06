@@ -519,12 +519,20 @@ export default function Home() {
             onComplete={handleOnboardingComplete}
             onLogout={businessNumber ? handleLogout : undefined}
           />
-          <button
-            onClick={() => setStep("LOGIN")}
-            className="mt-4 text-slate-400 hover:text-indigo-600 text-xs font-black transition-all"
-          >
-            이미 계정이 있으신가요? 로그인
-          </button>
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <button
+              onClick={() => setStep("BROWSE")}
+              className="text-slate-400 hover:text-slate-600 text-xs font-bold transition-all"
+            >
+              ← 돌아가기
+            </button>
+            <button
+              onClick={() => setStep("LOGIN")}
+              className="text-slate-400 hover:text-indigo-600 text-xs font-black transition-all"
+            >
+              이미 계정이 있으신가요? 로그인
+            </button>
+          </div>
         </>
       )}
 

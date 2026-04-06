@@ -1122,7 +1122,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </p>
           )}
 
-          {filteredMatches.length === 0 && !searchLoading ? (
+          {filteredMatches.length === 0 && !searchLoading && !(isPublic && publicData.length === 0 && !searchQuery.trim()) ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               {/* 봇 캐릭터 — 컴퓨터 치는 장면 */}
               {!searchQuery.trim() && matches.length === 0 ? (

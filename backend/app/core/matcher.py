@@ -512,8 +512,13 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     WHERE target_type IN ('individual', 'both')
     AND (
         (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
-        OR deadline_date IS NULL
+        OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '90 days')
     )
+    ORDER BY
+        CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
+        deadline_date ASC NULLS LAST,
+        created_at DESC
+    LIMIT 2000
     """
     cursor.execute(query)
     candidates = [dict(row) for row in cursor.fetchall()]

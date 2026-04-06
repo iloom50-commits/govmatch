@@ -408,10 +408,6 @@ def get_matches_for_user(user_profile):
             except (ValueError, TypeError):
                 pass
 
-        # 최소 점수 미달 → 제외 (기본 30점만 받은 경우 노출 안 함)
-        if score <= 30.0:
-            continue
-
         ad["match_score"] = round(score, 1)
         # recommendation_reason: "기본 자격" 제외하고 실제 매칭 이유만 표시
         meaningful_reasons = [r for r in reasons if "기본 지원 자격" not in r]
@@ -432,29 +428,10 @@ def get_matches_for_user(user_profile):
     # 점수 순 정렬
     results.sort(key=lambda x: x["match_score"], reverse=True)
 
-    # 카테고리 다양성 보장: 카테고리별 최대 CATEGORY_CAP건, 전체 상위 20건
-    final = []
-    cat_counts: dict = {}
-    # 1차: 고득점 순으로 카테고리 캡 적용
-    for r in results:
-        cat = r.get("_category", "")
-        if cat_counts.get(cat, 0) < CATEGORY_CAP:
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
-            final.append(r)
-        if len(final) >= 40:
-            break
-
-    # 2차: 금융·경영 카테고리 최소 1건 보장 (유용한 지원을 놓치지 않도록)
-    for must_cat in ["금융", "경영"]:
-        if not any(r.get("_category") == must_cat for r in final):
-            candidate = next((r for r in results if r.get("_category") == must_cat and r not in final), None)
-            if candidate:
-                final[-1] = candidate  # 가장 낮은 점수 결과와 교체
-
     # 임시 필드 제거 후 반환
-    for r in final:
+    for r in results:
         r.pop("_category", None)
-    return final
+    return results
 
 
 # ───────────────────────────────────────────────────────────
@@ -683,10 +660,6 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
             except (ValueError, TypeError):
                 pass
 
-        # 최소 점수 미달 → 제외 (기본 20점만 받은 경우)
-        if score <= 20.0:
-            continue
-
         ad["match_score"] = round(score, 1)
         meaningful_reasons = reasons[:3]
         ad["recommendation_reason"] = " / ".join(meaningful_reasons) if meaningful_reasons else "지원 자격 충족"
@@ -698,17 +671,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     # 점수 순 정렬
     results.sort(key=lambda x: x["match_score"], reverse=True)
 
-    # 카테고리 다양성: 카테고리별 최대 INDIVIDUAL_CATEGORY_CAP건, 전체 상위 30건
-    final = []
-    cat_counts: dict = {}
+    # 카테고리 정리
     for r in results:
-        cat = r.get("_category", "")
-        if cat_counts.get(cat, 0) < INDIVIDUAL_CATEGORY_CAP:
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
-            final.append(r)
-        if len(final) >= 40:
-            break
-
-    for r in final:
         r.pop("_category", None)
-    return final
+    return results

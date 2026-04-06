@@ -229,6 +229,17 @@ export default function Home() {
         return;
       }
 
+      // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
+      const isIncomplete = user.user_type !== "individual" && (
+        !user.industry_code || user.industry_code === "00000" ||
+        !user.address_city || user.address_city === "전국"
+      );
+      if (isIncomplete) {
+        setStep("RESULTS");
+        setMatches([]);
+        return;
+      }
+
       await performMatching(user.business_number);
     } catch {
       localStorage.removeItem("auth_token");
@@ -256,10 +267,14 @@ export default function Home() {
       const meData = await meRes.json();
       setProfileData(meData.user);
 
-      if (!meData.user.interests && !meData.user.industry_code) {
-        // 프로필 미완성 → 전체 공고 + 맞춤설정 모달 즉시 표시
+      // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
+      const isIncomplete = meData.user.user_type !== "individual" && (
+        !meData.user.industry_code || meData.user.industry_code === "00000" ||
+        !meData.user.address_city || meData.user.address_city === "전국"
+      );
+      if (isIncomplete) {
         setStep("RESULTS");
-        setMatches(publicMatches);
+        setMatches([]);
         setShowProfileNudge(true);
         return;
       }
@@ -560,7 +575,7 @@ export default function Home() {
       {step === "RESULTS" && (
         <div className="flex justify-center">
           <Dashboard
-            matches={matches}
+            matches={isProfileIncomplete ? [] : matches}
             profile={profileData}
             onEditProfile={handleEditProfile}
             onLogout={handleLogout}
@@ -569,6 +584,10 @@ export default function Home() {
             consultantResult={consultantResult}
             onClearConsultant={() => setConsultantResult(null)}
             onRefresh={() => { setConsultantResult(null); performMatching(businessNumber, true); }}
+            isPublic={isProfileIncomplete || false}
+            onLoginRequired={isProfileIncomplete ? handleEditProfile : undefined}
+            categoryCountsBiz={publicCategoryCountsBiz}
+            categoryCountsInd={publicCategoryCountsInd}
           />
         </div>
       )}

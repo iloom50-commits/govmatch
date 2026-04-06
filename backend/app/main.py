@@ -834,7 +834,7 @@ class SecurityAgent:
                 del counter[key]
 
     # 공개 API + 내부 서비스 경로 — 보안 검사 예외
-    _whitelisted_paths = ("/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/health")
+    _whitelisted_paths = ("/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health")
 
     def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
@@ -1691,71 +1691,63 @@ def api_login(req: LoginRequest, request: Request):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email = %s", (req.email,))
-    user = cursor.fetchone()
-    conn.close()
+    try:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (req.email,))
+        user = cursor.fetchone()
 
-    if not user:
-        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+        if not user:
+            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
-    u = dict(user)
-    if not u.get("password_hash"):
-        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+        u = dict(user)
+        if not u.get("password_hash"):
+            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
-    if not _verify_password(req.password, u["password_hash"]):
-        _log_event("login_fail", u.get("business_number", ""), f"email={req.email}", ip)
-        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
+        if not _verify_password(req.password, u["password_hash"]):
+            _log_event("login_fail", u.get("business_number", ""), f"email={req.email}", ip)
+            raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
 
-    _log_event("login", u.get("business_number", ""), f"email={req.email},plan={u.get('plan','free')},type={u.get('user_type','')}", ip, request.headers.get("user-agent", ""))
-    plan = u.get("plan") or "free"
-    # trial → free 마이그레이션 (기존 사용자 호환)
-    if plan == "trial":
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    if plan_expires is not None:
-        plan_expires = str(plan_expires)
-    ai_usage = u.get("ai_usage_month") or 0
+        _log_event("login", u.get("business_number", ""), f"email={req.email},plan={u.get('plan','free')},type={u.get('user_type','')}", ip, request.headers.get("user-agent", ""))
+        plan = u.get("plan") or "free"
+        if plan == "trial":
+            plan = "free"
+        plan_expires = u.get("plan_expires_at")
+        if plan_expires is not None:
+            plan_expires = str(plan_expires)
+        ai_usage = u.get("ai_usage_month") or 0
 
-    # 월간 사용량 리셋 체크
-    reset_at = u.get("ai_usage_reset_at")
-    now = datetime.datetime.utcnow()
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                ai_usage = 0
-                conn_reset = get_db_connection()
-                cur_reset = conn_reset.cursor()
-                cur_reset.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
-                    (now.isoformat(), u["user_id"])
-                )
-                conn_reset.commit()
-                conn_reset.close()
-        except Exception:
-            pass
+        # 월간 사용량 리셋 체크
+        reset_at = u.get("ai_usage_reset_at")
+        now = datetime.datetime.utcnow()
+        if reset_at:
+            try:
+                reset_dt = datetime.datetime.fromisoformat(str(reset_at))
+                if now.month != reset_dt.month or now.year != reset_dt.year:
+                    ai_usage = 0
+                    cursor.execute(
+                        "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE user_id=%s",
+                        (now.isoformat(), u["user_id"])
+                    )
+            except Exception:
+                pass
 
-    plan_status = _get_plan_status(plan, plan_expires, ai_usage)
+        plan_status = _get_plan_status(plan, plan_expires, ai_usage)
 
-    if plan_status["plan"] == "expired":
-        plan = "free"
-        conn2 = get_db_connection()
-        cur2 = conn2.cursor()
-        cur2.execute("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE user_id = %s", (u["user_id"],))
-        conn2.commit()
-        conn2.close()
-        plan_status = _get_plan_status("free", None, ai_usage)
+        if plan_status["plan"] == "expired":
+            plan = "free"
+            cursor.execute("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE user_id = %s", (u["user_id"],))
+            plan_status = _get_plan_status("free", None, ai_usage)
 
-    # Lookup KSIC industry name
-    industry_name = ""
-    if u.get("industry_code"):
-        conn3 = get_db_connection()
-        cur3 = conn3.cursor()
-        cur3.execute("SELECT name FROM ksic_classification WHERE code = %s", (u["industry_code"],))
-        row3 = cur3.fetchone()
-        if row3:
-            industry_name = row3["name"]
-        conn3.close()
+        # Lookup KSIC industry name
+        industry_name = ""
+        if u.get("industry_code"):
+            cursor.execute("SELECT name FROM ksic_classification WHERE code = %s", (u["industry_code"],))
+            row3 = cursor.fetchone()
+            if row3:
+                industry_name = row3["name"]
+
+        conn.commit()
+    finally:
+        conn.close()
 
     token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, plan_expires)
     return {

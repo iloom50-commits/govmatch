@@ -84,9 +84,10 @@ interface ChatMessage {
 interface AiConsultModalProps {
   planStatus?: { plan: string } | null;
   onUpgrade?: () => void;
+  onPlanUpdate?: (updated: any) => void;
 }
 
-export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModalProps) {
+export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: AiConsultModalProps) {
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
@@ -246,6 +247,10 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       };
 
       setMessages([...chatHistory, aiMsg]);
+      // 사용량 갱신
+      if (data.ai_used !== undefined) {
+        onPlanUpdate?.({ ai_used: data.ai_used, consult_limit: data.ai_limit });
+      }
       if (data.done) {
         setIsDone(true);
         if (data.consult_log_id) setConsultLogId(data.consult_log_id);

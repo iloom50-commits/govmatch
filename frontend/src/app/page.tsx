@@ -58,6 +58,9 @@ interface PlanStatus {
   active: boolean;
   days_left: number | null;
   label: string;
+  ai_used?: number;
+  ai_limit?: number;
+  consult_limit?: number;
 }
 
 // Steps:
@@ -598,6 +601,7 @@ export default function Home() {
             defaultMajorTab={isProfileIncomplete ? "individual" : undefined}
             autoOpenNotify={openNotifyOnReturn}
             onNotifyOpened={() => setOpenNotifyOnReturn(false)}
+            onPlanUpdate={(updated: any) => setPlanStatus((prev: any) => ({ ...prev, ...updated }))}
           />
         </div>
       )}
@@ -667,7 +671,7 @@ export default function Home() {
         />
       )}
 
-      <AiConsultModal planStatus={planStatus} onUpgrade={() => setShowPayment(true)} />
+      <AiConsultModal planStatus={planStatus} onUpgrade={() => setShowPayment(true)} onPlanUpdate={(u: any) => setPlanStatus((prev: any) => prev ? { ...prev, ...u } : prev)} />
       <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} />
 
     </main>

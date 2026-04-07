@@ -82,6 +82,7 @@ export default function Home() {
   const [consultantResult, setConsultantResult] = useState<{ matches: any[]; profile: any } | null>(null);
   const [publicMatches, setPublicMatches] = useState<any[]>([]);
   const [showProfileNudge, setShowProfileNudge] = useState(false);
+  const [openNotifyOnReturn, setOpenNotifyOnReturn] = useState(false);
   const { toast } = useToast();
 
   // 맞춤 설정 유도: 프로필 미설정 사용자 감지
@@ -575,7 +576,7 @@ export default function Home() {
       )}
 
       {step === "PROFILE" && (
-        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} />
+        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} planStatus={planStatus} onOpenNotify={() => { setOpenNotifyOnReturn(true); setStep("RESULTS"); }} />
       )}
 
       {step === "RESULTS" && (
@@ -595,6 +596,8 @@ export default function Home() {
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
             defaultMajorTab={isProfileIncomplete ? "individual" : undefined}
+            autoOpenNotify={openNotifyOnReturn}
+            onNotifyOpened={() => setOpenNotifyOnReturn(false)}
           />
         </div>
       )}
@@ -632,7 +635,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setShowProfileNudge(false);
-                  handleEditProfile();
+                  setOpenNotifyOnReturn(true);
                 }}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all active:scale-[0.98]"
               >

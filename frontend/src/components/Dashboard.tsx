@@ -292,7 +292,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "both";
@@ -306,6 +306,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const showIndividualTab = isPublic || userType === "individual" || userType === "both";
   const [sortKey, setSortKey] = useState<SortKey>("latest");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+  // 프로필 미완성(로그인O) → NotificationModal, 비로그인 → onLoginRequired
+  const handleLoginRequired = () => {
+    if (profile) { setIsNotifyOpen(true); } else { onLoginRequired?.(); }
+  };
+  // 외부에서 NotificationModal 열기 요청
+  useEffect(() => {
+    if (autoOpenNotify) { setIsNotifyOpen(true); onNotifyOpened?.(); }
+  }, [autoOpenNotify]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -708,7 +716,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       {/* CTA 버튼 */}
-      <PublicNudgeButton onClick={() => onLoginRequired?.()} />
+      <PublicNudgeButton onClick={handleLoginRequired} />
 
       {/* 서비스 공유 */}
       <ShareToggle
@@ -750,7 +758,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 <p className="text-[12px] text-slate-500 mt-1">내 조건을 입력하면 AI가 딱 맞는 지원금을 찾아드려요</p>
               </div>
               <button
-                onClick={() => { onEditProfile(); setSidebarOpen(false); }}
+                onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
                 className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all active:scale-95 shadow-sm"
               >
                 프로필 설정하기
@@ -1303,7 +1311,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     onToggle={isPublic ? undefined : () => toggleSelect(res.announcement_id)}
                     planStatus={isPublic ? null : planStatus}
                     onUpgrade={isPublic ? undefined : onUpgrade}
-                    onLoginRequired={isPublic ? onLoginRequired : undefined}
+                    onLoginRequired={isPublic ? handleLoginRequired : undefined}
                   />
                 </div>
               ))}
@@ -1378,7 +1386,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
       {isPublic ? (
         <button
-          onClick={() => onLoginRequired?.()}
+          onClick={handleLoginRequired}
           className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
         >
           <span className="text-base">🚀</span>

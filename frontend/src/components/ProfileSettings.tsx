@@ -1,477 +1,170 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface ProfileSettingsProps {
   profile: any;
   onSave: (data: any) => void;
   onClose: () => void;
   onLogout?: () => void;
+  onOpenNotify?: () => void;
+  planStatus?: any;
 }
 
-export default function ProfileSettings({ profile, onSave, onClose, onLogout }: ProfileSettingsProps) {
-  const REVENUE_MIGRATE: Record<string, string> = {
-    UNDER_1B: "1억 미만", "1B_5B": "1억~5억", "1B_TO_5B": "1억~5억",
-    "5B_10B": "5억~10억", "5B_TO_10B": "5억~10억",
-    "10B_50B": "10억~50억", OVER_10B: "10억~50억",
-    "50B_PLUS": "50억 이상",
-  };
-  const EMP_MIGRATE: Record<string, string> = {
-    UNDER_5: "5인 미만", UNDER_10: "5인 미만",
-    "5_10": "5인~10인", "5_TO_10": "5인~10인",
-    "10_50": "10인~30인", "10_TO_50": "10인~30인",
-    "50_100": "50인 이상", OVER_50: "50인 이상",
-  };
-
-  const rawRev = profile.revenue_bracket || profile.revenue || "";
-  const rawEmp = profile.employee_count_bracket || profile.employees || "";
-  const rawCity = profile.address_city || "";
-
-  // 프로필 미완성 판별
-  const ut = profile.user_type || "both";
-  const hasProfile = ut === "individual"
-    ? (profile.age_range || profile.address_city)
-    : (profile.industry_code && profile.industry_code !== "00000");
-
-  const [formData, setFormData] = useState({
-    ...profile,
-    user_type: profile.user_type || "both",
-    revenue: REVENUE_MIGRATE[rawRev] || rawRev || "",
-    employees: EMP_MIGRATE[rawEmp] || rawEmp || "",
-    industry_code: profile.industry_code && profile.industry_code !== "00000" ? profile.industry_code : "",
-    address_cities: rawCity ? rawCity.split(",").map((c: string) => c.trim()).filter(Boolean) : [] as string[],
-    age_range: profile.age_range || "",
-    interests: profile.interests || "",
-  });
-  const [industryQuery, setIndustryQuery] = useState("");
-  const [industryCandidates, setIndustryCandidates] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [industryName, setIndustryName] = useState(profile.industry_name || "");
+export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, planStatus }: ProfileSettingsProps) {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  useEffect(() => {
-    if (industryName) return;
-    if (formData.industry_code && formData.industry_code !== "00000" && formData.industry_code.length >= 2) {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/industry-recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_name: formData.company_name || "", business_content: formData.industry_code })
-      })
-        .then(r => r.json())
-        .then(result => {
-          if (result.status === "SUCCESS" && result.data.candidates) {
-            const match = result.data.candidates.find((c: any) => c.code === formData.industry_code);
-            if (match) setIndustryName(match.name);
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
+  const plan = planStatus?.plan || "free";
+  const label = planStatus?.label || "FREE";
+  const daysLeft = planStatus?.days_left;
 
-  useEffect(() => {
-    if (industryQuery.length < 2) return;
-    const timer = setTimeout(() => searchIndustry(true), 600);
-    return () => clearTimeout(timer);
-  }, [industryQuery]);
-
-  const searchIndustry = async (silent = false) => {
-    if (!industryQuery) return;
-    if (!silent) setIsSearching(true);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/industry-recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_name: formData.company_name || "", business_content: industryQuery })
-      });
-      const result = await res.json();
-      if (result.status === "SUCCESS" && result.data.candidates) {
-        setIndustryCandidates(result.data.candidates);
-      }
-    } catch (err) {
-      console.error("Industry search failed", err);
-    } finally {
-      if (!silent) setIsSearching(false);
-    }
-  };
-
-  const cities = ["전국", "서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
-  const revenueOptions = [
-    { label: "1억 미만", value: "1억 미만" },
-    { label: "1억 ~ 5억", value: "1억~5억" },
-    { label: "5억 ~ 10억", value: "5억~10억" },
-    { label: "10억 ~ 50억", value: "10억~50억" },
-    { label: "50억 이상", value: "50억 이상" },
-  ];
-  const employeeOptions = [
-    { label: "5인 미만", value: "5인 미만" },
-    { label: "5 ~ 10인", value: "5인~10인" },
-    { label: "10 ~ 30인", value: "10인~30인" },
-    { label: "30 ~ 50인", value: "30인~50인" },
-    { label: "50인 이상", value: "50인 이상" },
-  ];
-  const ageOptions = ["20대 이하", "30대", "40대", "50대", "60대 이상"];
-  const interestOptions = ["복지", "교육", "주거", "고용", "출산/육아", "금융/세제", "건강/의료", "문화/여가"];
-
-  const isBiz = formData.user_type === "business" || formData.user_type === "both";
-  const isInd = formData.user_type === "individual" || formData.user_type === "both";
+  const userTypeLabel: Record<string, string> = { individual: "개인", business: "사업자", both: "개인+사업자" };
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300 md:flex md:items-center md:justify-center md:p-6">
-      <div className="bg-white w-full h-full md:h-auto md:max-w-4xl md:max-h-[95vh] md:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 flex flex-col">
+      <div className="bg-white w-full h-full md:h-auto md:max-w-md md:max-h-[95vh] md:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 flex flex-col">
         {/* Header */}
-        <div className="px-5 sm:px-6 lg:px-8 pt-4 pb-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
-          <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">{hasProfile ? "프로필 수정" : "프로필 설정"}</h2>
-            {!hasProfile && <p className="text-[11px] text-slate-400 mt-0.5">내 조건을 설정하면 AI가 맞춤 지원금을 찾아드려요</p>}
-          </div>
+        <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
+          <h2 className="text-lg font-black text-slate-900 tracking-tight">마이페이지</h2>
           <button onClick={onClose} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 sm:p-6 lg:p-8 space-y-6 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+        <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0">
 
           {/* 계정 이메일 */}
-          {profile.email && (
-            <div className="space-y-2">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">계정 이메일</label>
-              <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-slate-900 truncate">{profile.email}</p>
-                  <p className="text-[11px] text-slate-400 font-medium">로그인 및 매칭 리포트 수신에 사용됩니다</p>
-                </div>
-              </div>
+          <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
             </div>
-          )}
-
-          {/* 사용자 유형 — 3개 (개인/사업자/둘다) */}
-          <div className="space-y-3">
-            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">사용자 유형</label>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { key: "individual", label: "개인", desc: "복지·교육·주거 등" },
-                { key: "business", label: "사업자", desc: "기업지원·R&D·창업" },
-                { key: "both", label: "둘다", desc: "개인+사업자 모두" },
-              ] as const).map(opt => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, user_type: opt.key })}
-                  className={`p-3 rounded-xl border-2 text-left transition-all ${
-                    formData.user_type === opt.key
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <p className={`text-sm font-bold ${formData.user_type === opt.key ? "text-indigo-700" : "text-slate-700"}`}>{opt.label}</p>
-                  <p className="text-[10px] text-slate-400 leading-tight">{opt.desc}</p>
-                </button>
-              ))}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-slate-900 truncate">{profile?.email || "이메일 미등록"}</p>
+              <p className="text-[11px] text-slate-400 font-medium">
+                {userTypeLabel[profile?.user_type] || "미설정"} · {profile?.address_city || "지역 미설정"}
+              </p>
             </div>
           </div>
 
-          {/* ── 개인 정보 섹션 ── */}
-          {isInd && (
-            <div className="space-y-5 p-4 bg-blue-50/40 rounded-2xl border border-blue-100/60">
-              <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">개인 정보</p>
-
-              {/* 연령대 */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">연령대</label>
-                <div className="flex flex-wrap gap-2">
-                  {ageOptions.map(age => (
-                    <button
-                      key={age}
-                      onClick={() => setFormData({ ...formData, age_range: formData.age_range === age ? "" : age })}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
-                        formData.age_range === age
-                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                          : "bg-white border-transparent text-slate-500 hover:border-indigo-100"
-                      }`}
-                    >
-                      {age}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 관심분야 */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">관심분야 (복수 선택)</label>
-                <div className="flex flex-wrap gap-2">
-                  {interestOptions.map(interest => {
-                    const selected = (formData.interests || "").split(",").map((s: string) => s.trim()).includes(interest);
-                    return (
-                      <button
-                        key={interest}
-                        onClick={() => {
-                          const current = (formData.interests || "").split(",").map((s: string) => s.trim()).filter(Boolean);
-                          const next = selected ? current.filter((s: string) => s !== interest) : [...current, interest];
-                          setFormData({ ...formData, interests: next.join(",") });
-                        }}
-                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
-                          selected
-                            ? "bg-blue-600 border-blue-600 text-white shadow-lg"
-                            : "bg-white border-transparent text-slate-500 hover:border-blue-100"
-                        }`}
-                      >
-                        {interest}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Location — 공통 (복수선택) */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">관심지역</label>
-              <span className="text-[11px] text-slate-400 font-medium">(복수 선택 가능 · 관심지역 외 지역 전용 공고는 제외됩니다)</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {cities.map(city => {
-                const isAll = city === "전국";
-                const selected = isAll
-                  ? formData.address_cities.length === 0 || formData.address_cities.includes("전국")
-                  : formData.address_cities.includes(city);
-                return (
-                  <button
-                    key={city}
-                    onClick={() => {
-                      if (isAll) {
-                        setFormData({ ...formData, address_cities: ["전국"] });
-                      } else {
-                        const without = formData.address_cities.filter((c: string) => c !== "전국");
-                        const next = selected ? without.filter((c: string) => c !== city) : [...without, city];
-                        setFormData({ ...formData, address_cities: next.length === 0 ? ["전국"] : next });
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${selected ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 border-transparent text-slate-500 hover:bg-white hover:border-indigo-100'}`}
-                  >
-                    {city}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── 사업자 정보 섹션 ── */}
-          {isBiz && (
-            <div className="space-y-5 p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/60">
-              <p className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">사업자 정보</p>
-
-              {/* Revenue + Employees: 2-column */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">매출액 (연)</label>
-                  <div className="space-y-2">
-                    {revenueOptions.map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setFormData({ ...formData, revenue: opt.value })}
-                        className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.revenue === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-white border-transparent text-slate-500'}`}
-                      >
-                        {opt.label}
-                        {formData.revenue === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">직원 수</label>
-                  <div className="space-y-2">
-                    {employeeOptions.map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setFormData({ ...formData, employees: opt.value })}
-                        className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.employees === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-white border-transparent text-slate-500'}`}
-                      >
-                        {opt.label}
-                        {formData.employees === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Establishment Date + Industry: 2-column */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일</label>
-                  <input
-                    type="date"
-                    className="w-full p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                    value={formData.establishment_date || ""}
-                    onChange={(e) => setFormData({ ...formData, establishment_date: e.target.value })}
-                  />
-                  <p className="text-[11px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-end">
-                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">업종 (KSIC)</label>
-                    {formData.industry_code && (
-                      <span className="text-[11px] font-black text-indigo-600 tracking-widest">
-                        KSIC {formData.industry_code}{industryName ? ` · ${industryName}` : ""}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="사업 내용을 입력하여 검색..."
-                      className="flex-1 p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                      value={industryQuery}
-                      onChange={(e) => setIndustryQuery(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      placeholder="코드"
-                      maxLength={5}
-                      className="w-16 sm:w-20 p-3 border border-slate-200 rounded-xl bg-white text-sm font-black outline-none text-center tracking-widest focus:ring-2 focus:ring-indigo-100"
-                      value={formData.industry_code}
-                      onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
-                    />
-                  </div>
-                  {(!formData.industry_code || formData.industry_code === "00000") && industryCandidates.length === 0 && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-700">
-                      업종을 검색하여 선택해 주세요. 정확한 매칭을 위해 필요합니다.
-                    </div>
-                  )}
-                  {industryCandidates.length > 0 && (
-                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
-                      {industryCandidates.map((cand, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => { setFormData({ ...formData, industry_code: cand.code }); setIndustryName(cand.name); setIndustryCandidates([]); setIndustryQuery(""); }}
-                          className={`w-full p-3 rounded-xl text-left text-xs font-black transition-all border ${
-                            formData.industry_code === cand.code
-                              ? "bg-indigo-600 border-indigo-600 text-white"
-                              : "bg-white border-slate-100 text-slate-700 hover:border-indigo-200"
-                          }`}
-                        >
-                          <span className={`text-[11px] ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>KSIC {cand.code}</span>
-                          <span className="ml-2">{cand.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Authentication — 이메일: 비밀번호 / 소셜: 재인증 */}
-          {profile?.is_social ? (
-            <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">본인 확인</label>
-              <button
-                onClick={() => {
-                  const provider = profile.social_provider || "kakao";
-                  const API_URL = process.env.NEXT_PUBLIC_API_URL;
-                  localStorage.setItem("pending_profile_save", JSON.stringify({ ...formData, address_city: formData.address_cities?.join(",") }));
-                  window.location.href = `${API_URL}/api/auth/social/${provider}`;
-                }}
-                className={`w-full p-3 rounded-xl text-xs font-bold transition-all active:scale-[0.98] ${
-                  profile.social_provider === "kakao" ? "bg-[#FEE500] text-[#191919]" :
-                  profile.social_provider === "naver" ? "bg-[#03C75A] text-white" :
-                  "bg-white border border-slate-200 text-slate-700"
-                }`}
-              >
-                {profile.social_provider === "kakao" ? "카카오로 본인 확인" :
-                 profile.social_provider === "naver" ? "네이버로 본인 확인" :
-                 "Google로 본인 확인"}
-              </button>
-              <p className="text-[11px] text-slate-400 pl-1">소셜 로그인으로 가입하셨습니다. 본인 확인 후 저장됩니다.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
-              <input
-                type="password"
-                placeholder="현재 비밀번호를 입력해 주세요"
-                className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
-              />
-              {passwordError && (
-                <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
+          {/* 현재 플랜 */}
+          <div className="p-4 bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-black text-indigo-700">{label}</span>
+              {daysLeft !== undefined && daysLeft !== null && (
+                <span className="text-[11px] font-bold text-indigo-500">
+                  {plan === "free" || plan === "expired" ? "" : daysLeft > 0 ? `D-${daysLeft}` : "만료"}
+                </span>
               )}
-              <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
+            </div>
+            <div className="text-[12px] text-slate-500 space-y-1">
+              <div className="flex justify-between">
+                <span>공고AI 상담</span>
+                <span className="font-bold text-slate-700">
+                  {planStatus?.consult_limit >= 999 ? "무제한" : `월 ${planStatus?.consult_limit || 0}회`}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>저장 · 알림</span>
+                <span className="font-bold text-slate-700">
+                  {plan === "free" ? "불가" : "사용 가능"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 맞춤형 알림 설정 버튼 */}
+          <button
+            onClick={() => { onClose(); onOpenNotify?.(); }}
+            className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-sm tracking-tight hover:bg-indigo-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <span className="text-base">🔔</span>
+            맞춤형 알림 · 프로필 설정
+          </button>
+
+          {/* 비밀번호 변경 (이메일 가입자만) */}
+          {!profile?.is_social && (
+            <div className="space-y-2">
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 변경</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="새 비밀번호 입력"
+                  className={`flex-1 p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
+                />
+                <button
+                  onClick={() => {
+                    if (!password || password.length < 6) {
+                      setPasswordError("6자 이상 입력해주세요.");
+                      return;
+                    }
+                    onSave({ ...profile, password, address_city: profile.address_city });
+                  }}
+                  className="px-4 py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-700 transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  변경
+                </button>
+              </div>
+              {passwordError && <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>}
             </div>
           )}
-
         </div>
 
         {/* Footer */}
-        <div className="px-5 sm:px-6 lg:px-8 py-3 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 safe-bottom flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (profile?.is_social) {
-                onSave({ ...formData, address_city: formData.address_cities?.join(",") });
-              } else {
-                if (!password) {
-                  setPasswordError("비밀번호를 입력해 주세요.");
-                  return;
-                }
-                onSave({ ...formData, password, address_city: formData.address_cities?.join(",") });
-              }
-            }}
-            className="flex-1 py-3.5 bg-slate-950 text-white rounded-2xl font-black text-sm tracking-tight hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98]"
-          >
-            설정 저장하고 결과 업데이트 →
-          </button>
-          <button
-            onClick={async () => {
-              if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능하며, 이후 자동결제가 중지됩니다.")) return;
-              try {
-                const token = localStorage.getItem("auth_token");
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/cancel`, {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const data = await res.json();
-                alert(res.ok ? data.message : (data.detail || "해지 실패"));
-                if (res.ok) window.location.reload();
-              } catch { alert("서버 오류"); }
-            }}
-            className="px-3 py-3.5 text-slate-400 hover:text-amber-600 text-[11px] font-bold transition-all whitespace-nowrap"
-          >
-            구독 해지
-          </button>
-          <button
-            onClick={async () => {
-              if (!confirm("환불을 요청하시겠습니까?\n무료체험 중이면 즉시 FREE로 전환되며, 유료 결제 건은 환불 처리됩니다.")) return;
-              try {
-                const token = localStorage.getItem("auth_token");
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/refund`, {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const data = await res.json();
-                alert(res.ok ? data.message : (data.detail || "환불 실패"));
-                if (res.ok) window.location.reload();
-              } catch { alert("서버 오류"); }
-            }}
-            className="px-3 py-3.5 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all whitespace-nowrap"
-          >
-            환불 요청
-          </button>
-          {onLogout && (
+        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 safe-bottom">
+          <div className="flex items-center justify-center gap-4">
             <button
-              onClick={onLogout}
-              className="px-3 py-3.5 text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all whitespace-nowrap"
+              onClick={async () => {
+                if (!confirm("구독을 해지하시겠습니까?\n만료일까지는 계속 이용 가능하며, 이후 자동결제가 중지됩니다.")) return;
+                try {
+                  const token = localStorage.getItem("auth_token");
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/cancel`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const data = await res.json();
+                  alert(res.ok ? data.message : (data.detail || "해지 실패"));
+                  if (res.ok) window.location.reload();
+                } catch { alert("서버 오류"); }
+              }}
+              className="text-slate-400 hover:text-amber-600 text-[11px] font-bold transition-all"
             >
-              로그아웃
+              구독 해지
             </button>
-          )}
+            <span className="text-slate-200">|</span>
+            <button
+              onClick={async () => {
+                if (!confirm("환불을 요청하시겠습니까?\n무료체험 중이면 즉시 FREE로 전환되며, 유료 결제 건은 환불 처리됩니다.")) return;
+                try {
+                  const token = localStorage.getItem("auth_token");
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plan/refund`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const data = await res.json();
+                  alert(res.ok ? data.message : (data.detail || "환불 실패"));
+                  if (res.ok) window.location.reload();
+                } catch { alert("서버 오류"); }
+              }}
+              className="text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all"
+            >
+              환불 요청
+            </button>
+            {onLogout && (
+              <>
+                <span className="text-slate-200">|</span>
+                <button
+                  onClick={onLogout}
+                  className="text-slate-400 hover:text-rose-500 text-[11px] font-bold transition-all"
+                >
+                  로그아웃
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

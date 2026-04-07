@@ -689,24 +689,24 @@ def chat_consult(
 {support_info}
 
 [정밀 분석 — 공고 원문 기반]
-신청자격 원문: {ps.get('eligibility', '')[:2000]}
-제외대상 원문: {ps.get('exclusions', '')[:1000]}
-예외조항 원문: {ps.get('exceptions', '')[:1000]}
-가점항목 원문: {ps.get('bonus_points', '')[:500]}
-제출서류 원문: {ps.get('required_docs', '')[:1000]}
-심사기준 원문: {ps.get('evaluation_criteria', '')[:1000]}
-지원내용 원문: {ps.get('support_details', '')[:1000]}
-일정 원문: {ps.get('timeline', '')[:500]}
-신청방법 원문: {ps.get('application_method', '')[:500]}
+신청자격 원문: {(ps.get('eligibility') or '')[:2000]}
+제외대상 원문: {(ps.get('exclusions') or '')[:1000]}
+예외조항 원문: {(ps.get('exceptions') or '')[:1000]}
+가점항목 원문: {(ps.get('bonus_points') or '')[:500]}
+제출서류 원문: {(ps.get('required_docs') or '')[:1000]}
+심사기준 원문: {(ps.get('evaluation_criteria') or '')[:1000]}
+지원내용 원문: {(ps.get('support_details') or '')[:1000]}
+일정 원문: {(ps.get('timeline') or '')[:500]}
+신청방법 원문: {(ps.get('application_method') or '')[:500]}
 
 [구조화된 분석]
-자격 상세: {json.dumps(da.get('eligibility_detail', {}), ensure_ascii=False)[:1000]}
-제외 사유: {json.dumps(da.get('exclusion_rules', []), ensure_ascii=False)[:800]}
-예외 조항: {json.dumps(da.get('exception_rules', []), ensure_ascii=False)[:800]}
-가점 항목: {json.dumps(da.get('bonus_items', []), ensure_ascii=False)[:500]}
-제출 서류: {json.dumps(da.get('required_documents', []), ensure_ascii=False)[:800]}
-판단 불확실 영역: {json.dumps(da.get('gray_zones', []), ensure_ascii=False)[:500]}
-주의사항: {json.dumps(da.get('key_warnings', []), ensure_ascii=False)[:500]}
+자격 상세: {json.dumps(da.get('eligibility_detail') or {}, ensure_ascii=False)[:1000]}
+제외 사유: {json.dumps(da.get('exclusion_rules') or [], ensure_ascii=False)[:800]}
+예외 조항: {json.dumps(da.get('exception_rules') or [], ensure_ascii=False)[:800]}
+가점 항목: {json.dumps(da.get('bonus_items') or [], ensure_ascii=False)[:500]}
+제출 서류: {json.dumps(da.get('required_documents') or [], ensure_ascii=False)[:800]}
+판단 불확실 영역: {json.dumps(da.get('gray_zones') or [], ensure_ascii=False)[:500]}
+주의사항: {json.dumps(da.get('key_warnings') or [], ensure_ascii=False)[:500]}
 {eval_info}
 {form_info}
 {company_info}

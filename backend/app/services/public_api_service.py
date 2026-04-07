@@ -392,6 +392,9 @@ class GovernmentAPIService:
                     full_url = f"https://www.bizinfo.go.kr{rel_url}"
                 else:
                     full_url = f"https://www.bizinfo.go.kr/{rel_url}"
+                # 지원금액 파싱
+                support_amount = item.get("totBgtAmt") or item.get("sprtScale") or item.get("bsnsBgtAmt") or ""
+
                 mapped.append({
                     "title": title,
                     "url": full_url,
@@ -400,6 +403,7 @@ class GovernmentAPIService:
                     "category": item.get("pldirSportRealmLclasCodeNm") or "General Business Support",
                     "origin_source": "bizinfo-portal-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
 
@@ -593,6 +597,21 @@ class GovernmentAPIService:
             category = item.get("sportType") or item.get("bizType") or "General"
             dept = item.get("sportInsttNm") or item.get("cntcInsttNm") or "중소벤처기업부"
 
+            # 지원금액 파싱 — smtotBgtAmt(총예산), sprtAmt(지원금액), etc.
+            support_amount = (
+                item.get("smtotBgtAmt") or item.get("sprtAmt") or
+                item.get("totBgtAmt") or item.get("sportScale") or ""
+            )
+            if support_amount and isinstance(support_amount, (int, float)):
+                # 숫자 → 억원/만원 변환
+                amt = int(support_amount)
+                if amt >= 100000000:
+                    support_amount = f"최대 {amt // 100000000}억원"
+                elif amt >= 10000:
+                    support_amount = f"최대 {amt // 10000}만원"
+                else:
+                    support_amount = f"{amt}원"
+
             mapped.append({
                 "title": title,
                 "url": url,
@@ -602,7 +621,8 @@ class GovernmentAPIService:
                 "origin_source": "smes24-api",
                 "region": region,
                 "deadline_date": self._normalize_date(item.get("pblancEndDt")),
-                "eligibility_logic": eligibility
+                "eligibility_logic": eligibility,
+                "support_amount": str(support_amount) if support_amount else "",
             })
         return mapped
 

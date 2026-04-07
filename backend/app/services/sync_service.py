@@ -326,9 +326,11 @@ class SyncService:
                 if deadline_safe and deadline_safe.endswith("-00"):
                     deadline_safe = None
 
+                support_amount = item.get('support_amount', '') or ''
+
                 query = """
-                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (origin_url) DO UPDATE SET
                     deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
                     established_years_limit = COALESCE(EXCLUDED.established_years_limit, announcements.established_years_limit),
@@ -344,13 +346,19 @@ class SyncService:
                         THEN EXCLUDED.summary_text
                         ELSE announcements.summary_text
                     END,
-                    target_type = COALESCE(EXCLUDED.target_type, announcements.target_type)
+                    target_type = COALESCE(EXCLUDED.target_type, announcements.target_type),
+                    support_amount = CASE
+                        WHEN EXCLUDED.support_amount IS NOT NULL AND EXCLUDED.support_amount != ''
+                        THEN EXCLUDED.support_amount
+                        ELSE COALESCE(announcements.support_amount, EXCLUDED.support_amount)
+                    END
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,
                     item.get('department', ''), item.get('category', ''), item.get('origin_source', ''),
                     item.get('region', 'All'), deadline_safe,
-                    years_limit, revenue_limit, employee_limit, industry_codes, target_type
+                    years_limit, revenue_limit, employee_limit, industry_codes, target_type,
+                    support_amount
                 ))
                 saved += 1
                 if saved % 100 == 0:

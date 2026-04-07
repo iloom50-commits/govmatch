@@ -84,11 +84,13 @@ export default function Home() {
   const [showProfileNudge, setShowProfileNudge] = useState(false);
   const { toast } = useToast();
 
-  // 맞춤 설정 유도: 프로필 미설정 사용자 감지 (개인 유저는 업종 불필요)
-  const isIndividualUser = profileData?.user_type === "individual";
-  const isProfileIncomplete = profileData && !isIndividualUser && (
-    !profileData.industry_code || profileData.industry_code === "00000" ||
-    !profileData.address_city || profileData.address_city === "전국"
+  // 맞춤 설정 유도: 프로필 미설정 사용자 감지
+  const userType = profileData?.user_type || "both";
+  const isProfileIncomplete = profileData && (
+    // 기업/both인데 업종 미설정
+    (userType !== "individual" && (!profileData.industry_code || profileData.industry_code === "00000")) ||
+    // 아예 프로필 정보가 하나도 없는 경우
+    (!profileData.industry_code && !profileData.age_range && !profileData.address_city)
   );
 
   // 맞춤 설정 모달: 최초 1회만
@@ -229,11 +231,13 @@ export default function Home() {
         return;
       }
 
-      // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
+      // 프로필 미완성이면 매칭 건너뛰기 (공개 공고 뷰로 표시)
       const userType = user.user_type || "both";
-      const isIncomplete = userType === "business" && (
-        !user.industry_code || user.industry_code === "00000" ||
-        !user.address_city || user.address_city === "전국"
+      const isIncomplete = (
+        // 기업 또는 both인데 업종/지역 미설정
+        (userType !== "individual" && (!user.industry_code || user.industry_code === "00000")) ||
+        // 아예 프로필 정보가 하나도 없는 경우
+        (!user.industry_code && !user.age_range && !user.address_city)
       );
       if (isIncomplete) {
         setStep("RESULTS");
@@ -577,7 +581,7 @@ export default function Home() {
       {step === "RESULTS" && (
         <div className="flex justify-center">
           <Dashboard
-            matches={matches}
+            matches={isProfileIncomplete ? [] : matches}
             profile={profileData}
             onEditProfile={handleEditProfile}
             onLogout={handleLogout}
@@ -586,8 +590,11 @@ export default function Home() {
             consultantResult={consultantResult}
             onClearConsultant={() => setConsultantResult(null)}
             onRefresh={() => { setConsultantResult(null); performMatching(businessNumber, true); }}
+            isPublic={isProfileIncomplete || false}
+            onLoginRequired={isProfileIncomplete ? handleEditProfile : undefined}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
+            defaultMajorTab={isProfileIncomplete ? "individual" : undefined}
           />
         </div>
       )}

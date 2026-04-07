@@ -292,11 +292,11 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number> }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
-  const userType = profile?.user_type || "business";
-  const initialMajor: MajorTab = userType === "individual" ? "individual" : "business";
+  const userType = profile?.user_type || "both";
+  const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   const [activeTab, setActiveTab] = useState("all");
   const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;

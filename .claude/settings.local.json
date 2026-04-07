@@ -111,7 +111,12 @@
       "Bash(__NEW_LINE_4075dd10393754d8__ PYTHONUTF8=1 python -c \":*)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://govmatch-production.up.railway.app/api/announcements/public?page=1&size=1&target_type=business\")",
       "Bash(TOKEN5=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo1NSwiYm4iOiI3Nzc4ODg5OTkwIiwiZW1haWwiOiJ0ZXN0ZmluYWwyQGdvdm1hdGNoLmtyIiwicGxhbiI6ImZyZWUiLCJ0cmlhbF9lbmRzX2F0IjpudWxsLCJleHAiOjE3NzU3OTU0MDJ9.jdIq8mzgnIrsBueFRehOXSkSAkL1b-UP2z_zLgp77Rs\")",
-      "Bash(__NEW_LINE_e31634ab506334eb__ PYTHONUTF8=1 python -c \":*)"
+      "Bash(__NEW_LINE_e31634ab506334eb__ PYTHONUTF8=1 python -c \":*)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" -H \"Origin: https://govmatch.kr\" \"https://govmatch-production.up.railway.app/api/announcements?target_type=business&page=1\")",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" -H \"Origin: https://govmatch.kr\" \"https://govmatch-production.up.railway.app/api/announcements?target_type=business&category=%EC%86%8C%EC%83%81%EA%B3%B5%EC%9D%B8&page=1\")",
+      "Bash(curl -s -o /dev/null -w %{http_code} -H \"User-Agent: Mozilla/5.0 \\(iPhone; CPU iPhone OS 17_0 like Mac OS X\\) AppleWebKit/605.1.15\" -H 'Origin: https://govmatch.kr' \"https://govmatch-production.up.railway.app/api/subsidies?target_type=individual&page=1&page_size=20\")",
+      "Bash(curl -s -H \"User-Agent: Mozilla/5.0 \\(iPhone; CPU iPhone OS 17_0 like Mac OS X\\) AppleWebKit/605.1.15\" -H 'Origin: https://govmatch.kr' \"https://govmatch-production.up.railway.app/api/subsidies?target_type=individual&page=1&page_size=20\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f''''data={len\\(d.get\\(\"\"data\"\",[]\\)\\)}, total={d.get\\(\"\"total\"\",\"\"N/A\"\"\\)}, page={d.get\\(\"\"page\"\",\"\"N/A\"\"\\)}''''\\)\")"
     ],
     "additionalDirectories": [
       "C:\\DevProjects\\gov-ai-model\\config",

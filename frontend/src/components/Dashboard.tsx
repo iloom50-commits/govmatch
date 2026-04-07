@@ -874,16 +874,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
             {/* 자유AI + 컨설턴트 */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">자유AI · 컨설턴트</span>
+              <span className="text-slate-500 font-medium">지원사업 상담 AI</span>
               <span className={`font-bold ${
                 (planStatus.ai_limit || 0) >= 999999 ? "text-violet-600" : "text-slate-400"
               }`}>
                 {(planStatus.ai_limit || 0) >= 999999 ? "무제한" : "PRO 전용"}
               </span>
             </div>
-            {/* 전문가 에이전트 */}
+            {/* 고객사 관리 AI */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">전문가 에이전트</span>
+              <span className="text-slate-500 font-medium">고객사 관리 AI</span>
               <span className={`font-bold ${
                 ["pro", "biz"].includes(planStatus.plan) ? "text-violet-600" : "text-slate-400"
               }`}>
@@ -899,7 +899,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {planStatus.plan === "expired" ? "플랜 시작하기" : ["lite", "basic"].includes(planStatus.plan) ? "PRO 업그레이드" : "업그레이드"}
             </button>
           )}
-          {/* PRO 전문가 에이전트 → FAB의 "전문가 상담 에이전트"로 통합 */}
+          {/* PRO 고객사 관리 AI → FAB의 "전문가 상담 에이전트"로 통합 */}
           {/* 구독 해지 → 마이페이지로 이동 */}
         </div>
       )}
@@ -1413,7 +1413,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       />
       <SmartDocModal />
 
-      {/* PRO 전문가 에이전트 */}
+      {/* PRO 고객사 관리 AI */}
       {showProDashboard && (
         <ProDashboard onClose={() => setShowProDashboard(false)} />
       )}

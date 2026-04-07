@@ -146,8 +146,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available={false}>맞춤 공고 알림</Feature>
                 <Feature available={false}>마감 알림 (카톡/이메일)</Feature>
                 <Feature available={false}>공고 저장 · 일정관리</Feature>
-                <Feature available={false}>자유AI 상담</Feature>
-                <Feature available={false}>전문가 상담 에이전트</Feature>
+                <Feature available={false}>지원사업 상담 AI에이전트</Feature>
+                <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
               </ul>
             </div>
 
@@ -193,8 +193,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-                <Feature available={false}>자유AI 상담</Feature>
-                <Feature available={false}>전문가 상담 에이전트</Feature>
+                <Feature available={false}>지원사업 상담 AI에이전트</Feature>
+                <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
               </ul>
 
               {!isLite && !isPro && (
@@ -233,8 +233,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-                <Feature available>자유AI 상담 — <strong>무제한</strong></Feature>
-                <Feature available>전문가 상담 에이전트</Feature>
+                <Feature available>지원사업 상담 AI에이전트 — <strong>무제한</strong></Feature>
+                <Feature available>고객사별 상담/관리 AI에이전트</Feature>
               </ul>
 
               {!isPro && (

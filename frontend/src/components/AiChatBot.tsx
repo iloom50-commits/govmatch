@@ -321,7 +321,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
           role: "assistant",
           text: isIndividual
             ? `개인 상담 에이전트 모드입니다.\n\n**현재 등록된 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객 정보를 입력하시겠습니까?`
-            : `전문가 상담 에이전트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
+            : `고객사별 상담/관리 AI에이전트 모드입니다.\n\n**현재 등록된 기업 정보:**\n${summary}\n\n이 정보를 기반으로 매칭할까요? 아니면 다른 고객사 정보를 입력하시겠습니까?`,
           choices: isIndividual
             ? ["이 정보로 매칭해줘", "다른 고객 정보를 입력할게요", "추가 정보를 더 알려줄게"]
             : ["이 정보로 매칭해줘", "다른 고객사 정보를 입력할게요", "추가 정보를 더 알려줄게"],
@@ -331,7 +331,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
           role: "assistant",
           text: isIndividual
             ? "개인 상담 에이전트 모드입니다.\n\n고객의 조건(이름, 나이, 거주지, 관심분야)을 대화로 알려주시면, 맞춤 복지·지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?"
-            : "전문가 상담 에이전트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
+            : "고객사별 상담/관리 AI에이전트 모드입니다.\n\n고객사의 기업 조건을 대화로 알려주시면, 맞춤 지원사업을 매칭해 드립니다.\n\n시작하시겠습니까?",
           choices: ["네, 시작할게요", "어떤 정보가 필요한가요?"],
         }]);
       }
@@ -589,7 +589,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   // 보고서 HTML 생성
   const generateReportHtml = () => {
     const now = new Date().toLocaleString("ko-KR");
-    const modeLabel = mode === "consultant" ? "전문가 매칭 상담" : "자유 상담";
+    const modeLabel = mode === "consultant" ? "고객사 매칭 상담" : "지원사업 상담";
     const convHtml = messages
       .filter((m) => !m.done && m.text)
       .map((m) => {
@@ -1047,8 +1047,8 @@ ${convHtml}
     ? "from-violet-600 to-purple-600"
     : "from-indigo-600 to-violet-600";
 
-  const headerTitle = mode === "consultant" ? (isIndividual ? "개인 상담 에이전트" : "전문가 상담 에이전트") : mode === "free" ? "자유 상담" : "AI 서비스";
-  const headerSub = mode === "consultant" ? "고객사 맞춤 매칭·관리" : mode === "free" ? "지원사업 Q&A" : "모드를 선택하세요";
+  const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "지원사업 상담 AI에이전트" : "AI 서비스";
+  const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? "지원사업 종류·자격·절차 상담" : "모드를 선택하세요";
 
   return (
     <div className="fixed inset-0 z-50 flex lg:pointer-events-none">
@@ -1129,7 +1129,7 @@ ${convHtml}
               return (
                 <button
                   onClick={() => {
-                    if (!isPro) { toast("자유 상담은 곧 유료 서비스로 제공됩니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
+                    if (!isPro) { toast("지원사업 상담 AI에이전트는 PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
                     startMode("free");
                   }}
                   className={`w-full max-w-xs p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
@@ -1148,8 +1148,8 @@ ${convHtml}
                       </svg>
                     </div>
                     <div>
-                      <p className={`text-[14px] font-bold ${isPro ? "text-indigo-800" : "text-slate-500"}`}>자유 상담</p>
-                      <p className={`text-[11px] font-medium ${isPro ? "text-indigo-600" : "text-slate-400"}`}>지원사업 Q&A</p>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-indigo-800" : "text-slate-500"}`}>지원사업 상담 AI에이전트</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-indigo-600" : "text-slate-400"}`}>지원사업 종류·자격·절차 상담</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
@@ -1170,7 +1170,7 @@ ${convHtml}
               return (
                 <button
                   onClick={() => {
-                    if (!isPro) { toast("전문가 상담은 곧 유료 서비스로 제공됩니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
+                    if (!isPro) { toast("고객사별 상담/관리 AI에이전트는 PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
                     startMode("consultant");
                   }}
                   className={`w-full max-w-xs p-4 bg-gradient-to-br from-violet-50 to-purple-50 border-2 rounded-2xl transition-all active:scale-[0.98] group text-left relative ${
@@ -1189,8 +1189,8 @@ ${convHtml}
                       </svg>
                     </div>
                     <div>
-                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>{isIndividual ? "개인 상담 에이전트" : "전문가 상담 에이전트"}</p>
-                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>{isIndividual ? "개인 고객 맞춤 매칭·관리" : "고객사 맞춤 매칭·관리"}</p>
+                      <p className={`text-[14px] font-bold ${isPro ? "text-violet-800" : "text-slate-500"}`}>고객사별 상담/관리 AI에이전트</p>
+                      <p className={`text-[11px] font-medium ${isPro ? "text-violet-600" : "text-slate-400"}`}>고객사 조건 입력 → 맞춤 매칭</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
@@ -1238,7 +1238,7 @@ ${convHtml}
               <div className="w-full max-w-xs mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   공고별 지원대상 상담은 <span className="font-bold text-indigo-600">LITE</span> 플랜부터,<br />
-                  자유 상담 · 전문가 상담 에이전트는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
+                  지원사업 상담 · 고객사 관리 AI에이전트는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
                 </p>
                 <button
                   onClick={() => { setOpen(false); onUpgrade?.(); }}

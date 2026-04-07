@@ -613,11 +613,11 @@ def chat_consult(
     if not api_key:
         return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": [], "done": True, "conclusion": None}
 
-    a = announcement
+    a = announcement or {}
     deep = deep_analysis_data or {}
-    da = deep.get("deep_analysis", {})
-    ps = deep.get("parsed_sections", {})
-    ft = deep.get("form_templates", [])
+    da = deep.get("deep_analysis") or {}
+    ps = deep.get("parsed_sections") or {}
+    ft = deep.get("form_templates") or []
 
     # 자격요건 기본 정보
     elig = {}
@@ -628,7 +628,7 @@ def chat_consult(
             pass
 
     # 지원 요약
-    support_summary = da.get("support_summary", {})
+    support_summary = da.get("support_summary") or {}
     support_info = ""
     if support_summary:
         support_info = f"""

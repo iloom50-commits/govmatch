@@ -472,13 +472,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [profile?.industry_code, profile?.industry_name]);
 
   const fetchSaved = useCallback(async () => {
-    if (!bn) return;
+    if (!bn || !profile) return;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
     try {
-      const res = await fetch(`${API}/api/saved/${bn}`);
+      const res = await fetch(`${API}/api/saved/${bn}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (data.status === "SUCCESS") setSavedItems(data.data);
     } catch { /* silent */ }
-  }, [bn]);
+  }, [bn, profile]);
 
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
 

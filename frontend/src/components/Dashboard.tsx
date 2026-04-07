@@ -963,7 +963,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
         {/* 데스크탑 사이드바 */}
         <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto scrollbar-hide">
-          {isPublic ? <PublicSidebarContent /> : <SidebarContent />}
+          {isPublic && !profile ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>
 
         <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0">

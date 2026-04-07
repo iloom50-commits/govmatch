@@ -87,7 +87,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
                 <div className="flex justify-between">
                   <span>공고AI 상담</span>
                   <span className="font-bold text-slate-700">
-                    {planStatus?.consult_limit >= 999 ? "무제한" : `월 ${planStatus?.consult_limit || 0}회`}
+                    {planStatus?.consult_limit >= 999 ? "무제한" : `${planStatus?.ai_used || 0}/${planStatus?.consult_limit || 0}회 사용`}
                   </span>
                 </div>
                 <div className="flex justify-between">

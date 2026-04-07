@@ -2647,14 +2647,15 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
         )
 
-    # FREE/lite_trial: 건수 제한
-    if plan in ("free", "lite_trial") and consult_limit < 999999:
+    # 건수 제한 (PRO/무제한 제외)
+    if consult_limit < 999999:
         # consult 사용량은 ai_usage_month로 추적
         if ai_usage >= consult_limit:
             conn.close()
-            msg = ("LITE 체험 상담(1회)을 모두 사용했습니다. 친구를 추천하면 LITE 플랜을 이용할 수 있습니다."
-                   if plan == "lite_trial"
-                   else f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE(월 10회) 또는 PRO(무제한) 플랜으로 업그레이드하세요.")
+            if plan == "free":
+                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 월 20회까지 이용할 수 있습니다."
+            else:
+                msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
             raise HTTPException(status_code=429, detail=msg)
         # 첫 메시지일 때만 건수 차감
         if len(req.messages) <= 1:

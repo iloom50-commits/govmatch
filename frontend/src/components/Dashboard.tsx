@@ -862,7 +862,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 (planStatus.consult_limit || 0) >= 999999 ? "text-emerald-600" :
                 (planStatus.consult_limit || 0) > 0 ? "text-amber-600" : "text-slate-400"
               }`}>
-                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `월 ${planStatus.consult_limit}회` : "LITE부터"}
+                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.ai_used || 0}/${planStatus.consult_limit}회` : "LITE부터"}
               </span>
             </div>
             {/* 저장/알림 */}

@@ -1009,7 +1009,7 @@ class UserProfile(BaseModel):
     interests: Optional[str] = None
     password: Optional[str] = None
     # 개인/기업 구분
-    user_type: Optional[str] = "business"
+    user_type: Optional[str] = "both"
     # 개인 프로필 필드
     age_range: Optional[str] = None
     income_level: Optional[str] = None
@@ -1606,14 +1606,14 @@ def api_register(req: RegisterRequest, request: Request):
                 """INSERT INTO users (business_number, company_name, email, password_hash, plan,
                    plan_started_at, ai_usage_month, ai_usage_reset_at,
                    address_city, establishment_date, industry_code, revenue_bracket, employee_count_bracket, interests,
-                   referred_by)
-                   VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
+                   referred_by, user_type)
+                   VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING user_id""",
                 (req.business_number, req.company_name or "", req.email, hashed, now_iso, now_iso,
-                 req.address_city or "전국", est_date,
-                 req.industry_code or "00000", req.revenue_bracket,
-                 req.employee_count_bracket, req.interests,
-                 req.referred_by or None),
+                 req.address_city or "", est_date,
+                 req.industry_code or "", req.revenue_bracket or "",
+                 req.employee_count_bracket or "", req.interests,
+                 req.referred_by or None, req.user_type or "both"),
             )
             user_id = cursor.fetchone()["user_id"]
             # 추천 코드 자동 생성
@@ -1840,8 +1840,8 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
         import hashlib as _hashlib
         cursor.execute(
             """INSERT INTO users (business_number, company_name, email, password_hash, plan,
-               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range)
-               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s)
+               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range, user_type)
+               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, 'both')
                RETURNING user_id, business_number""",
             (bn, name or "", email, "", now_iso, now_iso, f"{provider}:{social_id}", normalized_gender, age_range_val)
         )
@@ -2106,7 +2106,7 @@ def api_plan_upgrade(
         conn.close()
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
-    user_type = u.get("user_type") or "business"
+    user_type = u.get("user_type") or "both"
 
     # 가격 결정 (user_type별)
     if target == "lite":
@@ -2355,7 +2355,7 @@ def _auto_renew_subscriptions():
         for row in expired_users:
             u = dict(row)
             plan = u["plan"]
-            user_type = u.get("user_type") or "business"
+            user_type = u.get("user_type") or "both"
 
             # 가격 결정
             if plan == "lite":
@@ -3165,7 +3165,7 @@ def get_admin_analytics():
 
     # 3. 사용자 유형 분포 (기업/개인)
     cursor.execute("""
-        SELECT COALESCE(user_type, 'business') as utype, COUNT(*) as cnt
+        SELECT COALESCE(user_type, 'both') as utype, COUNT(*) as cnt
         FROM users
         GROUP BY user_type
         ORDER BY cnt DESC
@@ -4140,7 +4140,7 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
 def api_parse_interests(req: dict):
     """사용자가 입력한 자유 텍스트를 카테고리로 매핑 (Gemini)"""
     text = (req.get("text") or "").strip()
-    user_type = req.get("user_type", "business")
+    user_type = req.get("user_type", "both")
     if not text:
         return {"status": "SUCCESS", "interests": []}
 

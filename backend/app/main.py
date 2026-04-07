@@ -2718,18 +2718,19 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     except Exception as e:
         print(f"[Consult] chat_consult error: {e}")
         import traceback; traceback.print_exc()
+        # 에러 발생해도 기본 응답 반환 (500 대신 정상 응답)
+        result = {
+            "reply": f"AI 상담 중 오류가 발생했습니다. 다시 시도해 주세요.\n\n공고 원문 확인: {a.get('origin_url', '')}",
+            "choices": ["다시 시도", "다른 공고 보기"],
+            "done": False,
+            "conclusion": None,
+        }
+    finally:
         if consult_conn:
             try:
                 consult_conn.close()
             except Exception:
                 pass
-        conn.close()
-        raise HTTPException(status_code=500, detail=f"AI 상담 오류: {str(e)}")
-    if consult_conn:
-        try:
-            consult_conn.close()
-        except Exception:
-            pass
     conn.close()
 
     is_done = result.get("done", False)

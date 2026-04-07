@@ -623,9 +623,10 @@ def chat_consult(
     elig = {}
     if a.get("eligibility_logic"):
         try:
-            elig = json.loads(a["eligibility_logic"]) if isinstance(a["eligibility_logic"], str) else a["eligibility_logic"]
+            raw_elig = a["eligibility_logic"]
+            elig = json.loads(raw_elig) if isinstance(raw_elig, str) else (raw_elig if isinstance(raw_elig, dict) else {})
         except Exception:
-            pass
+            elig = {}
 
     # 지원 요약
     support_summary = da.get("support_summary") or {}

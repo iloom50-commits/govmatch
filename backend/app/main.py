@@ -2685,36 +2685,51 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     a = dict(ann)
 
     # 2-1) 정밀 분석 데이터 보장 (없으면 실시간 분석)
+    deep = {}
     try:
         from app.services.doc_analysis_service import ensure_analysis
-        deep = ensure_analysis(req.announcement_id, conn)
+        analysis_conn = get_db_connection()
+        deep = ensure_analysis(req.announcement_id, analysis_conn) or {}
+        analysis_conn.close()
         if deep:
             ps = deep.get("parsed_sections", {}) or {}
             filled = [k for k, v in ps.items() if v]
             print(f"[Consult] Analysis OK for #{req.announcement_id}: source={deep.get('source_type')}, filled_sections={filled}")
-        else:
-            print(f"[Consult] Analysis returned None for #{req.announcement_id}")
     except Exception as e:
         print(f"[Consult] ensure_analysis error for #{req.announcement_id}: {e}")
-        import traceback; traceback.print_exc()
-        deep = {}
+        try:
+            analysis_conn.close()
+        except Exception:
+            pass
 
-    # 3) 통합 AI 엔진으로 상담 (db_conn 전달 → 골든답변 조회 + 지식 주입)
+    # 3) 통합 AI 엔진으로 상담 (별도 커넥션 사용)
+    consult_conn = None
     try:
         from app.services.ai_consultant import chat_consult
+        consult_conn = get_db_connection()
         result = chat_consult(
             announcement_id=req.announcement_id,
             messages=req.messages,
             announcement=a,
             deep_analysis_data=deep,
             user_profile=u,
-            db_conn=conn,
+            db_conn=consult_conn,
         )
     except Exception as e:
         print(f"[Consult] chat_consult error: {e}")
         import traceback; traceback.print_exc()
+        if consult_conn:
+            try:
+                consult_conn.close()
+            except Exception:
+                pass
         conn.close()
         raise HTTPException(status_code=500, detail=f"AI 상담 오류: {str(e)}")
+    if consult_conn:
+        try:
+            consult_conn.close()
+        except Exception:
+            pass
     conn.close()
 
     is_done = result.get("done", False)

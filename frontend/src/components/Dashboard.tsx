@@ -2,6 +2,7 @@
 
 import ResultCard from "./ResultCard";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import NotificationModal from "./NotificationModal";
 import SmartDocModal from "./SmartDocModal";
 import ProDashboard from "./ProDashboard";
@@ -249,7 +250,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
         <span className="tracking-tight">{label}</span>
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
           <div
@@ -292,7 +293,8 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
               닫기
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

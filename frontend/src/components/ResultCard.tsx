@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useToast } from "@/components/ui/Toast";
 
 function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" | "info") => void }) {
@@ -55,9 +56,9 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
         <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
 
-      {/* 공유 모달 */}
-      {open && (
-        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
+      {/* 공유 모달 — Portal로 body에 렌더링 (카드 hover 충돌 방지) */}
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
           <div
             className="relative w-full max-w-sm mx-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"
@@ -107,7 +108,8 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
               닫기
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

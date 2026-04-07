@@ -89,6 +89,48 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+// 마이페이지 버튼 + 프로필 미완성 말풍선
+function ProfileNudgeButton({ profile, onClick }: { profile: any; onClick: () => void }) {
+  const [showBubble, setShowBubble] = useState(false);
+  const isIncomplete = !profile?.user_type || (
+    profile?.user_type !== "individual" && (
+      !profile?.industry_code || profile?.industry_code === "00000"
+    )
+  );
+
+  useEffect(() => {
+    if (!isIncomplete) return;
+    let count = 0;
+    const show = () => {
+      if (count >= 3) return;
+      setShowBubble(true);
+      count++;
+      setTimeout(() => setShowBubble(false), 8000);
+    };
+    const timer1 = setTimeout(show, 20000);
+    const timer2 = setInterval(show, 180000);
+    return () => { clearTimeout(timer1); clearInterval(timer2); };
+  }, [isIncomplete]);
+
+  return (
+    <div className="relative">
+      {showBubble && (
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+          프로필 설정하면 맞춤 추천!
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+        </div>
+      )}
+      <button
+        onClick={onClick}
+        className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs"
+      >
+        <span className="text-sm">⚙️</span>
+        <span className="tracking-tight">마이페이지</span>
+      </button>
+    </div>
+  );
+}
+
 const REVENUE_KR: Record<string, string> = {
   UNDER_1B: "1억 미만",
   "1B_5B": "1억~5억",
@@ -861,13 +903,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       <div className="relative z-10 pt-1 space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          <button
+          <ProfileNudgeButton
+            profile={profile}
             onClick={() => { onEditProfile(); setSidebarOpen(false); }}
-            className="py-2 bg-slate-950 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs"
-          >
-            <span className="text-sm">⚙️</span>
-            <span className="tracking-tight">마이페이지</span>
-          </button>
+          />
           <a
             href="/calendar"
             className="py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-100 transition-all border border-indigo-100 active:scale-95 text-xs"

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/ui/Toast";
+import { useModalBack } from "@/hooks/useModalBack";
 import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -17,6 +18,7 @@ interface PaymentModalProps {
 
 export default function PaymentModal({ planStatus, userType, onSuccess, onClose }: PaymentModalProps) {
   const { toast } = useToast();
+  useModalBack(true, onClose);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"individual" | "business">(
     userType === "individual" ? "individual" : "business"

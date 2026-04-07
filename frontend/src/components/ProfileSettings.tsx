@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useModalBack } from "@/hooks/useModalBack";
 
 interface ProfileSettingsProps {
   profile: any;
@@ -12,6 +13,7 @@ interface ProfileSettingsProps {
 }
 
 export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, planStatus }: ProfileSettingsProps) {
+  useModalBack(true, onClose);
   const [showPwChange, setShowPwChange] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");

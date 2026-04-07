@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/Toast";
+import { useModalBack } from "@/hooks/useModalBack";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -189,6 +190,7 @@ export default function NotificationModal({
   onSave: (data: any) => void;
   profile?: any;
 }) {
+  useModalBack(isOpen, onClose);
   const { toast } = useToast();
   const [step, setStep] = useState(0);
 

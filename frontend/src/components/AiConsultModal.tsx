@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useModalBack } from "@/hooks/useModalBack";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 
@@ -299,19 +300,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   }, []);
 
   // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)
-  useEffect(() => {
-    if (!open) return;
-    // 모달 열릴 때 history에 state 추가
-    window.history.pushState({ modal: "consult" }, "");
-    const onPopState = (e: PopStateEvent) => {
-      // 뒤로가기 감지 → 모달 닫기
-      handleClose();
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
-  }, [open, handleClose]);
+  useModalBack(open, handleClose);
 
   // 사용자가 직접 상담 종료
   const handleManualEnd = () => {

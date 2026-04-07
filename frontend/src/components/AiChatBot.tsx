@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useModalBack } from "@/hooks/useModalBack";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 
@@ -186,6 +187,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   const isIndividual = userType === "individual";
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
+  useModalBack(open, () => setOpen(false));
   const [mode, setMode] = useState<ChatMode>("select");
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
   const [messages, setMessages] = useState<ChatMessage[]>([]);

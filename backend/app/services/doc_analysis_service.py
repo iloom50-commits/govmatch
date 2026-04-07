@@ -817,6 +817,24 @@ def analyze_and_store(
         db_conn.commit()
         result_info["success"] = True
         print(f"[DocAnalysis] ✓ #{announcement_id} saved ({len(full_text)} chars, {source_type}, {len(att_names)} files)")
+
+        # 분석 결과에서 support_amount 추출 → announcements 테이블에 역저장
+        try:
+            da = deep_analysis if isinstance(deep_analysis, dict) else {}
+            support_summary = da.get("support_summary") or {}
+            amount_text = support_summary.get("amount", "")
+            if amount_text and amount_text not in ("미상", "없음", "", "N/A"):
+                cur.execute(
+                    """UPDATE announcements SET support_amount = %s
+                       WHERE announcement_id = %s AND (support_amount IS NULL OR support_amount = '')""",
+                    (amount_text, announcement_id)
+                )
+                db_conn.commit()
+                if cur.rowcount > 0:
+                    print(f"[DocAnalysis] ✓ #{announcement_id} support_amount updated: {amount_text}")
+        except Exception as amt_err:
+            print(f"[DocAnalysis] support_amount update error: {amt_err}")
+
         return result_info
     except Exception as e:
         msg = f"DB save error: {e}"

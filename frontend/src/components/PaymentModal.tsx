@@ -9,7 +9,7 @@ const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
 const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "";
 
 interface PaymentModalProps {
-  planStatus: { plan: string; days_left: number | null; label: string; consult_limit?: number } | null;
+  planStatus: { plan: string; days_left: number | null; label: string; consult_limit?: number; ai_used?: number } | null;
   userType?: string | null;
   onSuccess: (token: string, plan: any) => void;
   onClose: () => void;
@@ -19,11 +19,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const isBusiness = userType === "business" || userType === "both";
-  const isIndividual = userType === "individual";
+  const litePrice = isBusiness ? "4,900" : "2,900";
+  const litePriceLabel = isBusiness ? "사업자" : "개인";
+
+  const currentPlan = planStatus?.plan || "free";
+  const isLite = ["lite", "lite_trial", "basic"].includes(currentPlan);
+  const isPro = ["pro", "biz"].includes(currentPlan);
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
-  // PortOne iframe 잔여물 정리
   const cleanupPortone = () => {
     document.getElementById("imp-iframe-wrapper")?.remove();
     document.querySelectorAll("iframe[src*='portone'], iframe[src*='iamport']").forEach(el => {
@@ -35,54 +39,27 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     setLoading(true);
     try {
       const token = getToken();
-
-      console.log("[Payment] requestIssueBillingKey 호출...", { storeId: STORE_ID, channelKey: CHANNEL_KEY });
       const billingKeyResponse = await PortOne.requestIssueBillingKey({
         storeId: STORE_ID,
         channelKey: CHANNEL_KEY,
         billingKeyMethod: "CARD",
       });
-      console.log("[Payment] billingKeyResponse:", JSON.stringify(billingKeyResponse));
 
       const billingKey = (billingKeyResponse as any)?.billingKey;
-      console.log("[Payment] billingKey:", billingKey, "code:", billingKeyResponse?.code);
+      if (billingKeyResponse?.code === "USER_CANCEL") { toast("결제가 취소되었습니다.", "info"); setLoading(false); return; }
+      if (!billingKey) { toast("카드 등록에 실패했습니다.", "error"); setLoading(false); return; }
 
-      // 사용자 취소
-      if (billingKeyResponse?.code === "USER_CANCEL") {
-        cleanupPortone();
-        setLoading(false);
-        return;
-      }
-
-      // 빌링키가 없으면 에러
-      if (!billingKey) {
-        cleanupPortone();
-        console.log("[Payment] 빌링키 없음, 에러:", billingKeyResponse?.code, billingKeyResponse?.message);
-        toast(billingKeyResponse?.message || "카드 등록에 실패했습니다. 다시 시도해주세요.", "error");
-        setLoading(false);
-        return;
-      }
-
-      // 빌링키가 발급됐으면 PG 에러가 있어도 진행 (테스트 환경 호환)
-      if (billingKeyResponse?.code) {
-        console.log("[Payment] PG 경고 (빌링키 발급됨):", billingKeyResponse.code, billingKeyResponse.message);
-      }
-
-      // 백엔드로 빌링키 전달 → 무료 체험 시작
-      console.log("[Payment] 백엔드 subscribe 호출...");
       const res = await fetch(`${API}/api/plan/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan }),
       });
       const data = await res.json();
-      console.log("[Payment] subscribe 응답:", res.status, JSON.stringify(data));
       if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); setLoading(false); return; }
       toast(data.message || "구독이 시작되었습니다!", "success");
       onSuccess(data.token, data.plan);
     } catch (err: unknown) {
       cleanupPortone();
-      console.error("[Payment] 에러:", err);
       const msg = err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.";
       toast(msg, "error");
     } finally {
@@ -91,217 +68,138 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     }
   };
 
-  const handleShare = async () => {
-    const url = "https://govmatch.kr";
-    const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 상담 혜택!";
-    try {
-      if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({ title: "지원금AI — AI 맞춤 지원금 매칭", text, url });
-      } else {
-        await navigator.clipboard.writeText(`${text}\n${url}`);
-        toast("공유 링크가 복사되었습니다!", "success");
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(`${text}\n${url}`);
-        toast("공유 링크가 복사되었습니다!", "success");
-      } catch {
-        toast("공유에 실패했습니다.", "error");
-      }
-    }
-  };
+  // 체크/엑스 아이콘
+  const Check = () => <span className="text-emerald-500 text-[11px] font-bold">&#10003;</span>;
+  const Cross = () => <span className="text-slate-300 text-[11px]">—</span>;
+  const Current = () => <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-bold rounded">현재</span>;
+
+  // 비교표 행
+  const Row = ({ label, free, lite, pro, bold }: { label: string; free: React.ReactNode; lite: React.ReactNode; pro: React.ReactNode; bold?: boolean }) => (
+    <div className={`grid grid-cols-[1fr_64px_64px_64px] items-center py-2 border-b border-slate-50 ${bold ? "font-bold" : ""}`}>
+      <span className="text-[11px] text-slate-600 pr-1">{label}</span>
+      <span className="text-[11px] text-center text-slate-500">{free}</span>
+      <span className="text-[11px] text-center text-indigo-700">{lite}</span>
+      <span className="text-[11px] text-center text-violet-700">{pro}</span>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        <div className="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none" />
-
-        <div className="relative z-10 p-5 sm:p-7">
-          {/* 닫기 버튼 (우상단) */}
-          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-lg z-20">✕</button>
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[92vh] overflow-y-auto">
+        <div className="relative z-10 p-5 sm:p-6">
+          {/* 닫기 */}
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-lg z-20">✕</button>
 
           {/* Header */}
-          <div className="text-center mb-5">
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1">
-              {planStatus?.plan === "free" ? "현재 무료 이용 중" : `${planStatus?.label || ""} 플랜`}
-            </h2>
-            <p className="text-slate-500 text-xs font-medium">
-              더 많은 AI 상담이 필요하시면 업그레이드하세요
-            </p>
+          <div className="text-center mb-4">
+            <h2 className="text-[17px] font-bold text-slate-900 tracking-tight">플랜 선택</h2>
+            <p className="text-slate-400 text-[11px] mt-1">내게 맞는 플랜을 선택하세요</p>
           </div>
 
-          {/* ── 현재 플랜 상태 ── */}
-          <div className="mb-4 rounded-xl border border-emerald-200 overflow-hidden">
-            <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200 flex items-center justify-between">
-              <p className="text-[11px] font-bold text-emerald-700">현재 이용 가능</p>
-              {planStatus && <p className="text-[11px] font-bold text-emerald-600">{planStatus.label}{planStatus.days_left != null && planStatus.days_left > 0 ? ` D-${planStatus.days_left}` : ""}</p>}
+          {/* ── 비교표 ── */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden mb-4">
+            {/* 헤더 행 */}
+            <div className="grid grid-cols-[1fr_64px_64px_64px] items-end bg-slate-50 px-4 py-3 border-b border-slate-200">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">기능</span>
+              <div className="text-center">
+                <p className="text-[12px] font-bold text-slate-500">FREE</p>
+                <p className="text-[10px] text-slate-400">무료</p>
+                {currentPlan === "free" && <Current />}
+              </div>
+              <div className="text-center">
+                <p className="text-[12px] font-bold text-indigo-700">LITE</p>
+                <p className="text-[10px] text-indigo-500">{litePrice}원</p>
+                {isLite && <Current />}
+              </div>
+              <div className="text-center">
+                <p className="text-[12px] font-bold text-violet-700">PRO</p>
+                <p className="text-[10px] text-violet-500">49,000원</p>
+                {isPro && <Current />}
+              </div>
             </div>
-            <div className="px-4 py-3 space-y-1.5">
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-emerald-500">&#10003;</span>
-                <span className="text-slate-700 font-medium">맞춤 공고 알림 — 무제한</span>
-              </div>
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-emerald-500">&#10003;</span>
-                <span className="text-slate-700 font-medium">공고AI 상담 — 월 {planStatus?.consult_limit && planStatus.consult_limit >= 999999 ? "무제한" : `${planStatus?.consult_limit || 1}회`}</span>
-              </div>
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-emerald-500" : "text-slate-300"}>
-                  {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "✓" : "✗"}
-                </span>
-                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-slate-700 font-medium" : "text-slate-400 font-medium"}>
-                  마감 알림 (카톡/이메일) — {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "발송" : "불가"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-emerald-500" : "text-slate-300"}>
-                  {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "✓" : "✗"}
-                </span>
-                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-slate-700 font-medium" : "text-slate-400 font-medium"}>
-                  공고 저장/일정관리 — {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "사용 가능" : "불가"}
-                </span>
-              </div>
+
+            {/* 기능 행들 */}
+            <div className="px-4">
+              <Row label="공고 열람" free={<Check />} lite={<Check />} pro={<Check />} />
+              <Row label="공고AI 상담" free="1회" lite={<strong>20회</strong>} pro={<strong>무제한</strong>} bold />
+              <Row label="맞춤 공고 알림" free={<Cross />} lite={<Check />} pro={<Check />} />
+              <Row label="마감 알림 (카톡/이메일)" free={<Cross />} lite={<Check />} pro={<Check />} />
+              <Row label="공고 저장 · 일정관리" free={<Cross />} lite={<Check />} pro={<Check />} />
+              <Row label="자유AI 상담" free={<Cross />} lite={<Cross />} pro={<strong>무제한</strong>} />
+              <Row label="전문가 상담 에이전트" free={<Cross />} lite={<Cross />} pro={<Check />} />
+            </div>
+
+            {/* 결제 버튼 행 */}
+            <div className="grid grid-cols-[1fr_64px_64px_64px] items-center px-4 py-3 bg-slate-50 border-t border-slate-200">
+              <span />
+              <span className="text-center">
+                {currentPlan === "free" && <span className="text-[10px] text-slate-400 font-bold">이용 중</span>}
+              </span>
+              <span className="text-center">
+                {!isLite && !isPro ? (
+                  <button
+                    onClick={() => handleSubscribe("lite")}
+                    disabled={loading}
+                    className="px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 w-full"
+                  >
+                    {loading ? "..." : "시작"}
+                  </button>
+                ) : isLite ? (
+                  <span className="text-[10px] text-indigo-600 font-bold">이용 중</span>
+                ) : null}
+              </span>
+              <span className="text-center">
+                {!isPro ? (
+                  <button
+                    onClick={() => handleSubscribe("pro")}
+                    disabled={loading}
+                    className="px-2 py-1.5 bg-violet-600 text-white rounded-lg text-[10px] font-bold hover:bg-violet-700 transition-all active:scale-95 disabled:opacity-50 w-full"
+                  >
+                    {loading ? "..." : "시작"}
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-violet-600 font-bold">이용 중</span>
+                )}
+              </span>
             </div>
           </div>
 
-          {/* ── LITE 플랜 ── */}
-          <div className="mb-4 space-y-3">
-            {!["pro", "biz"].includes(planStatus?.plan || "") && (
-            <div className="rounded-xl border-2 border-indigo-200 overflow-hidden hover:border-indigo-400 transition-all">
-              <div className="bg-indigo-50 px-4 py-2.5 border-b border-indigo-200 flex items-center justify-between">
-                <div>
-                  <span className="text-[13px] font-bold text-indigo-700">LITE</span>
-                  <span className="text-[11px] text-indigo-500 ml-1.5">
-                    {isIndividual ? "개인" : "사업자"}
-                  </span>
-                </div>
-                <span className="text-[14px] font-black text-indigo-700">
-                  {isIndividual ? "2,900" : "4,900"}
-                  <span className="text-[10px] font-medium text-indigo-400">원/월</span>
-                </span>
-              </div>
-              <div className="px-4 py-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-indigo-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>월 20회</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-indigo-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">마감 알림 (카톡/이메일) — <strong>발송</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-indigo-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">공고 저장/일정관리 — <strong>사용 가능</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-indigo-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">맞춤 공고 알림 — 무제한</span>
-                </div>
-              </div>
-              <div className="px-4 pb-3">
-                <button
-                  onClick={() => handleSubscribe("lite")}
-                  disabled={loading}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
-                >
-                  {loading ? "처리 중..." : ["lite", "lite_trial"].includes(planStatus?.plan || "") ? "LITE 유료 결제하기" : "LITE 시작하기"}
-                </button>
-                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">
-                  {["lite", "lite_trial"].includes(planStatus?.plan || "") ? "체험 종료 후에도 계속 이용" : "30일 무료체험 후 자동결제"}
-                </p>
-              </div>
-            </div>
-            )}
-
-            {/* ── PRO 플랜 ── */}
-            {!["pro", "biz"].includes(planStatus?.plan || "") && (
-            <div className="rounded-xl border-2 border-violet-200 overflow-hidden hover:border-violet-400 transition-all">
-              <div className="bg-violet-50 px-4 py-2.5 border-b border-violet-200 flex items-center justify-between">
-                <div>
-                  <span className="text-[13px] font-bold text-violet-700">PRO</span>
-                  <span className="text-[11px] text-violet-500 ml-1.5">전문가</span>
-                </div>
-                <span className="text-[14px] font-black text-violet-700">
-                  49,000
-                  <span className="text-[10px] font-medium text-violet-400">원/월</span>
-                </span>
-              </div>
-              <div className="px-4 py-3 space-y-1.5">
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-violet-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>무제한</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-violet-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">자유AI · 컨설턴트 — <strong>무제한</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-violet-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">전문가 상담 에이전트 — <strong>사용 가능</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px]">
-                  <span className="text-violet-500">&#10003;</span>
-                  <span className="text-slate-700 font-medium">LITE 기능 전체 포함</span>
-                </div>
-              </div>
-              <div className="px-4 pb-3">
-                <button
-                  onClick={() => handleSubscribe("pro")}
-                  disabled={loading}
-                  className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50"
-                >
-                  {loading ? "처리 중..." : "PRO 시작하기"}
-                </button>
-                <p className="text-[9px] text-violet-500 text-center mt-1.5 font-semibold">
-                  7일 무료체험 후 자동결제
-                </p>
-              </div>
-            </div>
-            )}
-          </div>
+          {/* 무료체험 안내 */}
+          <p className="text-[10px] text-slate-400 text-center mb-4">
+            {isLite ? "체험 종료 후에도 계속 이용하려면 유료 결제하기" :
+             isPro ? "" :
+             "LITE 7일 무료체험 · PRO 7일 무료체험 후 자동결제"}
+          </p>
 
           {/* ── 친구 추천 ── */}
-          <div className="mb-4 rounded-xl border border-amber-200 overflow-hidden">
-            <div className="bg-amber-50 px-4 py-2 border-b border-amber-200">
-              <p className="text-[11px] font-bold text-amber-700">친구에게 알려주면?</p>
-            </div>
-            <div className="px-4 py-3 space-y-1.5">
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-amber-500">&#9733;</span>
-                <span className="text-slate-700 font-medium">
-                  {isIndividual
-                    ? "친구 추천 시 1개월간 상담 10회로 확장"
-                    : "친구 추천 시 양쪽 LITE 1개월 무료"}
-                </span>
+          <div className="rounded-xl border border-amber-200 overflow-hidden mb-4">
+            <div className="px-4 py-3 bg-amber-50 flex items-center justify-between">
+              <div>
+                <p className="text-[12px] font-bold text-amber-800">친구 추천 시 LITE 1개월 무료</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">최대 5명까지 · 양쪽 모두 혜택</p>
               </div>
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-amber-500">&#9733;</span>
-                <span className="text-slate-700 font-medium">최대 5명까지 적용 가능</span>
-              </div>
+              <button
+                onClick={async () => {
+                  const url = "https://govmatch.kr";
+                  const text = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.";
+                  try {
+                    if (navigator.share) await navigator.share({ title: "지원금AI", text, url });
+                    else { await navigator.clipboard.writeText(`${text}\n${url}`); toast("링크 복사됨!", "success"); }
+                  } catch {
+                    try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("링크 복사됨!", "success"); } catch {}
+                  }
+                }}
+                className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-bold hover:bg-amber-700 transition-all active:scale-95 whitespace-nowrap"
+              >
+                공유하기
+              </button>
             </div>
           </div>
 
-          {/* 공유 버튼 */}
-          <button
-            onClick={handleShare}
-            className="w-full py-3 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] mb-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-indigo-200 flex items-center justify-center gap-2"
-          >
-            친구에게 공유하기
-          </button>
-
-          {/* 개인 사용자에게 사업자 플랜 안내 */}
-          {isIndividual && (
-            <p className="text-[10px] text-slate-400 text-center mb-2">
-              사업자이신가요? 프로필 설정에서 사업자 등록하면 사업자 플랜을 이용할 수 있습니다
-            </p>
-          )}
-
-          <button
-            onClick={onClose}
-            className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-semibold transition-all text-center"
-          >
+          {/* 닫기 */}
+          <button onClick={onClose} className="w-full py-2.5 text-slate-400 text-[12px] font-medium hover:text-slate-600 transition-all">
             닫기
           </button>
         </div>

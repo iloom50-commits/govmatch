@@ -201,7 +201,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>20회</strong>/월</Feature>
+                <Feature available>공고AI 상담 — <strong>50회</strong>/월</Feature>
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
@@ -223,9 +223,13 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             {/* PRO */}
             <div className={`rounded-xl border-2 p-4 flex flex-col ${isPro ? "border-violet-400 bg-violet-50/30" : "border-slate-200"}`}>
               <div className="mb-4">
-                <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
+                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold rounded">런칭특가</span>
+                </div>
                 <div className="mt-2">
-                  <span className="text-2xl font-black text-slate-900">₩49,000</span>
+                  <span className="text-[13px] text-slate-400 line-through mr-1">₩39,000</span>
+                  <span className="text-2xl font-black text-violet-700">₩19,000</span>
                   <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">전문가 · 컨설턴트</p>
@@ -263,7 +267,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isPro && (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">런칭특가 · 6/30까지 가입 시 해지 전까지 유지</p>
               )}
             </div>
           </div>

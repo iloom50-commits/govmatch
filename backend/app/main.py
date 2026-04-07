@@ -1230,7 +1230,12 @@ def api_announcements_public(
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    where_clauses = ["(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)"]
+    current_year = str(datetime.datetime.utcnow().year)
+    where_clauses = [
+        "(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)",
+        # 마감일 NULL인 과거 연도 공고 숨김 (DB에는 유지, 표시만 안 함)
+        f"NOT (deadline_date IS NULL AND title ~ '^\\d{{4}}년' AND SUBSTRING(title FROM '^(\\d{{4}})년') < '{current_year}')",
+    ]
     params: list = []
 
     if region:
@@ -1361,7 +1366,10 @@ def api_announcements_public(
     cat_cache_key = f"cat_counts:{target_type or 'all'}"
     category_counts = _get_cached(cat_cache_key)
     if not category_counts:
-        cat_where = ["(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)"]
+        cat_where = [
+            "(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)",
+            f"NOT (deadline_date IS NULL AND title ~ '^\\d{{4}}년' AND SUBSTRING(title FROM '^(\\d{{4}})년') < '{current_year}')",
+        ]
         cat_params: list = []
         if target_type:
             cat_where.append("(target_type = %s OR target_type = 'both')")

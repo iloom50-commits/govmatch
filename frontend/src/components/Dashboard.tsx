@@ -733,39 +733,87 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
 
-      <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
-        {/* 상호명 + 뱃지 */}
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">🏢</div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || "기업명 미등록"}</p>
-            <span className="px-1.5 py-px bg-emerald-50 text-emerald-600 text-[11px] font-bold rounded flex items-center gap-1 border border-emerald-100/50 mt-0.5 w-fit">
-              <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
-              {(() => {
-                const emp = profile?.employee_count_bracket || "";
-                if (["UNDER_5", "5인 미만"].includes(emp)) return "소기업";
-                if (["UNDER_10", "5_10", "10인 미만", "5~10인", "5인~10인"].includes(emp)) return "소기업";
-                if (["10_50", "10~50인"].includes(emp)) return "중소기업";
-                return "중소기업";
-              })()}
-            </span>
+      {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
+      {(() => {
+        const ut = profile?.user_type || "both";
+        const hasProfile = ut === "individual"
+          ? (profile?.age_range || profile?.address_city)
+          : (profile?.industry_code && profile?.industry_code !== "00000");
+        if (!hasProfile) return (
+          <div className="relative z-10 p-5 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100/80 shadow-sm">
+            <div className="text-center space-y-3">
+              <div className="w-12 h-12 mx-auto bg-indigo-100 rounded-xl flex items-center justify-center text-2xl">
+                {ut === "individual" ? "👤" : "🏢"}
+              </div>
+              <div>
+                <p className="text-[15px] font-bold text-slate-900">프로필을 설정해보세요</p>
+                <p className="text-[12px] text-slate-500 mt-1">내 조건을 입력하면 AI가 딱 맞는 지원금을 찾아드려요</p>
+              </div>
+              <button
+                onClick={() => { onEditProfile(); setSidebarOpen(false); }}
+                className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all active:scale-95 shadow-sm"
+              >
+                프로필 설정하기
+              </button>
+            </div>
           </div>
-        </div>
-        {/* 기업 상세 정보 */}
-        <div className="h-px bg-slate-100 mb-4" />
-        <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
-          <span className="text-slate-400">설립</span>
-          <span className="font-semibold text-slate-800">{profile?.establishment_date ? String(profile.establishment_date).slice(0, 10) : "미등록"}</span>
-          <span className="text-slate-400">소재지</span>
-          <span className="font-semibold text-slate-800">{profile?.address_city || "전국"}</span>
-          <span className="text-slate-400">업종</span>
-          <span className="font-semibold text-slate-800 break-words">{industryDisplayName || profile?.industry_code || "미등록"}</span>
-          <span className="text-slate-400">매출</span>
-          <span className="font-semibold text-slate-800">{REVENUE_KR[profile?.revenue_bracket] || REVENUE_KR[profile?.revenue] || profile?.revenue_bracket || "1억 미만"}</span>
-          <span className="text-slate-400">인원</span>
-          <span className="font-semibold text-slate-800">{EMPLOYEE_KR[profile?.employee_count_bracket] || profile?.employee_count_bracket || "5인 미만"}</span>
-        </div>
-      </div>
+        );
+        // 개인 사용자: 개인 정보 카드
+        if (ut === "individual") return (
+          <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">👤</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || profile?.email?.split("@")[0] || "회원"}</p>
+                <span className="px-1.5 py-px bg-blue-50 text-blue-600 text-[11px] font-bold rounded border border-blue-100/50 mt-0.5 w-fit">개인</span>
+              </div>
+            </div>
+            <div className="h-px bg-slate-100 mb-4" />
+            <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
+              <span className="text-slate-400">연령대</span>
+              <span className="font-semibold text-slate-800">{profile?.age_range || "미설정"}</span>
+              <span className="text-slate-400">지역</span>
+              <span className="font-semibold text-slate-800">{profile?.address_city || "미설정"}</span>
+              <span className="text-slate-400">관심분야</span>
+              <span className="font-semibold text-slate-800">{profile?.interests || "미설정"}</span>
+            </div>
+          </div>
+        );
+        // 기업/both 사용자: 기업 정보 카드
+        return (
+          <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">🏢</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || "기업명 미등록"}</p>
+                <span className="px-1.5 py-px bg-emerald-50 text-emerald-600 text-[11px] font-bold rounded flex items-center gap-1 border border-emerald-100/50 mt-0.5 w-fit">
+                  <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
+                  {(() => {
+                    const emp = profile?.employee_count_bracket || "";
+                    if (["UNDER_5", "5인 미만"].includes(emp)) return "소기업";
+                    if (["UNDER_10", "5_10", "10인 미만", "5~10인", "5인~10인"].includes(emp)) return "소기업";
+                    if (["10_50", "10~50인"].includes(emp)) return "중소기업";
+                    return "중소기업";
+                  })()}
+                </span>
+              </div>
+            </div>
+            <div className="h-px bg-slate-100 mb-4" />
+            <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
+              <span className="text-slate-400">설립</span>
+              <span className="font-semibold text-slate-800">{profile?.establishment_date ? String(profile.establishment_date).slice(0, 10) : "미설정"}</span>
+              <span className="text-slate-400">소재지</span>
+              <span className="font-semibold text-slate-800">{profile?.address_city || "미설정"}</span>
+              <span className="text-slate-400">업종</span>
+              <span className="font-semibold text-slate-800 break-words">{industryDisplayName || (profile?.industry_code && profile.industry_code !== "00000" ? profile.industry_code : "미설정")}</span>
+              <span className="text-slate-400">매출</span>
+              <span className="font-semibold text-slate-800">{REVENUE_KR[profile?.revenue_bracket] || REVENUE_KR[profile?.revenue] || profile?.revenue_bracket || "미설정"}</span>
+              <span className="text-slate-400">인원</span>
+              <span className="font-semibold text-slate-800">{EMPLOYEE_KR[profile?.employee_count_bracket] || profile?.employee_count_bracket || "미설정"}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {planStatus && (
         <div className={`relative z-10 p-3 rounded-lg border ${

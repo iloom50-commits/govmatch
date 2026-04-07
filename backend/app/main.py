@@ -1040,8 +1040,8 @@ class RegisterRequest(BaseModel):
     password: str
     business_number: str
     company_name: Optional[str] = ""
-    address_city: Optional[str] = "전국"
-    industry_code: Optional[str] = "00000"
+    address_city: Optional[str] = None
+    industry_code: Optional[str] = None
     establishment_date: Optional[str] = None
     revenue_bracket: Optional[str] = None
     employee_count_bracket: Optional[str] = None
@@ -1588,16 +1588,16 @@ def api_register(req: RegisterRequest, request: Request):
                    plan_started_at=%s, plan_expires_at=NULL,
                    ai_usage_month=0, ai_usage_reset_at=%s,
                    company_name=COALESCE(NULLIF(%s, ''), company_name),
-                   address_city=COALESCE(NULLIF(%s, '전국'), address_city),
-                   industry_code=COALESCE(NULLIF(%s, '00000'), industry_code),
+                   address_city=COALESCE(%s, address_city),
+                   industry_code=COALESCE(%s, industry_code),
                    establishment_date=COALESCE(%s, establishment_date),
                    revenue_bracket=COALESCE(%s, revenue_bracket),
                    employee_count_bracket=COALESCE(%s, employee_count_bracket),
                    interests=COALESCE(%s, interests)
                    WHERE business_number=%s""",
                 (req.email, hashed, now_iso, now_iso,
-                 req.company_name or "", req.address_city or "전국",
-                 req.industry_code or "00000", req.establishment_date,
+                 req.company_name or "", req.address_city or None,
+                 req.industry_code or None, req.establishment_date,
                  req.revenue_bracket, req.employee_count_bracket, req.interests,
                  req.business_number),
             )

@@ -146,8 +146,14 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available={false}>맞춤 공고 알림</Feature>
                 <Feature available={false}>마감 알림 (카톡/이메일)</Feature>
                 <Feature available={false}>공고 저장 · 일정관리</Feature>
-                <Feature available={false}>지원사업 상담 AI에이전트</Feature>
-                <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
+
+                <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
+                  <ul className="space-y-1.5">
+                    <Feature available={false}>지원사업 상담 AI에이전트</Feature>
+                    <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
+                  </ul>
+                </li>
               </ul>
             </div>
 
@@ -193,8 +199,14 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-                <Feature available={false}>지원사업 상담 AI에이전트</Feature>
-                <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
+
+                <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
+                  <ul className="space-y-1.5">
+                    <Feature available={false}>지원사업 상담 AI에이전트</Feature>
+                    <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
+                  </ul>
+                </li>
               </ul>
 
               {!isLite && !isPro && (
@@ -233,8 +245,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-                <Feature available>지원사업 상담 AI에이전트 — <strong>무제한</strong></Feature>
-                <Feature available>고객사별 상담/관리 AI에이전트</Feature>
+
+                {/* 전문 컨설팅 도구 묶음 */}
+                <li className="!mt-3 p-2.5 rounded-lg bg-violet-50 border border-violet-200">
+                  <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
+                  <ul className="space-y-1.5">
+                    <Feature available>지원사업 상담 AI에이전트 — <strong>무제한</strong></Feature>
+                    <Feature available>고객사별 상담/관리 AI에이전트</Feature>
+                  </ul>
+                </li>
               </ul>
 
               {!isPro && (

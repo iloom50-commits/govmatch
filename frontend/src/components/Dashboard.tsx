@@ -1309,9 +1309,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     res={res}
                     selected={isPublic ? false : selectedIds.has(res.announcement_id)}
                     onToggle={isPublic ? undefined : () => toggleSelect(res.announcement_id)}
-                    planStatus={isPublic ? null : planStatus}
-                    onUpgrade={isPublic ? undefined : onUpgrade}
-                    onLoginRequired={isPublic ? handleLoginRequired : undefined}
+                    planStatus={isPublic && !profile ? null : planStatus}
+                    onUpgrade={isPublic && !profile ? undefined : onUpgrade}
+                    onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
                   />
                 </div>
               ))}

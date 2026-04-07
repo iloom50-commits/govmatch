@@ -9,7 +9,7 @@ const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
 const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "";
 
 interface PaymentModalProps {
-  planStatus: { plan: string; days_left: number | null; label: string } | null;
+  planStatus: { plan: string; days_left: number | null; label: string; consult_limit?: number } | null;
   userType?: string | null;
   onSuccess: (token: string, plan: any) => void;
   onClose: () => void;
@@ -132,10 +132,11 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             </p>
           </div>
 
-          {/* ── 현재 무료 기능 ── */}
+          {/* ── 현재 플랜 상태 ── */}
           <div className="mb-4 rounded-xl border border-emerald-200 overflow-hidden">
-            <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200">
+            <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-200 flex items-center justify-between">
               <p className="text-[11px] font-bold text-emerald-700">현재 이용 가능</p>
+              {planStatus && <p className="text-[11px] font-bold text-emerald-600">{planStatus.label}{planStatus.days_left != null && planStatus.days_left > 0 ? ` D-${planStatus.days_left}` : ""}</p>}
             </div>
             <div className="px-4 py-3 space-y-1.5">
               <div className="flex items-center gap-2 text-[12px]">
@@ -144,22 +145,30 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </div>
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="text-emerald-500">&#10003;</span>
-                <span className="text-slate-700 font-medium">공고AI 상담 — 월 1회</span>
+                <span className="text-slate-700 font-medium">공고AI 상담 — 월 {planStatus?.consult_limit && planStatus.consult_limit >= 999999 ? "무제한" : `${planStatus?.consult_limit || 1}회`}</span>
               </div>
               <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-slate-300">&#10007;</span>
-                <span className="text-slate-400 font-medium">마감 알림 (카톡/이메일) — 불가</span>
+                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-emerald-500" : "text-slate-300"}>
+                  {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "✓" : "✗"}
+                </span>
+                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-slate-700 font-medium" : "text-slate-400 font-medium"}>
+                  마감 알림 (카톡/이메일) — {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "발송" : "불가"}
+                </span>
               </div>
               <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-slate-300">&#10007;</span>
-                <span className="text-slate-400 font-medium">공고 저장/일정관리 — 불가</span>
+                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-emerald-500" : "text-slate-300"}>
+                  {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "✓" : "✗"}
+                </span>
+                <span className={["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "text-slate-700 font-medium" : "text-slate-400 font-medium"}>
+                  공고 저장/일정관리 — {["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") ? "사용 가능" : "불가"}
+                </span>
               </div>
             </div>
           </div>
 
           {/* ── LITE 플랜 ── */}
           <div className="mb-4 space-y-3">
-            {!["lite", "lite_trial", "pro", "biz"].includes(planStatus?.plan || "") && (
+            {!["pro", "biz"].includes(planStatus?.plan || "") && (
             <div className="rounded-xl border-2 border-indigo-200 overflow-hidden hover:border-indigo-400 transition-all">
               <div className="bg-indigo-50 px-4 py-2.5 border-b border-indigo-200 flex items-center justify-between">
                 <div>
@@ -197,9 +206,11 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                   disabled={loading}
                   className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
-                  {loading ? "처리 중..." : "LITE 시작하기"}
+                  {loading ? "처리 중..." : ["lite", "lite_trial"].includes(planStatus?.plan || "") ? "LITE 유료 결제하기" : "LITE 시작하기"}
                 </button>
-                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">30일 무료체험 후 자동결제</p>
+                <p className="text-[9px] text-indigo-500 text-center mt-1.5 font-semibold">
+                  {["lite", "lite_trial"].includes(planStatus?.plan || "") ? "체험 종료 후에도 계속 이용" : "30일 무료체험 후 자동결제"}
+                </p>
               </div>
             </div>
             )}

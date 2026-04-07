@@ -33,9 +33,9 @@ export const metadata: Metadata = {
     title: "지원금AI — AI가 구석구석 찾아드리는 정부 지원금 매칭",
     description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
     images: [{
-      url: "/icon-512.png",
-      width: 512,
-      height: 512,
+      url: "/og-image.png",
+      width: 1032,
+      height: 1024,
       alt: "지원금AI 로고",
     }],
   },
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "지원금AI — 정부 지원금 AI 자동 매칭",
     description: "17,000+ 정부 지원금 공고 AI 분석. 내 조건에 맞는 보조금 자동 매칭!",
-    images: ["/icon-512.png"],
+    images: ["/og-image.png"],
   },
   robots: {
     index: true,

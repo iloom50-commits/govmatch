@@ -1580,7 +1580,7 @@ def api_register(req: RegisterRequest, request: Request):
         cursor.execute("SELECT user_id FROM users WHERE business_number = %s", (req.business_number,))
         existing = cursor.fetchone()
 
-        est_date = req.establishment_date or datetime.date.today().isoformat()
+        est_date = req.establishment_date or None
         if existing:
             cursor.execute(
                 """UPDATE users SET email=%s, password_hash=%s, plan='free',

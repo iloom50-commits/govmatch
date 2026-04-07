@@ -1000,7 +1000,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}
-      {!isPublic && sidebarOpen && (
+      {(profile || !isPublic) && sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
@@ -1008,7 +1008,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       )}
 
       {/* 모바일 드로어 패널 */}
-      {!isPublic && (
+      {(profile || !isPublic) && (
         <div className={`fixed top-0 right-0 h-full w-[85vw] max-w-sm z-50 bg-white/95 backdrop-blur-xl shadow-2xl overflow-y-auto transition-transform duration-300 lg:hidden ${sidebarOpen ? "translate-x-0" : "translate-x-full"}`}>
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
@@ -1394,7 +1394,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
-      {isPublic ? (
+      {isPublic && !profile ? (
         <button
           onClick={handleLoginRequired}
           className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"

@@ -1610,9 +1610,9 @@ def api_register(req: RegisterRequest, request: Request):
                    VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING user_id""",
                 (req.business_number, req.company_name or "", req.email, hashed, now_iso, now_iso,
-                 req.address_city or "", est_date,
-                 req.industry_code or "", req.revenue_bracket or "",
-                 req.employee_count_bracket or "", req.interests,
+                 req.address_city or None, est_date,
+                 req.industry_code or None, req.revenue_bracket or None,
+                 req.employee_count_bracket or None, req.interests,
                  req.referred_by or None, req.user_type or "both"),
             )
             user_id = cursor.fetchone()["user_id"]

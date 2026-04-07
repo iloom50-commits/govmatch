@@ -1047,6 +1047,7 @@ class RegisterRequest(BaseModel):
     employee_count_bracket: Optional[str] = None
     interests: Optional[str] = None
     referred_by: Optional[str] = None
+    user_type: Optional[str] = "both"
 
 class LoginRequest(BaseModel):
     email: str

@@ -25,15 +25,23 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
 
   const rawRev = profile.revenue_bracket || profile.revenue || "";
   const rawEmp = profile.employee_count_bracket || profile.employees || "";
-
   const rawCity = profile.address_city || "";
+
+  // 프로필 미완성 판별
+  const ut = profile.user_type || "both";
+  const hasProfile = ut === "individual"
+    ? (profile.age_range || profile.address_city)
+    : (profile.industry_code && profile.industry_code !== "00000");
+
   const [formData, setFormData] = useState({
     ...profile,
-    user_type: profile.user_type || "business",
-    revenue: REVENUE_MIGRATE[rawRev] || rawRev || "1억 미만",
-    employees: EMP_MIGRATE[rawEmp] || rawEmp || "5인 미만",
-    industry_code: profile.industry_code || "",
+    user_type: profile.user_type || "both",
+    revenue: REVENUE_MIGRATE[rawRev] || rawRev || "",
+    employees: EMP_MIGRATE[rawEmp] || rawEmp || "",
+    industry_code: profile.industry_code && profile.industry_code !== "00000" ? profile.industry_code : "",
     address_cities: rawCity ? rawCity.split(",").map((c: string) => c.trim()).filter(Boolean) : [] as string[],
+    age_range: profile.age_range || "",
+    interests: profile.interests || "",
   });
   const [industryQuery, setIndustryQuery] = useState("");
   const [industryCandidates, setIndustryCandidates] = useState<any[]>([]);
@@ -43,9 +51,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
   const [passwordError, setPasswordError] = useState("");
 
   useEffect(() => {
-    // If we already have the name from the backend, no need to search
     if (industryName) return;
-    // Otherwise try to look it up by code
     if (formData.industry_code && formData.industry_code !== "00000" && formData.industry_code.length >= 2) {
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/industry-recommend`, {
         method: "POST",
@@ -104,6 +110,11 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
     { label: "30 ~ 50인", value: "30인~50인" },
     { label: "50인 이상", value: "50인 이상" },
   ];
+  const ageOptions = ["20대 이하", "30대", "40대", "50대", "60대 이상"];
+  const interestOptions = ["복지", "교육", "주거", "고용", "출산/육아", "금융/세제", "건강/의료", "문화/여가"];
+
+  const isBiz = formData.user_type === "business" || formData.user_type === "both";
+  const isInd = formData.user_type === "individual" || formData.user_type === "both";
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300 md:flex md:items-center md:justify-center md:p-6">
@@ -111,7 +122,8 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
         {/* Header */}
         <div className="px-5 sm:px-6 lg:px-8 pt-4 pb-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">{formData.user_type === "individual" ? "개인 정보 수정" : "기업 정보 수정"}</h2>
+            <h2 className="text-lg font-black text-slate-900 tracking-tight">{hasProfile ? "프로필 수정" : "프로필 설정"}</h2>
+            {!hasProfile && <p className="text-[11px] text-slate-400 mt-0.5">내 조건을 설정하면 AI가 맞춤 지원금을 찾아드려요</p>}
           </div>
           <button onClick={onClose} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -137,13 +149,14 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
             </div>
           )}
 
-          {/* 사용자 유형 */}
+          {/* 사용자 유형 — 3개 (개인/사업자/둘다) */}
           <div className="space-y-3">
             <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">사용자 유형</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {([
                 { key: "individual", label: "개인", desc: "복지·교육·주거 등" },
-                { key: "business", label: "사업자", desc: "기업지원·R&D·창업 등" },
+                { key: "business", label: "사업자", desc: "기업지원·R&D·창업" },
+                { key: "both", label: "둘다", desc: "개인+사업자 모두" },
               ] as const).map(opt => (
                 <button
                   key={opt.key}
@@ -156,13 +169,67 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
                   }`}
                 >
                   <p className={`text-sm font-bold ${formData.user_type === opt.key ? "text-indigo-700" : "text-slate-700"}`}>{opt.label}</p>
-                  <p className="text-[11px] text-slate-400">{opt.desc}</p>
+                  <p className="text-[10px] text-slate-400 leading-tight">{opt.desc}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Location — 복수선택 */}
+          {/* ── 개인 정보 섹션 ── */}
+          {isInd && (
+            <div className="space-y-5 p-4 bg-blue-50/40 rounded-2xl border border-blue-100/60">
+              <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest">개인 정보</p>
+
+              {/* 연령대 */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">연령대</label>
+                <div className="flex flex-wrap gap-2">
+                  {ageOptions.map(age => (
+                    <button
+                      key={age}
+                      onClick={() => setFormData({ ...formData, age_range: formData.age_range === age ? "" : age })}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
+                        formData.age_range === age
+                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                          : "bg-white border-transparent text-slate-500 hover:border-indigo-100"
+                      }`}
+                    >
+                      {age}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 관심분야 */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">관심분야 (복수 선택)</label>
+                <div className="flex flex-wrap gap-2">
+                  {interestOptions.map(interest => {
+                    const selected = (formData.interests || "").split(",").map((s: string) => s.trim()).includes(interest);
+                    return (
+                      <button
+                        key={interest}
+                        onClick={() => {
+                          const current = (formData.interests || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+                          const next = selected ? current.filter((s: string) => s !== interest) : [...current, interest];
+                          setFormData({ ...formData, interests: next.join(",") });
+                        }}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${
+                          selected
+                            ? "bg-blue-600 border-blue-600 text-white shadow-lg"
+                            : "bg-white border-transparent text-slate-500 hover:border-blue-100"
+                        }`}
+                      >
+                        {interest}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Location — 공통 (복수선택) */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">관심지역</label>
@@ -172,7 +239,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
               {cities.map(city => {
                 const isAll = city === "전국";
                 const selected = isAll
-                  ? formData.address_cities.includes("전국")
+                  ? formData.address_cities.length === 0 || formData.address_cities.includes("전국")
                   : formData.address_cities.includes(city);
                 return (
                   <button
@@ -195,150 +262,151 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
             </div>
           </div>
 
-          {/* Revenue + Employees: 2-column on md+ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Revenue */}
-            <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">매출액 (연)</label>
-              <div className="space-y-2">
-                {revenueOptions.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFormData({ ...formData, revenue: opt.value })}
-                    className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.revenue === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-slate-50 border-transparent text-slate-500'}`}
-                  >
-                    {opt.label}
-                    {formData.revenue === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
-                  </button>
-                ))}
+          {/* ── 사업자 정보 섹션 ── */}
+          {isBiz && (
+            <div className="space-y-5 p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/60">
+              <p className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">사업자 정보</p>
+
+              {/* Revenue + Employees: 2-column */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">매출액 (연)</label>
+                  <div className="space-y-2">
+                    {revenueOptions.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFormData({ ...formData, revenue: opt.value })}
+                        className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.revenue === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-white border-transparent text-slate-500'}`}
+                      >
+                        {opt.label}
+                        {formData.revenue === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">직원 수</label>
+                  <div className="space-y-2">
+                    {employeeOptions.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFormData({ ...formData, employees: opt.value })}
+                        className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.employees === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-white border-transparent text-slate-500'}`}
+                      >
+                        {opt.label}
+                        {formData.employees === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Establishment Date + Industry: 2-column */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일</label>
+                  <input
+                    type="date"
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
+                    value={formData.establishment_date || ""}
+                    onChange={(e) => setFormData({ ...formData, establishment_date: e.target.value })}
+                  />
+                  <p className="text-[11px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-end">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">업종 (KSIC)</label>
+                    {formData.industry_code && (
+                      <span className="text-[11px] font-black text-indigo-600 tracking-widest">
+                        KSIC {formData.industry_code}{industryName ? ` · ${industryName}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="사업 내용을 입력하여 검색..."
+                      className="flex-1 p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
+                      value={industryQuery}
+                      onChange={(e) => setIndustryQuery(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      placeholder="코드"
+                      maxLength={5}
+                      className="w-16 sm:w-20 p-3 border border-slate-200 rounded-xl bg-white text-sm font-black outline-none text-center tracking-widest focus:ring-2 focus:ring-indigo-100"
+                      value={formData.industry_code}
+                      onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
+                    />
+                  </div>
+                  {(!formData.industry_code || formData.industry_code === "00000") && industryCandidates.length === 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-700">
+                      업종을 검색하여 선택해 주세요. 정확한 매칭을 위해 필요합니다.
+                    </div>
+                  )}
+                  {industryCandidates.length > 0 && (
+                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                      {industryCandidates.map((cand, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { setFormData({ ...formData, industry_code: cand.code }); setIndustryName(cand.name); setIndustryCandidates([]); setIndustryQuery(""); }}
+                          className={`w-full p-3 rounded-xl text-left text-xs font-black transition-all border ${
+                            formData.industry_code === cand.code
+                              ? "bg-indigo-600 border-indigo-600 text-white"
+                              : "bg-white border-slate-100 text-slate-700 hover:border-indigo-200"
+                          }`}
+                        >
+                          <span className={`text-[11px] ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>KSIC {cand.code}</span>
+                          <span className="ml-2">{cand.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+          )}
 
-            {/* Employees */}
+          {/* Authentication — 이메일: 비밀번호 / 소셜: 재인증 */}
+          {profile?.is_social ? (
             <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">직원 수</label>
-              <div className="space-y-2">
-                {employeeOptions.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFormData({ ...formData, employees: opt.value })}
-                    className={`w-full p-3.5 rounded-2xl text-left text-xs font-black transition-all border-2 flex justify-between items-center ${formData.employees === opt.value ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm' : 'bg-slate-50 border-transparent text-slate-500'}`}
-                  >
-                    {opt.label}
-                    {formData.employees === opt.value && <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse" />}
-                  </button>
-                ))}
-              </div>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">본인 확인</label>
+              <button
+                onClick={() => {
+                  const provider = profile.social_provider || "kakao";
+                  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+                  localStorage.setItem("pending_profile_save", JSON.stringify({ ...formData, address_city: formData.address_cities?.join(",") }));
+                  window.location.href = `${API_URL}/api/auth/social/${provider}`;
+                }}
+                className={`w-full p-3 rounded-xl text-xs font-bold transition-all active:scale-[0.98] ${
+                  profile.social_provider === "kakao" ? "bg-[#FEE500] text-[#191919]" :
+                  profile.social_provider === "naver" ? "bg-[#03C75A] text-white" :
+                  "bg-white border border-slate-200 text-slate-700"
+                }`}
+              >
+                {profile.social_provider === "kakao" ? "카카오로 본인 확인" :
+                 profile.social_provider === "naver" ? "네이버로 본인 확인" :
+                 "Google로 본인 확인"}
+              </button>
+              <p className="text-[11px] text-slate-400 pl-1">소셜 로그인으로 가입하셨습니다. 본인 확인 후 저장됩니다.</p>
             </div>
-          </div>
-
-          {/* Establishment Date + Password + Industry: 3-column on md+ */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Establishment Date */}
+          ) : (
             <div className="space-y-3">
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">설립일</label>
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
               <input
-                type="date"
-                className="w-full p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                value={formData.establishment_date || ""}
-                onChange={(e) => setFormData({ ...formData, establishment_date: e.target.value })}
+                type="password"
+                placeholder="현재 비밀번호를 입력해 주세요"
+                className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
               />
-              <p className="text-[11px] text-slate-400 pl-1">설립연수 기반 매칭에 사용됩니다.</p>
-            </div>
-
-            {/* Authentication — 이메일: 비밀번호 / 소셜: 재인증 */}
-            {profile?.is_social ? (
-              <div className="space-y-3">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">본인 확인</label>
-                <button
-                  onClick={() => {
-                    const provider = profile.social_provider || "kakao";
-                    const API_URL = process.env.NEXT_PUBLIC_API_URL;
-                    // 소셜 재인증 후 돌아올 URL에 profile_save 플래그 추가
-                    localStorage.setItem("pending_profile_save", JSON.stringify({ ...formData, address_city: formData.address_cities?.join(",") }));
-                    window.location.href = `${API_URL}/api/auth/social/${provider}`;
-                  }}
-                  className={`w-full p-3 rounded-xl text-xs font-bold transition-all active:scale-[0.98] ${
-                    profile.social_provider === "kakao" ? "bg-[#FEE500] text-[#191919]" :
-                    profile.social_provider === "naver" ? "bg-[#03C75A] text-white" :
-                    "bg-white border border-slate-200 text-slate-700"
-                  }`}
-                >
-                  {profile.social_provider === "kakao" ? "카카오로 본인 확인" :
-                   profile.social_provider === "naver" ? "네이버로 본인 확인" :
-                   "Google로 본인 확인"}
-                </button>
-                <p className="text-[11px] text-slate-400 pl-1">소셜 로그인으로 가입하셨습니다. 본인 확인 후 저장됩니다.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">비밀번호 확인</label>
-                <input
-                  type="password"
-                  placeholder="현재 비밀번호를 입력해 주세요"
-                  className={`w-full p-3 border rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100 ${passwordError ? 'border-red-400' : 'border-slate-200'}`}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
-                />
-                {passwordError && (
-                  <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
-                )}
-                <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
-              </div>
-            )}
-
-            {/* Industry / KSIC */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-end">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest pl-1">업종 (KSIC)</label>
-                {formData.industry_code && (
-                  <span className="text-[11px] font-black text-indigo-600 tracking-widest">
-                    KSIC {formData.industry_code}{industryName ? ` · ${industryName}` : ""}
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="사업 내용을 입력하여 검색..."
-                  className="flex-1 p-3 border border-slate-200 rounded-xl bg-white text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                  value={industryQuery}
-                  onChange={(e) => setIndustryQuery(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="코드"
-                  maxLength={5}
-                  className="w-16 sm:w-20 p-3 border border-slate-200 rounded-xl bg-white text-sm font-black outline-none text-center tracking-widest focus:ring-2 focus:ring-indigo-100"
-                  value={formData.industry_code}
-                  onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
-                />
-              </div>
-              {(!formData.industry_code || formData.industry_code === "00000") && industryCandidates.length === 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-700">
-                  업종을 검색하여 선택해 주세요. 정확한 매칭을 위해 필요합니다.
-                </div>
+              {passwordError && (
+                <p className="text-[11px] font-bold text-red-500 pl-1">{passwordError}</p>
               )}
-              {industryCandidates.length > 0 && (
-                <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
-                  {industryCandidates.map((cand, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => { setFormData({ ...formData, industry_code: cand.code }); setIndustryName(cand.name); setIndustryCandidates([]); setIndustryQuery(""); }}
-                      className={`w-full p-3 rounded-xl text-left text-xs font-black transition-all border ${
-                        formData.industry_code === cand.code
-                          ? "bg-indigo-600 border-indigo-600 text-white"
-                          : "bg-white border-slate-100 text-slate-700 hover:border-indigo-200"
-                      }`}
-                    >
-                      <span className={`text-[11px] ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>KSIC {cand.code}</span>
-                      <span className="ml-2">{cand.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              <p className="text-[11px] text-slate-400 pl-1">프로필 변경 시 본인 확인을 위해 비밀번호가 필요합니다.</p>
             </div>
-          </div>
+          )}
 
         </div>
 
@@ -347,7 +415,6 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout }: 
           <button
             onClick={() => {
               if (profile?.is_social) {
-                // 소셜 사용자: 비밀번호 없이 저장 (소셜 재인증은 별도 플로우)
                 onSave({ ...formData, address_city: formData.address_cities?.join(",") });
               } else {
                 if (!password) {

@@ -240,7 +240,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                   content: {
                     title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
                     description: shareText,
-                    imageUrl: `${window.location.origin}/icon-512.png`,
+                    imageUrl: `${window.location.origin}/og-image.png`,
                     link: { mobileWebUrl: url, webUrl: url },
                   },
                   buttons: [{ title: "지원금 확인하기", link: { mobileWebUrl: url, webUrl: url } }],

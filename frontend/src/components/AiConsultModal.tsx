@@ -359,7 +359,7 @@ ${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? 
       <div
         data-consult-panel
         className={`bg-white shadow-2xl border border-white/60 overflow-hidden flex flex-col pointer-events-auto ${
-          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-2xl lg:max-w-[680px] h-[90vh] sm:h-[85vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 lg:slide-in-from-right duration-300"
+          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-3xl lg:max-w-[820px] h-[90vh] sm:h-[88vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 lg:slide-in-from-right duration-300"
         }`}
         style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 700, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >

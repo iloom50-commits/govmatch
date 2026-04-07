@@ -2193,6 +2193,10 @@ def api_plan_subscribe(
     current_user: dict = Depends(_get_current_user),
 ):
     """빌링키 등록 + 무료 체험 시작 (LITE 30일 / PRO 7일)"""
+    # 빌링키 유효성 검증
+    if not req.billing_key or not isinstance(req.billing_key, str) or len(req.billing_key.strip()) < 10:
+        raise HTTPException(status_code=400, detail="유효하지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
+
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
 

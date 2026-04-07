@@ -46,9 +46,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
         channelKey: CHANNEL_KEY,
         billingKeyMethod: "CARD",
       });
+      // 결제창 닫기/취소 모든 케이스 방어
+      const code = billingKeyResponse?.code;
+      if (code === "USER_CANCEL" || code === "FAILURE" || code === "PORTONE_ERROR") {
+        toast("결제가 취소되었습니다.", "info"); setLoading(false); return;
+      }
       const billingKey = (billingKeyResponse as any)?.billingKey;
-      if (billingKeyResponse?.code === "USER_CANCEL") { toast("결제가 취소되었습니다.", "info"); setLoading(false); return; }
-      if (!billingKey) { toast("카드 등록에 실패했습니다.", "error"); setLoading(false); return; }
+      if (!billingKey || typeof billingKey !== "string" || billingKey.trim().length < 10) {
+        toast("카드 등록에 실패했습니다. 다시 시도해 주세요.", "error"); setLoading(false); return;
+      }
 
       const res = await fetch(`${API}/api/plan/subscribe`, {
         method: "POST",

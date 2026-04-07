@@ -229,14 +229,9 @@ export default function Home() {
         return;
       }
 
-      // user_type 미설정 → 프로필 설정으로 이동
-      if (!user.user_type) {
-        setStep("PROFILE");
-        return;
-      }
-
       // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
-      const isIncomplete = user.user_type !== "individual" && (
+      const userType = user.user_type || "both";
+      const isIncomplete = userType === "business" && (
         !user.industry_code || user.industry_code === "00000" ||
         !user.address_city || user.address_city === "전국"
       );
@@ -273,14 +268,9 @@ export default function Home() {
       const meData = await meRes.json();
       setProfileData(meData.user);
 
-      // user_type 미설정 → 프로필 설정으로 이동
-      if (!meData.user.user_type) {
-        setStep("PROFILE");
-        return;
-      }
-
       // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
-      const isIncomplete = meData.user.user_type !== "individual" && (
+      const userType2 = meData.user.user_type || "both";
+      const isIncomplete = userType2 === "business" && (
         !meData.user.industry_code || meData.user.industry_code === "00000" ||
         !meData.user.address_city || meData.user.address_city === "전국"
       );

@@ -4562,8 +4562,8 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
 
     user_dict = dict(user)
 
-    # user_type에 따라 매칭 엔진 분기
-    user_type = user_dict.get("user_type", "business")
+    # user_type에 따라 매칭 엔진 분기 (미설정 시 both로 개인+기업 모두)
+    user_type = user_dict.get("user_type") or "both"
     if user_type == "individual":
         matches = get_individual_matches_for_user(user_dict)
     elif user_type == "both":

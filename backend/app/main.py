@@ -2595,7 +2595,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     cur.execute(
         """SELECT plan, ai_usage_month, ai_usage_reset_at, plan_expires_at,
                   company_name, establishment_date, address_city, industry_code,
-                  revenue_bracket, employee_count_bracket, interests
+                  revenue_bracket, employee_count_bracket, interests, user_type,
+                  age_range, business_number
            FROM users WHERE business_number = %s""",
         (bn,)
     )
@@ -2604,6 +2605,11 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         conn.close()
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
+    # NULL 프로필 필드 → 빈 문자열 (AI 프롬프트 호환)
+    for k in ("company_name", "establishment_date", "address_city", "industry_code",
+              "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range"):
+        if u.get(k) is None:
+            u[k] = ""
 
     # 플랜/사용량 체크
     plan = u.get("plan") or "free"

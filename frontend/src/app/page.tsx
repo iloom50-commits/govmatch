@@ -194,7 +194,7 @@ export default function Home() {
       }
     } catch {
       toast("매칭 수행 중 오류가 발생했습니다.", "error");
-      setStep("BROWSE");
+      setStep(getToken() ? "RESULTS" : "BROWSE");
     }
   }, [toast, authHeaders]);
 
@@ -272,11 +272,11 @@ export default function Home() {
       const meData = await meRes.json();
       setProfileData(meData.user);
 
-      // 프로필 미완성이면 매칭 건너뛰기 (비로그인 뷰로 표시)
+      // 프로필 미완성이면 매칭 건너뛰기 (공개 공고 뷰로 표시)
       const userType2 = meData.user.user_type || "both";
-      const isIncomplete = userType2 === "business" && (
-        !meData.user.industry_code || meData.user.industry_code === "00000" ||
-        !meData.user.address_city || meData.user.address_city === "전국"
+      const isIncomplete = (
+        (userType2 !== "individual" && (!meData.user.industry_code || meData.user.industry_code === "00000")) ||
+        (!meData.user.industry_code && !meData.user.age_range && !meData.user.address_city)
       );
       if (isIncomplete) {
         setStep("RESULTS");

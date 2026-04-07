@@ -7,77 +7,109 @@ function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" 
   const [open, setOpen] = useState(false);
   const url = "https://govmatch.kr";
   const shareText = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
+
+  const shareKakao = () => {
+    const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
+    if (kakao?.Share) {
+      kakao.Share.sendDefault({
+        objectType: "feed",
+        content: {
+          title: "지원금AI — AI 맞춤 지원금 매칭",
+          description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
+          imageUrl: "https://govmatch.kr/og-image.png",
+          link: { mobileWebUrl: url, webUrl: url },
+        },
+        buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
+      });
+    } else {
+      window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
+    }
+    setOpen(false);
+  };
+
+  const shareSMS = () => {
+    window.location.href = `sms:?&body=${encodeURIComponent(shareText + " " + url)}`;
+    setOpen(false);
+  };
+
+  const shareMore = () => {
+    if (navigator.share) {
+      navigator.share({ title: "지원금AI — AI 맞춤 지원금 매칭", text: shareText, url });
+    } else {
+      navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
+    }
+    setOpen(false);
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(url).then(() => toast("링크가 복사되었습니다!", "success"));
+    setOpen(false);
+  };
+
   return (
-    <div className="space-y-1.5">
+    <>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         className="w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
       >
-        <span className="text-sm">📢</span> 친구에게 추천하기 <span className={`text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+        <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
+
+      {/* 공유 모달 */}
       {open && (
-        <div className="grid grid-cols-4 gap-1.5 animate-in slide-in-from-top-2 duration-200">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
-              if (kakao?.Share) {
-                kakao.Share.sendDefault({
-                  objectType: "feed",
-                  content: {
-                    title: "지원금AI — AI 맞춤 지원금 매칭",
-                    description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
-                    imageUrl: "https://govmatch.kr/og-image.png",
-                    link: { mobileWebUrl: url, webUrl: url },
-                  },
-                  buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
-                });
-              } else {
-                window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
-              }
-            }}
-            className="flex flex-col items-center gap-1 py-2 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-all active:scale-95 border border-yellow-200/60"
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+          <div
+            className="relative w-full max-w-sm mx-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300"
+            onClick={(e) => e.stopPropagation()}
           >
-            <span className="text-base">💬</span>
-            <span className="text-[10px] font-semibold text-yellow-800">카카오톡</span>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              window.location.href = `sms:?&body=${encodeURIComponent(shareText + " " + url)}`;
-            }}
-            className="flex flex-col items-center gap-1 py-2 bg-green-50 rounded-lg hover:bg-green-100 transition-all active:scale-95 border border-green-200/60"
-          >
-            <span className="text-base">📱</span>
-            <span className="text-[10px] font-semibold text-green-800">문자</span>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (navigator.share) {
-                navigator.share({ title: "지원금AI — AI 맞춤 지원금 매칭", text: shareText, url });
-              } else {
-                navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
-              }
-            }}
-            className="flex flex-col items-center gap-1 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all active:scale-95 border border-blue-200/60"
-          >
-            <span className="text-base">📤</span>
-            <span className="text-[10px] font-semibold text-blue-800">더보기</span>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(url).then(() => toast("링크가 복사되었습니다!", "success"));
-            }}
-            className="flex flex-col items-center gap-1 py-2 bg-violet-50 rounded-lg hover:bg-violet-100 transition-all active:scale-95 border border-violet-200/60"
-          >
-            <span className="text-base">🔗</span>
-            <span className="text-[10px] font-semibold text-violet-800">링크복사</span>
-          </button>
+            <div className="p-5">
+              <div className="text-center mb-5">
+                <h3 className="text-[15px] font-bold text-slate-900">친구에게 추천하기</h3>
+                <p className="text-[11px] text-slate-400 mt-1">추천 시 양쪽 모두 LITE 1개월 무료!</p>
+              </div>
+
+              <div className="grid grid-cols-4 gap-3">
+                <button onClick={shareKakao} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-yellow-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-[#FEE500] rounded-2xl flex items-center justify-center shadow-sm">
+                    <span className="text-2xl">💬</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700">카카오톡</span>
+                </button>
+
+                <button onClick={shareSMS} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-green-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-sm">
+                    <span className="text-2xl">💌</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700">문자</span>
+                </button>
+
+                <button onClick={shareMore} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center shadow-sm">
+                    <span className="text-2xl">📤</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700">더보기</span>
+                </button>
+
+                <button onClick={copyLink} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-violet-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-violet-500 rounded-2xl flex items-center justify-center shadow-sm">
+                    <span className="text-2xl">🔗</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700">링크복사</span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+              className="w-full py-3.5 border-t border-slate-100 text-slate-400 text-[13px] font-medium hover:text-slate-600 hover:bg-slate-50 transition-all"
+            >
+              닫기
+            </button>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

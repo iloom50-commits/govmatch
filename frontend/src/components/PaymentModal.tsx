@@ -215,12 +215,51 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             </div>
             )}
 
-            {/* 전문가 파트너 프로그램 링크 */}
-            <div className="text-center pt-1">
-              <a href="/api-partnership" className="text-[11px] text-violet-500 hover:text-violet-700 font-bold underline underline-offset-2">
-                컨설턴트/전문가이신가요? PRO 파트너 프로그램 알아보기 &rarr;
-              </a>
+            {/* ── PRO 플랜 ── */}
+            {!["pro", "biz"].includes(planStatus?.plan || "") && (
+            <div className="rounded-xl border-2 border-violet-200 overflow-hidden hover:border-violet-400 transition-all">
+              <div className="bg-violet-50 px-4 py-2.5 border-b border-violet-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[13px] font-bold text-violet-700">PRO</span>
+                  <span className="text-[11px] text-violet-500 ml-1.5">전문가</span>
+                </div>
+                <span className="text-[14px] font-black text-violet-700">
+                  49,000
+                  <span className="text-[10px] font-medium text-violet-400">원/월</span>
+                </span>
+              </div>
+              <div className="px-4 py-3 space-y-1.5">
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-violet-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">공고AI 상담 — <strong>무제한</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-violet-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">자유AI · 컨설턴트 — <strong>무제한</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-violet-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">전문가 상담 에이전트 — <strong>사용 가능</strong></span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-violet-500">&#10003;</span>
+                  <span className="text-slate-700 font-medium">LITE 기능 전체 포함</span>
+                </div>
+              </div>
+              <div className="px-4 pb-3">
+                <button
+                  onClick={() => handleSubscribe("pro")}
+                  disabled={loading}
+                  className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? "처리 중..." : "PRO 시작하기"}
+                </button>
+                <p className="text-[9px] text-violet-500 text-center mt-1.5 font-semibold">
+                  7일 무료체험 후 자동결제
+                </p>
+              </div>
             </div>
+            )}
           </div>
 
           {/* ── 친구 추천 ── */}

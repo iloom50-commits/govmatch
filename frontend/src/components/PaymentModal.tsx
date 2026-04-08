@@ -227,11 +227,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               <div className="mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
-                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold rounded">런칭특가</span>
+                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded">준비 중</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[13px] text-slate-400 line-through mr-1">₩39,000</span>
-                  <span className="text-2xl font-black text-violet-700">₩19,000</span>
+                  <span className="text-2xl font-black text-violet-700">준비 중</span>
                   <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">전문가 · 컨설턴트</p>

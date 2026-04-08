@@ -459,7 +459,7 @@ ${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? 
                   <div className="p-3 bg-white rounded-xl border border-violet-100 text-left space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-violet-700">PRO</span>
-                      <span className="font-bold text-violet-600 text-[11px]">49,000원/월</span>
+                      <span className="font-bold text-violet-600 text-[11px]">준비 중</span>
                     </div>
                     <div className="space-y-0.5 text-[11px] text-slate-600">
                       <p>· AI 상담 <strong>무제한</strong></p>

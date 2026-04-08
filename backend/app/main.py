@@ -4988,19 +4988,15 @@ async def api_pro_client_upload_file(
     # 파일 텍스트 추출 (PDF, HWP, HWPX, DOCX)
     extracted_text = ""
     try:
-        from app.services.doc_analysis_service import extract_text_from_bytes, _detect_file_type
         fname = (file.filename or "").lower()
-        if fname.endswith(".pdf"):
-            detected = "pdf"
-        elif fname.endswith(".hwp"):
-            detected = "hwp"
-        elif fname.endswith(".hwpx"):
-            detected = "hwpx"
-        elif fname.endswith(".docx"):
-            detected = "docx"
-        else:
-            detected = _detect_file_type(content, fname)
-        if detected in ("pdf", "hwp", "hwpx", "docx", "ole"):
+        detected = ""
+        if fname.endswith(".pdf"): detected = "pdf"
+        elif fname.endswith(".hwp"): detected = "hwp"
+        elif fname.endswith(".hwpx"): detected = "hwpx"
+        elif fname.endswith(".docx"): detected = "docx"
+
+        if detected:
+            from app.services.doc_analysis_service import extract_text_from_bytes
             extracted_text = extract_text_from_bytes(content, detected, max_chars=30000)
             print(f"[ClientFile] Extracted {len(extracted_text)} chars from {file.filename} ({detected})")
     except Exception as e:

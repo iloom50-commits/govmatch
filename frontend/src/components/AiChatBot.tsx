@@ -190,6 +190,9 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   useModalBack(open, () => setOpen(false));
   const [mode, setMode] = useState<ChatMode>("select");
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
+  const [clientCategory, setClientCategory] = useState<"" | "individual_biz" | "corporate" | "individual" | "unknown">("");
+  const [selectedExistingClient, setSelectedExistingClient] = useState<number | null>(null);
+  const [existingClients, setExistingClients] = useState<any[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -295,20 +298,21 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
           : ["R&D 지원사업 종류 알려줘", "소상공인 지원사업 뭐가 있어?", "창업 지원금 신청 방법은?", "정책자금 대출 조건이 궁금해"],
       }]);
     } else {
-      // consultant: 로그인 프로필로 폼 사전 채움
-      const user = await fetchUserProfile();
-      if (user) {
-        setFormProfile({
-          company_name: user.company_name || "",
-          establishment_date: user.establishment_date ? String(user.establishment_date).substring(0, 10) : "",
-          industry_code: user.industry_code || "",
-          revenue_bracket: user.revenue_bracket || "",
-          employee_count_bracket: user.employee_count_bracket || "",
-          address_city: user.address_city || "",
-          interests: user.interests ? String(user.interests).split(",").filter(Boolean) : [],
-        });
-      }
+      // consultant: 고객 유형 선택 화면 먼저 표시
+      setClientCategory("");
+      setSelectedExistingClient(null);
       setConsultantTab("form");
+      // 기존 고객 목록 로드
+      try {
+        const token = localStorage.getItem("auth_token") || "";
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/pro/clients`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setExistingClients(data.clients || []);
+        }
+      } catch { /* */ }
     }
   };
 
@@ -1251,11 +1255,88 @@ ${convHtml}
               </div>
             )}
           </div>
+        ) : mode === "consultant" && !clientCategory && !matchingInProgress ? (
+          /* ── 고객 유형 선택 화면 ── */
+          <div className="flex-1 flex flex-col px-5 py-6 overflow-y-auto">
+            <div className="text-center mb-5">
+              <p className="text-[16px] font-bold text-slate-800">고객 유형을 선택하세요</p>
+              <p className="text-[12px] text-slate-400 mt-1">유형에 맞는 입력 폼이 자동으로 구성됩니다</p>
+            </div>
+
+            {/* 기존 고객 불러오기 */}
+            {existingClients.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5">기존 고객 불러오기</label>
+                <select
+                  value={selectedExistingClient || ""}
+                  onChange={(e) => {
+                    const cid = Number(e.target.value);
+                    if (!cid) return;
+                    const client = existingClients.find((c: any) => c.id === cid);
+                    if (client) {
+                      setSelectedExistingClient(cid);
+                      const ct = client.client_type === "individual" ? "individual" as const : "corporate" as const;
+                      setClientCategory(ct);
+                      setFormProfile({
+                        company_name: client.client_name || "",
+                        establishment_date: client.establishment_date ? String(client.establishment_date).substring(0, 10) : "",
+                        industry_code: client.industry_code || "",
+                        revenue_bracket: client.revenue_bracket || "",
+                        employee_count_bracket: client.employee_count_bracket || "",
+                        address_city: client.address_city || "",
+                        interests: client.interests ? String(client.interests).split(",").filter(Boolean) : [],
+                      });
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 border border-violet-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-violet-300 outline-none"
+                >
+                  <option value="">고객 선택...</option>
+                  {existingClients.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.client_name} ({c.address_city || "지역미등록"})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-400 text-center mb-3">{existingClients.length > 0 ? "또는 새 고객:" : ""}</p>
+
+            {/* 유형 선택 버튼 */}
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { key: "individual_biz" as const, label: "개인사업자", desc: "1인 사업자, 프리랜서", icon: "🏪" },
+                { key: "corporate" as const, label: "법인사업자", desc: "법인 기업", icon: "🏢" },
+                { key: "individual" as const, label: "개인", desc: "취업·복지·주거 등", icon: "👤" },
+                { key: "unknown" as const, label: "모름", desc: "AI가 대화로 파악", icon: "💬" },
+              ]).map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => {
+                    setClientCategory(opt.key);
+                    if (opt.key === "unknown") {
+                      switchToConsultantChat();
+                    } else {
+                      setConsultantTab("form");
+                      setFormProfile({ ...EMPTY_FORM });
+                    }
+                  }}
+                  className="p-4 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-all text-left active:scale-[0.98]"
+                >
+                  <span className="text-2xl">{opt.icon}</span>
+                  <p className="text-[13px] font-bold text-slate-800 mt-2">{opt.label}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
         ) : mode === "consultant" && consultantTab === "form" && !matchingInProgress && messages.length <= 1 ? (
           <>
             {/* Consultant Tab Toggle */}
             <div className="flex-shrink-0 px-4 pt-3 pb-1 border-b border-slate-100 bg-slate-50/80">
               <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-xl">
+                <button onClick={() => setClientCategory("")} className="px-3 py-2 text-[12px] font-bold text-slate-500 hover:text-violet-700">
+                  ← 유형변경
+                </button>
                 <button
                   onClick={() => setConsultantTab("form")}
                   className="flex-1 py-2 text-[14px] font-bold rounded-lg transition-all bg-white text-violet-700 shadow-sm"
@@ -1276,7 +1357,7 @@ ${convHtml}
               {/* 이름/기업명 */}
               <div>
                 <label className="block text-[14px] font-bold text-slate-700 mb-1.5">
-                  {isIndividual ? "이름" : "기업명"} <span className="text-red-400">*</span>
+                  {clientCategory === "individual" ? "이름" : "기업명"} <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"

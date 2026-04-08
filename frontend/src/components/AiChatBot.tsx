@@ -1556,6 +1556,16 @@ ${convHtml}
               </div>
             </div>
 
+            {/* 자료 첨부 */}
+            <div className="flex-shrink-0 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+              <ConsultantFileUpload
+                clientId={selectedExistingClient}
+                onFileText={(text) => {
+                  if (text) setFormProfile(prev => ({ ...prev, _attachedText: text } as any));
+                }}
+              />
+            </div>
+
             {/* 폼 제출 버튼 */}
             <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 py-3">
               <button
@@ -1819,6 +1829,102 @@ ${convHtml}
               ))}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ━━━━━━━━━━━━━━ 상담 폼 내 자료 첨부 + AI 요약 ━━━━━━━━━━━━━━
+
+const FILE_TYPE_OPTIONS = [
+  { value: "financial", label: "재무제표" },
+  { value: "business_plan", label: "사업계획서" },
+  { value: "ir", label: "IR자료" },
+  { value: "company_intro", label: "회사소개서" },
+  { value: "other", label: "기타" },
+];
+
+function ConsultantFileUpload({ clientId, onFileText }: { clientId: number | null; onFileText: (text: string) => void }) {
+  const [files, setFiles] = useState<{ name: string; type: string; summary: string; uploading: boolean }[]>([]);
+  const [fileType, setFileType] = useState("other");
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert("10MB 이하 파일만 가능합니다."); return; }
+
+    const idx = files.length;
+    setFiles(prev => [...prev, { name: file.name, type: fileType, summary: "", uploading: true }]);
+
+    try {
+      const token = localStorage.getItem("auth_token") || "";
+
+      if (clientId) {
+        // 기존 고객이면 서버에 저장
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("file_type", fileType);
+        formData.append("memo", "");
+        const res = await fetch(`${API}/api/pro/clients/${clientId}/files`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // 서버에서 텍스트 추출 완료
+          if (data.extracted_chars > 0) {
+            setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: `${data.extracted_chars}자 추출됨` } : f));
+          } else {
+            setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "텍스트 추출 불가" } : f));
+          }
+        }
+      } else {
+        // 새 고객 — 클라이언트에서 파일 읽기만
+        const reader = new FileReader();
+        reader.onload = () => {
+          const text = reader.result as string;
+          onFileText(text.substring(0, 5000));
+          setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: `${Math.min(text.length, 5000)}자 첨부` } : f));
+        };
+        reader.readAsText(file);
+      }
+    } catch {
+      setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "업로드 실패" } : f));
+    }
+    e.target.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">자료 첨부 (선택)</p>
+      <div className="flex items-center gap-2">
+        <select value={fileType} onChange={(e) => setFileType(e.target.value)}
+          className="px-2 py-1.5 border rounded-lg text-[11px] focus:ring-2 focus:ring-violet-300 outline-none">
+          {FILE_TYPE_OPTIONS.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+        </select>
+        <label className="flex-1 px-3 py-1.5 text-center border-2 border-dashed border-violet-300 rounded-lg text-[11px] font-semibold text-violet-600 cursor-pointer hover:bg-violet-50 transition-all">
+          파일 선택 (PDF, HWP, DOCX)
+          <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt" onChange={handleUpload} />
+        </label>
+      </div>
+      {files.length > 0 && (
+        <div className="space-y-1">
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 px-2 py-1.5 bg-white rounded-lg border text-[11px]">
+              <span className="px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[9px] font-bold rounded">
+                {FILE_TYPE_OPTIONS.find(ft => ft.value === f.type)?.label || f.type}
+              </span>
+              <span className="truncate text-slate-700 flex-1">{f.name}</span>
+              {f.uploading ? (
+                <span className="text-violet-500 animate-pulse">분석 중...</span>
+              ) : (
+                <span className="text-emerald-600 font-medium">{f.summary}</span>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

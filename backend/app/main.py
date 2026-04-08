@@ -177,9 +177,36 @@ def init_database():
         except Exception:
             conn.rollback()
 
-        # client_profiles에 client_type 컬럼 추가 (기업/개인 구분)
+        # client_profiles CRM 확장 컬럼 추가
+        for col_def in [
+            "client_type VARCHAR(20) DEFAULT 'business'",
+            "contact_name VARCHAR(100)",
+            "contact_email VARCHAR(200)",
+            "contact_phone VARCHAR(50)",
+            "tags TEXT DEFAULT ''",
+            "status VARCHAR(20) DEFAULT 'new'",
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS {col_def}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+        # client_files 테이블 (고객사 자료 첨부)
         try:
-            cursor.execute("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'business'")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS client_files (
+                    id SERIAL PRIMARY KEY,
+                    client_id INTEGER NOT NULL REFERENCES client_profiles(id) ON DELETE CASCADE,
+                    owner_business_number VARCHAR(20) NOT NULL,
+                    file_name VARCHAR(500) NOT NULL,
+                    file_type VARCHAR(50) DEFAULT 'other',
+                    file_size INTEGER DEFAULT 0,
+                    file_data BYTEA,
+                    memo TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -4818,6 +4845,12 @@ class ClientProfileCreate(BaseModel):
     employee_count_bracket: Optional[str] = None
     interests: Optional[str] = None
     memo: Optional[str] = ""
+    # CRM 확장 필드
+    contact_name: Optional[str] = None       # 담당자명
+    contact_email: Optional[str] = None      # 담당자 이메일
+    contact_phone: Optional[str] = None      # 담당자 전화번호
+    tags: Optional[str] = None               # 태그 (쉼표 구분)
+    status: Optional[str] = "new"            # 상태: new/consulting/matched/applied/selected
 
 
 @app.get("/api/pro/clients")
@@ -4834,7 +4867,9 @@ def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depe
     cur.execute(
         f"""SELECT id, client_name, COALESCE(client_type, 'business') AS client_type,
                   business_number, address_city, industry_code, industry_name,
-                  revenue_bracket, employee_count_bracket, establishment_date, interests, memo, created_at, updated_at
+                  revenue_bracket, employee_count_bracket, establishment_date, interests, memo,
+                  contact_name, contact_email, contact_phone, tags, COALESCE(status, 'new') AS status,
+                  created_at, updated_at
            FROM client_profiles
            WHERE {where}
            ORDER BY updated_at DESC""",
@@ -4864,12 +4899,14 @@ def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends
     cur.execute(
         """INSERT INTO client_profiles
            (owner_business_number, client_name, client_type, business_number, establishment_date, address_city,
-            industry_code, industry_name, revenue_bracket, employee_count_bracket, interests, memo)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            industry_code, industry_name, revenue_bracket, employee_count_bracket, interests, memo,
+            contact_name, contact_email, contact_phone, tags, status)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id""",
         (current_user["bn"], req.client_name, req.client_type or "business", req.business_number,
          req.establishment_date, req.address_city, req.industry_code, req.industry_name,
-         req.revenue_bracket, req.employee_count_bracket, req.interests, req.memo)
+         req.revenue_bracket, req.employee_count_bracket, req.interests, req.memo,
+         req.contact_name, req.contact_email, req.contact_phone, req.tags or "", req.status or "new")
     )
     new_id = cur.fetchone()["id"]
     conn.commit()
@@ -4887,11 +4924,13 @@ def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user
         """UPDATE client_profiles SET
            client_name=%s, client_type=%s, business_number=%s, establishment_date=%s, address_city=%s,
            industry_code=%s, industry_name=%s, revenue_bracket=%s, employee_count_bracket=%s,
-           interests=%s, memo=%s, updated_at=CURRENT_TIMESTAMP
+           interests=%s, memo=%s, contact_name=%s, contact_email=%s, contact_phone=%s, tags=%s, status=%s,
+           updated_at=CURRENT_TIMESTAMP
            WHERE id=%s AND owner_business_number=%s AND is_active=TRUE""",
         (req.client_name, req.client_type or "business", req.business_number, req.establishment_date, req.address_city,
          req.industry_code, req.industry_name, req.revenue_bracket, req.employee_count_bracket,
-         req.interests, req.memo, client_id, current_user["bn"])
+         req.interests, req.memo, req.contact_name, req.contact_email, req.contact_phone,
+         req.tags or "", req.status or "new", client_id, current_user["bn"])
     )
     conn.commit()
     updated = cur.rowcount
@@ -4916,6 +4955,104 @@ def api_pro_client_delete(client_id: int, current_user: dict = Depends(_get_curr
     conn.close()
     if not deleted:
         raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "message": "삭제 완료"}
+
+
+# ── 1.5) 고객사 자료 첨부 (파일 업로드/조회/삭제) ──
+
+from fastapi import UploadFile, File, Form
+
+@app.post("/api/pro/clients/{client_id}/files")
+async def api_pro_client_upload_file(
+    client_id: int,
+    file: UploadFile = File(...),
+    file_type: str = Form("other"),
+    memo: str = Form(""),
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 고객사 자료 업로드 (재무제표, 사업계획서, IR자료 등)"""
+    _require_pro(current_user)
+    # 파일 크기 제한 (10MB)
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="파일 크기는 10MB 이하만 가능합니다.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # 소유권 확인
+    cur.execute("SELECT id FROM client_profiles WHERE id=%s AND owner_business_number=%s AND is_active=TRUE", (client_id, current_user["bn"]))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+
+    cur.execute(
+        """INSERT INTO client_files (client_id, owner_business_number, file_name, file_type, file_size, file_data, memo)
+           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (client_id, current_user["bn"], file.filename, file_type, len(content), content, memo)
+    )
+    file_id = cur.fetchone()["id"]
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "id": file_id, "message": f"'{file.filename}' 업로드 완료"}
+
+
+@app.get("/api/pro/clients/{client_id}/files")
+def api_pro_client_files(client_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 첨부 자료 목록 조회"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, file_name, file_type, file_size, memo, created_at
+           FROM client_files
+           WHERE client_id=%s AND owner_business_number=%s
+           ORDER BY created_at DESC""",
+        (client_id, current_user["bn"])
+    )
+    files = [dict(r) for r in cur.fetchall()]
+    for f in files:
+        if f.get("created_at"): f["created_at"] = str(f["created_at"])
+    conn.close()
+    return {"status": "SUCCESS", "files": files}
+
+
+@app.get("/api/pro/clients/{client_id}/files/{file_id}/download")
+def api_pro_client_file_download(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 첨부 자료 다운로드"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT file_name, file_data FROM client_files WHERE id=%s AND client_id=%s AND owner_business_number=%s",
+        (file_id, client_id, current_user["bn"])
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+    from fastapi.responses import Response
+    return Response(
+        content=bytes(row["file_data"]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{row["file_name"]}"'}
+    )
+
+
+@app.delete("/api/pro/clients/{client_id}/files/{file_id}")
+def api_pro_client_file_delete(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 첨부 자료 삭제"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM client_files WHERE id=%s AND client_id=%s AND owner_business_number=%s",
+        (file_id, client_id, current_user["bn"])
+    )
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
     return {"status": "SUCCESS", "message": "삭제 완료"}
 
 

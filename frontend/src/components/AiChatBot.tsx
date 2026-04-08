@@ -530,6 +530,46 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   const userMsgCount = messages.filter((m) => m.role === "user").length;
   const isAtMsgLimit = userMsgCount >= CONSULT_MSG_LIMIT;
 
+  // 파일 첨부 처리 (클릭 + 드래그&드롭 공용)
+  const handleFileAttach = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) { toast("10MB 이하만 가능", "error"); return; }
+    const token = localStorage.getItem("auth_token") || "";
+
+    setMessages(prev => [...prev, { role: "user", text: `📎 ${file.name} 첨부` }]);
+    setLoading(true);
+
+    try {
+      const text = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string || "").substring(0, 8000));
+        reader.onerror = () => resolve("");
+        reader.readAsText(file);
+      });
+
+      const analyzeRes = await fetch(`${API}/api/pro/files/analyze`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.substring(0, 8000), file_name: file.name, file_type: "other" }),
+      });
+      const analyzeData = analyzeRes.ok ? await analyzeRes.json() : { summary: "분석 실패" };
+
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        text: `📊 **${file.name}** 분석 결과:\n\n${analyzeData.summary}\n\n이 정보를 바탕으로 어떤 상담을 원하시나요?`,
+        choices: ["이 고객에 맞는 지원사업 찾아줘", "자격요건 판단해줘", "추가 자료를 올릴게요", "직접 질문할게요"],
+      }]);
+
+      setFormProfile(prev => ({
+        ...prev,
+        _systemContext: `${(prev as any)?._systemContext || ""}\n\n[첨부: ${file.name}]\n${text.substring(0, 5000)}`,
+        _attachedText: text.substring(0, 5000),
+      } as any));
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", text: "파일 분석에 실패했습니다. 다시 시도해 주세요." }]);
+    }
+    setLoading(false);
+  };
+
   const handleSend = (text: string) => {
     if (!text.trim() || loading || matchingInProgress) return;
 
@@ -1316,12 +1356,21 @@ ${convHtml}
                   key={opt.key}
                   onClick={() => {
                     setClientCategory(opt.key);
-                    if (opt.key === "unknown") {
-                      switchToConsultantChat();
-                    } else {
-                      setConsultantTab("form");
-                      setFormProfile({ ...EMPTY_FORM });
-                    }
+                    setConsultantTab("chat");
+                    const catLabel = opt.label;
+                    const isInd = opt.key === "individual";
+                    setMessages([{
+                      role: "assistant",
+                      text: opt.key === "unknown"
+                        ? "고객 유형을 모르셔도 괜찮습니다.\n\n고객에 대해 아는 정보를 자유롭게 알려주세요. AI가 대화를 통해 파악하겠습니다."
+                        : `**${catLabel}** 고객이시군요.\n\n자료가 있으시면 아래에서 첨부해 주세요.\n없으면 바로 대화로 시작할게요.`,
+                      choices: opt.key === "unknown"
+                        ? ["기업 고객이에요", "개인 고객이에요", "사업을 준비 중이에요"]
+                        : isInd
+                          ? ["자료 없이 바로 시작", "이름부터 알려줄게요", "관심 분야가 취업이에요"]
+                          : ["자료 없이 바로 시작", "기업명부터 알려줄게요", "매출이 1억 미만이에요"],
+                    }]);
+                    setFormProfile(prev => ({ ...prev, _systemContext: `[고객유형: ${catLabel}]` } as any));
                   }}
                   className="p-4 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-all text-left active:scale-[0.98]"
                 >
@@ -1742,8 +1791,13 @@ ${convHtml}
               )}
             </div>
 
-            {/* Input area */}
-            <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-2.5">
+            {/* Input area — 드래그&드롭 지원 (consultant 모드) */}
+            <div
+              className="flex-shrink-0 border-t border-slate-100 bg-white px-3 py-2.5 transition-all"
+              onDragOver={mode === "consultant" ? (e) => { e.preventDefault(); e.currentTarget.style.background = "#f5f3ff"; e.currentTarget.style.borderColor = "#8b5cf6"; } : undefined}
+              onDragLeave={mode === "consultant" ? (e) => { e.currentTarget.style.background = ""; e.currentTarget.style.borderColor = ""; } : undefined}
+              onDrop={mode === "consultant" ? async (e) => { e.preventDefault(); e.currentTarget.style.background = ""; e.currentTarget.style.borderColor = ""; const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); } : undefined}
+            >
               {isDone ? (
                 <div className="space-y-2">
                   <button
@@ -1775,6 +1829,16 @@ ${convHtml}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
+                      {/* 파일 첨부 버튼 (consultant 모드) */}
+                      {mode === "consultant" && (
+                        <label className="p-2.5 text-violet-500 hover:text-violet-700 hover:bg-violet-50 rounded-xl cursor-pointer transition-all flex-shrink-0" title="자료 첨부">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                          </svg>
+                          <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
+                            onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
+                        </label>
+                      )}
                       <input
                         ref={inputRef}
                         type="text"
@@ -1786,7 +1850,7 @@ ${convHtml}
                             handleSend(input);
                           }
                         }}
-                        placeholder={mode === "consultant" ? "고객사 정보를 입력하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
+                        placeholder={mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
                         disabled={loading || matchingInProgress}
                         className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
                           mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"

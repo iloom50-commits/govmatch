@@ -242,13 +242,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                   현재 플랜
                 </div>
               ) : (
-                <button
-                  onClick={() => handleSubscribe("pro")}
-                  disabled={loading}
-                  className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50 mb-4"
-                >
-                  {loading ? "처리 중..." : "Pro 시작하기"}
-                </button>
+                <div className="py-2.5 bg-slate-100 text-slate-500 rounded-lg text-[12px] font-bold text-center mb-4">
+                  준비 중
+                </div>
               )}
 
               <ul className="space-y-2 flex-1">
@@ -269,7 +265,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isPro && (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">런칭특가 · 6/30까지 가입 시 해지 전까지 유지</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">곧 오픈 예정</p>
               )}
             </div>
           </div>

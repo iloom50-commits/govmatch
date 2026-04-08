@@ -5660,6 +5660,116 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         )
 
 
+def _send_html_email(to_email: str, subject: str, html_body: str) -> bool:
+    """범용 HTML 이메일 발송"""
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    if not smtp_user or not smtp_password:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(html_body, "html", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = f"지원금AI <{smtp_from}>"
+        msg["To"] = to_email
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"[Email] Send error to {to_email}: {e}")
+        return False
+
+
+class BulkEmailRequest(BaseModel):
+    client_ids: list  # 고객 ID 목록
+    subject: str
+    body: str  # HTML 또는 텍스트
+    include_report: Optional[bool] = False  # 최근 리포트 AI 요약 포함 여부
+
+
+@app.post("/api/pro/email/send")
+def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객사 일괄 이메일 발송"""
+    _require_pro(current_user)
+    if not req.client_ids:
+        raise HTTPException(status_code=400, detail="발송 대상을 선택해주세요.")
+    if not req.subject or not req.body:
+        raise HTTPException(status_code=400, detail="제목과 내용을 입력해주세요.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 선택된 고객 목록 조회
+    placeholders = ",".join(["%s"] * len(req.client_ids))
+    cur.execute(
+        f"""SELECT id, client_name, contact_email, contact_name
+            FROM client_profiles
+            WHERE id IN ({placeholders}) AND owner_business_number=%s AND is_active=TRUE""",
+        (*req.client_ids, current_user["bn"])
+    )
+    clients = [dict(r) for r in cur.fetchall()]
+
+    sent = 0
+    failed = 0
+    skipped = 0
+
+    for c in clients:
+        email = c.get("contact_email")
+        if not email or "@" not in email:
+            skipped += 1
+            continue
+
+        # 이메일 본문에 고객명 치환
+        body = req.body.replace("{{고객명}}", c.get("client_name", ""))
+        body = body.replace("{{담당자명}}", c.get("contact_name", ""))
+
+        # 리포트 요약 포함 옵션
+        report_html = ""
+        if req.include_report:
+            try:
+                cur.execute(
+                    "SELECT summary FROM client_reports WHERE client_profile_id=%s AND owner_business_number=%s ORDER BY created_at DESC LIMIT 1",
+                    (c["id"], current_user["bn"])
+                )
+                rrow = cur.fetchone()
+                if rrow:
+                    parts = (rrow["summary"] or "").split("\n\n", 1)
+                    report_html = f'<hr style="margin:20px 0;border:1px solid #e5e7eb;"><h3 style="color:#5b21b6;">AI 분석 요약</h3>{parts[1] if len(parts) > 1 else parts[0]}'
+            except Exception:
+                pass
+
+        full_html = f"""
+        <div style="font-family:'Malgun Gothic',sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1e293b;font-size:14px;line-height:1.8;">
+            {body}
+            {report_html}
+            <hr style="margin:30px 0;border:1px solid #e5e7eb;">
+            <p style="color:#94a3b8;font-size:11px;text-align:center;">
+                본 메일은 지원금AI(govmatch.kr)를 통해 발송되었습니다.<br>
+                밸류파인더 | Tel 010-5565-2299
+            </p>
+        </div>"""
+
+        if _send_html_email(email, req.subject, full_html):
+            sent += 1
+        else:
+            failed += 1
+
+    conn.close()
+    _log_event("pro_email", current_user["bn"], f"sent={sent},failed={failed},skipped={skipped}")
+
+    return {
+        "status": "SUCCESS",
+        "message": f"발송 완료: {sent}건 성공, {failed}건 실패, {skipped}건 이메일 없음",
+        "sent": sent, "failed": failed, "skipped": skipped,
+    }
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # API 제휴 관련
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

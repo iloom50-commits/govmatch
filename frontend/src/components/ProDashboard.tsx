@@ -144,8 +144,22 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ClientProfile | null>(null);
   const [expandedClient, setExpandedClient] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const isInd = clientType === "individual";
   const label = isInd ? "고객" : "고객사";
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const selectAll = () => {
+    if (selectedIds.size === clients.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(clients.map(c => c.id)));
+  };
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -202,10 +216,27 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
         </div>
       ) : (
         <div className="space-y-3">
+          {/* 전체선택 + 이메일 발송 바 */}
+          <div className="flex items-center justify-between px-1">
+            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+              <input type="checkbox" checked={selectedIds.size === clients.length && clients.length > 0} onChange={selectAll}
+                className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
+              전체 선택 ({selectedIds.size}/{clients.length})
+            </label>
+            {selectedIds.size > 0 && (
+              <button onClick={() => setShowEmailModal(true)}
+                className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700 transition-all">
+                선택 {selectedIds.size}명에게 이메일
+              </button>
+            )}
+          </div>
+
           {clients.map((c) => (
             <div key={c.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-violet-200 transition-all">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)}
+                    className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500 flex-shrink-0" />
                   <p className="font-bold text-slate-900 text-sm truncate">{c.client_name}</p>
                   {c.status && c.status !== "new" && (
                     <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
@@ -252,6 +283,85 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
           ))}
         </div>
       )}
+
+      {/* 이메일 발송 모달 */}
+      {showEmailModal && (
+        <EmailModal
+          clientIds={Array.from(selectedIds)}
+          clientCount={selectedIds.size}
+          headers={headers}
+          toast={toast}
+          onClose={() => setShowEmailModal(false)}
+          onDone={() => { setShowEmailModal(false); setSelectedIds(new Set()); }}
+        />
+      )}
+    </div>
+  );
+}
+
+
+// ━━━━━━━━━━━━━━ 이메일 발송 모달 ━━━━━━━━━━━━━━
+
+function EmailModal({ clientIds, clientCount, headers, toast, onClose, onDone }: {
+  clientIds: number[]; clientCount: number; headers: () => any; toast: any; onClose: () => void; onDone: () => void;
+}) {
+  const [subject, setSubject] = useState("지원금AI — 맞춤 지원사업 안내");
+  const [body, setBody] = useState(
+    `<p>안녕하세요, {{담당자명}}님.</p>\n<p><strong>{{고객명}}</strong>에 맞는 정부 지원사업 정보를 안내해 드립니다.</p>\n<p>자세한 내용은 아래 링크에서 확인하실 수 있습니다.</p>\n<p><a href="https://govmatch.kr" style="color:#5b21b6;font-weight:bold;">지원금AI 바로가기</a></p>\n<p>감사합니다.</p>`
+  );
+  const [includeReport, setIncludeReport] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!subject.trim() || !body.trim()) { toast("제목과 내용을 입력하세요", "error"); return; }
+    setSending(true);
+    try {
+      const res = await fetch(`${API}/api/pro/email/send`, {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({ client_ids: clientIds, subject, body, include_report: includeReport }),
+      });
+      const data = await res.json();
+      if (res.ok) { toast(data.message, "success"); onDone(); }
+      else { toast(data.detail || "발송 실패", "error"); }
+    } catch { toast("서버 오류", "error"); }
+    setSending(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b bg-violet-50 flex justify-between items-center">
+          <h3 className="font-bold text-violet-800">이메일 발송 ({clientCount}명)</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">제목</label>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              본문 <span className="text-slate-400 font-normal">({"{{고객명}}"}, {"{{담당자명}}"} 자동 치환)</span>
+            </label>
+            <textarea value={body} onChange={(e) => setBody(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none resize-none" rows={6} />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={includeReport} onChange={(e) => setIncludeReport(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
+            최근 AI 분석 리포트 자동 포함
+          </label>
+        </div>
+        <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">취소</button>
+          <button onClick={handleSend} disabled={sending}
+            className="px-5 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700 disabled:opacity-50">
+            {sending ? "발송 중..." : `${clientCount}명에게 발송`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

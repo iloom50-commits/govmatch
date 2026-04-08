@@ -1382,9 +1382,9 @@ ${convHtml}
             </div>
           </div>
 
-        ) : mode === "consultant" && consultantTab === "form" && !matchingInProgress && messages.length <= 1 ? (
+        ) : mode === "consultant" && consultantTab === "form" && false ? (
           <>
-            {/* Consultant Tab Toggle */}
+            {/* Legacy form — 비활성 (대화형으로 전환됨) */}
             <div className="flex-shrink-0 px-4 pt-3 pb-1 border-b border-slate-100 bg-slate-50/80">
               <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-xl">
                 <button onClick={() => setClientCategory("")} className="px-3 py-2 text-[12px] font-bold text-slate-500 hover:text-violet-700">
@@ -1579,7 +1579,7 @@ ${convHtml}
                     placeholder="입력하면 추천이 나타납니다"
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all"
                   />
-                  {formProfile._interestInput && formProfile._interestInput.length > 0 && (() => {
+                  {formProfile._interestInput && (formProfile._interestInput?.length || 0) > 0 && (() => {
                     const q = (formProfile._interestInput || "").toLowerCase();
                     const options = (isIndividual ? INDIVIDUAL_INTEREST_OPTIONS : INTEREST_OPTIONS)
                       .filter(opt => opt.toLowerCase().includes(q) && !formProfile.interests.includes(opt));
@@ -1666,31 +1666,12 @@ ${convHtml}
           </>
         ) : (
           <>
-            {/* Consultant Tab Toggle (chat mode) */}
-            {mode === "consultant" && !matchingInProgress && messages.length <= 1 && (
-              <div className="flex-shrink-0 px-4 pt-3 pb-1 border-b border-slate-100 bg-slate-50/80">
-                <div className="flex gap-1 p-0.5 bg-slate-200/80 rounded-xl">
-                  <button
-                    onClick={() => setConsultantTab("form")}
-                    className={`flex-1 py-2 text-[14px] font-bold rounded-lg transition-all ${
-                      consultantTab === "form"
-                        ? "bg-white text-violet-700 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    직접 입력
-                  </button>
-                  <button
-                    onClick={() => setConsultantTab("chat")}
-                    className={`flex-1 py-2 text-[14px] font-bold rounded-lg transition-all ${
-                      consultantTab === "chat"
-                        ? "bg-white text-violet-700 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    대화로 입력
-                  </button>
-                </div>
+            {/* 유형 변경 버튼 (consultant 대화 모드) */}
+            {mode === "consultant" && !matchingInProgress && messages.length <= 3 && (
+              <div className="flex-shrink-0 px-4 pt-2 pb-1 border-b border-slate-100 bg-slate-50/80">
+                <button onClick={() => { setClientCategory(""); setMessages([]); }} className="text-[12px] font-bold text-slate-400 hover:text-violet-600 transition-all">
+                  ← 유형 변경 / 새 고객
+                </button>
               </div>
             )}
 

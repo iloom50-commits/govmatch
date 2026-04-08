@@ -1129,13 +1129,13 @@ ${convHtml}
       <div
         data-chat-panel
         className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col pointer-events-auto ${
-          isFullscreen
+          (isFullscreen || (mode === "consultant" && clientCategory))
             ? "fixed inset-0 w-full h-full rounded-none z-[60]"
             : dragPos
               ? "fixed rounded-2xl"
               : "relative w-full sm:w-[420px] lg:w-[380px] h-full animate-in slide-in-from-left duration-300"
         }`}
-        style={!isFullscreen && dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
+        style={!isFullscreen && !(mode === "consultant" && clientCategory) && dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >
 
         {/* Header — 드래그 핸들 */}
@@ -1697,13 +1697,44 @@ ${convHtml}
               </div>
             )}
 
+            {/* Chat + Tool Panel wrapper */}
+            <div className={`flex-1 flex ${mode === "consultant" && clientCategory ? "flex-row" : "flex-col"} overflow-hidden`}>
+
+            {/* 우측 도구 패널 — consultant 전체화면일 때만 */}
+            {mode === "consultant" && clientCategory && (
+              <div className="hidden lg:flex flex-col w-[220px] border-r border-slate-100 bg-slate-50/50 p-3 space-y-2 flex-shrink-0 overflow-y-auto order-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">도구</p>
+                <label className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 cursor-pointer transition-all text-[12px] font-semibold text-slate-700">
+                  <span>📎</span> 자료 첨부
+                  <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
+                    onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
+                </label>
+                <button onClick={() => { if (messages.length > 0) handleSend("이 고객에 맞는 지원사업을 매칭해줘"); }}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
+                  <span>🔍</span> 매칭 실행
+                </button>
+                <button onClick={() => { if (messages.length > 0) handleSend("이 고객의 컨설팅 보고서를 작성해줘"); }}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
+                  <span>📊</span> 보고서 작성
+                </button>
+                <button onClick={() => { if (messages.length > 0) handleSend("이 고객의 자격요건을 판단해줘"); }}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
+                  <span>✅</span> 자격 판단
+                </button>
+                <button onClick={() => { setClientCategory(""); setMessages([]); }}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all text-[12px] font-semibold text-slate-400 text-left">
+                  <span>🔄</span> 새 고객
+                </button>
+              </div>
+            )}
+
             {/* Chat area */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto px-4 py-4 space-y-3 order-1 ${mode === "consultant" && clientCategory ? "px-6 py-5" : ""}`}>
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[88%] ${msg.role === "user" ? "order-1" : ""}`}>
+                  <div className={`${mode === "consultant" && clientCategory ? "max-w-[80%]" : "max-w-[88%]"} ${msg.role === "user" ? "order-1" : ""}`}>
                     {/* Message bubble */}
-                    <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed ${
+                    <div className={`px-3.5 py-2.5 rounded-2xl ${mode === "consultant" && clientCategory ? "text-[15px]" : "text-[13px]"} leading-relaxed ${
                       msg.role === "user"
                         ? mode === "consultant" ? "bg-violet-600 text-white rounded-br-md" : "bg-indigo-600 text-white rounded-br-md"
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
@@ -1793,6 +1824,7 @@ ${convHtml}
                 </div>
               )}
             </div>
+            </div>{/* Chat + Tool Panel wrapper 닫기 */}
 
             {/* Input area — 드래그&드롭 지원 (consultant 모드) */}
             <div

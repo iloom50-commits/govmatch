@@ -1129,13 +1129,13 @@ ${convHtml}
       <div
         data-chat-panel
         className={`bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col pointer-events-auto ${
-          (isFullscreen || (mode === "consultant" && clientCategory))
+          (isFullscreen || mode === "consultant" || mode === "select")
             ? "fixed inset-0 w-full h-full rounded-none z-[60]"
             : dragPos
               ? "fixed rounded-2xl"
               : "relative w-full sm:w-[420px] lg:w-[380px] h-full animate-in slide-in-from-left duration-300"
         }`}
-        style={!isFullscreen && !(mode === "consultant" && clientCategory) && dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
+        style={!isFullscreen && mode === "free" && dragPos ? { left: dragPos.x, top: dragPos.y, width: 400, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >
 
         {/* Header — 드래그 핸들 */}

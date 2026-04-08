@@ -1861,8 +1861,10 @@ function ConsultantFileUpload({ clientId, onFileText }: { clientId: number | nul
     try {
       const token = localStorage.getItem("auth_token") || "";
 
+      let extractedText = "";
+
       if (clientId) {
-        // 기존 고객이면 서버에 저장
+        // 기존 고객이면 서버에 저장 + 텍스트 추출
         const formData = new FormData();
         formData.append("file", file);
         formData.append("file_type", fileType);
@@ -1874,22 +1876,45 @@ function ConsultantFileUpload({ clientId, onFileText }: { clientId: number | nul
         });
         if (res.ok) {
           const data = await res.json();
-          // 서버에서 텍스트 추출 완료
           if (data.extracted_chars > 0) {
-            setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: `${data.extracted_chars}자 추출됨` } : f));
+            extractedText = `[서버 추출 ${data.extracted_chars}자]`;
+            setFiles(prev => prev.map((f, i) => i === idx ? { ...f, summary: "AI 분석 중..." } : f));
           } else {
             setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "텍스트 추출 불가" } : f));
+            return;
           }
         }
       } else {
-        // 새 고객 — 클라이언트에서 파일 읽기만
-        const reader = new FileReader();
-        reader.onload = () => {
-          const text = reader.result as string;
-          onFileText(text.substring(0, 5000));
-          setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: `${Math.min(text.length, 5000)}자 첨부` } : f));
-        };
-        reader.readAsText(file);
+        // 새 고객 — 클라이언트에서 파일 읽기
+        extractedText = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string || "").substring(0, 8000));
+          reader.onerror = () => resolve("");
+          reader.readAsText(file);
+        });
+        if (!extractedText) {
+          setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "텍스트 읽기 실패" } : f));
+          return;
+        }
+        onFileText(extractedText.substring(0, 5000));
+        setFiles(prev => prev.map((f, i) => i === idx ? { ...f, summary: "AI 분석 중..." } : f));
+      }
+
+      // AI 요약 분석 호출
+      try {
+        const analyzeRes = await fetch(`${API}/api/pro/files/analyze`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ text: extractedText.substring(0, 8000), file_name: file.name, file_type: fileType }),
+        });
+        if (analyzeRes.ok) {
+          const analyzeData = await analyzeRes.json();
+          setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: analyzeData.summary || "분석 완료" } : f));
+        } else {
+          setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "분석 실패" } : f));
+        }
+      } catch {
+        setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: extractedText ? "업로드 완료" : "분석 실패" } : f));
       }
     } catch {
       setFiles(prev => prev.map((f, i) => i === idx ? { ...f, uploading: false, summary: "업로드 실패" } : f));
@@ -1919,9 +1944,14 @@ function ConsultantFileUpload({ clientId, onFileText }: { clientId: number | nul
               </span>
               <span className="truncate text-slate-700 flex-1">{f.name}</span>
               {f.uploading ? (
-                <span className="text-violet-500 animate-pulse">분석 중...</span>
+                <span className="text-violet-500 animate-pulse text-[10px]">분석 중...</span>
+              ) : f.summary.includes("\n") || f.summary.length > 50 ? (
+                <details className="text-[10px] text-emerald-700">
+                  <summary className="cursor-pointer font-medium">AI 분석 완료 ▼</summary>
+                  <div className="mt-1 p-2 bg-emerald-50 rounded text-[10px] whitespace-pre-wrap">{f.summary}</div>
+                </details>
               ) : (
-                <span className="text-emerald-600 font-medium">{f.summary}</span>
+                <span className="text-emerald-600 font-medium text-[10px]">{f.summary}</span>
               )}
             </div>
           ))}

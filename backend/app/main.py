@@ -5662,6 +5662,47 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         )
 
 
+class FileAnalyzeRequest(BaseModel):
+    text: str
+    file_name: Optional[str] = ""
+    file_type: Optional[str] = ""
+
+
+@app.post("/api/pro/files/analyze")
+def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO: 첨부 자료 AI 요약 분석"""
+    _require_pro(current_user)
+    if not req.text or len(req.text.strip()) < 20:
+        return {"status": "SUCCESS", "summary": "분석할 텍스트가 부족합니다."}
+
+    try:
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다."}
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+        prompt = f"""아래는 고객사가 제출한 '{req.file_type or "자료"}' ({req.file_name or "파일"})입니다.
+핵심 내용을 3~5줄로 요약하세요. 숫자(매출, 인원, 금액 등)가 있으면 반드시 포함하세요.
+
+[자료 내용]
+{req.text[:8000]}
+
+[요약 형식]
+- 핵심1: ...
+- 핵심2: ...
+- 핵심3: ...
+한국어로 간결하게."""
+
+        response = model.generate_content(prompt)
+        summary = response.text.strip() if response and response.text else "요약 생성 실패"
+        return {"status": "SUCCESS", "summary": summary}
+    except Exception as e:
+        return {"status": "SUCCESS", "summary": f"분석 오류: {str(e)[:100]}"}
+
+
 def _send_html_email(to_email: str, subject: str, html_body: str) -> bool:
     """범용 HTML 이메일 발송"""
     smtp_user = os.getenv("SMTP_USER", "")

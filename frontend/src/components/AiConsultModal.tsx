@@ -252,12 +252,8 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       if (data.ai_used !== undefined) {
         onPlanUpdate?.({ ai_used: data.ai_used, consult_limit: data.ai_limit });
       }
-      if (data.done) {
-        setIsDone(true);
-        if (data.consult_log_id) setConsultLogId(data.consult_log_id);
-        // 상담 완료 시 맞춤 설정 유도 이벤트
-        window.dispatchEvent(new CustomEvent("consult-done"));
-      }
+      // AI가 done=true를 반환해도 자동 종료하지 않음 — 사용자가 직접 "상담 종료" 클릭
+      if (data.consult_log_id) setConsultLogId(data.consult_log_id);
     } catch {
       toast("서버 연결에 실패했습니다.", "error");
     }

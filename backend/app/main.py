@@ -198,7 +198,7 @@ def init_database():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS client_files (
                     id SERIAL PRIMARY KEY,
-                    client_id INTEGER NOT NULL REFERENCES client_profiles(id) ON DELETE CASCADE,
+                    client_id INTEGER NOT NULL,
                     owner_business_number VARCHAR(20) NOT NULL,
                     file_name VARCHAR(500) NOT NULL,
                     file_type VARCHAR(50) DEFAULT 'other',

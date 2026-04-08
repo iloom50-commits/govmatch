@@ -213,6 +213,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # client_files에 extracted_text 컬럼 추가 (기존 테이블인 경우)
+        try:
+            cursor.execute("ALTER TABLE client_files ADD COLUMN IF NOT EXISTS extracted_text TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS keyword_synonyms (

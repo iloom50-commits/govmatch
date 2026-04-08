@@ -3,7 +3,7 @@ import os
 import asyncio
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -4960,8 +4960,6 @@ def api_pro_client_delete(client_id: int, current_user: dict = Depends(_get_curr
 
 
 # ── 1.5) 고객사 자료 첨부 (파일 업로드/조회/삭제) ──
-
-from fastapi import UploadFile, File, Form
 
 @app.post("/api/pro/clients/{client_id}/files")
 async def api_pro_client_upload_file(

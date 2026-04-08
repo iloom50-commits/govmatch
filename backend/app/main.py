@@ -5005,7 +5005,7 @@ async def api_pro_client_upload_file(
     cur.execute(
         """INSERT INTO client_files (client_id, owner_business_number, file_name, file_type, file_size, file_data, extracted_text, memo)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (client_id, current_user["bn"], file.filename, file_type, len(content), content, extracted_text, memo)
+        (client_id, current_user["bn"], file.filename, file_type, len(content), psycopg2.Binary(content), extracted_text, memo)
     )
     file_id = cur.fetchone()["id"]
     conn.commit()

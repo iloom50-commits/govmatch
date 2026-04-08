@@ -5331,6 +5331,21 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     except Exception:
         pass
 
+    # 4.5. 고객사 첨부 자료 텍스트 수집 (AI 프롬프트에 포함)
+    attached_docs_text = ""
+    try:
+        cur.execute(
+            "SELECT file_name, file_type, extracted_text FROM client_files WHERE client_id=%s AND owner_business_number=%s ORDER BY created_at DESC LIMIT 5",
+            (req.client_profile_id, current_user["bn"])
+        )
+        for frow in cur.fetchall():
+            fr = dict(frow)
+            et = (fr.get("extracted_text") or "").strip()
+            if et:
+                attached_docs_text += f"\n[첨부: {fr['file_name']} ({fr['file_type']})]\n{et[:3000]}\n"
+    except Exception:
+        pass
+
     # 5. AI 종합 요약 생성
     ai_summary = ""
     try:
@@ -5388,7 +5403,10 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 [2주 내 마감 임박]
 {urgent_lines}
 {consult_text}
-
+{f'''
+[고객사 제출 자료 분석]
+{attached_docs_text[:5000]}
+''' if attached_docs_text else ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 [리포트 작성 규칙] — 반드시 아래 7개 섹션을 모두 포함
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -5568,6 +5586,78 @@ def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_curr
     if d.get("establishment_date"):
         d["establishment_date"] = str(d["establishment_date"])
     return {"status": "SUCCESS", "report": d}
+
+
+@app.get("/api/pro/reports/{report_id}/pdf")
+def api_pro_report_pdf(report_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 리포트 PDF 다운로드 — HTML → PDF 변환"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT r.title, r.summary, r.created_at, cp.client_name
+           FROM client_reports r
+           JOIN client_profiles cp ON cp.id = r.client_profile_id
+           WHERE r.id=%s AND r.owner_business_number=%s""",
+        (report_id, current_user["bn"])
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+    r = dict(row)
+
+    # summary에서 brief + AI HTML 분리
+    parts = (r.get("summary") or "").split("\n\n", 1)
+    brief = parts[0] if parts else ""
+    ai_html = parts[1] if len(parts) > 1 else ""
+
+    # HTML 래핑
+    html = f"""<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>{r['title']}</title>
+<style>
+body {{ font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 30px; color: #1e293b; font-size: 13px; line-height: 1.8; }}
+h1 {{ color: #5b21b6; font-size: 22px; border-bottom: 3px solid #c4b5fd; padding-bottom: 10px; }}
+h2 {{ color: #5b21b6; font-size: 16px; border-bottom: 2px solid #c4b5fd; padding-bottom: 6px; margin-top: 28px; }}
+table {{ width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }}
+th {{ background: #f5f3ff; color: #5b21b6; padding: 8px 10px; border: 1px solid #e5e7eb; text-align: left; font-weight: bold; }}
+td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
+.header {{ text-align: center; margin-bottom: 30px; }}
+.header p {{ color: #64748b; font-size: 12px; }}
+.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e5e7eb; padding-top: 15px; }}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>{r['title']}</h1>
+<p>{r['client_name']} | 작성일: {str(r.get('created_at',''))[:10]} | govmatch.kr</p>
+</div>
+{ai_html}
+<div class="footer">
+<p>본 보고서는 AI 분석 결과를 기반으로 작성되었으며, 최종 결과는 주관기관의 심사에 따릅니다.</p>
+<p>지원금AI (govmatch.kr) | 밸류파인더 | Tel 010-5565-2299</p>
+</div>
+</body></html>"""
+
+    # HTML → PDF (weasyprint 사용 시도, 없으면 HTML 반환)
+    try:
+        from weasyprint import HTML as WeasyprintHTML
+        pdf_bytes = WeasyprintHTML(string=html).write_pdf()
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{r["client_name"]}_report.pdf"'}
+        )
+    except ImportError:
+        # weasyprint 미설치 → HTML 파일로 반환
+        from fastapi.responses import Response
+        return Response(
+            content=html.encode("utf-8"),
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{r["client_name"]}_report.html"'}
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

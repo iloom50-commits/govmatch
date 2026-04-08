@@ -1702,29 +1702,26 @@ ${convHtml}
 
             {/* 우측 도구 패널 — consultant 전체화면일 때만 */}
             {mode === "consultant" && clientCategory && (
-              <div className="hidden lg:flex flex-col w-[220px] border-r border-slate-100 bg-slate-50/50 p-3 space-y-2 flex-shrink-0 overflow-y-auto order-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">도구</p>
-                <label className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 cursor-pointer transition-all text-[12px] font-semibold text-slate-700">
-                  <span>📎</span> 자료 첨부
+              <div className="hidden lg:flex flex-col w-[260px] border-r border-slate-100 bg-slate-50/30 p-4 flex-shrink-0 overflow-y-auto order-2">
+                <p className="text-[13px] font-bold text-violet-700 mb-2">📎 고객 자료 첨부</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+                  재무제표, 사업계획서, 회사소개서 등을 첨부하면<br/>
+                  <strong className="text-violet-600">AI가 자동 분석</strong>하여 상담에 반영합니다.
+                </p>
+                <label
+                  className="flex-1 min-h-[200px] flex flex-col items-center justify-center border-2 border-dashed border-violet-300 rounded-2xl bg-white hover:bg-violet-50 hover:border-violet-500 cursor-pointer transition-all"
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("bg-violet-100", "border-violet-500"); }}
+                  onDragLeave={(e) => { e.currentTarget.classList.remove("bg-violet-100", "border-violet-500"); }}
+                  onDrop={async (e) => { e.preventDefault(); e.currentTarget.classList.remove("bg-violet-100", "border-violet-500"); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
+                >
+                  <div className="text-center p-4">
+                    <span className="text-4xl block mb-3">📄</span>
+                    <p className="text-[13px] font-bold text-violet-700">파일을 드래그하거나 클릭</p>
+                    <p className="text-[11px] text-slate-400 mt-1">PDF, HWP, DOCX, TXT (10MB)</p>
+                  </div>
                   <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
                     onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
                 </label>
-                <button onClick={() => { if (messages.length > 0) handleSend("이 고객에 맞는 지원사업을 매칭해줘"); }}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
-                  <span>🔍</span> 매칭 실행
-                </button>
-                <button onClick={() => { if (messages.length > 0) handleSend("이 고객의 컨설팅 보고서를 작성해줘"); }}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
-                  <span>📊</span> 보고서 작성
-                </button>
-                <button onClick={() => { if (messages.length > 0) handleSend("이 고객의 자격요건을 판단해줘"); }}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-violet-300 transition-all text-[12px] font-semibold text-slate-700 text-left">
-                  <span>✅</span> 자격 판단
-                </button>
-                <button onClick={() => { setClientCategory(""); setMessages([]); }}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all text-[12px] font-semibold text-slate-400 text-left">
-                  <span>🔄</span> 새 고객
-                </button>
               </div>
             )}
 

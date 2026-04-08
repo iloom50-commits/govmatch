@@ -20,6 +20,11 @@ interface ClientProfile {
   establishment_date?: string;
   interests?: string;
   memo?: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  tags?: string;
+  status?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -197,18 +202,37 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
       ) : (
         <div className="space-y-3">
           {clients.map((c) => (
-            <div key={c.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-violet-200 transition-all">
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-900 text-sm truncate">{c.client_name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {isInd
-                    ? `${c.address_city || "지역미등록"} | ${c.interests || "관심분야미등록"}`
-                    : `${c.address_city || "지역미등록"} | ${c.industry_name || c.industry_code || "업종미등록"} | ${c.revenue_bracket || "매출미등록"}`
-                  }
-                </p>
-                {c.memo && <p className="text-xs text-slate-400 mt-1 truncate">{c.memo}</p>}
+            <div key={c.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-violet-200 transition-all">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <p className="font-bold text-slate-900 text-sm truncate">{c.client_name}</p>
+                  {c.status && c.status !== "new" && (
+                    <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                      c.status === "consulting" ? "bg-blue-100 text-blue-700" :
+                      c.status === "matched" ? "bg-indigo-100 text-indigo-700" :
+                      c.status === "applied" ? "bg-amber-100 text-amber-700" :
+                      c.status === "selected" ? "bg-emerald-100 text-emerald-700" :
+                      "bg-slate-100 text-slate-500"
+                    }`}>
+                      {{ consulting: "상담중", matched: "매칭", applied: "신청", selected: "선정", new: "신규" }[c.status] || c.status}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 ml-3">
+              <p className="text-xs text-slate-500">
+                {isInd
+                  ? `${c.address_city || "지역미등록"} | ${c.interests || "관심분야미등록"}`
+                  : `${c.address_city || "지역미등록"} | ${c.industry_name || c.industry_code || "업종미등록"} | ${c.revenue_bracket || "매출미등록"}`
+                }
+              </p>
+              {(c.contact_name || c.contact_phone || c.contact_email) && (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {[c.contact_name, c.contact_phone, c.contact_email].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {c.tags && <div className="flex gap-1 mt-1.5">{c.tags.split(",").filter(Boolean).map((t, i) => <span key={i} className="px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[9px] font-bold rounded">{t.trim()}</span>)}</div>}
+              {c.memo && <p className="text-xs text-slate-400 mt-1 truncate">{c.memo}</p>}
+              <div className="flex items-center gap-2 mt-2">
                 <button onClick={() => { setEditTarget(c); setShowForm(true); }} className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100">
                   수정
                 </button>
@@ -241,6 +265,11 @@ function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
     employee_count_bracket: initial?.employee_count_bracket || "",
     interests: initial?.interests || "",
     memo: initial?.memo || "",
+    contact_name: initial?.contact_name || "",
+    contact_email: initial?.contact_email || "",
+    contact_phone: initial?.contact_phone || "",
+    tags: initial?.tags || "",
+    status: initial?.status || "new",
   });
   const [saving, setSaving] = useState(false);
 
@@ -368,6 +397,44 @@ function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
             </div>
           </div>
         )}
+
+        {/* ── 담당자 연락처 ── */}
+        <div className="col-span-2 mt-2 pt-3 border-t border-violet-200/50">
+          <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-2">담당자 연락처</p>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">담당자명</label>
+          <input value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="김담당" />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">전화번호</label>
+          <input value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="010-0000-0000" />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">이메일</label>
+          <input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="contact@company.com" />
+        </div>
+
+        {/* 상태 + 태그 */}
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">상태</label>
+          <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none">
+            <option value="new">신규</option>
+            <option value="consulting">상담중</option>
+            <option value="matched">매칭완료</option>
+            <option value="applied">신청중</option>
+            <option value="selected">선정</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 mb-1">태그</label>
+          <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="VIP, IT업종" />
+        </div>
 
         {/* 메모 */}
         <div className="col-span-2">

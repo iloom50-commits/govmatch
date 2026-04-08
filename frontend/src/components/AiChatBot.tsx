@@ -407,6 +407,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   const sendToConsultantChat = useCallback(async (chatHistory: ChatMessage[]) => {
     setLoading(true);
     const token = localStorage.getItem("auth_token");
+    const sysCtx = (formProfile as any)?._systemContext || "";
 
     try {
       const res = await fetch(`${API}/api/ai/consultant/chat`, {
@@ -416,7 +417,10 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          messages: chatHistory.map((m) => ({ role: m.role, text: m.text })),
+          messages: chatHistory.map((m, i) => ({
+            role: m.role,
+            text: (i === 0 && m.role === "user" && sysCtx) ? `${sysCtx}\n\n${m.text}` : m.text,
+          })),
         }),
       });
 
@@ -1566,19 +1570,49 @@ ${convHtml}
               />
             </div>
 
-            {/* 폼 제출 버튼 */}
-            <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 py-3">
+            {/* 상담 시작 버튼 */}
+            <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 py-3 space-y-2">
+              <button
+                onClick={() => {
+                  // 고객 정보 + 자료 요약을 포함한 AI 상담 시작
+                  const fp = formProfile;
+                  const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
+                  const profile = [
+                    fp.company_name && `${clientCategory === "individual" ? "이름" : "기업명"}: ${fp.company_name}`,
+                    fp.establishment_date && `${clientCategory === "individual" ? "생년월일" : "설립일"}: ${fp.establishment_date}`,
+                    fp.address_city && `지역: ${fp.address_city}`,
+                    fp.industry_code && `업종: ${fp.industry_code}`,
+                    fp.revenue_bracket && `매출: ${fp.revenue_bracket}`,
+                    fp.employee_count_bracket && `직원수: ${fp.employee_count_bracket}`,
+                    fp.interests?.length && `관심분야: ${fp.interests.join(",")}`,
+                  ].filter(Boolean).join("\n");
+                  const attached = (fp as any)._attachedText ? `\n\n[첨부 자료]\n${(fp as any)._attachedText.substring(0, 3000)}` : "";
+
+                  setConsultantTab("chat");
+                  setMessages([{
+                    role: "assistant",
+                    text: `**${catLabel} 고객 정보가 등록되었습니다.**\n\n${profile}\n\n어떤 상담을 도와드릴까요?`,
+                    choices: ["이 고객에 맞는 지원사업 찾아줘", "첨부 자료 분석해줘", "사업 전략 상담", "자격요건 판단해줘"],
+                  }]);
+
+                  // 시스템 메시지로 고객 정보를 AI에 전달 (첫 메시지에 포함)
+                  setFormProfile(prev => ({ ...prev, _systemContext: `[${catLabel} 고객]\n${profile}${attached}` } as any));
+                }}
+                disabled={!isFormValid()}
+                className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[16px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                💬 상담 시작
+              </button>
               <button
                 onClick={handleFormSubmit}
                 disabled={!isFormValid() || matchingInProgress}
-                className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[16px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-white border-2 border-violet-200 text-violet-700 text-[14px] font-bold rounded-xl hover:bg-violet-50 transition-all active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-                맞춤 지원사업 매칭 실행
+                바로 매칭 실행
               </button>
-              {!isPro && <p className="text-center text-[12px] text-slate-400 mt-1.5">매칭 실행 시 AI 1건이 차감됩니다</p>}
             </div>
           </>
         ) : (

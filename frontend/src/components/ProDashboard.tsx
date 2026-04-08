@@ -143,6 +143,7 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ClientProfile | null>(null);
+  const [expandedClient, setExpandedClient] = useState<number | null>(null);
   const isInd = clientType === "individual";
   const label = isInd ? "고객" : "고객사";
 
@@ -236,10 +237,17 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
                 <button onClick={() => { setEditTarget(c); setShowForm(true); }} className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100">
                   수정
                 </button>
+                <button onClick={() => setExpandedClient(expandedClient === c.id ? null : c.id)} className="px-3 py-1.5 text-xs font-semibold text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100">
+                  자료 {expandedClient === c.id ? "▲" : "▼"}
+                </button>
                 <button onClick={() => handleDelete(c.id, c.client_name)} className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 rounded-lg hover:bg-rose-100">
                   삭제
                 </button>
               </div>
+              {/* 자료 첨부 패널 */}
+              {expandedClient === c.id && (
+                <ClientFilesPanel clientId={c.id} headers={headers} toast={toast} />
+              )}
             </div>
           ))}
         </div>
@@ -450,6 +458,117 @@ function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
           {saving ? "저장 중..." : initial ? "수정" : "등록"}
         </button>
       </div>
+    </div>
+  );
+}
+
+
+// ━━━━━━━━━━━━━━ 자료 첨부 패널 ━━━━━━━━━━━━━━
+
+const FILE_TYPES = [
+  { value: "financial", label: "재무제표" },
+  { value: "business_plan", label: "사업계획서" },
+  { value: "ir", label: "IR자료" },
+  { value: "company_intro", label: "회사소개서" },
+  { value: "contract", label: "계약서" },
+  { value: "consultation", label: "상담기록" },
+  { value: "other", label: "기타" },
+];
+
+function ClientFilesPanel({ clientId, headers, toast }: { clientId: number; headers: () => any; toast: any }) {
+  const [files, setFiles] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [fileType, setFileType] = useState("other");
+
+  const fetchFiles = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/pro/clients/${clientId}/files`, { headers: headers() });
+      const data = await res.json();
+      if (data.files) setFiles(data.files);
+    } catch { /* */ }
+  }, [clientId, headers]);
+
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast("10MB 이하 파일만 가능합니다.", "error"); return; }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("file_type", fileType);
+    formData.append("memo", "");
+
+    try {
+      const token = localStorage.getItem("auth_token") || "";
+      const res = await fetch(`${API}/api/pro/clients/${clientId}/files`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast(`${file.name} 업로드 완료${data.extracted_chars ? ` (${data.extracted_chars}자 추출)` : ""}`, "success");
+        fetchFiles();
+      } else {
+        toast(data.detail || "업로드 실패", "error");
+      }
+    } catch { toast("서버 오류", "error"); }
+    setUploading(false);
+    e.target.value = "";
+  };
+
+  const handleDelete = async (fileId: number, fileName: string) => {
+    if (!confirm(`"${fileName}" 파일을 삭제할까요?`)) return;
+    try {
+      const res = await fetch(`${API}/api/pro/clients/${clientId}/files/${fileId}`, { method: "DELETE", headers: headers() });
+      if (res.ok) { toast("삭제 완료", "success"); fetchFiles(); }
+    } catch { toast("삭제 실패", "error"); }
+  };
+
+  const handleDownload = (fileId: number, fileName: string) => {
+    const token = localStorage.getItem("auth_token") || "";
+    window.open(`${API}/api/pro/clients/${clientId}/files/${fileId}/download?token=${token}`, "_blank");
+  };
+
+  const typeLabel = (t: string) => FILE_TYPES.find(ft => ft.value === t)?.label || t;
+
+  return (
+    <div className="mt-3 p-3 bg-white rounded-lg border border-violet-200 space-y-3">
+      <div className="flex items-center gap-2">
+        <select value={fileType} onChange={(e) => setFileType(e.target.value)}
+          className="px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-violet-300 outline-none">
+          {FILE_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+        </select>
+        <label className={`flex-1 px-3 py-1.5 text-center border-2 border-dashed rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+          uploading ? "border-slate-200 text-slate-400" : "border-violet-300 text-violet-600 hover:bg-violet-50"
+        }`}>
+          {uploading ? "업로드 중..." : "파일 선택 (PDF, HWP, DOCX, 10MB)"}
+          <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.jpg,.png" onChange={handleUpload} disabled={uploading} />
+        </label>
+      </div>
+
+      {files.length === 0 ? (
+        <p className="text-xs text-slate-400 text-center py-2">첨부된 자료가 없습니다</p>
+      ) : (
+        <div className="space-y-1.5">
+          {files.map(f => (
+            <div key={f.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg text-xs">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[9px] font-bold rounded">{typeLabel(f.file_type)}</span>
+                <span className="truncate text-slate-700 font-medium">{f.file_name}</span>
+                <span className="text-slate-400 flex-shrink-0">{(f.file_size / 1024).toFixed(0)}KB</span>
+              </div>
+              <div className="flex gap-1.5 ml-2">
+                <button onClick={() => handleDownload(f.id, f.file_name)} className="px-2 py-1 text-indigo-600 bg-indigo-50 rounded hover:bg-indigo-100 text-[10px] font-semibold">다운</button>
+                <button onClick={() => handleDelete(f.id, f.file_name)} className="px-2 py-1 text-rose-600 bg-rose-50 rounded hover:bg-rose-100 text-[10px] font-semibold">삭제</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

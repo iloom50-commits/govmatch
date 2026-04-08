@@ -203,6 +203,7 @@ def init_database():
                     file_type VARCHAR(50) DEFAULT 'other',
                     file_size INTEGER DEFAULT 0,
                     file_data BYTEA,
+                    extracted_text TEXT DEFAULT '',
                     memo TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -4985,15 +4986,36 @@ async def api_pro_client_upload_file(
         conn.close()
         raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
 
+    # 파일 텍스트 추출 (PDF, HWP, HWPX, DOCX)
+    extracted_text = ""
+    try:
+        from app.services.doc_analysis_service import extract_text_from_bytes, _detect_file_type
+        fname = (file.filename or "").lower()
+        if fname.endswith(".pdf"):
+            detected = "pdf"
+        elif fname.endswith(".hwp"):
+            detected = "hwp"
+        elif fname.endswith(".hwpx"):
+            detected = "hwpx"
+        elif fname.endswith(".docx"):
+            detected = "docx"
+        else:
+            detected = _detect_file_type(content, fname)
+        if detected in ("pdf", "hwp", "hwpx", "docx", "ole"):
+            extracted_text = extract_text_from_bytes(content, detected, max_chars=30000)
+            print(f"[ClientFile] Extracted {len(extracted_text)} chars from {file.filename} ({detected})")
+    except Exception as e:
+        print(f"[ClientFile] Text extraction error: {e}")
+
     cur.execute(
-        """INSERT INTO client_files (client_id, owner_business_number, file_name, file_type, file_size, file_data, memo)
-           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (client_id, current_user["bn"], file.filename, file_type, len(content), content, memo)
+        """INSERT INTO client_files (client_id, owner_business_number, file_name, file_type, file_size, file_data, extracted_text, memo)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (client_id, current_user["bn"], file.filename, file_type, len(content), content, extracted_text, memo)
     )
     file_id = cur.fetchone()["id"]
     conn.commit()
     conn.close()
-    return {"status": "SUCCESS", "id": file_id, "message": f"'{file.filename}' 업로드 완료"}
+    return {"status": "SUCCESS", "id": file_id, "message": f"'{file.filename}' 업로드 완료", "extracted_chars": len(extracted_text)}
 
 
 @app.get("/api/pro/clients/{client_id}/files")

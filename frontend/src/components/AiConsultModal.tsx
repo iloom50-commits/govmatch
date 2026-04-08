@@ -301,6 +301,21 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   // 사용자가 직접 상담 종료
   const handleManualEnd = () => {
     setIsDone(true);
+
+    // 마지막 AI 메시지에서 결론 추출
+    const lastAiMsg = [...messages].reverse().find(m => m.role === "assistant");
+    const lastText = lastAiMsg?.text || "";
+
+    // 결과를 이벤트로 발행 → 고객사 상담에서 수신 가능
+    window.dispatchEvent(new CustomEvent("consult-result", {
+      detail: {
+        announcement_id: announcement?.announcement_id,
+        title: announcement?.title,
+        summary: lastText.substring(0, 500),
+        consult_log_id: consultLogId,
+      }
+    }));
+
     setMessages(prev => [...prev, {
       role: "assistant" as const,
       text: "상담이 종료되었습니다.\n\n이 공고에 대해 다시 상담을 원하시면 공고 카드에서 **'나도 받을 수 있나?'**를 클릭하세요.",

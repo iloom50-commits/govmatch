@@ -249,6 +249,28 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
+  // 공고 AI 상담 결과 수신 → 고객사 상담 컨텍스트에 추가
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if (mode !== "consultant" || !open) return;
+      const detail = (e as CustomEvent).detail;
+      if (detail?.title && detail?.summary) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          text: `📋 **공고 상담 결과가 반영되었습니다.**\n\n**${detail.title}**\n${detail.summary.substring(0, 300)}...\n\n이 결과를 바탕으로 추가 상담을 진행할까요?`,
+          choices: ["다른 공고도 상담해줘", "이 고객 보고서 작성해줘", "직접 질문할게요"],
+        }]);
+        // 컨텍스트에 추가
+        setFormProfile(prev => ({
+          ...prev,
+          _systemContext: `${(prev as any)?._systemContext || ""}\n\n[공고 상담 결과: ${detail.title}]\n${detail.summary.substring(0, 1000)}`,
+        } as any));
+      }
+    };
+    window.addEventListener("consult-result", handler);
+    return () => window.removeEventListener("consult-result", handler);
+  }, [mode, open]);
+
   // 로그인된 사용자 프로필 가져오기
   const fetchUserProfile = async (): Promise<Record<string, any> | null> => {
     const token = localStorage.getItem("auth_token");

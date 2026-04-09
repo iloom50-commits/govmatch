@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { useModalBack } from "@/hooks/useModalBack";
 import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -109,7 +108,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   userType?: string | null;
 }) {
   const { toast } = useToast();
-  useModalBack(true, onClose);
 
   // 상태
   const [activeView, setActiveView] = useState<ActiveView>("chat");
@@ -144,6 +142,32 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   };
 
   const t = dark ? theme.dark : theme.light;
+
+  // 뒤로가기: 단계별 복귀 (상담중→유형선택→닫기)
+  const handleBack = useCallback(() => {
+    if (activeView !== "chat") {
+      setActiveView("chat");
+      window.history.pushState({ proDash: true }, "");
+      return;
+    }
+    if (clientCategory || messages.length > 0) {
+      setClientCategory("");
+      setMessages([]);
+      setFlowState("idle");
+      setSelectedClient(null);
+      setSystemContext("");
+      window.history.pushState({ proDash: true }, "");
+      return;
+    }
+    onClose();
+  }, [activeView, clientCategory, messages.length, onClose]);
+
+  useEffect(() => {
+    window.history.pushState({ proDash: true }, "");
+    const onPopState = () => handleBack();
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [handleBack]);
 
   const getToken = () => localStorage.getItem("auth_token") || "";
   const headers = useCallback(() => ({

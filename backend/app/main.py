@@ -1007,6 +1007,10 @@ class SecurityAgentMiddleware(BaseHTTPMiddleware):
         query = str(request.query_params)
         user_agent = request.headers.get("user-agent", "")
 
+        # CORS preflight(OPTIONS)는 보안 검사 건너뛰기
+        if method == "OPTIONS":
+            return await call_next(request)
+
         # 요청 검사
         block_reason = security_agent.check_request(ip, path, method, query, user_agent=user_agent)
         if block_reason in ("IP_BLOCKED", "SUSPICIOUS_BLOCKED"):

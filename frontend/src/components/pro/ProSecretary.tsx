@@ -407,6 +407,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         </div>
                       </div>
                     )}
+                    {/* 인라인 입력 위젯 — AI 질문에 따라 자동 표시 */}
+                    {!loading && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
+                      const lastText = messages[messages.length - 1].text.toLowerCase();
+                      const fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[] = [];
+
+                      if (lastText.includes("설립일") || lastText.includes("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });
+                      if (lastText.includes("직원") || lastText.includes("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
+                      if (lastText.includes("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
+                      if (lastText.includes("업종") || lastText.includes("분야") || lastText.includes("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
+                      if (lastText.includes("지역") || lastText.includes("소재지") || lastText.includes("거주")) fields.push({ key: "city", label: "지역", type: "select", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
+                      if (lastText.includes("기업명") || lastText.includes("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
+
+                      if (fields.length === 0) return null;
+                      return (
+                        <InlineInputWidget fields={fields} dark={dark} onSubmit={(values) => {
+                          const text = Object.entries(values).filter(([, v]) => v).map(([, v]) => v).join(", ");
+                          if (text) handleSend(text);
+                        }} />
+                      );
+                    })()}
                   </div>
 
                   {/* 입력 영역 */}
@@ -553,4 +573,50 @@ function HistoryTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any }) {
   const { ReportsTab } = require("@/components/ProDashboard");
   return <ReportsTab headers={headers} toast={toast} clientType="business" />;
+}
+
+
+// ─── 인라인 입력 위젯 ───
+function InlineInputWidget({ fields, dark, onSubmit }: {
+  fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[];
+  dark: boolean;
+  onSubmit: (values: Record<string, string>) => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+
+  const update = (key: string, val: string) => setValues(prev => ({ ...prev, [key]: val }));
+
+  const inputCls = `px-3 py-2 rounded-lg text-[13px] outline-none focus:ring-2 focus:ring-violet-300 transition-all ${
+    dark ? "bg-[#252640] border border-white/10 text-slate-200" : "bg-white border border-slate-200 text-slate-700"
+  }`;
+
+  return (
+    <div className={`mx-4 mb-3 p-3 rounded-xl border ${dark ? "bg-[#1e1f33] border-violet-500/30" : "bg-violet-50/50 border-violet-200"}`}>
+      <div className="flex flex-wrap gap-2 items-end">
+        {fields.map(f => (
+          <div key={f.key} className="flex-1 min-w-[120px]">
+            <label className={`block text-[10px] font-bold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>{f.label}</label>
+            {f.type === "select" && f.options ? (
+              <select value={values[f.key] || ""} onChange={(e) => update(f.key, e.target.value)} className={`w-full ${inputCls}`}>
+                <option value="">선택</option>
+                {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            ) : f.type === "date" ? (
+              <input type="date" value={values[f.key] || ""} onChange={(e) => update(f.key, e.target.value)} className={`w-full ${inputCls}`} />
+            ) : (
+              <input type="text" value={values[f.key] || ""} onChange={(e) => update(f.key, e.target.value)}
+                placeholder={f.label} className={`w-full ${inputCls}`} />
+            )}
+          </div>
+        ))}
+        <button
+          onClick={() => onSubmit(values)}
+          disabled={Object.values(values).every(v => !v)}
+          className="px-4 py-2 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-95 disabled:opacity-40 self-end"
+        >
+          전송
+        </button>
+      </div>
+    </div>
+  );
 }

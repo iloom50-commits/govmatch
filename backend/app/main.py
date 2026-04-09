@@ -272,6 +272,38 @@ def init_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_action ON system_logs(action)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_category ON system_logs(category)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at)")
+
+            # ── AI 패트롤 시스템 테이블 ──
+            # 분석 실패 추적
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS analysis_failures (
+                    id SERIAL PRIMARY KEY,
+                    announcement_id INT NOT NULL,
+                    error_type VARCHAR(50) NOT NULL,
+                    error_message TEXT,
+                    failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    retry_count INT DEFAULT 0,
+                    next_retry_at TIMESTAMP,
+                    resolved_at TIMESTAMP,
+                    UNIQUE(announcement_id, error_type)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_failures_retry ON analysis_failures(next_retry_at) WHERE resolved_at IS NULL")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_failures_aid ON analysis_failures(announcement_id)")
+
+            # 패트롤 실행 이력
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS patrol_history (
+                    id SERIAL PRIMARY KEY,
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    status VARCHAR(20) DEFAULT 'running',
+                    summary JSONB,
+                    error TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_patrol_history_started ON patrol_history(started_at DESC)")
+
             conn.commit()
         except Exception:
             conn.rollback()
@@ -715,7 +747,40 @@ async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())
+
+    # ── AI 패트롤 스케줄러 (매일 03:00 KST) ──
+    patrol_scheduler = None
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from app.services.patrol import run_patrol
+
+        def _patrol_job():
+            try:
+                print("[Patrol] Scheduled run starting...")
+                result = run_patrol(triggered_by="scheduler")
+                print(f"[Patrol] Scheduled run done: {result.get('elapsed_seconds')}s")
+            except Exception as e:
+                print(f"[Patrol] Scheduled run error: {e}")
+
+        patrol_scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+        patrol_scheduler.add_job(
+            _patrol_job,
+            CronTrigger(hour=3, minute=0),
+            id="ai_patrol",
+            name="AI 데이터 품질 패트롤",
+            replace_existing=True,
+        )
+        patrol_scheduler.start()
+        print("[Patrol] APScheduler started — daily at 03:00 KST")
+    except Exception as e:
+        print(f"[Patrol] scheduler init failed: {e}")
+
     yield
+
+    if patrol_scheduler:
+        try: patrol_scheduler.shutdown(wait=False)
+        except: pass
     task_sync.cancel()
     task_digest.cancel()
     try:
@@ -4036,6 +4101,61 @@ def repair_origin_urls():
         return {"status": "SUCCESS", "scanned": len(rows), "fixed": fixed}
     finally:
         conn.close()
+
+
+@app.post("/api/admin/patrol/run", dependencies=[Depends(_verify_admin)])
+def admin_patrol_run():
+    """AI 패트롤 수동 실행 (관리자 전용)"""
+    try:
+        from app.services.patrol import run_patrol
+        result = run_patrol(triggered_by="manual")
+        return {"status": "SUCCESS", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"패트롤 실행 실패: {e}")
+
+
+@app.get("/api/admin/patrol/history", dependencies=[Depends(_verify_admin)])
+def admin_patrol_history(limit: int = 10):
+    """패트롤 실행 이력 조회"""
+    try:
+        from app.services.patrol import get_latest_report
+        conn = get_db_connection()
+        try:
+            report = get_latest_report(conn, limit=limit)
+            return {"status": "SUCCESS", **report}
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/patrol/failures", dependencies=[Depends(_verify_admin)])
+def admin_patrol_failures(limit: int = 50):
+    """현재 분석 실패 큐 조회"""
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT af.id, af.announcement_id, af.error_type, af.error_message,
+                       af.failed_at, af.retry_count, af.next_retry_at, af.resolved_at,
+                       a.title
+                FROM analysis_failures af
+                LEFT JOIN announcements a ON a.announcement_id = af.announcement_id
+                WHERE af.resolved_at IS NULL
+                ORDER BY af.next_retry_at NULLS FIRST
+                LIMIT %s
+            """, (limit,))
+            rows = [dict(r) for r in cur.fetchall()]
+            for r in rows:
+                for k in ("failed_at", "next_retry_at", "resolved_at"):
+                    if r.get(k):
+                        r[k] = str(r[k])
+            return {"status": "SUCCESS", "failures": rows, "count": len(rows)}
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/admin/urls/health", dependencies=[Depends(_verify_admin)])

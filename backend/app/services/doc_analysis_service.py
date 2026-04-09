@@ -743,6 +743,59 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 # 4단계: 통합 파이프라인 — 수집 → 분석 → 저장
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _record_failure(db_conn, announcement_id: int, error_type: str, error_message: str) -> None:
+    """분석 실패를 analysis_failures 테이블에 기록 (재시도 큐 관리)"""
+    if not db_conn:
+        return
+    try:
+        import datetime as _dt
+        # 지수 백오프: 1일 → 3일 → 7일 → 14일
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT retry_count FROM analysis_failures
+            WHERE announcement_id = %s AND error_type = %s
+        """, (announcement_id, error_type))
+        existing = cur.fetchone()
+        retry_count = (existing["retry_count"] + 1) if existing else 0
+        backoff_days = [1, 3, 7, 14, 30]
+        days = backoff_days[min(retry_count, len(backoff_days) - 1)]
+        next_retry = _dt.datetime.utcnow() + _dt.timedelta(days=days)
+
+        cur.execute("""
+            INSERT INTO analysis_failures
+                (announcement_id, error_type, error_message, retry_count, next_retry_at)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (announcement_id, error_type) DO UPDATE SET
+                error_message = EXCLUDED.error_message,
+                retry_count = analysis_failures.retry_count + 1,
+                next_retry_at = EXCLUDED.next_retry_at,
+                failed_at = CURRENT_TIMESTAMP,
+                resolved_at = NULL
+        """, (announcement_id, error_type, error_message[:500], retry_count, next_retry))
+        db_conn.commit()
+    except Exception as e:
+        print(f"[_record_failure] {e}")
+        try: db_conn.rollback()
+        except: pass
+
+
+def _resolve_failure(db_conn, announcement_id: int) -> None:
+    """분석 성공 시 해당 announcement의 모든 실패 기록 해제"""
+    if not db_conn:
+        return
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            UPDATE analysis_failures
+            SET resolved_at = CURRENT_TIMESTAMP
+            WHERE announcement_id = %s AND resolved_at IS NULL
+        """, (announcement_id,))
+        db_conn.commit()
+    except Exception:
+        try: db_conn.rollback()
+        except: pass
+
+
 def analyze_and_store(
     announcement_id: int,
     origin_url: str,
@@ -777,6 +830,7 @@ def analyze_and_store(
         msg = f"Insufficient text ({len(full_text)} chars)"
         print(f"[DocAnalysis] ✗ {msg}")
         result_info["error"] = msg
+        _record_failure(db_conn, announcement_id, "extract_empty", msg)
         return result_info
 
     # 2) Gemini 정밀 분석
@@ -789,6 +843,7 @@ def analyze_and_store(
         msg = "Analysis returned empty"
         print(f"[DocAnalysis] ✗ {msg}")
         result_info["error"] = msg
+        _record_failure(db_conn, announcement_id, "gemini_empty", msg)
         return result_info
 
     # 3) DB 저장
@@ -817,6 +872,7 @@ def analyze_and_store(
         db_conn.commit()
         result_info["success"] = True
         print(f"[DocAnalysis] ✓ #{announcement_id} saved ({len(full_text)} chars, {source_type}, {len(att_names)} files)")
+        _resolve_failure(db_conn, announcement_id)
 
         # 분석 결과에서 support_amount 추출 → announcements 테이블에 역저장
         try:

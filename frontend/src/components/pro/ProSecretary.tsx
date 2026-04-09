@@ -1220,7 +1220,11 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
       const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=20`, { headers: headers() });
       if (res.ok) {
         const data = await res.json();
-        setResults(data.announcements || data || []);
+        // 응답 형식: {status, data: [...], total} 또는 {announcements: [...]} 또는 [...]
+        const items = data.data || data.announcements || (Array.isArray(data) ? data : []);
+        // 정규화: announcement_id를 id로 매핑
+        const normalized = items.map((a: any) => ({ ...a, id: a.announcement_id || a.id }));
+        setResults(normalized);
       }
     } catch { toast("검색 실패", "error"); }
     setLoading(false);
@@ -1230,8 +1234,9 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     setSelectedAnn(ann);
     setAnalysisData(null);
     try {
+      const annId = ann.id || ann.announcement_id;
       // PRO 전용 — DB의 deep_analysis 우선 사용
-      const res = await fetch(`${API}/api/pro/announcements/${ann.id}/analyze`, { headers: headers() });
+      const res = await fetch(`${API}/api/pro/announcements/${annId}/analyze`, { headers: headers() });
       if (res.ok) {
         const data = await res.json();
         setAnalysisData(data);

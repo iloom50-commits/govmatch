@@ -377,7 +377,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     {messages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[80%]`}>
-                          <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${
+                          <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
                               : dark ? "bg-[#252640] text-slate-200 rounded-bl-md" : "bg-slate-100 text-slate-800 rounded-bl-md"

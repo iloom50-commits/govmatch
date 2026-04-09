@@ -556,28 +556,48 @@ class GovernmentAPIService:
             return []
 
     @staticmethod
-    def _normalize_url(url: str) -> str:
-        """URL 정규화 — 도메인 중복/상대경로/쓰레기문자 정리"""
+    def _normalize_url(url: str, base_domain: str = "https://www.bizinfo.go.kr") -> str:
+        """URL 정규화 — 도메인 중복/상대경로/쓰레기문자 정리 + 보안 검증"""
         if not url:
             return ""
+        import re
         url = str(url).strip()
 
+        # 0) 보안: javascript: / data: / file: 차단
+        lower = url.lower()
+        if lower.startswith(("javascript:", "data:", "file:", "vbscript:")):
+            return ""
+
         # 1) 'https://...https://...' 같은 도메인 중복 제거 (마지막 http(s)://부터)
-        import re
-        # 두 번째 http(s):// 가 있으면 그 위치부터 잘라냄
         matches = list(re.finditer(r'https?://', url))
         if len(matches) >= 2:
-            # 마지막 http(s):// 부터 끝까지가 진짜 URL
             url = url[matches[-1].start():]
 
-        # 2) 상대 경로 → bizinfo 도메인 prefix
+        # 2) 상대 경로 → 도메인 prefix
         if url.startswith("/"):
-            url = "https://www.bizinfo.go.kr" + url
+            url = base_domain + url
         elif not url.startswith("http"):
-            url = "https://www.bizinfo.go.kr/" + url
+            url = base_domain + "/" + url
 
-        # 3) 쓸모없는 trailing 공백/문자
+        # 3) trailing 공백/탭/줄바꿈 제거
         url = url.split()[0] if url.split() else url
+
+        # 4) 잘못된 다중 인코딩 (%25 → %) 1회 디코딩
+        if "%25" in url:
+            try:
+                from urllib.parse import unquote
+                url = unquote(url, errors="ignore")
+            except Exception:
+                pass
+
+        # 5) 최종 검증: 호스트 부분이 있어야 함
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if not parsed.netloc or "." not in parsed.netloc:
+                return ""
+        except Exception:
+            return ""
 
         return url
 

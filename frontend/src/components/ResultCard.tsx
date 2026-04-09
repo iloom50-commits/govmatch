@@ -241,7 +241,9 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     if (res.support_amount) return res.support_amount;
     const title = res.title || "";
     const cat = res.category || "";
-    if (/정책자금|융자/.test(title) || /정책자금|융자/.test(cat)) return "정책자금";
+    if (/정책자금/.test(title) || /정책자금/.test(cat)) return "정책자금";
+    if (/보증|보증료/.test(title) || /보증/.test(cat)) return "보증";
+    if (/융자/.test(title)) return "융자";
     if (/R&D|연구개발|기술개발/.test(title) || /R&D|연구개발/.test(cat)) return "R&D";
     if (/창업/.test(title) || /창업/.test(cat)) return "창업지원";
     if (/수출|마케팅/.test(title)) return "수출지원";

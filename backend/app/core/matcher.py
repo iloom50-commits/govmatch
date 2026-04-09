@@ -418,10 +418,15 @@ def get_matches_for_user(user_profile):
         cat_lower = (ad.get("category") or "").lower()
         amount_str = (ad.get("support_amount") or "")
 
-        # 정책자금/융자: +12점 (인기 + 큰 금액)
-        if "정책자금" in title_lower or "융자" in title_lower or "정책자금" in cat_lower:
+        # 정책자금/융자/보증: +12점 (인기 + 큰 금액)
+        if any(k in title_lower for k in ["정책자금", "융자", "보증", "보증료"]) or "정책자금" in cat_lower or "보증" in cat_lower:
             score += 12.0
-            reasons.append("정책자금")
+            if "정책자금" in title_lower or "정책자금" in cat_lower:
+                reasons.append("정책자금")
+            elif "보증" in title_lower or "보증" in cat_lower:
+                reasons.append("보증")
+            else:
+                reasons.append("융자")
         # R&D: +8점
         elif "r&d" in title_lower or "연구개발" in title_lower or "기술개발" in title_lower:
             score += 8.0

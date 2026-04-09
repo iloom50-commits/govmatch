@@ -1257,7 +1257,7 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
       <div className="flex gap-2">
         <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") search(); }}
-          placeholder="공고명, 키워드 검색..." className={inputCls} />
+          placeholder="상담할 공고명을 입력하세요 (예: 청년창업)" className={inputCls} />
         <button onClick={search} disabled={loading || !query.trim()}
           className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
           검색
@@ -1268,9 +1268,9 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
 
       {/* 결과 목록 */}
       {results.length > 0 && !selectedAnn && (
-        <div className={`rounded-xl border overflow-hidden ${dark ? "border-white/[0.06]" : "border-slate-200"}`}>
+        <div data-testid="pro-search-results" className={`rounded-xl border overflow-hidden ${dark ? "border-white/[0.06]" : "border-slate-200"}`}>
           {results.map((ann: any) => (
-            <button key={ann.id} onClick={() => loadAnalysis(ann)}
+            <button key={ann.id} data-testid="pro-search-result-item" onClick={() => loadAnalysis(ann)}
               className={`w-full text-left px-4 py-3 border-b last:border-b-0 transition-all ${dark ? "border-white/[0.04] hover:bg-white/[0.03]" : "border-slate-100 hover:bg-violet-50/30"}`}>
               <p className={`text-[13px] font-semibold truncate ${dark ? "text-slate-200" : "text-slate-800"}`}>{ann.title}</p>
               <div className={`flex gap-3 mt-1 text-[11px] ${t.muted}`}>

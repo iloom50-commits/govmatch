@@ -53,7 +53,7 @@ const Icons = {
 // ─── 다크/라이트 테마 토큰 ───
 const theme = {
   dark: {
-    root: "bg-[#0d0e1a] text-slate-200",
+    root: "bg-[#0d0e1a] text-slate-100",
     header: "bg-[#0d0e1a] border-b border-white/[0.06]",
     leftNav: "bg-[#111222] border-r border-white/[0.06]",
     center: "bg-[#151628]",
@@ -61,16 +61,16 @@ const theme = {
     card: "bg-[#1a1c30]",
     cardHover: "hover:bg-[#1f2140]",
     cardBorder: "border-white/[0.06]",
-    input: "bg-[#1a1c30] border-white/[0.08] text-slate-200 placeholder-slate-500 focus:border-violet-500/50 focus:ring-violet-500/20",
-    bubble: "bg-[#1e2040] text-slate-200",
-    menuActive: "bg-violet-500/10 text-violet-400 border-l-2 border-violet-500",
-    menuInactive: "text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]",
-    sectionTitle: "text-slate-500",
+    input: "bg-[#1a1c30] border-white/[0.08] text-slate-100 placeholder-slate-400 focus:border-violet-500/50 focus:ring-violet-500/20",
+    bubble: "bg-[#1e2040] text-slate-100",
+    menuActive: "bg-violet-500/10 text-violet-300 border-l-2 border-violet-500",
+    menuInactive: "text-slate-300 hover:text-white hover:bg-white/[0.03]",
+    sectionTitle: "text-slate-300",
     border: "border-white/[0.06]",
-    muted: "text-slate-500",
-    flowActive: "bg-violet-500/15 text-violet-400 border border-violet-500/30",
-    flowDone: "text-emerald-400",
-    flowPending: "text-slate-600",
+    muted: "text-slate-300",
+    flowActive: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
+    flowDone: "text-emerald-300",
+    flowPending: "text-slate-400",
     serviceActive: "bg-violet-500/10 border border-violet-500/20",
     serviceInactive: "bg-white/[0.03] border border-white/[0.06]",
     emptyIcon: "bg-[#1a1c30] border border-white/[0.08]",
@@ -143,6 +143,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
 
+  // 최소화 상태
+  const [minimized, setMinimized] = useState(false);
+
   // 다크모드
   const [dark, setDark] = useState(false);
   useEffect(() => {
@@ -154,6 +157,20 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   };
 
   const t = dark ? theme.dark : theme.light;
+
+  // 상담 종료 — 명시적 종료
+  const handleEndConsult = useCallback(() => {
+    if (messages.length === 0 && !clientCategory) return;
+    if (!window.confirm("이 상담을 종료하시겠습니까?\n(상담 내용은 자동 저장됩니다)")) return;
+    setClientCategory("");
+    setMessages([]);
+    setFlowState("idle");
+    setSelectedClient(null);
+    setSystemContext("");
+    setShowProfileForm(false);
+    setActiveView("chat");
+    toast("상담이 종료되었습니다", "info");
+  }, [messages.length, clientCategory, toast]);
 
   // 뒤로가기: 단계별 복귀 (상담중→유형선택→닫기)
   const handleBack = useCallback(() => {
@@ -413,6 +430,33 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     { key: "done", label: "완료" },
   ];
 
+  // 최소화 상태일 때 — 우측 하단 플로팅 바
+  if (minimized) {
+    const isWorking = loading || typing;
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        className={`fixed bottom-4 right-4 z-[60] flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 ${
+          dark ? "bg-[#111222] border border-violet-500/30 text-slate-100" : "bg-white border border-violet-300 text-slate-800"
+        }`}
+        title="PRO 대시보드 펼치기"
+      >
+        <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-white text-[10px] font-black">
+          PRO
+        </div>
+        <div className="text-left">
+          <p className="text-[12px] font-bold">전문가 대시보드</p>
+          <p className={`text-[10px] ${isWorking ? "text-violet-400" : (dark ? "text-slate-300" : "text-slate-500")}`}>
+            {isWorking ? "AI 분석 중..." : (clientCategory ? "상담 진행 중" : "대기 중")}
+          </p>
+        </div>
+        <svg className="w-4 h-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+        </svg>
+      </button>
+    );
+  }
+
   return (
     <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${t.root}`}>
       {/* ─── 헤더 ─── */}
@@ -435,13 +479,30 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {/* 상담 종료 (상담 진행 중에만 표시) */}
+          {(clientCategory || messages.length > 0) && (
+            <button onClick={handleEndConsult}
+              className="px-3 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-300 hover:text-red-200 rounded-lg text-[11px] font-bold transition-colors border border-red-500/30 hidden sm:flex items-center gap-1"
+              title="현재 상담 종료">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              상담 종료
+            </button>
+          )}
           <button onClick={toggleDark} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title={dark ? "라이트 모드" : "다크 모드"}>
             {dark ? Icons.sun : Icons.moon}
           </button>
           <button onClick={() => setRightOpen(!rightOpen)} className="lg:hidden p-2 hover:bg-white/10 rounded-lg transition-colors">
             {Icons.info}
           </button>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+          {/* 최소화 */}
+          <button onClick={() => setMinimized(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="최소화">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
+            </svg>
+          </button>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="닫기">
             {Icons.close}
           </button>
         </div>
@@ -1094,7 +1155,7 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
     dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
   }`;
 
-  const sectionTitle = `text-[11px] font-bold mb-2 ${dark ? "text-slate-400" : "text-slate-500"}`;
+  const sectionTitle = `text-[11px] font-bold mb-2 ${dark ? "text-slate-200" : "text-slate-500"}`;
 
   const revenueOptions = ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"];
   const employeeOptions = ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"];

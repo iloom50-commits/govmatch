@@ -2828,7 +2828,7 @@ class AiConsultantChatRequest(BaseModel):
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
 def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depends(_get_current_user)):
-    """PRO: 공고 분석 — DB의 deep_analysis 우선, 없으면 기본 정보만 반환"""
+    """PRO: 공고 분석 — DB 우선, 없으면 자동 실시간 분석 (PRO 권한)"""
     _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -2840,17 +2840,35 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
         WHERE a.announcement_id = %s
     """, (announcement_id,))
     row = cur.fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
 
     ann = dict(row)
     parsed = ann.get("parsed_sections") or {}
     deep = ann.get("deep_analysis") or {}
-
-    # DB에 분석 데이터 있으면 사용
     has_analysis = bool(parsed) or bool(deep)
+
+    # ★ PRO 사용자가 분석되지 않은 공고를 보면 → 자동 실시간 분석 트리거
+    if not has_analysis:
+        try:
+            from app.services.doc_analysis_service import ensure_analysis
+            print(f"[PRO Analyze] #{announcement_id}: triggering on-demand analysis")
+            fresh = ensure_analysis(announcement_id, conn)
+            if fresh:
+                parsed = fresh.get("parsed_sections") or {}
+                deep = fresh.get("deep_analysis") or {}
+                has_analysis = bool(parsed) or bool(deep)
+                # ann 데이터 다시 조회 (support_amount 등이 업데이트됐을 수 있음)
+                cur.execute("SELECT * FROM announcements WHERE announcement_id = %s", (announcement_id,))
+                fresh_row = cur.fetchone()
+                if fresh_row:
+                    ann.update(dict(fresh_row))
+        except Exception as e:
+            print(f"[PRO Analyze] on-demand analysis error: {e}")
+
+    conn.close()
 
     result = {
         "status": "SUCCESS",
@@ -3986,6 +4004,39 @@ def delete_admin_url(url_id: int):
     conn.commit()
     conn.close()
     return {"status": "SUCCESS", "message": "URL 삭제 완료"}
+
+@app.post("/api/admin/repair-origin-urls", dependencies=[Depends(_verify_admin)])
+def repair_origin_urls():
+    """손상된 origin_url 일괄 수정 (도메인 중복 제거)"""
+    import re
+    conn = get_db_connection()
+    cur = conn.cursor()
+    fixed = 0
+    try:
+        # 'http(s)://...http(s)://' 패턴 가진 행 모두 조회
+        cur.execute("""
+            SELECT announcement_id, origin_url FROM announcements
+            WHERE origin_url ~ 'https?://.*https?://'
+        """)
+        rows = cur.fetchall()
+        for r in rows:
+            url = r["origin_url"]
+            matches = list(re.finditer(r'https?://', url))
+            if len(matches) >= 2:
+                clean_url = url[matches[-1].start():]
+                try:
+                    cur.execute(
+                        "UPDATE announcements SET origin_url = %s WHERE announcement_id = %s",
+                        (clean_url, r["announcement_id"])
+                    )
+                    fixed += 1
+                except Exception:
+                    conn.rollback()
+        conn.commit()
+        return {"status": "SUCCESS", "scanned": len(rows), "fixed": fixed}
+    finally:
+        conn.close()
+
 
 @app.get("/api/admin/urls/health", dependencies=[Depends(_verify_admin)])
 def get_admin_urls_health():

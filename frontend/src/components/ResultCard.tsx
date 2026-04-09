@@ -289,9 +289,25 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
         </div>
 
         {/* Title + Amount — 클릭 시 상세 페이지(origin_url) 이동 */}
-        {(res.origin_url || res.url) ? (
+        {(() => {
+          // URL 정규화: 'https://...https://...' 같은 도메인 중복 제거
+          let rawUrl = res.origin_url || res.url || "";
+          if (rawUrl) {
+            const matches = [...rawUrl.matchAll(/https?:\/\//g)];
+            if (matches.length >= 2) {
+              rawUrl = rawUrl.substring(matches[matches.length - 1].index || 0);
+            }
+          }
+          return rawUrl;
+        })() ? (
           <a
-            href={res.origin_url || res.url}
+            href={(() => {
+              let u = res.origin_url || res.url || "";
+              const matches = [...u.matchAll(/https?:\/\//g)];
+              if (matches.length >= 2) u = u.substring(matches[matches.length - 1].index || 0);
+              return u;
+            })()}
+            target="_blank"
             rel="noopener noreferrer"
             className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight hover:text-indigo-600 hover:underline underline-offset-2 transition-colors line-clamp-2 min-h-[2lh] cursor-pointer"
             title={res.title}

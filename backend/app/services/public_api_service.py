@@ -385,13 +385,8 @@ class GovernmentAPIService:
                 deadline = self._parse_period_end_date(item.get("reqstBeginEndDe"))
             
             if title and rel_url:
-                # Prevent URL doubling: if rel_url already has full domain, use as-is
-                if rel_url.startswith("http"):
-                    full_url = rel_url
-                elif rel_url.startswith("/"):
-                    full_url = f"https://www.bizinfo.go.kr{rel_url}"
-                else:
-                    full_url = f"https://www.bizinfo.go.kr/{rel_url}"
+                # URL 정규화 (도메인 중복, 상대경로 모두 처리)
+                full_url = self._normalize_url(rel_url)
                 # 지원금액 파싱
                 support_amount = item.get("totBgtAmt") or item.get("sprtScale") or item.get("bsnsBgtAmt") or ""
 
@@ -560,6 +555,32 @@ class GovernmentAPIService:
             print(f"  [ERR] SMES24 Exception: {e}")
             return []
 
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """URL 정규화 — 도메인 중복/상대경로/쓰레기문자 정리"""
+        if not url:
+            return ""
+        url = str(url).strip()
+
+        # 1) 'https://...https://...' 같은 도메인 중복 제거 (마지막 http(s)://부터)
+        import re
+        # 두 번째 http(s):// 가 있으면 그 위치부터 잘라냄
+        matches = list(re.finditer(r'https?://', url))
+        if len(matches) >= 2:
+            # 마지막 http(s):// 부터 끝까지가 진짜 URL
+            url = url[matches[-1].start():]
+
+        # 2) 상대 경로 → bizinfo 도메인 prefix
+        if url.startswith("/"):
+            url = "https://www.bizinfo.go.kr" + url
+        elif not url.startswith("http"):
+            url = "https://www.bizinfo.go.kr/" + url
+
+        # 3) 쓸모없는 trailing 공백/문자
+        url = url.split()[0] if url.split() else url
+
+        return url
+
     def _map_smes24_fields(self, items):
         mapped = []
         for item in items:
@@ -567,6 +588,11 @@ class GovernmentAPIService:
             url = item.get("pblancDtlUrl") or item.get("reqstLinkInfo")
 
             if not title or not url:
+                continue
+
+            # URL 정규화 — 도메인 중복/상대 경로 처리
+            url = self._normalize_url(url)
+            if not url:
                 continue
 
             eligibility = {}

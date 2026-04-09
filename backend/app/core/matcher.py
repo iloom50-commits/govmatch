@@ -413,6 +413,41 @@ def get_matches_for_user(user_profile):
             except (ValueError, TypeError):
                 pass
 
+        # G. 사업 규모/유형 가산점 — 정책자금/R&D 등 인기 카테고리 우선
+        title_lower = (ad.get("title") or "").lower()
+        cat_lower = (ad.get("category") or "").lower()
+        amount_str = (ad.get("support_amount") or "")
+
+        # 정책자금/융자: +12점 (인기 + 큰 금액)
+        if "정책자금" in title_lower or "융자" in title_lower or "정책자금" in cat_lower:
+            score += 12.0
+            reasons.append("정책자금")
+        # R&D: +8점
+        elif "r&d" in title_lower or "연구개발" in title_lower or "기술개발" in title_lower:
+            score += 8.0
+            reasons.append("R&D")
+
+        # 금액 기반 가산점 (큰 금액 우선)
+        try:
+            import re as _re
+            num = 0
+            if "억" in amount_str:
+                m = _re.search(r'(\d+(?:\.\d+)?)\s*억', amount_str)
+                if m:
+                    num = float(m.group(1)) * 100000000
+            elif "천만" in amount_str:
+                m = _re.search(r'(\d+(?:\.\d+)?)\s*천만', amount_str)
+                if m:
+                    num = float(m.group(1)) * 10000000
+            if num >= 1000000000:  # 10억+
+                score += 8.0
+            elif num >= 100000000:  # 1억+
+                score += 4.0
+            elif num >= 10000000:  # 1천만+
+                score += 2.0
+        except Exception:
+            pass
+
         ad["match_score"] = round(score, 1)
         # recommendation_reason: "기본 자격" 제외하고 실제 매칭 이유만 표시
         meaningful_reasons = [r for r in reasons if "기본 지원 자격" not in r]

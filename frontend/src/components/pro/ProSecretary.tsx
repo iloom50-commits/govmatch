@@ -296,7 +296,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
   // ─── 파일 첨부 (multipart 업로드 → 서버에서 텍스트 추출) ───
   const handleFileAttach = async (file: File) => {
-    if (file.size > 10 * 1024 * 1024) { toast("10MB 이하만 가능", "error"); return; }
+    if (file.size > 20 * 1024 * 1024) { toast("20MB 이하만 가능", "error"); return; }
     setMessages(prev => [...prev, { role: "user", text: `📎 ${file.name} 첨부` }]);
     setLoading(true);
     try {
@@ -710,7 +710,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     }`}>
                       <label className={`p-1.5 rounded-lg cursor-pointer transition-colors flex-shrink-0 ${dark ? "text-slate-500 hover:text-violet-400 hover:bg-white/5" : "text-slate-400 hover:text-violet-600 hover:bg-violet-50"}`} title="자료 첨부">
                         {Icons.attach}
-                        <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
+                        <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.gif,.mp3,.wav,.m4a,.ogg,.webm,.aac"
                           onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
                       </label>
                       <input
@@ -824,8 +824,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
               </svg>
               <p className={`text-[11px] font-semibold ${dark ? "text-violet-400" : "text-violet-600"}`}>파일을 드래그하거나 클릭하여 선택</p>
-              <p className={`text-[9px] mt-0.5 ${t.muted}`}>PDF, HWP, DOCX (10MB)</p>
-              <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
+              <p className={`text-[9px] mt-0.5 ${t.muted}`}>PDF · HWP · DOCX · 이미지 · 음성 (20MB)</p>
+              <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.gif,.mp3,.wav,.m4a,.ogg,.webm,.aac"
                 onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
             </label>
           </div>
@@ -1230,8 +1230,8 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     setSelectedAnn(ann);
     setAnalysisData(null);
     try {
-      // DB에서 분석 데이터 우선 로드
-      const res = await fetch(`${API}/api/announcements/${ann.id}`, { headers: headers() });
+      // PRO 전용 — DB의 deep_analysis 우선 사용
+      const res = await fetch(`${API}/api/pro/announcements/${ann.id}/analyze`, { headers: headers() });
       if (res.ok) {
         const data = await res.json();
         setAnalysisData(data);
@@ -1287,8 +1287,15 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
               {analysisData.organization && <p><span className={t.muted}>주관:</span> {analysisData.organization}</p>}
               {analysisData.support_amount && <p><span className={t.muted}>지원금:</span> {analysisData.support_amount}</p>}
               {analysisData.deadline_date && <p><span className={t.muted}>마감:</span> {String(analysisData.deadline_date).slice(0, 10)}</p>}
-              {(analysisData.parsed_sections?.eligibility || analysisData.eligibility) && (
-                <p><span className={t.muted}>자격요건:</span> {(analysisData.parsed_sections?.eligibility || analysisData.eligibility || "").slice(0, 200)}</p>
+              {analysisData.has_db_analysis ? (
+                <>
+                  {analysisData.eligibility && <p><span className={t.muted}>자격요건:</span> {analysisData.eligibility.slice(0, 300)}</p>}
+                  {analysisData.support_details && <p><span className={t.muted}>지원내용:</span> {analysisData.support_details.slice(0, 300)}</p>}
+                  {analysisData.application_method && <p><span className={t.muted}>신청방법:</span> {analysisData.application_method.slice(0, 200)}</p>}
+                  {analysisData.target_summary && <p className="text-emerald-500 text-[11px] mt-2">✓ 분석 데이터 활용</p>}
+                </>
+              ) : (
+                <p className={`text-amber-500 text-[11px]`}>⚠ 상세 분석이 아직 없습니다 — 기본 정보만 표시됩니다</p>
               )}
             </div>
           )}

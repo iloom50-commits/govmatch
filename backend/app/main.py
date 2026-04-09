@@ -2825,6 +2825,67 @@ class AiConsultantChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
 
 
+@app.get("/api/pro/announcements/{announcement_id}/analyze")
+def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depends(_get_current_user)):
+    """PRO: 공고 분석 — DB의 deep_analysis 우선, 없으면 기본 정보만 반환"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    _require_pro(dict(user))
+
+    cur.execute("""
+        SELECT a.*, aa.parsed_sections, aa.deep_analysis, aa.full_text
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE a.announcement_id = %s
+    """, (announcement_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+
+    ann = dict(row)
+    parsed = ann.get("parsed_sections") or {}
+    deep = ann.get("deep_analysis") or {}
+
+    # DB에 분석 데이터 있으면 사용
+    has_analysis = bool(parsed) or bool(deep)
+
+    result = {
+        "status": "SUCCESS",
+        "announcement_id": announcement_id,
+        "title": ann.get("title", ""),
+        "organization": ann.get("organization", ""),
+        "support_amount": ann.get("support_amount", ""),
+        "deadline_date": str(ann.get("deadline_date", "")) if ann.get("deadline_date") else "",
+        "url": ann.get("url", ""),
+        "has_db_analysis": has_analysis,
+    }
+
+    if has_analysis:
+        result["eligibility"] = (parsed.get("eligibility") or "")[:1500] if parsed else ""
+        result["support_details"] = (parsed.get("support_details") or "")[:1500] if parsed else ""
+        result["application_method"] = (parsed.get("application_method") or "")[:800] if parsed else ""
+        result["evaluation_criteria"] = (parsed.get("evaluation_criteria") or "")[:800] if parsed else ""
+        result["required_documents"] = (parsed.get("required_documents") or "")[:800] if parsed else ""
+        if deep:
+            result["target_summary"] = deep.get("target_summary", "")
+            result["support_summary"] = deep.get("support_summary", {})
+            result["exclusion_rules"] = deep.get("exclusion_rules", [])
+            result["competitiveness"] = deep.get("competitiveness", "")
+    else:
+        # 분석 없음 → 기본 정보만 + AI 분석 권유
+        result["message"] = "이 공고는 아직 상세 분석되지 않았습니다. 기본 정보만 제공됩니다."
+
+    return result
+
+
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
     """PRO 전문가 전용: 고객사 상담 채팅 (일반 상담과 완전 분리)"""
@@ -5456,8 +5517,43 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("models/gemini-2.0-flash")
 
-            top_eligible = [r for r in results if r["conclusion"] == "eligible"][:5]
-            top_conditional = [r for r in results if r["conclusion"] == "conditional"][:5]
+            # 지원금액 파싱 함수 (백억/억/천만/만 → 숫자)
+            def parse_amount(amt_str: str) -> int:
+                if not amt_str: return 0
+                s = str(amt_str).replace(",", "").replace(" ", "")
+                num = 0
+                try:
+                    import re
+                    # "5억", "1,000만원" 등 처리
+                    if "억" in s:
+                        m = re.search(r'(\d+(?:\.\d+)?)\s*억', s)
+                        if m: num += int(float(m.group(1)) * 100000000)
+                    if "천만" in s:
+                        m = re.search(r'(\d+(?:\.\d+)?)\s*천만', s)
+                        if m: num += int(float(m.group(1)) * 10000000)
+                    if "백만" in s:
+                        m = re.search(r'(\d+(?:\.\d+)?)\s*백만', s)
+                        if m: num += int(float(m.group(1)) * 1000000)
+                    if num == 0 and "만" in s:
+                        m = re.search(r'(\d+(?:\.\d+)?)\s*만', s)
+                        if m: num += int(float(m.group(1)) * 10000)
+                    if num == 0:
+                        m = re.search(r'(\d{4,})', s)
+                        if m: num = int(m.group(1))
+                except Exception: pass
+                return num
+
+            # 각 공고에 amount_value 추가
+            for r in results:
+                r["amount_value"] = parse_amount(r.get("support_amount", ""))
+
+            # 정렬: 지원금액 큰 순 + 적합도 (eligible > conditional) + match_score 높은 순
+            def sort_key(r):
+                conc_priority = 0 if r["conclusion"] == "eligible" else 1
+                return (conc_priority, -r["amount_value"], -r.get("match_score", 0))
+
+            sorted_results = sorted(results, key=sort_key)
+            top10 = sorted_results[:10]
 
             consult_text = ""
             if consult_summaries:
@@ -5465,16 +5561,27 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                 for cs in consult_summaries[:10]:
                     consult_text += f"- {cs['title']}: {cs['conclusion'] or '미판정'} — {cs['summary'][:100]}\n"
 
-            # 마감일 임박 순 정렬
+            # 로드맵: 마감일 순으로 그룹화
             today_str = datetime.date.today().isoformat()
             two_weeks = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
-            urgent = [r for r in results if r.get("deadline_date") and r["deadline_date"] > today_str and r["deadline_date"] <= two_weeks]
+            this_month = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+
+            roadmap_immediate = [r for r in top10 if r.get("deadline_date") and r["deadline_date"] > today_str and r["deadline_date"] <= two_weeks]
+            roadmap_month = [r for r in top10 if r.get("deadline_date") and r["deadline_date"] > two_weeks and r["deadline_date"] <= this_month]
+            roadmap_later = [r for r in top10 if r.get("deadline_date") and r["deadline_date"] > this_month]
 
             # f-string에서 줄바꿈 사용 위해 변수로 분리
             NL = "\n"
-            eligible_lines = NL.join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_eligible]) or "없음"
-            conditional_lines = NL.join([f"- {r['title']} | {r['support_amount']} | 마감: {r['deadline_date']} | {r['match_score']}점" for r in top_conditional]) or "없음"
-            urgent_lines = NL.join([f"- [긴급] {r['title']} | 마감: {r['deadline_date']}" for r in urgent]) or "없음"
+            top10_lines = NL.join([
+                f"{i+1}. {r['title']} | 지원금: {r['support_amount'] or '미공개'} | 적합도: {r['match_score']}점 | 마감: {r['deadline_date'] or '상시'}"
+                for i, r in enumerate(top10)
+            ]) or "없음"
+            urgent_lines = NL.join([f"- [2주 내] {r['title']} | 마감: {r['deadline_date']}" for r in roadmap_immediate]) or "없음"
+            month_lines = NL.join([f"- [1개월 내] {r['title']} | 마감: {r['deadline_date']}" for r in roadmap_month]) or "없음"
+            later_lines = NL.join([f"- [추후] {r['title']} | 마감: {r['deadline_date']}" for r in roadmap_later]) or "없음"
+            # 호환용
+            eligible_lines = top10_lines
+            conditional_lines = ""
 
             prompt = f"""당신은 10년 경력의 정부지원사업 전문 컨설턴트입니다.
 아래 고객사 정보와 AI 매칭 결과를 바탕으로, 고객에게 전달할 **전문 컨설팅 리포트**를 작성하세요.
@@ -5495,14 +5602,18 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 지원가능(80점+): {eligible_count}건
 - 조건부(50~79점): {conditional_count}건
 
-[지원가능 공고]
-{eligible_lines}
+[추천 공고 TOP 10 — 지원금액 + 적합도 우선]
+{top10_lines}
 
-[조건부 상위 공고]
-{conditional_lines}
-
-[2주 내 마감 임박]
+[신청 로드맵]
+■ 2주 내 마감 (즉시 신청)
 {urgent_lines}
+
+■ 1개월 내 마감 (이번 달 준비)
+{month_lines}
+
+■ 추후 마감 (다음 달 이후)
+{later_lines}
 {consult_text}
 {f'''
 [고객사 제출 자료 분석]
@@ -5521,16 +5632,17 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 기존 AI 상담에서 확인된 판정 결과 정리
 - 상담이 없으면 "아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다." 로 작성
 
-## 3. 맞춤 공고 분석 (추천 TOP 5)
-- 각 공고에 대해:
-  - 공고명 + 지원금액 + 마감일
-  - **왜 이 기업에 적합한지** 2~3문장
-  - 주의사항/준비 필요 사항
+## 3. 맞춤 공고 분석 (추천 TOP 10)
+- **위에 제공된 TOP 10 공고를 모두 표 형태로 정리**
+- 표 컬럼: 순위 / 공고명 / 지원금액 / 마감일 / 적합도 / 추천 사유
+- 적합도가 높은 것일수록 위에 배치
+- 추천 사유: **왜 이 기업에 적합한지** 1~2문장
 
 ## 4. 신청 로드맵
-- 마감일 순서로 타임라인 작성
-- 이번 주 / 다음 주 / 이번 달 구분
-- 우선순위 표시 (★★★ / ★★ / ★)
+- **위 로드맵 데이터를 활용하여 시각적 타임라인 작성**
+- 즉시 신청 (2주 내) / 이번 달 준비 (1개월 내) / 추후 (다음 달 이후) 3단계 구분
+- 각 단계별 표 형태로 우선순위 표시
+- 즉시 신청 공고는 ★★★, 이번 달 ★★, 추후 ★ 표시
 
 ## 5. 필요 서류 체크리스트
 - 공통 서류: 사업자등록증, 중소기업확인서, 재무제표 등
@@ -5781,17 +5893,25 @@ async def api_pro_file_upload_analyze(
     file: UploadFile = File(...),
     current_user: dict = Depends(_get_current_user),
 ):
-    """PRO: 파일 업로드 → 텍스트 추출 → AI 요약 분석 (PDF, DOCX, TXT 등)"""
+    """PRO: 파일 업로드 → 텍스트 추출/멀티모달 → AI 요약 (PDF/DOCX/이미지/음성/TXT)"""
     _require_pro(current_user)
 
     file_name = file.filename or "unknown"
     content = await file.read()
 
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(400, "파일 크기는 10MB 이하만 가능합니다.")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(400, "파일 크기는 20MB 이하만 가능합니다.")
 
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
     text = ""
+
+    # ─── 이미지 멀티모달 분석 (Gemini Vision) ───
+    if ext in ("jpg", "jpeg", "png", "webp", "gif", "bmp"):
+        return _analyze_image_with_gemini(content, file_name, ext)
+
+    # ─── 음성 멀티모달 분석 (Gemini Audio) ───
+    if ext in ("mp3", "wav", "m4a", "ogg", "flac", "webm", "aac"):
+        return _analyze_audio_with_gemini(content, file_name, ext)
 
     try:
         if ext == "pdf":
@@ -5841,6 +5961,107 @@ async def api_pro_file_upload_analyze(
     result = _analyze_text_with_ai(text[:8000], file_name, ext)
     result["extracted_text"] = text[:5000]
     return result
+
+
+def _analyze_image_with_gemini(content: bytes, file_name: str, ext: str) -> dict:
+    """Gemini Vision으로 이미지 분석 (사업자등록증, 명함, 재무제표 사진 등)"""
+    try:
+        import google.generativeai as genai
+        from PIL import Image
+        import io
+
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다.", "extracted_text": ""}
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+        try:
+            img = Image.open(io.BytesIO(content))
+        except Exception as e:
+            return {"status": "SUCCESS", "summary": f"이미지를 열 수 없습니다: {str(e)[:80]}", "extracted_text": ""}
+
+        prompt = """이 이미지는 고객사가 제출한 자료입니다. (사업자등록증, 명함, 재무제표, 사업계획서 등 가능)
+
+다음 정보를 추출하여 요약하세요:
+- 기업명/상호명
+- 대표자명
+- 사업자등록번호
+- 소재지/주소
+- 업종/업태
+- 설립일
+- 매출/직원수 등 숫자 정보
+- 기타 핵심 내용
+
+[추출 정보]
+- 항목1: 값
+- 항목2: 값
+...
+
+[요약]
+- 핵심1: ...
+- 핵심2: ...
+- 핵심3: ...
+
+이미지에서 추출 불가능한 항목은 생략하세요. 한국어로 간결하게."""
+
+        response = model.generate_content([prompt, img])
+        summary = response.text.strip() if response and response.text else "이미지 분석 실패"
+        return {"status": "SUCCESS", "summary": summary, "extracted_text": summary}
+    except Exception as e:
+        return {"status": "SUCCESS", "summary": f"이미지 분석 오류: {str(e)[:100]}", "extracted_text": ""}
+
+
+def _analyze_audio_with_gemini(content: bytes, file_name: str, ext: str) -> dict:
+    """Gemini Audio로 음성 분석 (고객 통화, 회의록 등)"""
+    try:
+        import google.generativeai as genai
+
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다.", "extracted_text": ""}
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+        # MIME 타입 매핑
+        mime_map = {
+            "mp3": "audio/mp3", "wav": "audio/wav", "m4a": "audio/mp4",
+            "ogg": "audio/ogg", "flac": "audio/flac", "webm": "audio/webm", "aac": "audio/aac",
+        }
+        mime_type = mime_map.get(ext, "audio/mp3")
+
+        audio_part = {"mime_type": mime_type, "data": content}
+
+        prompt = """이 음성 파일은 지원사업 컨설턴트와 고객의 상담 녹음 또는 회의록입니다.
+
+다음을 수행하세요:
+1. 전체 대화를 한국어로 받아쓰기 (transcript)
+2. 핵심 내용 요약 (3~5줄)
+3. 추출 가능한 고객 정보 (기업명, 업종, 매출, 관심 분야 등)
+
+[받아쓰기]
+(전체 대화 내용...)
+
+[요약]
+- 핵심1: ...
+- 핵심2: ...
+- 핵심3: ...
+
+[추출 정보]
+- 기업명: ...
+- 업종: ...
+- 매출: ...
+- 관심분야: ...
+
+한국어로 간결하게."""
+
+        response = model.generate_content([prompt, audio_part])
+        summary = response.text.strip() if response and response.text else "음성 분석 실패"
+        return {"status": "SUCCESS", "summary": summary, "extracted_text": summary[:5000]}
+    except Exception as e:
+        return {"status": "SUCCESS", "summary": f"음성 분석 오류: {str(e)[:100]}", "extracted_text": ""}
 
 
 def _analyze_text_with_ai(text: str, file_name: str, file_type: str) -> dict:

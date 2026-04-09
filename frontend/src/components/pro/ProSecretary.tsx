@@ -252,7 +252,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setActiveView("chat");
     setClientCategory(category);
     setFlowState("idle");
-    setSystemContext(client ? `[기존 고객: ${client.client_name}]\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}` : `[고객유형: ${category}]`);
+    setSystemContext(client
+      ? `[전문가 상담 모드] 기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}\n\n이미 수집된 정보는 다시 묻지 말고, 추가로 필요한 정보만 질문하세요.`
+      : `[전문가 상담 모드] 고객유형: ${category}\n\n사용자가 이미 답한 정보는 다시 묻지 마세요. 이전 대화 내용을 참고하여 아직 모르는 정보만 추가로 질문하세요.`);
     setSelectedClient(client || null);
     setLeftOpen(false);
 
@@ -528,9 +530,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         </div>
                       </div>
                     )}
-                    {/* 인라인 입력 위젯 */}
+                    {/* 인라인 입력 위젯 — AI가 질문할 때만 표시 */}
                     {!loading && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
                       const lastText = messages[messages.length - 1].text.toLowerCase();
+
+                      // AI가 질문하는 경우만 감지 (확인/완료 응답은 제외)
+                      const isAsking = lastText.includes("?") || lastText.includes("알려") || lastText.includes("입력해") || lastText.includes("선택해") || lastText.includes("어떤") || lastText.includes("무엇");
+                      const isConfirming = lastText.includes("입력하셨") || lastText.includes("확인했") || lastText.includes("접수") || lastText.includes("감사합니다") || lastText.includes("찾아보") || lastText.includes("분석") || lastText.includes("매칭");
+                      if (!isAsking || isConfirming) return null;
+
                       const fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[] = [];
 
                       if (lastText.includes("설립일") || lastText.includes("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });

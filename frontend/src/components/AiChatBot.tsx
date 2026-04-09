@@ -1122,6 +1122,12 @@ ${convHtml}
   const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "지원사업 상담 AI에이전트" : "AI 서비스";
   const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? "지원사업 종류·자격·절차 상담" : "모드를 선택하세요";
 
+  // PRO 사용자는 전문가 대시보드로 전환
+  if (open && isPro) {
+    const ProSecretary = require("@/components/pro/ProSecretary").default;
+    return <ProSecretary onClose={handleClose} planStatus={planStatus} onUpgrade={onUpgrade} userType={userType} />;
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex lg:pointer-events-none">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] lg:hidden" onClick={handleClose} />

@@ -5,9 +5,9 @@ import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-type ClientType = "business" | "individual";
+export type ClientType = "business" | "individual";
 
-interface ClientProfile {
+export interface ClientProfile {
   id: number;
   client_name: string;
   client_type?: ClientType;
@@ -138,7 +138,7 @@ export default function ProDashboard({ onClose }: { onClose: () => void }) {
 
 // ━━━━━━━━━━━━━━ 고객사 관리 탭 ━━━━━━━━━━━━━━
 
-function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
+export function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -302,7 +302,7 @@ function ClientsTab({ headers, toast, clientType }: { headers: () => any; toast:
 
 // ━━━━━━━━━━━━━━ 이메일 발송 모달 ━━━━━━━━━━━━━━
 
-function EmailModal({ clientIds, clientCount, headers, toast, onClose, onDone }: {
+export function EmailModal({ clientIds, clientCount, headers, toast, onClose, onDone }: {
   clientIds: number[]; clientCount: number; headers: () => any; toast: any; onClose: () => void; onDone: () => void;
 }) {
   const [subject, setSubject] = useState("지원금AI — 맞춤 지원사업 안내");
@@ -367,7 +367,7 @@ function EmailModal({ clientIds, clientCount, headers, toast, onClose, onDone }:
 }
 
 
-function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
+export function ClientForm({ initial, clientType, headers, onDone, onCancel, toast }: {
   initial: ClientProfile | null; clientType: ClientType; headers: () => any; onDone: () => void; onCancel: () => void; toast: any;
 }) {
   const isInd = clientType === "individual";
@@ -585,7 +585,7 @@ const FILE_TYPES = [
   { value: "other", label: "기타" },
 ];
 
-function ClientFilesPanel({ clientId, headers, toast }: { clientId: number; headers: () => any; toast: any }) {
+export function ClientFilesPanel({ clientId, headers, toast }: { clientId: number; headers: () => any; toast: any }) {
   const [files, setFiles] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [fileType, setFileType] = useState("other");
@@ -686,7 +686,7 @@ function ClientFilesPanel({ clientId, headers, toast }: { clientId: number; head
 
 // ━━━━━━━━━━━━━━ 상담 이력 탭 ━━━━━━━━━━━━━━
 
-function HistoryTab({ headers, toast }: { headers: () => any; toast: any }) {
+export function HistoryTab({ headers, toast }: { headers: () => any; toast: any }) {
   const [history, setHistory] = useState<ConsultHistory[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -762,7 +762,7 @@ function HistoryTab({ headers, toast }: { headers: () => any; toast: any }) {
 
 // ━━━━━━━━━━━━━━ 종합 리포트 탭 ━━━━━━━━━━━━━━
 
-function ReportsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
+export function ReportsTab({ headers, toast, clientType }: { headers: () => any; toast: any; clientType: ClientType }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<number | null>(null);

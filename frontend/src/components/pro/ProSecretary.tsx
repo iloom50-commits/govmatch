@@ -473,7 +473,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
               <div className="space-y-2">
                 {[
-                  { name: "GovMatch", desc: "정부지원사업 매칭", active: true },
                   { name: "SmartDoc", desc: "신청서 작성 도구", active: false },
                   { name: "노무 AI", desc: "근로/4대보험 자문", active: false },
                   { name: "세무 AI", desc: "법인세/부가세 자문", active: false },

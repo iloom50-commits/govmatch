@@ -661,7 +661,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
                       // AI가 특정 정보를 "요청"하는 경우만 위젯 표시
                       // 확인/완료/분석 응답은 제외
-                      const confirmWords = ["이군요", "이시군요", "군요", "입니다", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석", "매칭", "추천", "결과", "선정", "지원사업"];
+                      const confirmWords = ["이군요", "이시군요", "군요", "입니다", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석", "매칭", "추천", "결과", "선정", "지원사업", "등록되었", "등록되", "정보가 등록", "어떤 작업을 진행"];
                       if (confirmWords.some(w => lastText.includes(w))) return null;
 
                       // 질문 패턴이 있어야 위젯 표시

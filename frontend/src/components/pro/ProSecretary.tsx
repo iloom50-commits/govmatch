@@ -812,7 +812,23 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           ) : (
             /* 고객관리 / 상담이력 / 보고서 / 특정 공고 상담 */
             <div className={`flex-1 overflow-y-auto p-4 ${dark ? "text-slate-200" : ""}`}>
-              {activeView === "clients" && <ClientsTabWrapper headers={headers} toast={toast} dark={dark} t={t} />}
+              {activeView === "clients" && <ClientsTabWrapper headers={headers} toast={toast} dark={dark} t={t}
+                onResumeConsult={(client) => {
+                  // 고객 정보를 ClientProfile 형태로 변환하여 startNewChat에 전달
+                  const profile: ClientProfile = {
+                    id: client.id,
+                    client_name: client.client_name,
+                    client_type: client.client_type || "business",
+                    address_city: client.address_city || "",
+                    industry_name: client.industry_name || "",
+                    revenue_bracket: client.revenue_bracket || "",
+                    contact_name: client.contact_name || "",
+                    contact_email: client.contact_email || "",
+                    status: client.status || "consulting",
+                  };
+                  const cat: ClientCategory = client.client_type === "individual" ? "individual" : "corporate";
+                  startNewChat(cat, profile);
+                }} />}
               {activeView === "history" && <HistoryTabWrapper headers={headers} toast={toast} />}
               {activeView === "reports" && <ReportsTabWrapper headers={headers} toast={toast} />}
               {activeView === "announce_search" && <AnnounceSearchPanel headers={headers} toast={toast} dark={dark} t={t} onStartConsult={(ann) => {
@@ -937,12 +953,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 }
 
 // ─── ProDashboard 서브컴포넌트 래퍼 ───
-function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; toast: any; dark: boolean; t: any }) {
+function ClientsTabWrapper({ headers, toast, dark, t, onResumeConsult }: {
+  headers: () => any; toast: any; dark: boolean; t: any;
+  onResumeConsult?: (client: any) => void;
+}) {
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showEmail, setShowEmail] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -966,6 +986,29 @@ function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; to
     window.open(`${API}/api/pro/clients/export?authorization=Bearer ${token}`, "_blank");
   };
 
+  const handleDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`선택한 ${selectedIds.size}개 고객사를 삭제하시겠습니까?\n(상담 이력은 유지됩니다)`)) return;
+    setDeleting(true);
+    let success = 0, failed = 0;
+    for (const id of Array.from(selectedIds)) {
+      try {
+        const r = await fetch(`${API}/api/pro/clients/${id}`, { method: "DELETE", headers: headers() });
+        if (r.ok) success++;
+        else failed++;
+      } catch { failed++; }
+    }
+    setDeleting(false);
+    setSelectedIds(new Set());
+    if (success > 0) toast(`${success}개 고객사 삭제됨${failed > 0 ? ` (${failed}개 실패)` : ""}`, "success");
+    else toast("삭제 실패", "error");
+    fetchClients();
+  };
+
+  const handleResume = (client: any) => {
+    if (onResumeConsult) onResumeConsult(client);
+  };
+
   const statusLabel: Record<string, string> = { new: "신규", consulting: "상담중", matched: "매칭", applied: "신청", selected: "선정" };
   const statusColor: Record<string, string> = {
     new: dark ? "bg-slate-700/50 text-slate-300" : "bg-slate-100 text-slate-600",
@@ -983,9 +1026,15 @@ function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; to
         <p className={`text-sm font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>{clients.length}개 고객사</p>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <button onClick={() => setShowEmail(true)} className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-500">
-              선택 {selectedIds.size}명 이메일
-            </button>
+            <>
+              <button onClick={() => setShowEmail(true)} className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-500">
+                {selectedIds.size}명 이메일
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="px-3 py-1.5 bg-red-500/15 text-red-400 border border-red-500/30 text-xs font-bold rounded-lg hover:bg-red-500/25 disabled:opacity-50">
+                {deleting ? "삭제 중..." : `${selectedIds.size}개 삭제`}
+              </button>
+            </>
           )}
           <button onClick={handleExport} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${dark ? "bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
             CSV 다운로드
@@ -1005,7 +1054,7 @@ function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; to
                 <input type="checkbox" checked={selectedIds.size === clients.length && clients.length > 0} onChange={selectAll}
                   className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600" />
               </th>
-              {["기업명", "업종", "지역", "매출", "전화", "최근상담", "상담수", "상태"].map((h, i) => (
+              {["기업명", "업종", "지역", "매출", "전화", "최근상담", "상담수", "상태", "액션"].map((h, i) => (
                 <th key={h} className={`py-2.5 px-2 text-left font-bold ${dark ? "text-slate-500" : "text-slate-400"} ${i >= 1 && i <= 4 ? "hidden md:table-cell" : ""}`}>{h}</th>
               ))}
             </tr>
@@ -1031,10 +1080,20 @@ function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; to
                       {statusLabel[c.status] || c.status || "신규"}
                     </span>
                   </td>
+                  <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => handleResume(c)}
+                      className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold rounded-md transition-colors flex items-center gap-1"
+                      title={c.status === "consulting" ? "상담 재개" : "상담 시작"}>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                      {c.status === "consulting" ? "재개" : "상담"}
+                    </button>
+                  </td>
                 </tr>
                 {expanded === c.id && (
                   <tr>
-                    <td colSpan={9} className={`px-4 py-3 border-b ${dark ? "bg-white/[0.02] border-white/[0.04]" : "bg-slate-50 border-slate-200"}`}>
+                    <td colSpan={10} className={`px-4 py-3 border-b ${dark ? "bg-white/[0.02] border-white/[0.04]" : "bg-slate-50 border-slate-200"}`}>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
                         <div className="space-y-1.5">
                           <p className={`text-[10px] font-bold uppercase ${dark ? "text-slate-500" : "text-slate-400"}`}>기본 정보</p>
@@ -1323,24 +1382,58 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
   const [loading, setLoading] = useState(false);
   const [selectedAnn, setSelectedAnn] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
+  // 자동완성
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 입력 시 자동완성
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim() || query.trim().length < 2 || selectedAnn) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=8`, { headers: headers() });
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.data || data.announcements || (Array.isArray(data) ? data : []);
+          const normalized = items.map((a: any) => ({ ...a, id: a.announcement_id || a.id }));
+          setSuggestions(normalized);
+          setShowSuggestions(normalized.length > 0);
+        }
+      } catch {/* */}
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, headers, selectedAnn]);
 
   const search = async () => {
     if (!query.trim()) return;
     setLoading(true);
     setSelectedAnn(null);
     setAnalysisData(null);
+    setShowSuggestions(false);
     try {
       const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=20`, { headers: headers() });
       if (res.ok) {
         const data = await res.json();
-        // 응답 형식: {status, data: [...], total} 또는 {announcements: [...]} 또는 [...]
         const items = data.data || data.announcements || (Array.isArray(data) ? data : []);
-        // 정규화: announcement_id를 id로 매핑
         const normalized = items.map((a: any) => ({ ...a, id: a.announcement_id || a.id }));
         setResults(normalized);
       }
     } catch { toast("검색 실패", "error"); }
     setLoading(false);
+  };
+
+  // 자동완성 항목 클릭 → 즉시 분석
+  const pickSuggestion = (ann: any) => {
+    setQuery(ann.title);
+    setShowSuggestions(false);
+    setResults([]);
+    loadAnalysis(ann);
   };
 
   const loadAnalysis = async (ann: any) => {
@@ -1366,15 +1459,47 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
       <h3 className={`text-sm font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>특정 공고 상담</h3>
       <p className={`text-[12px] ${t.muted}`}>공고명이나 키워드로 검색하여 상세 상담을 시작하세요</p>
 
-      {/* 검색 */}
-      <div className="flex gap-2">
-        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") search(); }}
-          placeholder="상담할 공고명을 입력하세요 (예: 청년창업)" className={inputCls} />
-        <button onClick={search} disabled={loading || !query.trim()}
-          className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
-          검색
-        </button>
+      {/* 검색 + 자동완성 */}
+      <div className="relative">
+        <div className="flex gap-2">
+          <input type="text" value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            onKeyDown={(e) => { if (e.key === "Enter") { setShowSuggestions(false); search(); } }}
+            placeholder="상담할 공고명을 입력하세요 (예: 청년창업)" className={inputCls} />
+          <button onClick={search} disabled={loading || !query.trim()}
+            className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
+            검색
+          </button>
+        </div>
+
+        {/* 자동완성 드롭다운 */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className={`absolute left-0 right-16 top-full mt-1 z-20 rounded-lg border shadow-2xl max-h-96 overflow-y-auto ${
+            dark ? "bg-[#1a1c30] border-violet-500/30" : "bg-white border-slate-200"
+          }`}>
+            {suggestions.map((ann: any) => (
+              <button key={ann.id}
+                onMouseDown={(e) => { e.preventDefault(); pickSuggestion(ann); }}
+                className={`w-full text-left px-3 py-2.5 border-b last:border-b-0 transition-colors ${
+                  dark ? "border-white/[0.04] hover:bg-violet-500/10" : "border-slate-100 hover:bg-violet-50"
+                }`}>
+                <p className={`text-[12px] font-semibold truncate ${dark ? "text-slate-100" : "text-slate-800"}`}>
+                  {ann.title}
+                </p>
+                <div className={`flex gap-2 mt-0.5 text-[10px] ${t.muted}`}>
+                  {ann.department && <span>{ann.department}</span>}
+                  {ann.support_amount && <span>· {ann.support_amount}</span>}
+                  {ann.deadline_date && <span>· ~{String(ann.deadline_date).slice(5, 10)}</span>}
+                </div>
+              </button>
+            ))}
+            <div className={`px-3 py-1.5 text-[10px] text-center ${t.muted} ${dark ? "bg-white/[0.02]" : "bg-slate-50"}`}>
+              제안된 공고 클릭 또는 Enter로 전체 검색
+            </div>
+          </div>
+        )}
       </div>
 
       {loading && <p className={`text-[12px] ${t.muted}`}>검색 중...</p>}

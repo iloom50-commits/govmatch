@@ -1674,6 +1674,19 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - 개인 모드에서 industry_code, revenue_bracket, employee_count_bracket은 자동 설정 (물어보지 말 것)
 - 모든 필드를 추정/변환 가능하면 즉시 done=true와 profile을 반환하세요.
 
+[★ 매칭 트리거 — 매우 중요]
+- 컨설턴트가 "매칭", "매칭해줘", "추천", "찾아줘", "보여줘", "맞춤", "지원사업 알려" 키워드를 사용하면:
+  → 수집된 정보가 일부만 있어도 즉시 done=true 반환
+  → 누락된 필드는 합리적 기본값으로 채우기
+    - industry_code: 빈 문자열로 설정 (전체 검색)
+    - revenue_bracket: "1억 미만" (가장 보수적)
+    - employee_count_bracket: "5인 미만" (가장 보수적)
+    - establishment_date: "2024-01-01" (최근 창업으로 가정)
+    - address_city: "서울" (가장 보편)
+    - interests: 컨설턴트 언급 키워드 또는 "창업지원,기술개발,정책자금"
+- 매칭 트리거가 활성화되면 message에 "수집된 정보를 바탕으로 매칭을 시작하겠습니다."라고 응답
+- **이 규칙은 위의 모든 추가 질문 규칙보다 우선합니다.** 컨설턴트가 매칭을 요청하면 더 묻지 마세요.
+
 [응답 형식 — 반드시 이 JSON 형식으로만 응답]
 {
   "message": "AI의 대화 메시지 (마크다운 사용 가능)",
@@ -1732,8 +1745,29 @@ done=true일 때 (모든 정보 수집 완료):
             done = True
             profile = {k: collected[k] for k in REQUIRED}
 
+        # ★ 매칭 키워드 강제 트리거: 사용자가 매칭 요청 시 done=True
+        last_user_text = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user_text = msg.get("text", "")
+                break
+        match_keywords = ["매칭", "추천", "찾아줘", "보여줘", "맞춤", "지원사업 알려", "리스트", "부탁"]
+        if not done and last_user_text and any(kw in last_user_text for kw in match_keywords):
+            DEFAULTS = {
+                "company_name": "고객사",
+                "establishment_date": "2024-01-01",
+                "industry_code": "",
+                "revenue_bracket": "1억 미만",
+                "employee_count_bracket": "5인 미만",
+                "address_city": "서울",
+                "interests": "창업지원,기술개발,정책자금",
+            }
+            profile = {k: (collected.get(k) or DEFAULTS[k]) for k in REQUIRED}
+            done = True
+            logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile")
+
         return {
-            "reply": result.get("message", "") if not done else "고객사 프로필이 완성되었습니다. 매칭을 시작합니다!",
+            "reply": result.get("message", "") if not done else "수집된 정보를 바탕으로 매칭을 실행합니다.",
             "choices": result.get("choices", []) if not done else [],
             "done": done,
             "profile": profile,

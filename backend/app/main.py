@@ -2884,7 +2884,7 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
     """PRO 전문가 전용: 고객사 상담 채팅
-    - 일반 모드: chat_pro_consultant() (고객 정보 수집)
+    - 일반 모드: chat_pro_consultant() (고객 정보 수집 → done=True 시 자동 매칭)
     - 특정 공고 모드(announcement_id): chat_consult로 위임 (공고 데이터 주입)
     """
     _require_pro(current_user)
@@ -2894,7 +2894,6 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
     # announcement_id가 명시되었거나, 메시지에서 자동 추출
     ann_id = req.announcement_id
     if not ann_id:
-        # 첫 사용자 메시지에서 "공고ID: 12345" 패턴 추출 (프론트엔드 호환)
         for m in req.messages[:2]:
             text = m.get("text", "") if m.get("role") == "user" else ""
             import re as _re
@@ -2913,6 +2912,53 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
             try: db.close()
             except: pass
 
+    # ── 매칭 트리거: 일반 모드에서 done=True + profile 있으면 자동 매칭 실행 ──
+    matched_announcements = []
+    if not ann_id and result.get("done") and result.get("profile"):
+        try:
+            from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
+            profile = result["profile"]
+            # 개인 모드 판별 (interests에 취업/주거/장학금 등이 있으면 개인)
+            individual_keywords = ["취업", "주거", "장학금", "청년", "출산", "육아", "노인", "복지"]
+            interests_str = profile.get("interests", "")
+            is_individual = any(kw in interests_str for kw in individual_keywords)
+
+            if is_individual:
+                matches = get_individual_matches_for_user(profile) or []
+            else:
+                matches = get_matches_for_user(profile) or []
+
+            # 상위 5개만 응답에 포함
+            for ann in matches[:10]:
+                a = ann if isinstance(ann, dict) else dict(ann)
+                matched_announcements.append({
+                    "announcement_id": a.get("announcement_id"),
+                    "title": a.get("title", ""),
+                    "department": a.get("department", ""),
+                    "support_amount": a.get("support_amount", ""),
+                    "deadline_date": str(a.get("deadline_date", "")),
+                    "match_score": a.get("match_score", 0),
+                })
+
+            # 매칭 결과를 reply에 자연어로도 추가 (AI가 못 생성했을 경우 폴백)
+            if matched_announcements and len(result.get("reply", "")) < 200:
+                top5 = matched_announcements[:5]
+                lines = ["**매칭 결과 상위 5개:**\n"]
+                for i, m in enumerate(top5, 1):
+                    lines.append(f"{i}. **{m['title']}**")
+                    if m.get('support_amount'):
+                        lines.append(f"   💰 지원금: {m['support_amount']}")
+                    if m.get('deadline_date'):
+                        lines.append(f"   📅 마감: {m['deadline_date'][:10]}")
+                    if m.get('match_score'):
+                        lines.append(f"   ⭐ 적합도: {m['match_score']}점")
+                    lines.append("")
+                lines.append(f"\n총 {len(matched_announcements)}건이 매칭되었습니다. 보고서를 생성하시겠습니까?")
+                result["reply"] = (result.get("reply", "") + "\n\n" + "\n".join(lines)).strip()
+                result["choices"] = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
+        except Exception as e:
+            print(f"[PRO consultant] auto-match error: {e}")
+
     return {
         "status": "SUCCESS",
         "reply": result.get("reply", ""),
@@ -2921,6 +2967,7 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         "profile": result.get("profile"),
         "collected": result.get("collected", {}),
         "announcement_id": ann_id,
+        "matched_announcements": matched_announcements,
     }
 
 

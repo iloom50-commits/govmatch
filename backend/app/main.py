@@ -2825,9 +2825,37 @@ class AiConsultantChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
 
 
+@app.post("/api/pro/consultant/chat")
+def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO 전문가 전용: 고객사 상담 채팅 (일반 상담과 완전 분리)"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    u = dict(user)
+    _require_pro(u)
+    conn.close()
+
+    from app.services.ai_consultant import chat_pro_consultant
+    result = chat_pro_consultant(req.messages)
+
+    return {
+        "status": "SUCCESS",
+        "reply": result.get("reply", ""),
+        "choices": result.get("choices", []),
+        "done": result.get("done", False),
+        "profile": result.get("profile"),
+        "collected": result.get("collected", {}),
+    }
+
+
 @app.post("/api/ai/consultant/chat")
 def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
-    """컨설턴트 모드: 대화형으로 고객사 조건 수집"""
+    """LITE 일반 사용자: 대화형으로 고객사 조건 수집"""
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()

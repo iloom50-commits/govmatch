@@ -852,22 +852,10 @@ def chat_consultant(
     if not api_key:
         return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": [], "done": False, "profile": None}
 
-    # PRO 전문가 모드 감지: 첫 메시지에 "[전문가 상담 모드]"가 포함되면 프롬프트 보강
-    is_pro_mode = any("[전문가 상담 모드]" in (m.get("text") or "") for m in messages)
-
-    pro_context = """
-[중요: 전문가 상담 도구]
-현재 사용자는 지원사업 **컨설턴트(전문가)**입니다. 컨설턴트가 자신의 고객사 정보를 당신에게 전달하는 상황입니다.
-- "사업자"라고 하면 → 고객이 사업자라는 뜻입니다. 즉시 기업명부터 물어보세요.
-- 컨설턴트에게 존댓말로 질문하세요. 예: "고객사의 기업명을 알려주세요."
-- 정보가 부족해도 "정보가 필요합니다"로 끝내지 말고, 반드시 **구체적 질문**을 하세요.
-- choices에 항상 2~3개의 추천 응답을 포함하세요.
-""" if is_pro_mode else ""
-
-    system_prompt = f"""당신은 대한민국 정부지원사업 전문 컨설턴트 AI입니다.
+    system_prompt = """당신은 대한민국 정부지원사업 전문 컨설턴트 AI입니다.
 사용자의 조건을 파악하여 지원사업 매칭에 필요한 프로필을 생성합니다.
 사업자(기업)와 개인(복지·생활지원) 모두 대응합니다.
-{pro_context}
+
 [사용자 유형 판별]
 - 사용자가 "기업", "사업자", "창업", "법인", "상호" 등을 언급하면 → **사업자 모드**
 - 사용자가 "개인", "청년", "학생", "주부", "구직자", "출산", "육아", "주거" 등을 언급하면 → **개인 모드**
@@ -1503,3 +1491,151 @@ def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
         parts.append(part)
 
     return "\n\n".join(parts)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PRO 전문가 전용 상담 채팅
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def chat_pro_consultant(messages: List[Dict]) -> Dict[str, Any]:
+    """
+    PRO 전문가 전용 상담 채팅.
+    컨설턴트가 고객사 정보를 전달 → AI가 정보 수집 → 매칭 프로필 생성.
+    일반 상담(chat_consultant)과 완전 분리된 프롬프트 사용.
+    """
+    if not HAS_GENAI:
+        return {"reply": "AI 서비스를 사용할 수 없습니다.", "choices": [], "done": False, "profile": None}
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": [], "done": False, "profile": None}
+
+    system_prompt = """당신은 지원사업 컨설턴트의 AI 어시스턴트입니다.
+컨설턴트가 고객사(또는 개인 고객) 정보를 당신에게 전달하면, 정보를 수집하여 지원사업 매칭 프로필을 생성합니다.
+
+[핵심 역할]
+- 당신의 사용자는 **컨설턴트(전문가)**입니다. 고객 본인이 아닙니다.
+- 컨설턴트에게 존댓말로 질문하세요.
+- 고객사 서류(사업계획서, 재무제표 등)가 첨부되면 거기서 정보를 추출하세요.
+
+[대화 규칙]
+1. 정보가 부족하면 반드시 **구체적 질문**을 하세요. "정보가 필요합니다"로만 끝내지 마세요.
+2. 한 번에 1~2개 질문만 하세요. 너무 많으면 부담됩니다.
+3. **choices에 항상 2~3개의 추천 응답**을 포함하세요. 컨설턴트가 빠르게 선택할 수 있도록.
+4. 이미 제공된 정보는 즉시 collected에 반영하고, 절대 다시 묻지 마세요.
+5. 첨부 파일 분석 결과가 대화에 포함되면, 거기서 추출 가능한 정보를 모두 collected에 반영하세요.
+
+[고객 유형 판별]
+- "사업자", "기업", "법인", "창업" → **사업자 모드** → 즉시 "고객사의 기업명을 알려주세요."
+- "개인", "청년", "구직자" → **개인 모드** → 즉시 "고객의 성함과 거주 지역을 알려주세요."
+- 불분명하면: "고객이 사업자(기업)인가요, 개인인가요?" + choices: ["사업자(기업)입니다", "개인 고객입니다"]
+
+[사업자 모드 — 수집할 정보]
+1. company_name: 기업명 (상호명)
+2. establishment_date: 설립일 (YYYY-MM-DD 형식)
+3. industry_code: 업종코드 (KSIC 5자리) — 업종명→자동 변환
+4. revenue_bracket: 매출규모 ("1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상")
+5. employee_count_bracket: 직원수 ("5인 미만", "5인~10인", "10인~30인", "30인~50인", "50인 이상")
+6. address_city: 소재지 (시/도)
+7. interests: 관심분야 (창업지원, 기술개발, 수출마케팅, 고용지원, 시설개선, 정책자금, 디지털전환, 판로개척, 교육훈련, 에너지환경, 소상공인, R&D)
+
+[개인 모드 — 수집할 정보]
+1. company_name: 이름 또는 "개인"
+2. establishment_date: 생년월일 (YYYY-MM-DD) — 나이를 말하면 대략적 날짜로 변환
+3. industry_code: 빈 문자열 ""
+4. revenue_bracket: "1억 미만" (고정)
+5. employee_count_bracket: "5인 미만" (고정)
+6. address_city: 거주지 (시/도)
+7. interests: 관심분야 (취업, 주거, 교육, 청년, 출산, 육아, 다자녀, 장학금, 의료, 장애, 저소득, 노인, 문화)
+
+[업종코드 참고]
+- IT/소프트웨어: 62010
+- 음식점: 56111
+- 소매업: 47190
+- 제조업(식품): 10000
+- 제조업(전자): 26000
+- 건설업: 41000
+- 숙박업: 55000
+- 교육서비스: 85000
+- 전문서비스/컨설팅: 70000
+- 디자인: 74000
+- 농업/스마트팜: 01000
+- 헬스/스포츠: 93000
+
+[자동 추론 규칙]
+- 업종명 → KSIC 코드 자동 변환 (물어보지 말 것)
+- "매출 5억" → revenue_bracket: "5억~10억"
+- "직원 15명" → employee_count_bracket: "10인~30인"
+- 개인 모드에서 industry_code, revenue_bracket, employee_count_bracket은 자동 설정 (물어보지 말 것)
+- 모든 필드를 추정/변환 가능하면 즉시 done=true와 profile을 반환하세요.
+
+[응답 형식 — 반드시 이 JSON 형식으로만 응답]
+{
+  "message": "AI의 대화 메시지 (마크다운 사용 가능)",
+  "choices": ["추천 응답1", "추천 응답2"],
+  "done": false,
+  "collected": {"지금까지 수집된 필드명": "값", ...},
+  "profile": null
+}
+
+done=true일 때 (모든 정보 수집 완료):
+{
+  "message": "고객사 프로필이 완성되었습니다. 매칭을 시작하겠습니다.",
+  "choices": [],
+  "done": true,
+  "collected": {...모든 필드...},
+  "profile": {
+    "company_name": "...",
+    "establishment_date": "YYYY-MM-DD",
+    "industry_code": "XXXXX",
+    "revenue_bracket": "...",
+    "employee_count_bracket": "...",
+    "address_city": "...",
+    "interests": "관심1,관심2"
+  }
+}
+
+반드시 순수 JSON만 반환하세요."""
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        "models/gemini-2.0-flash",
+        generation_config={"max_output_tokens": 4096}
+    )
+
+    gemini_messages = []
+    for msg in messages:
+        role = "user" if msg.get("role") == "user" else "model"
+        gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+
+    try:
+        chat = model.start_chat(history=[
+            {"role": "user", "parts": [system_prompt]},
+            {"role": "model", "parts": ['{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}']},
+            *gemini_messages[:-1]
+        ])
+        response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
+
+        result = _parse_gemini_json(response.text)
+
+        collected = result.get("collected", {})
+        done = result.get("done", False)
+        profile = result.get("profile")
+
+        REQUIRED = ["company_name", "establishment_date", "industry_code", "revenue_bracket", "employee_count_bracket", "address_city", "interests"]
+        if not done and collected and all(collected.get(k) for k in REQUIRED):
+            done = True
+            profile = {k: collected[k] for k in REQUIRED}
+
+        return {
+            "reply": result.get("message", "") if not done else "고객사 프로필이 완성되었습니다. 매칭을 시작합니다!",
+            "choices": result.get("choices", []) if not done else [],
+            "done": done,
+            "profile": profile,
+            "collected": collected,
+        }
+    except json.JSONDecodeError:
+        return {"reply": response.text.strip() if 'response' in dir() else "응답 처리 오류", "choices": [], "done": False, "profile": None, "collected": {}}
+    except Exception as e:
+        logger.error(f"[PRO] chat_pro_consultant error: {e}")
+        return {"reply": "AI 응답 생성 중 오류가 발생했습니다. 다시 시도해 주세요.", "choices": [], "done": False, "profile": None, "collected": {}}

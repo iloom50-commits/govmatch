@@ -202,7 +202,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         text: (i === 0 && m.role === "user" && systemContext) ? `${systemContext}\n\n${m.text}` : m.text,
       }));
 
-      const res = await fetch(`${API}/api/ai/consultant/chat`, {
+      const res = await fetch(`${API}/api/pro/consultant/chat`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({ messages: messagesPayload }),

@@ -61,6 +61,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
 
+  // 다크모드
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem("pro_dark_mode");
+    if (saved === "true") setDark(true);
+  }, []);
+  const toggleDark = () => {
+    setDark(d => { localStorage.setItem("pro_dark_mode", String(!d)); return !d; });
+  };
+
   const getToken = () => localStorage.getItem("auth_token") || "";
   const headers = useCallback(() => ({
     "Content-Type": "application/json",
@@ -218,9 +228,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] bg-white flex flex-col">
+    <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${dark ? "bg-[#1a1b2e] text-slate-200" : "bg-slate-50 text-slate-800"}`}>
       {/* ─── 헤더 ─── */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-700 to-purple-700 text-white flex-shrink-0">
+      <div className={`flex items-center justify-between px-4 py-2.5 flex-shrink-0 ${dark ? "bg-[#12131f] border-b border-white/10" : "bg-gradient-to-r from-violet-700 to-purple-700"} text-white`}>
         <div className="flex items-center gap-3">
           {/* 모바일 햄버거 */}
           <button onClick={() => setLeftOpen(!leftOpen)} className="lg:hidden p-1.5 hover:bg-white/20 rounded-lg">
@@ -234,6 +244,14 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-white/60 hidden sm:block">상담 {planStatus?.ai_used || 0}/{planStatus?.consult_limit || 50}회</span>
+          {/* 다크모드 토글 */}
+          <button onClick={toggleDark} className="p-1.5 hover:bg-white/20 rounded-lg transition-all" title={dark ? "라이트 모드" : "다크 모드"}>
+            {dark ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+            )}
+          </button>
           {/* 모바일 우측 패널 토글 */}
           <button onClick={() => setRightOpen(!rightOpen)} className="lg:hidden p-1.5 hover:bg-white/20 rounded-lg">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
@@ -248,11 +266,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[220px_1fr_280px] overflow-hidden">
 
         {/* ═══ 좌측 네비 ═══ */}
-        <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/30 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col border-r border-slate-100 bg-white overflow-y-auto`}>
-          <div className={`${leftOpen ? "w-[260px] h-full bg-white shadow-2xl" : "w-full"} flex flex-col`}>
+        <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/30 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${dark ? "bg-[#151625] border-r border-white/10" : "bg-white border-r border-slate-200 shadow-sm"}`}>
+          <div className={`${leftOpen ? `w-[260px] h-full shadow-2xl ${dark ? "bg-[#151625]" : "bg-white"}` : "w-full"} flex flex-col`}>
             {leftOpen && <button onClick={() => setLeftOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400">✕</button>}
 
-            <div className="p-3 border-b border-slate-100">
+            <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
               <button
                 onClick={() => { setClientCategory(""); setMessages([]); setActiveView("chat"); setLeftOpen(false); }}
                 className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]"
@@ -263,7 +281,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
             {/* 고객 선택 */}
             {existingClients.length > 0 && (
-              <div className="p-3 border-b border-slate-100">
+              <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">기존 고객</p>
                 <select
                   onChange={(e) => {
@@ -293,7 +311,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   key={item.view}
                   onClick={() => { setActiveView(item.view); setLeftOpen(false); }}
                   className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-all ${
-                    item.active ? "bg-violet-50 text-violet-700 border-r-2 border-violet-600" : "text-slate-600 hover:bg-slate-50"
+                    item.active
+                      ? dark ? "bg-violet-900/30 text-violet-300 border-r-2 border-violet-500" : "bg-violet-50 text-violet-700 border-r-2 border-violet-600"
+                      : dark ? "text-slate-400 hover:bg-white/5" : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
                   <span className="text-base">{item.icon}</span>
@@ -303,7 +323,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             </div>
 
             {/* 연동 서비스 */}
-            <div className="p-3 border-t border-slate-100 hidden lg:block">
+            <div className={`p-3 border-t hidden lg:block ${dark ? "border-white/10" : "border-slate-200"}`}>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">연동 서비스</p>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 rounded-lg text-[11px]">
@@ -321,7 +341,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         </nav>
 
         {/* ═══ 중앙 메인 ═══ */}
-        <div className="flex flex-col overflow-hidden bg-white">
+        <div className={`flex flex-col overflow-hidden ${dark ? "bg-[#1e1f33]" : "bg-white"}`}>
           {activeView === "chat" ? (
             <>
               {/* 유형 선택 (상담 미시작) */}
@@ -341,7 +361,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         { key: "unknown" as ClientCategory, label: "모름", icon: "💬", desc: "AI가 대화로 파악" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
-                          className="p-4 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-all text-left active:scale-[0.98]">
+                          className={`p-4 rounded-xl border-2 transition-all text-left active:scale-[0.98] ${dark ? "border-white/10 hover:border-violet-500 hover:bg-violet-900/20" : "border-slate-200 hover:border-violet-400 hover:bg-violet-50"}`}>
                           <span className="text-2xl">{opt.icon}</span>
                           <p className="text-[13px] font-bold text-slate-800 mt-2">{opt.label}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</p>
@@ -360,7 +380,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
-                              : "bg-slate-100 text-slate-800 rounded-bl-md"
+                              : dark ? "bg-[#252640] text-slate-200 rounded-bl-md" : "bg-slate-100 text-slate-800 rounded-bl-md"
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
@@ -390,7 +410,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   </div>
 
                   {/* 입력 영역 */}
-                  <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 py-3"
+                  <div className={`flex-shrink-0 border-t px-4 py-3 ${dark ? "border-white/10 bg-[#1a1b2e]" : "border-slate-200 bg-white"}`}
                     onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.background = "#f5f3ff"; }}
                     onDragLeave={(e) => { e.currentTarget.style.background = ""; }}
                     onDrop={async (e) => { e.preventDefault(); e.currentTarget.style.background = ""; const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
@@ -411,7 +431,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
                         placeholder="고객 정보를 입력하거나 질문하세요..."
                         disabled={loading}
-                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[14px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all disabled:opacity-50"
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all disabled:opacity-50 ${dark ? "bg-[#252640] border border-white/10 text-slate-200 placeholder-slate-500" : "bg-slate-50 border border-slate-200 text-slate-700 placeholder-slate-400"}`}
                       />
                       <button
                         onClick={() => handleSend(input)}
@@ -444,12 +464,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         </div>
 
         {/* ═══ 우측 컨텍스트 패널 ═══ */}
-        <aside className={`${rightOpen ? "fixed right-0 top-0 h-full z-50 w-[280px] shadow-2xl" : "hidden lg:flex"} lg:flex flex-col border-l border-slate-100 bg-slate-50/50 overflow-y-auto`}>
+        <aside className={`${rightOpen ? "fixed right-0 top-0 h-full z-50 w-[280px] shadow-2xl" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${dark ? "bg-[#151625] border-l border-white/10" : "bg-slate-50 border-l border-slate-200 shadow-sm"}`}>
           {rightOpen && <button onClick={() => setRightOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400">✕</button>}
 
           {/* 상담 플로우 */}
-          <div className="p-3 border-b border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">상담 플로우</p>
+          <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${dark ? "text-slate-500" : "text-slate-400"}`}>상담 플로우</p>
             <div className="space-y-1">
               {flowSteps.map((step, i) => (
                 <div key={step.key} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg text-[11px] ${
@@ -485,7 +505,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-1">📎 자료 첨부</p>
             <p className="text-[10px] text-slate-400 mb-3">재무제표, 사업계획서 등을 첨부하면 AI가 분석합니다</p>
             <label
-              className="block w-full min-h-[120px] flex flex-col items-center justify-center border-2 border-dashed border-violet-300 rounded-xl bg-white hover:bg-violet-50 cursor-pointer transition-all"
+              className={`block w-full min-h-[120px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-all ${dark ? "border-violet-500/50 bg-[#1e1f33] hover:bg-violet-900/20" : "border-violet-300 bg-white hover:bg-violet-50"}`}
               onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("bg-violet-100"); }}
               onDragLeave={(e) => { e.currentTarget.classList.remove("bg-violet-100"); }}
               onDrop={async (e) => { e.preventDefault(); e.currentTarget.classList.remove("bg-violet-100"); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}

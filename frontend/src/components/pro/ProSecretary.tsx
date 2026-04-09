@@ -32,6 +32,75 @@ type ActiveView = "chat" | "clients" | "history" | "reports";
 type FlowState = "idle" | "info_collect" | "matching" | "analysis" | "done";
 type ClientCategory = "" | "individual_biz" | "corporate" | "individual" | "unknown";
 
+// ─── SVG 아이콘 ───
+const Icons = {
+  chat: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-12.375 0c0 4.556 3.694 8.25 8.25 8.25 1.302 0 2.533-.302 3.63-.844l4.37 1.094-1.094-4.37A8.21 8.21 0 0020.25 12c0-4.556-3.694-8.25-8.25-8.25S3.75 7.444 3.75 12z" /></svg>,
+  clients: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
+  history: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  reports: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>,
+  workflow: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" /></svg>,
+  link: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>,
+  attach: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>,
+  send: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>,
+  sun: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>,
+  moon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>,
+  close: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>,
+  menu: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>,
+  info: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>,
+  plus: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>,
+  check: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>,
+};
+
+// ─── 다크/라이트 테마 토큰 ───
+const theme = {
+  dark: {
+    root: "bg-[#0d0e1a] text-slate-200",
+    header: "bg-[#0d0e1a] border-b border-white/[0.06]",
+    leftNav: "bg-[#111222] border-r border-white/[0.06]",
+    center: "bg-[#151628]",
+    right: "bg-[#111222] border-l border-white/[0.06]",
+    card: "bg-[#1a1c30]",
+    cardHover: "hover:bg-[#1f2140]",
+    cardBorder: "border-white/[0.06]",
+    input: "bg-[#1a1c30] border-white/[0.08] text-slate-200 placeholder-slate-500 focus:border-violet-500/50 focus:ring-violet-500/20",
+    bubble: "bg-[#1e2040] text-slate-200",
+    menuActive: "bg-violet-500/10 text-violet-400 border-l-2 border-violet-500",
+    menuInactive: "text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]",
+    sectionTitle: "text-slate-500",
+    border: "border-white/[0.06]",
+    muted: "text-slate-500",
+    flowActive: "bg-violet-500/15 text-violet-400 border border-violet-500/30",
+    flowDone: "text-emerald-400",
+    flowPending: "text-slate-600",
+    serviceActive: "bg-violet-500/10 border border-violet-500/20",
+    serviceInactive: "bg-white/[0.03] border border-white/[0.06]",
+    emptyIcon: "bg-[#1a1c30] border border-white/[0.08]",
+  },
+  light: {
+    root: "bg-slate-50 text-slate-800",
+    header: "bg-gradient-to-r from-violet-700 to-purple-700",
+    leftNav: "bg-white border-r border-slate-200 shadow-sm",
+    center: "bg-white",
+    right: "bg-slate-50 border-l border-slate-200",
+    card: "bg-white",
+    cardHover: "hover:bg-slate-50",
+    cardBorder: "border-slate-200",
+    input: "bg-slate-50 border-slate-200 text-slate-700 placeholder-slate-400 focus:border-violet-400 focus:ring-violet-200",
+    bubble: "bg-slate-100 text-slate-800",
+    menuActive: "bg-violet-50 text-violet-700 border-l-2 border-violet-600",
+    menuInactive: "text-slate-600 hover:bg-slate-50",
+    sectionTitle: "text-slate-400",
+    border: "border-slate-200",
+    muted: "text-slate-400",
+    flowActive: "bg-violet-100 text-violet-700",
+    flowDone: "text-emerald-600",
+    flowPending: "text-slate-400",
+    serviceActive: "bg-violet-50 border border-violet-200",
+    serviceInactive: "bg-slate-50 border border-slate-200",
+    emptyIcon: "bg-violet-50 border border-violet-100",
+  },
+};
+
 // ─── 메인 컴포넌트 ───
 export default function ProSecretary({ onClose, planStatus, onUpgrade, userType }: {
   onClose: () => void;
@@ -70,6 +139,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const toggleDark = () => {
     setDark(d => { localStorage.setItem("pro_dark_mode", String(!d)); return !d; });
   };
+
+  const t = dark ? theme.dark : theme.light;
 
   const getToken = () => localStorage.getItem("auth_token") || "";
   const headers = useCallback(() => ({
@@ -218,7 +289,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     return DOMPurify.sanitize(html);
   };
 
-  // ─── 플로우 상태 라벨 ───
+  // ─── 플로우 상태 ───
   const flowSteps = [
     { key: "idle", label: "대기" },
     { key: "info_collect", label: "정보 수집" },
@@ -227,68 +298,77 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     { key: "done", label: "완료" },
   ];
 
+  const usageUsed = planStatus?.ai_used || 0;
+  const usageLimit = planStatus?.consult_limit || 50;
+  const usagePct = Math.min(100, Math.round((usageUsed / usageLimit) * 100));
+
   return (
-    <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${dark ? "bg-[#1a1b2e] text-slate-200" : "bg-slate-50 text-slate-800"}`}>
+    <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${t.root}`}>
       {/* ─── 헤더 ─── */}
-      <div className={`flex items-center justify-between px-4 py-2.5 flex-shrink-0 ${dark ? "bg-[#12131f] border-b border-white/10" : "bg-gradient-to-r from-violet-700 to-purple-700"} text-white`}>
+      <header className={`flex items-center justify-between px-4 h-12 flex-shrink-0 ${t.header} ${dark ? "text-slate-200" : "text-white"}`}>
         <div className="flex items-center gap-3">
-          {/* 모바일 햄버거 */}
-          <button onClick={() => setLeftOpen(!leftOpen)} className="lg:hidden p-1.5 hover:bg-white/20 rounded-lg">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+          <button onClick={() => setLeftOpen(!leftOpen)} className="lg:hidden p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+            {Icons.menu}
           </button>
-          <span className="px-2 py-0.5 bg-white/20 text-[10px] font-bold rounded">PRO</span>
-          <div>
-            <p className="text-[14px] font-bold">전문가 대시보드</p>
-            <p className="text-[10px] text-white/70">AI 기반 지원사업 컨설팅 도구</p>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center text-white text-[10px] font-black tracking-tight">
+              PRO
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[14px] font-bold tracking-tight">전문가 대시보드</span>
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                연결됨
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-white/60 hidden sm:block">상담 {planStatus?.ai_used || 0}/{planStatus?.consult_limit || 50}회</span>
-          {/* 다크모드 토글 */}
-          <button onClick={toggleDark} className="p-1.5 hover:bg-white/20 rounded-lg transition-all" title={dark ? "라이트 모드" : "다크 모드"}>
-            {dark ? (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
-            )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={toggleDark} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title={dark ? "라이트 모드" : "다크 모드"}>
+            {dark ? Icons.sun : Icons.moon}
           </button>
-          {/* 모바일 우측 패널 토글 */}
-          <button onClick={() => setRightOpen(!rightOpen)} className="lg:hidden p-1.5 hover:bg-white/20 rounded-lg">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+          <button onClick={() => setRightOpen(!rightOpen)} className="lg:hidden p-2 hover:bg-white/10 rounded-lg transition-colors">
+            {Icons.info}
           </button>
-          <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            {Icons.close}
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ─── 3패널 그리드 ─── */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[220px_1fr_280px] overflow-hidden">
 
         {/* ═══ 좌측 네비 ═══ */}
-        <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/30 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${dark ? "bg-[#151625] border-r border-white/10" : "bg-white border-r border-slate-200 shadow-sm"}`}>
-          <div className={`${leftOpen ? `w-[260px] h-full shadow-2xl ${dark ? "bg-[#151625]" : "bg-white"}` : "w-full"} flex flex-col`}>
-            {leftOpen && <button onClick={() => setLeftOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400">✕</button>}
+        <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/40 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${t.leftNav}`}>
+          <div className={`${leftOpen ? `w-[240px] h-full shadow-2xl ${dark ? "bg-[#111222]" : "bg-white"}` : "w-full"} flex flex-col`}>
+            {leftOpen && (
+              <button onClick={() => setLeftOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400 hover:text-slate-200">
+                {Icons.close}
+              </button>
+            )}
 
-            <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
+            {/* 새 상담 버튼 */}
+            <div className={`p-3 border-b ${t.border}`}>
               <button
                 onClick={() => { setClientCategory(""); setMessages([]); setActiveView("chat"); setLeftOpen(false); }}
-                className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]"
+                className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
               >
-                + 새 상담 시작
+                {Icons.plus}
+                <span>새 상담</span>
               </button>
             </div>
 
-            {/* 고객 선택 */}
+            {/* 기존 고객 선택 */}
             {existingClients.length > 0 && (
-              <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">기존 고객</p>
+              <div className={`p-3 border-b ${t.border}`}>
+                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>기존 고객</p>
                 <select
                   onChange={(e) => {
                     const c = existingClients.find(c => c.id === Number(e.target.value));
                     if (c) startNewChat(c.client_type === "individual" ? "individual" : "corporate", c);
                   }}
-                  className="w-full px-2 py-2 border rounded-lg text-[12px] focus:ring-2 focus:ring-violet-300 outline-none"
+                  className={`w-full px-2.5 py-2 rounded-lg text-[12px] outline-none border transition-colors ${t.input}`}
                   value=""
                 >
                   <option value="">고객 선택...</option>
@@ -301,58 +381,95 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
             {/* 메뉴 */}
             <div className="flex-1 py-2">
-              {[
-                { view: "chat" as ActiveView, icon: "💬", label: "상담", active: activeView === "chat" },
-                { view: "clients" as ActiveView, icon: "👥", label: "고객 관리", active: activeView === "clients" },
-                { view: "history" as ActiveView, icon: "📋", label: "상담 이력", active: activeView === "history" },
-                { view: "reports" as ActiveView, icon: "📊", label: "보고서", active: activeView === "reports" },
-              ].map(item => (
+              {([
+                { view: "chat" as ActiveView, icon: Icons.chat, label: "상담" },
+                { view: "clients" as ActiveView, icon: Icons.clients, label: "고객 관리" },
+                { view: "history" as ActiveView, icon: Icons.history, label: "상담 이력" },
+                { view: "reports" as ActiveView, icon: Icons.reports, label: "보고서" },
+              ]).map(item => (
                 <button
                   key={item.view}
                   onClick={() => { setActiveView(item.view); setLeftOpen(false); }}
-                  className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-all ${
-                    item.active
-                      ? dark ? "bg-violet-900/30 text-violet-300 border-r-2 border-violet-500" : "bg-violet-50 text-violet-700 border-r-2 border-violet-600"
-                      : dark ? "text-slate-400 hover:bg-white/5" : "text-slate-600 hover:bg-slate-50"
+                  className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-all text-[13px] font-medium ${
+                    activeView === item.view ? t.menuActive : t.menuInactive
                   }`}
                 >
-                  <span className="text-base">{item.icon}</span>
-                  <span className="text-[13px] font-semibold">{item.label}</span>
+                  {item.icon}
+                  <span>{item.label}</span>
+                  {item.view === "chat" && messages.length > 0 && (
+                    <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold ${dark ? "bg-violet-500/20 text-violet-400" : "bg-violet-100 text-violet-600"}`}>
+                      {messages.length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* 연동 서비스 */}
-            <div className={`p-3 border-t hidden lg:block ${dark ? "border-white/10" : "border-slate-200"}`}>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">연동 서비스</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 rounded-lg text-[11px]">
-                  <span>🏛</span><span className="font-semibold text-violet-700">GovMatch</span><span className="text-emerald-500 text-[9px] ml-auto">연동됨</span>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg text-[11px]">
-                  <span>📄</span><span className="font-semibold text-slate-500">SmartDoc</span><span className="text-slate-400 text-[9px] ml-auto">준비 중</span>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg text-[11px]">
-                  <span>🧠</span><span className="font-semibold text-slate-500">AI Expert</span><span className="text-slate-400 text-[9px] ml-auto">준비 중</span>
-                </div>
+            {/* 연동 서비스 — AI Secretary 스타일 */}
+            <div className={`p-3 border-t hidden lg:block ${t.border}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
+              <div className="space-y-2">
+                {[
+                  { name: "GovMatch", desc: "정부지원사업 매칭", active: true, color: "violet" },
+                  { name: "SmartDoc", desc: "HWPX 문서 자동 작성", active: false },
+                  { name: "AI Expert", desc: "전문가 자문 AI", active: false },
+                ].map(svc => (
+                  <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] transition-colors ${svc.active ? t.serviceActive : t.serviceInactive}`}>
+                    <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${
+                      svc.active
+                        ? "bg-violet-600 text-white"
+                        : dark ? "bg-white/[0.05] text-slate-500" : "bg-slate-100 text-slate-400"
+                    }`}>
+                      {svc.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${svc.active ? (dark ? "text-slate-200" : "text-slate-700") : t.muted}`}>{svc.name}</p>
+                      <p className={`text-[9px] truncate ${t.muted}`}>{svc.desc}</p>
+                    </div>
+                    {svc.active ? (
+                      <span className="text-emerald-500 flex-shrink-0">{Icons.link}</span>
+                    ) : (
+                      <span className={`text-[9px] flex-shrink-0 ${t.muted}`}>준비 중</span>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </nav>
 
         {/* ═══ 중앙 메인 ═══ */}
-        <div className={`flex flex-col overflow-hidden ${dark ? "bg-[#1e1f33]" : "bg-white"}`}>
+        <div className={`flex flex-col overflow-hidden ${t.center}`}>
           {activeView === "chat" ? (
             <>
+              {/* 상단 바 — 현재 상태 */}
+              {clientCategory && (
+                <div className={`flex items-center justify-between px-4 lg:px-6 h-10 border-b flex-shrink-0 ${t.border}`}>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <span className={`font-semibold ${dark ? "text-violet-400" : "text-violet-700"}`}>
+                      {selectedClient ? selectedClient.client_name : clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "유형 미정"}
+                    </span>
+                    <span className={`${t.muted}`}>·</span>
+                    <span className={`${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label || "대기"}</span>
+                  </div>
+                  <span className={`text-[11px] ${t.muted}`}>상담 {usageUsed}/{usageLimit}회</span>
+                </div>
+              )}
+
               {/* 유형 선택 (상담 미시작) */}
               {!clientCategory && messages.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
                   <div className="max-w-md text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 rounded-2xl flex items-center justify-center">
-                      <span className="text-3xl">✨</span>
+                    <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
+                      <svg className="w-8 h-8 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+                      </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">새 상담을 시작하세요</h2>
-                    <p className="text-[13px] text-slate-500 mb-6">고객 유형을 선택하면 AI 상담이 시작됩니다</p>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>업무를 지시하시면</h2>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>AI 에이전트가 자동으로 실행됩니다.</h2>
+                    <p className={`text-[13px] mb-8 ${t.muted}`}>
+                      예: &ldquo;사업계획서 분석해줘&rdquo; | &ldquo;지원사업 매칭해줘&rdquo; | &ldquo;고객 분석해줘&rdquo;
+                    </p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { key: "individual_biz" as ClientCategory, label: "개인사업자", icon: "🏪", desc: "1인 사업자, 프리랜서" },
@@ -361,10 +478,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         { key: "unknown" as ClientCategory, label: "모름", icon: "💬", desc: "AI가 대화로 파악" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
-                          className={`p-4 rounded-xl border-2 transition-all text-left active:scale-[0.98] ${dark ? "border-white/10 hover:border-violet-500 hover:bg-violet-900/20" : "border-slate-200 hover:border-violet-400 hover:bg-violet-50"}`}>
+                          className={`p-4 rounded-xl border transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/40 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-400 hover:bg-violet-50 bg-white"}`}>
                           <span className="text-2xl">{opt.icon}</span>
-                          <p className="text-[13px] font-bold text-slate-800 mt-2">{opt.label}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</p>
+                          <p className={`text-[13px] font-bold mt-2 ${dark ? "text-slate-200" : "text-slate-800"}`}>{opt.label}</p>
+                          <p className={`text-[10px] mt-0.5 ${t.muted}`}>{opt.desc}</p>
                         </button>
                       ))}
                     </div>
@@ -376,18 +493,22 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 space-y-3">
                     {messages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[80%]`}>
+                        <div className="max-w-[80%]">
                           <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
-                              : dark ? "bg-[#252640] text-slate-200 rounded-bl-md" : "bg-slate-100 text-slate-800 rounded-bl-md"
+                              : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">
                               {msg.choices.map((choice, ci) => (
                                 <button key={ci} onClick={() => handleSend(choice)}
-                                  className="px-3 py-1.5 bg-white border border-violet-200 text-violet-700 rounded-full text-[12px] font-semibold hover:bg-violet-50 hover:border-violet-400 transition-all active:scale-95">
+                                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all active:scale-95 border ${
+                                    dark
+                                      ? "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"
+                                      : "bg-white border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-400"
+                                  }`}>
                                   {choice}
                                 </button>
                               ))}
@@ -398,7 +519,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     ))}
                     {loading && (
                       <div className="flex justify-start">
-                        <div className="px-4 py-3 bg-slate-100 rounded-2xl rounded-bl-md">
+                        <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${t.bubble}`}>
                           <div className="flex gap-1.5">
                             <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                             <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -407,7 +528,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         </div>
                       </div>
                     )}
-                    {/* 인라인 입력 위젯 — AI 질문에 따라 자동 표시 */}
+                    {/* 인라인 입력 위젯 */}
                     {!loading && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
                       const lastText = messages[messages.length - 1].text.toLowerCase();
                       const fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[] = [];
@@ -421,25 +542,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
                       if (fields.length === 0) return null;
                       return (
-                        <InlineInputWidget fields={fields} dark={dark} onSubmit={(values) => {
+                        <InlineInputWidget fields={fields} dark={dark} t={t} onSubmit={(values) => {
                           const text = Object.entries(values).filter(([, v]) => v).map(([, v]) => v).join(", ");
                           if (text) handleSend(text);
+                        }} onSkip={() => {
+                          handleSend("건너뛰기 — 다음 질문으로 넘어갈게요");
                         }} />
                       );
                     })()}
                   </div>
 
-                  {/* 입력 영역 */}
-                  <div className={`flex-shrink-0 border-t px-4 py-3 ${dark ? "border-white/10 bg-[#1a1b2e]" : "border-slate-200 bg-white"}`}
-                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.background = "#f5f3ff"; }}
-                    onDragLeave={(e) => { e.currentTarget.style.background = ""; }}
-                    onDrop={async (e) => { e.preventDefault(); e.currentTarget.style.background = ""; const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
+                  {/* 입력 영역 — AI Secretary 스타일 */}
+                  <div className={`flex-shrink-0 border-t px-4 lg:px-6 py-3 ${t.border} ${dark ? "bg-[#0d0e1a]" : "bg-white"}`}
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={async (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
                   >
-                    <div className="flex items-center gap-2">
-                      <label className="p-2.5 text-violet-500 hover:text-violet-700 hover:bg-violet-50 rounded-xl cursor-pointer transition-all flex-shrink-0" title="자료 첨부">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                        </svg>
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-colors ${
+                      dark ? "bg-[#1a1c30] border-white/[0.08] focus-within:border-violet-500/40" : "bg-slate-50 border-slate-200 focus-within:border-violet-400"
+                    }`}>
+                      <label className={`p-1.5 rounded-lg cursor-pointer transition-colors flex-shrink-0 ${dark ? "text-slate-500 hover:text-violet-400 hover:bg-white/5" : "text-slate-400 hover:text-violet-600 hover:bg-violet-50"}`} title="자료 첨부">
+                        {Icons.attach}
                         <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
                           onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
                       </label>
@@ -449,18 +571,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
-                        placeholder="고객 정보를 입력하거나 질문하세요..."
+                        placeholder="업무를 지시하세요... (Enter: 전송 / Shift+Enter: 줄바꿈)"
                         disabled={loading}
-                        className={`flex-1 px-4 py-2.5 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-all disabled:opacity-50 ${dark ? "bg-[#252640] border border-white/10 text-slate-200 placeholder-slate-500" : "bg-slate-50 border border-slate-200 text-slate-700 placeholder-slate-400"}`}
+                        className={`flex-1 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />
                       <button
                         onClick={() => handleSend(input)}
                         disabled={loading || !input.trim()}
-                        className="p-2.5 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-all active:scale-95 disabled:opacity-40 flex-shrink-0"
+                        className="px-4 py-2 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0 flex items-center gap-1.5"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                        </svg>
+                        전송 {Icons.send}
                       </button>
                     </div>
                   </div>
@@ -468,89 +588,128 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               )}
             </>
           ) : (
-            /* 고객관리 / 상담이력 / 보고서 — ProDashboard 서브컴포넌트 재사용 */
-            <div className="flex-1 overflow-y-auto p-4">
-              {activeView === "clients" && (
-                <ClientsTabWrapper headers={headers} toast={toast} />
-              )}
-              {activeView === "history" && (
-                <HistoryTabWrapper headers={headers} toast={toast} />
-              )}
-              {activeView === "reports" && (
-                <ReportsTabWrapper headers={headers} toast={toast} />
-              )}
+            /* 고객관리 / 상담이력 / 보고서 */
+            <div className={`flex-1 overflow-y-auto p-4 ${dark ? "text-slate-200" : ""}`}>
+              {activeView === "clients" && <ClientsTabWrapper headers={headers} toast={toast} dark={dark} t={t} />}
+              {activeView === "history" && <HistoryTabWrapper headers={headers} toast={toast} />}
+              {activeView === "reports" && <ReportsTabWrapper headers={headers} toast={toast} />}
             </div>
           )}
         </div>
 
         {/* ═══ 우측 컨텍스트 패널 ═══ */}
-        <aside className={`${rightOpen ? "fixed right-0 top-0 h-full z-50 w-[280px] shadow-2xl" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${dark ? "bg-[#151625] border-l border-white/10" : "bg-slate-50 border-l border-slate-200 shadow-sm"}`}>
-          {rightOpen && <button onClick={() => setRightOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400">✕</button>}
+        <aside className={`${rightOpen ? "fixed right-0 top-0 h-full z-50 w-[280px] shadow-2xl" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${t.right}`}>
+          {rightOpen && (
+            <button onClick={() => setRightOpen(false)} className="lg:hidden self-end p-2 m-2 text-slate-400 hover:text-slate-200">
+              {Icons.close}
+            </button>
+          )}
 
-          {/* 상담 플로우 */}
-          <div className={`p-3 border-b ${dark ? "border-white/10" : "border-slate-200"}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${dark ? "text-slate-500" : "text-slate-400"}`}>상담 플로우</p>
-            <div className="space-y-1">
-              {flowSteps.map((step, i) => (
-                <div key={step.key} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg text-[11px] ${
-                  flowState === step.key ? "bg-violet-100 text-violet-700 font-bold" :
-                  flowSteps.findIndex(s => s.key === flowState) > i ? "text-emerald-600" : "text-slate-400"
-                }`}>
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[8px] ${
-                    flowState === step.key ? "border-violet-500 bg-violet-500 text-white" :
-                    flowSteps.findIndex(s => s.key === flowState) > i ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300"
-                  }`}>
-                    {flowSteps.findIndex(s => s.key === flowState) > i ? "✓" : ""}
-                  </div>
-                  {step.label}
-                </div>
-              ))}
+          {/* 워크플로우 — AI Secretary 스타일 타임라인 */}
+          <div className={`p-4 border-b ${t.border}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-3 ${t.sectionTitle}`}>워크플로우</p>
+            <div className="relative">
+              {/* 세로 연결선 */}
+              <div className={`absolute left-[11px] top-3 bottom-3 w-[2px] ${dark ? "bg-white/[0.06]" : "bg-slate-200"}`} />
+              <div className="space-y-0.5 relative">
+                {flowSteps.map((step, i) => {
+                  const currentIdx = flowSteps.findIndex(s => s.key === flowState);
+                  const isDone = currentIdx > i;
+                  const isActive = flowState === step.key;
+                  return (
+                    <div key={step.key} className={`flex items-center gap-3 py-2 px-2 rounded-lg text-[12px] transition-all ${
+                      isActive ? t.flowActive : ""
+                    }`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
+                        isActive ? "border-violet-500 bg-violet-500 text-white shadow-lg shadow-violet-500/30"
+                        : isDone ? "border-emerald-500 bg-emerald-500 text-white"
+                        : dark ? "border-white/10 bg-transparent" : "border-slate-200 bg-white"
+                      }`}>
+                        {isDone ? Icons.check : isActive ? <span className="w-2 h-2 bg-white rounded-full" /> : null}
+                      </div>
+                      <span className={`font-medium ${isActive ? (dark ? "text-violet-400" : "text-violet-700") : isDone ? t.flowDone : t.flowPending}`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          </div>
+
+          {/* 토큰 사용량 — 그라데이션 프로그레스 바 */}
+          <div className={`p-4 border-b ${t.border}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>상담 사용량</p>
+            <div className={`w-full h-2 rounded-full overflow-hidden ${dark ? "bg-white/[0.06]" : "bg-slate-200"}`}>
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500"
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1.5">
+              <span className={`text-[11px] font-semibold ${dark ? "text-violet-400" : "text-violet-600"}`}>{usageUsed.toLocaleString()} / {usageLimit.toLocaleString()}</span>
+              <span className={`text-[11px] ${t.muted}`}>{usagePct}%</span>
+            </div>
+          </div>
+
+          {/* 활성 에이전트 */}
+          <div className={`p-4 border-b ${t.border}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>활성 에이전트</p>
+            <p className={`text-[12px] ${t.muted}`}>{loading ? "분석 중..." : "대기 중"}</p>
           </div>
 
           {/* 현재 고객 정보 */}
           {selectedClient && (
-            <div className="p-3 border-b border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">현재 고객</p>
-              <div className="space-y-1 text-[11px]">
-                <p className="font-bold text-slate-700">{selectedClient.client_name}</p>
-                <p className="text-slate-500">{selectedClient.address_city || ""} · {selectedClient.industry_name || ""}</p>
-                {selectedClient.contact_name && <p className="text-slate-400">{selectedClient.contact_name} · {selectedClient.contact_email || ""}</p>}
+            <div className={`p-4 border-b ${t.border}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>현재 고객</p>
+              <div className={`space-y-1.5 text-[12px]`}>
+                <p className={`font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>{selectedClient.client_name}</p>
+                <p className={t.muted}>{selectedClient.address_city || ""} · {selectedClient.industry_name || ""}</p>
+                {selectedClient.contact_name && <p className={t.muted}>{selectedClient.contact_name} · {selectedClient.contact_email || ""}</p>}
               </div>
             </div>
           )}
 
           {/* 자료 첨부 */}
-          <div className="p-3 border-b border-slate-100">
-            <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-1">📎 자료 첨부</p>
-            <p className="text-[10px] text-slate-400 mb-3">재무제표, 사업계획서 등을 첨부하면 AI가 분석합니다</p>
+          <div className={`p-4 border-b ${t.border}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>자료 첨부</p>
+            <p className={`text-[10px] mb-3 ${t.muted}`}>재무제표, 사업계획서 등을 첨부하면 AI가 분석합니다</p>
             <label
-              className={`block w-full min-h-[120px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-all ${dark ? "border-violet-500/50 bg-[#1e1f33] hover:bg-violet-900/20" : "border-violet-300 bg-white hover:bg-violet-50"}`}
-              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("bg-violet-100"); }}
-              onDragLeave={(e) => { e.currentTarget.classList.remove("bg-violet-100"); }}
-              onDrop={async (e) => { e.preventDefault(); e.currentTarget.classList.remove("bg-violet-100"); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
+              className={`block w-full min-h-[100px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                dark ? "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-violet-500/30" : "border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-300"
+              }`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
             >
-              <span className="text-2xl mb-1">📄</span>
-              <p className="text-[11px] font-bold text-violet-600">드래그 또는 클릭</p>
-              <p className="text-[9px] text-slate-400">PDF, HWP, DOCX (10MB)</p>
+              <svg className={`w-6 h-6 mb-1 ${t.muted}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+              </svg>
+              <p className={`text-[11px] font-semibold ${dark ? "text-violet-400" : "text-violet-600"}`}>파일을 드래그하거나 클릭하여 선택</p>
+              <p className={`text-[9px] mt-0.5 ${t.muted}`}>PDF, HWP, DOCX (10MB)</p>
               <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
                 onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
             </label>
           </div>
 
-          {/* 연동 서비스 (모바일용) */}
-          <div className="p-3 lg:hidden">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">연동 서비스</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 rounded-lg">
-                <span>🏛</span><span className="font-semibold text-violet-700">GovMatch</span><span className="text-emerald-500 text-[9px] ml-auto">연동됨</span>
-              </div>
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg">
-                <span>📄</span><span className="font-semibold text-slate-500">SmartDoc</span><span className="text-slate-400 text-[9px] ml-auto">준비 중</span>
-              </div>
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg">
-                <span>🧠</span><span className="font-semibold text-slate-500">AI Expert</span><span className="text-slate-400 text-[9px] ml-auto">준비 중</span>
-              </div>
+          {/* 연동 서비스 (모바일) */}
+          <div className={`p-4 lg:hidden`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
+            <div className="space-y-2">
+              {[
+                { name: "GovMatch", desc: "정부지원사업 매칭", active: true },
+                { name: "SmartDoc", desc: "HWPX 문서 자동 작성", active: false },
+              ].map(svc => (
+                <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] ${svc.active ? t.serviceActive : t.serviceInactive}`}>
+                  <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${
+                    svc.active ? "bg-violet-600 text-white" : dark ? "bg-white/[0.05] text-slate-500" : "bg-slate-100 text-slate-400"
+                  }`}>{svc.name[0]}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold ${svc.active ? (dark ? "text-slate-200" : "text-slate-700") : t.muted}`}>{svc.name}</p>
+                    <p className={`text-[9px] ${t.muted}`}>{svc.desc}</p>
+                  </div>
+                  {svc.active ? <span className="text-emerald-500">{Icons.link}</span> : <span className={`text-[9px] ${t.muted}`}>준비 중</span>}
+                </div>
+              ))}
             </div>
           </div>
         </aside>
@@ -560,7 +719,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 }
 
 // ─── ProDashboard 서브컴포넌트 래퍼 ───
-function ClientsTabWrapper({ headers, toast }: { headers: () => any; toast: any }) {
+function ClientsTabWrapper({ headers, toast, dark, t }: { headers: () => any; toast: any; dark: boolean; t: any }) {
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -590,93 +749,95 @@ function ClientsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
   };
 
   const statusLabel: Record<string, string> = { new: "신규", consulting: "상담중", matched: "매칭", applied: "신청", selected: "선정" };
-  const statusColor: Record<string, string> = { new: "bg-slate-100 text-slate-600", consulting: "bg-blue-100 text-blue-700", matched: "bg-indigo-100 text-indigo-700", applied: "bg-amber-100 text-amber-700", selected: "bg-emerald-100 text-emerald-700" };
+  const statusColor: Record<string, string> = {
+    new: dark ? "bg-slate-700/50 text-slate-300" : "bg-slate-100 text-slate-600",
+    consulting: dark ? "bg-blue-900/30 text-blue-400" : "bg-blue-100 text-blue-700",
+    matched: dark ? "bg-indigo-900/30 text-indigo-400" : "bg-indigo-100 text-indigo-700",
+    applied: dark ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700",
+    selected: dark ? "bg-emerald-900/30 text-emerald-400" : "bg-emerald-100 text-emerald-700",
+  };
 
-  if (loading) return <div className="text-center py-10 text-slate-400">로딩 중...</div>;
+  if (loading) return <div className={`text-center py-10 ${dark ? "text-slate-500" : "text-slate-400"}`}>로딩 중...</div>;
 
   return (
     <div className="space-y-3">
-      {/* 상단 액션 바 */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-slate-700">{clients.length}개 고객사</p>
+        <p className={`text-sm font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>{clients.length}개 고객사</p>
         <div className="flex gap-2">
           {selectedIds.size > 0 && (
-            <button onClick={() => setShowEmail(true)} className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700">
+            <button onClick={() => setShowEmail(true)} className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-500">
               선택 {selectedIds.size}명 이메일
             </button>
           )}
-          <button onClick={handleExport} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200">
-            📥 CSV 다운로드
+          <button onClick={handleExport} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${dark ? "bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            CSV 다운로드
           </button>
-          <button onClick={() => { const { ClientForm } = require("@/components/ProDashboard"); /* TODO: 추가 모달 */ toast("고객 추가는 상담에서 자동 등록됩니다", "info"); }}
-            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700">
+          <button onClick={() => { toast("고객 추가는 상담에서 자동 등록됩니다", "info"); }}
+            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-500">
             + 고객 추가
           </button>
         </div>
       </div>
 
-      {/* 테이블 */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className={`overflow-x-auto rounded-xl border ${dark ? "border-white/[0.06]" : "border-slate-200"}`}>
         <table className="w-full text-[12px]">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="py-2 px-2 text-left w-8">
+            <tr className={dark ? "bg-white/[0.03] border-b border-white/[0.06]" : "bg-slate-50 border-b border-slate-200"}>
+              <th className="py-2.5 px-2 text-left w-8">
                 <input type="checkbox" checked={selectedIds.size === clients.length && clients.length > 0} onChange={selectAll}
                   className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600" />
               </th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500">기업명</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden md:table-cell">업종</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden lg:table-cell">지역</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden lg:table-cell">매출</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden md:table-cell">전화</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500">최근상담</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500">상담수</th>
-              <th className="py-2 px-2 text-left font-bold text-slate-500">상태</th>
+              {["기업명", "업종", "지역", "매출", "전화", "최근상담", "상담수", "상태"].map((h, i) => (
+                <th key={h} className={`py-2.5 px-2 text-left font-bold ${dark ? "text-slate-500" : "text-slate-400"} ${i >= 1 && i <= 4 ? "hidden md:table-cell" : ""}`}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {clients.map(c => (
               <React.Fragment key={c.id}>
-                <tr className={`border-b border-slate-100 hover:bg-violet-50/30 cursor-pointer transition-all ${expanded === c.id ? "bg-violet-50/50" : ""}`}
+                <tr className={`border-b ${dark ? "border-white/[0.04] hover:bg-white/[0.03]" : "border-slate-100 hover:bg-violet-50/30"} cursor-pointer transition-all ${expanded === c.id ? (dark ? "bg-white/[0.03]" : "bg-violet-50/50") : ""}`}
                   onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
                   <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)}
                       className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600" />
                   </td>
-                  <td className="py-2.5 px-2 font-bold text-slate-800">{c.client_name}</td>
-                  <td className="py-2.5 px-2 text-slate-500 hidden md:table-cell">{c.industry_name || "-"}</td>
-                  <td className="py-2.5 px-2 text-slate-500 hidden lg:table-cell">{c.address_city || "-"}</td>
-                  <td className="py-2.5 px-2 text-slate-500 hidden lg:table-cell">{c.revenue_bracket || "-"}</td>
-                  <td className="py-2.5 px-2 text-slate-500 hidden md:table-cell">{c.contact_phone || "-"}</td>
-                  <td className="py-2.5 px-2 text-slate-500">{c.last_consult_date ? String(c.last_consult_date).slice(5, 10) : "-"}</td>
-                  <td className="py-2.5 px-2 text-slate-500">{c.consult_count || 0}회</td>
+                  <td className={`py-2.5 px-2 font-bold ${dark ? "text-slate-200" : "text-slate-800"}`}>{c.client_name}</td>
+                  <td className={`py-2.5 px-2 hidden md:table-cell ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.industry_name || "-"}</td>
+                  <td className={`py-2.5 px-2 hidden md:table-cell ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.address_city || "-"}</td>
+                  <td className={`py-2.5 px-2 hidden md:table-cell ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.revenue_bracket || "-"}</td>
+                  <td className={`py-2.5 px-2 hidden md:table-cell ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.contact_phone || "-"}</td>
+                  <td className={`py-2.5 px-2 ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.last_consult_date ? String(c.last_consult_date).slice(5, 10) : "-"}</td>
+                  <td className={`py-2.5 px-2 ${dark ? "text-slate-400" : "text-slate-500"}`}>{c.consult_count || 0}회</td>
                   <td className="py-2.5 px-2">
-                    <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${statusColor[c.status] || "bg-slate-100 text-slate-500"}`}>
+                    <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${statusColor[c.status] || (dark ? "bg-slate-700/50 text-slate-400" : "bg-slate-100 text-slate-500")}`}>
                       {statusLabel[c.status] || c.status || "신규"}
                     </span>
                   </td>
                 </tr>
-                {/* 펼침 상세 */}
                 {expanded === c.id && (
                   <tr>
-                    <td colSpan={9} className="bg-slate-50 px-4 py-3 border-b border-slate-200">
+                    <td colSpan={9} className={`px-4 py-3 border-b ${dark ? "bg-white/[0.02] border-white/[0.04]" : "bg-slate-50 border-slate-200"}`}>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">기본 정보</p>
-                          <p><span className="text-slate-400">담당자:</span> <span className="font-semibold">{c.contact_name || "-"}</span></p>
-                          <p><span className="text-slate-400">이메일:</span> <span className="font-semibold">{c.contact_email || "-"}</span></p>
-                          <p><span className="text-slate-400">전화:</span> <span className="font-semibold">{c.contact_phone || "-"}</span></p>
-                          <p><span className="text-slate-400">설립일:</span> <span className="font-semibold">{c.establishment_date ? String(c.establishment_date).slice(0, 10) : "-"}</span></p>
-                          <p><span className="text-slate-400">직원수:</span> <span className="font-semibold">{c.employee_count_bracket || "-"}</span></p>
-                          {c.tags && <p><span className="text-slate-400">태그:</span> {c.tags.split(",").map((t: string, i: number) => <span key={i} className="ml-1 px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[9px] font-bold rounded">{t.trim()}</span>)}</p>}
-                          {c.memo && <p><span className="text-slate-400">메모:</span> <span className="text-slate-600">{c.memo}</span></p>}
+                          <p className={`text-[10px] font-bold uppercase ${dark ? "text-slate-500" : "text-slate-400"}`}>기본 정보</p>
+                          {[
+                            ["담당자", c.contact_name],
+                            ["이메일", c.contact_email],
+                            ["전화", c.contact_phone],
+                            ["설립일", c.establishment_date ? String(c.establishment_date).slice(0, 10) : null],
+                            ["직원수", c.employee_count_bracket],
+                          ].map(([label, val]) => (
+                            <p key={label as string}><span className={dark ? "text-slate-500" : "text-slate-400"}>{label}:</span> <span className="font-semibold">{val || "-"}</span></p>
+                          ))}
+                          {c.tags && <p><span className={dark ? "text-slate-500" : "text-slate-400"}>태그:</span> {c.tags.split(",").map((tag: string, i: number) => <span key={i} className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded ${dark ? "bg-violet-500/20 text-violet-400" : "bg-violet-100 text-violet-600"}`}>{tag.trim()}</span>)}</p>}
+                          {c.memo && <p><span className={dark ? "text-slate-500" : "text-slate-400"}>메모:</span> <span className={dark ? "text-slate-300" : "text-slate-600"}>{c.memo}</span></p>}
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">최근 상담</p>
+                          <p className={`text-[10px] font-bold uppercase ${dark ? "text-slate-500" : "text-slate-400"}`}>최근 상담</p>
                           {c.last_consult_summary ? (
-                            <p className="text-slate-600 leading-relaxed">{c.last_consult_summary}</p>
+                            <p className={`leading-relaxed ${dark ? "text-slate-300" : "text-slate-600"}`}>{c.last_consult_summary}</p>
                           ) : (
-                            <p className="text-slate-400">상담 이력이 없습니다</p>
+                            <p className={dark ? "text-slate-600" : "text-slate-400"}>상담 이력이 없습니다</p>
                           )}
                         </div>
                       </div>
@@ -689,7 +850,6 @@ function ClientsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
         </table>
       </div>
 
-      {/* 이메일 모달 */}
       {showEmail && (() => {
         const { EmailModal } = require("@/components/ProDashboard");
         return <EmailModal clientIds={Array.from(selectedIds)} clientCount={selectedIds.size} headers={headers} toast={toast}
@@ -710,22 +870,23 @@ function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 }
 
 
-// ─── 인라인 입력 위젯 ───
-function InlineInputWidget({ fields, dark, onSubmit }: {
+// ─── 인라인 입력 위젯 (건너뛰기 추가) ───
+function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
   fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[];
   dark: boolean;
+  t: any;
   onSubmit: (values: Record<string, string>) => void;
+  onSkip: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
-
   const update = (key: string, val: string) => setValues(prev => ({ ...prev, [key]: val }));
 
-  const inputCls = `px-3 py-2 rounded-lg text-[13px] outline-none focus:ring-2 focus:ring-violet-300 transition-all ${
-    dark ? "bg-[#252640] border border-white/10 text-slate-200" : "bg-white border border-slate-200 text-slate-700"
+  const inputCls = `px-3 py-2 rounded-lg text-[13px] outline-none border transition-all focus:ring-2 focus:ring-violet-500/20 ${
+    dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
   }`;
 
   return (
-    <div className={`mx-4 mb-3 p-3 rounded-xl border ${dark ? "bg-[#1e1f33] border-violet-500/30" : "bg-violet-50/50 border-violet-200"}`}>
+    <div className={`mx-4 mb-3 p-3 rounded-xl border ${dark ? "bg-[#1a1c30] border-violet-500/20" : "bg-violet-50/50 border-violet-200"}`}>
       <div className="flex flex-wrap gap-2 items-end">
         {fields.map(f => (
           <div key={f.key} className="flex-1 min-w-[120px]">
@@ -743,13 +904,23 @@ function InlineInputWidget({ fields, dark, onSubmit }: {
             )}
           </div>
         ))}
-        <button
-          onClick={() => onSubmit(values)}
-          disabled={Object.values(values).every(v => !v)}
-          className="px-4 py-2 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-95 disabled:opacity-40 self-end"
-        >
-          전송
-        </button>
+        <div className="flex gap-1.5 self-end">
+          <button
+            onClick={onSkip}
+            className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-95 ${
+              dark ? "text-slate-400 hover:text-slate-200 hover:bg-white/[0.05]" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+            }`}
+          >
+            건너뛰기
+          </button>
+          <button
+            onClick={() => onSubmit(values)}
+            disabled={Object.values(values).every(v => !v)}
+            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30"
+          >
+            전송
+          </button>
+        </div>
       </div>
     </div>
   );

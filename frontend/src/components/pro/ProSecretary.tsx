@@ -573,19 +573,34 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     {!loading && !typing && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
                       const lastText = messages[messages.length - 1].text.toLowerCase();
 
-                      // AI가 질문하는 경우만 감지 (확인/완료 응답은 제외)
-                      const isAsking = lastText.includes("?") || lastText.includes("알려") || lastText.includes("입력해") || lastText.includes("선택해") || lastText.includes("어떤") || lastText.includes("무엇");
-                      const isConfirming = lastText.includes("입력하셨") || lastText.includes("확인했") || lastText.includes("접수") || lastText.includes("감사합니다") || lastText.includes("찾아보") || lastText.includes("분석") || lastText.includes("매칭");
-                      if (!isAsking || isConfirming) return null;
+                      // AI가 특정 정보를 "요청"하는 경우만 위젯 표시
+                      // 확인/완료/분석 응답은 제외
+                      const confirmWords = ["이군요", "이시군요", "군요", "입니다", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석", "매칭", "추천", "결과", "선정", "지원사업"];
+                      if (confirmWords.some(w => lastText.includes(w))) return null;
 
+                      // 질문 패턴이 있어야 위젯 표시
+                      const askWords = ["알려주세요", "입력해주세요", "선택해주세요", "어떻게 되나요", "무엇인가요", "어디인가요"];
+                      const isAsking = lastText.includes("?") || askWords.some(w => lastText.includes(w));
+                      if (!isAsking) return null;
+
+                      // 각 필드를 "요청"하는 패턴만 감지 (확인 언급 제외)
                       const fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[] = [];
+                      const asking = (keyword: string) => {
+                        // "기업명을 알려주세요" → true / "기업명이 dd이군요" → false
+                        const idx = lastText.indexOf(keyword);
+                        if (idx === -1) return false;
+                        const after = lastText.substring(idx + keyword.length, idx + keyword.length + 5);
+                        // 확인 패턴: "이", "은 ", "는 " 뒤에 값이 오는 경우
+                        if (/^(이|은\s|는\s)/.test(after)) return false;
+                        return true;
+                      };
 
-                      if (lastText.includes("설립일") || lastText.includes("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });
-                      if (lastText.includes("직원") || lastText.includes("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
-                      if (lastText.includes("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
-                      if (lastText.includes("업종") || lastText.includes("분야") || lastText.includes("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
-                      if (lastText.includes("지역") || lastText.includes("소재지") || lastText.includes("거주")) fields.push({ key: "city", label: "지역", type: "select", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
-                      if (lastText.includes("기업명") || lastText.includes("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
+                      if (asking("설립일") || asking("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });
+                      if (asking("직원") || asking("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
+                      if (asking("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
+                      if (asking("업종") || asking("분야") || asking("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
+                      if (asking("지역") || asking("소재지") || asking("거주")) fields.push({ key: "city", label: "지역", type: "select", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
+                      if (asking("기업명") || asking("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
 
                       if (fields.length === 0) return null;
                       return (

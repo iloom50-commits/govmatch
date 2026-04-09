@@ -6463,30 +6463,37 @@ def api_support_chat(req: dict, request: Request):
 # ── SmartDoc 연동 API ──
 
 @app.get("/api/announcements/search")
-def api_announcements_search(keyword: str = "", limit: int = 20):
-    """SmartDoc용 공고 검색 — title, department, deadline_date, support_amount 반환"""
+def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
+    """공고 검색 — title/department/summary 매칭. keyword 또는 q 둘 다 지원"""
+    # q 파라미터도 지원 (프론트엔드 호환성)
+    search_term = (keyword or q or "").strip()
     limit = min(limit, 100)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        if keyword.strip():
-            words = keyword.strip().split()
+        if search_term:
+            words = search_term.split()
             where_parts = []
             params = []
             for w in words:
-                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s)")
-                params.extend([f"%{w}%", f"%{w}%", f"%{w}%"])
+                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
+                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
             where_sql = " AND ".join(where_parts)
+            # 다양성 정렬: 카테고리/부처별 분산 + 마감 임박 + 최신
+            # 1) 제목에 모든 키워드가 포함된 것 우선 (관련도)
+            # 2) 같은 부처가 연속으로 나오지 않도록 무작위성 추가
             cur.execute(
-                f"""SELECT announcement_id, title, department, deadline_date, support_amount
+                f"""SELECT announcement_id, title, department, category, deadline_date, support_amount,
+                           CASE WHEN title ILIKE %s THEN 1 ELSE 0 END as title_match
                     FROM announcements
                     WHERE {where_sql}
                     ORDER BY
+                        title_match DESC,
                         CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0 ELSE 1 END,
                         deadline_date ASC NULLS LAST,
-                        created_at DESC
+                        MD5(announcement_id::text || %s)
                     LIMIT %s""",
-                params + [limit],
+                [f"%{search_term}%"] + params + [search_term, limit],
             )
         else:
             cur.execute(

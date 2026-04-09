@@ -582,6 +582,15 @@ def chat_consult(
             last_user_msg = msg.get("text", "")
             break
 
+    # 후속 질문 여부 (사용자 메시지가 2개 이상이면 후속)
+    user_msg_count = sum(1 for m in messages if m.get("role") == "user")
+    is_followup = user_msg_count >= 2
+
+    # 전문가 패턴 감지: 배점/경쟁률/중복수혜/심사위원 등 깊이 있는 질문
+    expert_keywords = ["배점", "가중치", "경쟁률", "선정률", "중복수혜", "중복 가능", "심사위원",
+                       "평가지표", "평가표", "역대", "작년", "전년", "최근 선정", "유사 사례", "타사", "성공 사례"]
+    is_expert_question = any(kw in last_user_msg for kw in expert_keywords)
+
     # 1차: FAQ 캐시 확인 (같은 공고 + 유사 질문)
     if last_user_msg and len(messages) <= 2:  # 단일 질문일 때만 캐시 활용
         cached = _faq_cache.get(announcement_id, last_user_msg)
@@ -616,8 +625,26 @@ def chat_consult(
     a = announcement or {}
     deep = deep_analysis_data or {}
     da = deep.get("deep_analysis") or {}
-    ps = deep.get("parsed_sections") or {}
+    ps = dict(deep.get("parsed_sections") or {})
     ft = deep.get("form_templates") or []
+
+    # ── 누락 필드 메인 DB 폴백 ──
+    # parsed_sections가 비어있어도 메인 announcements 테이블 필드가 있으면 채움
+    if not ps.get("eligibility") and a.get("eligibility_logic"):
+        try:
+            elig_logic = a["eligibility_logic"]
+            if isinstance(elig_logic, str):
+                elig_logic = json.loads(elig_logic)
+            if isinstance(elig_logic, dict):
+                ps["eligibility"] = json.dumps(elig_logic, ensure_ascii=False)[:1500]
+        except Exception: pass
+
+    if not ps.get("support_details") and a.get("summary_text"):
+        ps["support_details"] = a.get("summary_text", "")[:1500]
+
+    # 마감일/지원금은 항상 메인 DB에서 보장 (parsed에 없어도)
+    main_deadline = str(a.get("deadline_date") or "").strip()
+    main_amount = str(a.get("support_amount") or "").strip()
 
     # 자격요건 기본 정보
     elig = {}
@@ -675,15 +702,44 @@ def chat_consult(
 직원수: {user_profile.get('employee_count_bracket', '')}
 관심분야: {user_profile.get('interests', '')}"""
 
+    # 후속 질문 강화 컨텍스트
+    followup_directive = ""
+    if is_followup:
+        followup_directive = """
+[중요: 후속 질문 응답 규칙]
+사용자가 추가 질문을 했습니다. 다음 원칙을 반드시 지키세요:
+1. **첫 응답에서 답한 내용을 단순 반복하지 마세요.** 사용자는 이미 그 답을 봤습니다.
+2. 사용자 질문에 **직접적이고 깊이 있게** 답하세요. 형식적인 헤더(📋💰📝)나 불필요한 인사 생략.
+3. 공고 데이터에 명시 없으면, **유사 정부지원사업의 일반 패턴/통계**를 근거로 추정 답변을 제공하세요.
+   예: "이 공고에는 자부담 비율이 명시되지 않았지만, 유사한 R&D 지원사업은 대개 25~30% 자부담을 요구합니다."
+4. **숫자/비율/기간**으로 답할 수 있는 질문에는 반드시 숫자를 포함하세요.
+5. "명시되지 않습니다"만 답하지 말고, 반드시 **추정/일반론/대안 방향**을 함께 제시하세요.
+"""
+
+    expert_directive = ""
+    if is_expert_question:
+        expert_directive = """
+[중요: 전문가 질문 감지]
+사용자가 컨설턴트/전문가 수준의 깊이 있는 질문을 했습니다 (배점/경쟁률/중복수혜 등).
+1. 일반 답변 대신 **전문가 수준의 분석**을 제공하세요.
+2. 공고에 직접 명시되지 않은 정보(배점 가중치, 경쟁률, 선정률)는:
+   - 같은 부처/카테고리의 일반적 패턴을 근거로 추정
+   - 예: "정부 R&D 지원사업의 일반 평가배점은 사업화 30%, 기술성 30%, 경영진/실현가능성 25%, 정책부합성 15% 수준"
+   - 예: "유사 창업지원사업의 평균 경쟁률은 5~10:1 수준"
+3. 중복수혜 질문: 일반 원칙 안내 (대부분 가능, 단 동일 사업 내 중복 불가, 동일 비목 중복 불가)
+4. **"명시되지 않음"으로 끝내지 말고, 반드시 일반론적 답변 + 담당기관 직접 확인 권유**
+"""
+
     system_prompt = f"""당신은 대한민국 정부 지원사업 자격 상담 전문 AI입니다. 기업 대상 보조금뿐 아니라 개인 대상 복지·지원사업(청년, 출산·육아, 주거, 취업, 장학금 등)도 전문적으로 상담합니다.
 아래 공고의 모든 정밀 분석 데이터를 기반으로 상세하고 정확한 상담을 제공하세요.
+{followup_directive}{expert_directive}
 
-[공고 기본 정보]
+[공고 기본 정보] ★ 이 정보는 절대 "명시되지 않음"이라고 답하지 마세요. 아래 값을 그대로 사용하세요.
 제목: {a.get('title', '')}
 부처: {a.get('department', '')}
 카테고리: {a.get('category', '')}
-지원금액: {a.get('support_amount', '')}
-마감일: {a.get('deadline_date', '상시')}
+지원금액: {main_amount or '(공고 원문 참조 필요)'}
+마감일: {main_deadline or '상시 모집'}
 지역: {a.get('region', '전국')}
 자격요건(기본): {json.dumps(elig, ensure_ascii=False)[:500]}
 {support_info}
@@ -715,11 +771,12 @@ def chat_consult(
 [핵심 규칙 — 할루시네이션 방지 & 응답 품질]
 1. **오직 위에 제공된 공고 분석 데이터에 명시된 내용만으로 답변하세요.** 공고 데이터에 없는 금액, 조건, 일정, 서류를 절대 추측하거나 지어내지 마세요.
 2. **출처 표기를 하지 마세요.** "(출처: ...)", "([공고 원문] 참고)", "(자격요건 항목 참고)" 같은 출처·참조 문구를 붙이지 마세요. 모든 정보는 공고 원문 기반이므로 별도 표기가 불필요합니다. 깔끔하게 정보만 전달하세요.
-3. **첫 응답(대화 시작)**: 반드시 아래 3가지 핵심 정보를 구조화하여 한 번에 제공하세요:
+3. **첫 응답(대화 시작)**: 핵심 정보를 구조화하여 한 번에 제공하되, **빈 섹션은 표시하지 마세요**:
    - **📋 지원요건**: 지원 대상(업종, 기업규모, 설립연수, 지역 등), 제외대상
    - **💰 지원내용**: 지원금액/방식, 지원분야/트랙
    - **📝 신청방법**: 온라인/오프라인 접수처, 주요 제출서류, 마감일
-   사용자가 별도로 물어보지 않아도 이 정보를 먼저 제공하세요.
+   - **데이터에 정보가 없는 섹션은 통째로 생략**하세요. "명시되지 않습니다"를 매번 적지 마세요. 단 1~2개 핵심 정보(금액/마감)만 누락된 경우 마지막 줄에 한 번에 "💡 지원금액·마감일은 공고 원문 참조" 형태로 짧게 안내.
+   - 정보가 너무 부족한 경우(2개 미만), 형식 헤더 없이 자연스러운 문장으로 핵심만 전달.
 4. **사용자가 이미 기업 정보를 제공한 경우** (대화 중 또는 [기업 정보] 섹션에 있는 경우): 일반 안내를 생략하고, 해당 기업의 자격 충족 여부를 즉시 판단하여 답변하세요. 충족/미충족/불확실 각 항목을 구체적으로 근거와 함께 설명하세요.
 5. 항상 **추천 선택지 2~4개**를 제시하세요.
 6. 기업 정보와 공고 자격요건을 비교하여 지원 가능 여부를 판단하되, 불확실한 부분은 반드시 추가 질문하세요.

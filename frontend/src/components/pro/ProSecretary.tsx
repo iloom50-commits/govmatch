@@ -258,30 +258,30 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (flowState === "idle") setFlowState("info_collect");
   };
 
-  // ─── 파일 첨부 ───
+  // ─── 파일 첨부 (multipart 업로드 → 서버에서 텍스트 추출) ───
   const handleFileAttach = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) { toast("10MB 이하만 가능", "error"); return; }
     setMessages(prev => [...prev, { role: "user", text: `📎 ${file.name} 첨부` }]);
     setLoading(true);
     try {
-      const text = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string || "").substring(0, 8000));
-        reader.onerror = () => resolve("");
-        reader.readAsText(file);
-      });
-      const analyzeRes = await fetch(`${API}/api/pro/files/analyze`, {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const analyzeRes = await fetch(`${API}/api/pro/files/upload-analyze`, {
         method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ text: text.substring(0, 8000), file_name: file.name, file_type: "other" }),
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData,
       });
-      const analyzeData = analyzeRes.ok ? await analyzeRes.json() : { summary: "분석 실패" };
+      const analyzeData = analyzeRes.ok ? await analyzeRes.json() : { summary: "분석 실패", extracted_text: "" };
       setMessages(prev => [...prev, {
         role: "assistant",
-        text: `📊 **${file.name}** 분석 결과:\n\n${analyzeData.summary}\n\n이 정보를 바탕으로 어떤 상담을 원하시나요?`,
-        choices: ["이 고객에 맞는 지원사업 찾아줘", "자격요건 판단해줘", "추가 자료를 올릴게요"],
+        text: `📊 **${file.name}** 분석 결과:\n\n${analyzeData.summary}\n\n이 정보를 바탕으로 어떤 작업을 진행하시겠습니까?`,
+        choices: ["맞춤 지원사업 매칭", "자격요건 검토", "추가 자료 첨부"],
       }]);
-      setSystemContext(prev => `${prev}\n\n[첨부: ${file.name}]\n${text.substring(0, 5000)}`);
+      const extractedText = analyzeData.extracted_text || analyzeData.summary || "";
+      if (extractedText) {
+        setSystemContext(prev => `${prev}\n\n[첨부: ${file.name}]\n${extractedText.substring(0, 5000)}`);
+      }
     } catch {
       setMessages(prev => [...prev, { role: "assistant", text: "파일 분석에 실패했습니다." }]);
     }
@@ -294,8 +294,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setClientCategory(category);
     setFlowState("idle");
     setSystemContext(client
-      ? `[전문가 상담 모드] 기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}\n\n이미 수집된 정보는 다시 묻지 말고, 추가로 필요한 정보만 질문하세요.`
-      : `[전문가 상담 모드] 고객유형: ${category}\n\n사용자가 이미 답한 정보는 다시 묻지 마세요. 이전 대화 내용을 참고하여 아직 모르는 정보만 추가로 질문하세요.`);
+      ? `[전문가 상담 모드] 당신은 지원사업 컨설턴트의 AI 어시스턴트입니다. 컨설턴트가 고객 상담을 진행하고 있습니다.\n기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}\n\n이미 수집된 정보는 다시 묻지 말고, 추가로 필요한 정보만 질문하세요. 존댓말을 사용하세요.`
+      : `[전문가 상담 모드] 당신은 지원사업 컨설턴트의 AI 어시스턴트입니다. 컨설턴트가 고객 상담을 진행하고 있습니다.\n고객유형: ${category}\n\n컨설턴트에게 고객 정보를 하나씩 질문하세요. 이미 답한 정보는 다시 묻지 마세요. 존댓말을 사용하세요.`);
     setSelectedClient(client || null);
     setLeftOpen(false);
 
@@ -304,22 +304,22 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (client) {
       setMessages([{
         role: "assistant",
-        text: `**${client.client_name}** 고객 정보를 불러왔습니다.\n\n지역: ${client.address_city || "미등록"}\n업종: ${client.industry_name || "미등록"}\n매출: ${client.revenue_bracket || "미등록"}\n\n어떤 상담을 도와드릴까요?`,
-        choices: ["이 고객에 맞는 지원사업 찾아줘", "첨부 자료 분석해줘", "자격요건 판단해줘"],
+        text: `**${client.client_name}** 고객 정보를 불러왔습니다.\n\n지역: ${client.address_city || "미등록"}\n업종: ${client.industry_name || "미등록"}\n매출: ${client.revenue_bracket || "미등록"}\n\n어떤 상담을 진행하시겠습니까?`,
+        choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
       }]);
     } else if (category === "unknown") {
       setMessages([{
         role: "assistant",
-        text: "고객 유형을 모르셔도 괜찮습니다.\n\n고객에 대해 아는 정보를 자유롭게 알려주세요.",
-        choices: ["기업 고객이에요", "개인 고객이에요", "사업을 준비 중이에요"],
+        text: "고객 유형이 아직 파악되지 않았습니다.\n\n고객에 대해 알고 계신 정보를 알려주세요.",
+        choices: ["기업 고객입니다", "개인 고객입니다", "사업 준비 중인 고객입니다"],
       }]);
     } else {
       setMessages([{
         role: "assistant",
-        text: `**${catLabel}** 고객이시군요.\n\n자료가 있으시면 우측에서 첨부해 주세요.\n없으면 바로 대화로 시작할게요.`,
+        text: `**${catLabel}** 상담을 시작합니다.\n\n고객사 서류가 있으시면 우측에서 첨부해 주세요.\n고객사의 기업명은 무엇인가요?`,
         choices: category === "individual"
-          ? ["이름부터 알려줄게요", "관심 분야가 취업이에요", "자료 없이 바로 시작"]
-          : ["기업명부터 알려줄게요", "매출이 1억 미만이에요", "자료 없이 바로 시작"],
+          ? ["서류가 있습니다", "구두 정보만 있습니다"]
+          : ["서류가 있습니다", "구두 정보만 있습니다"],
       }]);
     }
   };
@@ -449,9 +449,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
               <div className="space-y-2">
                 {[
-                  { name: "GovMatch", desc: "정부지원사업 매칭", active: true, color: "violet" },
-                  { name: "SmartDoc", desc: "HWPX 문서 자동 작성", active: false },
-                  { name: "AI Expert", desc: "전문가 자문 AI", active: false },
+                  { name: "GovMatch", desc: "정부지원사업 매칭", active: true },
+                  { name: "SmartDoc", desc: "신청서 작성 도구", active: false },
+                  { name: "노무 AI", desc: "근로/4대보험 자문", active: false },
+                  { name: "세무 AI", desc: "법인세/부가세 자문", active: false },
+                  { name: "법무 AI", desc: "계약/규제 자문", active: false },
+                  { name: "산업안전 AI", desc: "산업재해/안전법 자문", active: false },
                 ].map(svc => (
                   <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] transition-colors ${svc.active ? t.serviceActive : t.serviceInactive}`}>
                     <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${
@@ -738,7 +741,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             <div className="space-y-2">
               {[
                 { name: "GovMatch", desc: "정부지원사업 매칭", active: true },
-                { name: "SmartDoc", desc: "HWPX 문서 자동 작성", active: false },
+                { name: "SmartDoc", desc: "신청서 작성 도구", active: false },
+                { name: "노무 AI", desc: "근로/4대보험 자문", active: false },
+                { name: "세무 AI", desc: "법인세/부가세 자문", active: false },
+                { name: "법무 AI", desc: "계약/규제 자문", active: false },
+                { name: "산업안전 AI", desc: "산업재해/안전법 자문", active: false },
               ].map(svc => (
                 <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] ${svc.active ? t.serviceActive : t.serviceInactive}`}>
                   <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${

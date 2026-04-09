@@ -5737,11 +5737,82 @@ class FileAnalyzeRequest(BaseModel):
 
 @app.post("/api/pro/files/analyze")
 def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_get_current_user)):
-    """PRO: 첨부 자료 AI 요약 분석"""
+    """PRO: 첨부 자료 AI 요약 분석 (JSON 텍스트)"""
     _require_pro(current_user)
     if not req.text or len(req.text.strip()) < 20:
         return {"status": "SUCCESS", "summary": "분석할 텍스트가 부족합니다."}
+    return _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
 
+
+@app.post("/api/pro/files/upload-analyze")
+async def api_pro_file_upload_analyze(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 파일 업로드 → 텍스트 추출 → AI 요약 분석 (PDF, DOCX, TXT 등)"""
+    _require_pro(current_user)
+
+    file_name = file.filename or "unknown"
+    content = await file.read()
+
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "파일 크기는 10MB 이하만 가능합니다.")
+
+    ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    text = ""
+
+    try:
+        if ext == "pdf":
+            import pdfplumber, io
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                pages_text = []
+                for page in pdf.pages[:30]:  # 최대 30페이지
+                    t = page.extract_text()
+                    if t:
+                        pages_text.append(t)
+                text = "\n".join(pages_text)
+        elif ext in ("txt", "csv", "md"):
+            for enc in ["utf-8", "cp949", "euc-kr", "latin-1"]:
+                try:
+                    text = content.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+        elif ext in ("docx",):
+            try:
+                import docx as python_docx
+                import io
+                doc = python_docx.Document(io.BytesIO(content))
+                text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            except ImportError:
+                text = content.decode("utf-8", errors="ignore")
+        elif ext in ("hwp", "hwpx"):
+            try:
+                import olefile, io
+                if olefile.isOleFile(io.BytesIO(content)):
+                    ole = olefile.OleFileIO(io.BytesIO(content))
+                    if ole.exists("PrvText"):
+                        text = ole.openstream("PrvText").read().decode("utf-16-le", errors="ignore")
+                    ole.close()
+            except Exception:
+                pass
+            if not text:
+                text = content.decode("utf-8", errors="ignore")[:5000]
+        else:
+            text = content.decode("utf-8", errors="ignore")[:5000]
+    except Exception as e:
+        return {"status": "SUCCESS", "summary": f"파일 읽기 실패: {str(e)[:100]}", "extracted_text": ""}
+
+    if not text or len(text.strip()) < 20:
+        return {"status": "SUCCESS", "summary": "파일에서 텍스트를 추출할 수 없습니다. 텍스트가 포함된 파일을 업로드해 주세요.", "extracted_text": ""}
+
+    result = _analyze_text_with_ai(text[:8000], file_name, ext)
+    result["extracted_text"] = text[:5000]
+    return result
+
+
+def _analyze_text_with_ai(text: str, file_name: str, file_type: str) -> dict:
+    """공통 AI 분석 로직"""
     try:
         import google.generativeai as genai
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -5751,11 +5822,11 @@ def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemini-2.0-flash")
 
-        prompt = f"""아래는 고객사가 제출한 '{req.file_type or "자료"}' ({req.file_name or "파일"})입니다.
+        prompt = f"""아래는 고객사가 제출한 '{file_type}' ({file_name})입니다.
 핵심 내용을 3~5줄로 요약하세요. 숫자(매출, 인원, 금액 등)가 있으면 반드시 포함하세요.
 
 [자료 내용]
-{req.text[:8000]}
+{text[:8000]}
 
 [요약 형식]
 - 핵심1: ...

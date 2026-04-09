@@ -120,7 +120,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [profileForm, setProfileForm] = useState({
     company_name: "",
-    establishment_year: "",
+    establishment_year: "",   // 연도만 (선택)
+    establishment_date: "",   // 정확한 날짜 (선택)
     industry: "",
     revenue_bracket: "",
     employee_bracket: "",
@@ -370,6 +371,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       setProfileForm({
         company_name: "",
         establishment_year: "",
+        establishment_date: "",
         industry: "",
         revenue_bracket: "",
         employee_bracket: "",
@@ -390,9 +392,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const isIndiv = clientCategory === "individual";
     const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
 
+    // 정확한 날짜가 있으면 우선 사용, 없으면 연도만
+    const dateLabel = isIndiv ? "생년월일" : "설립일";
+    const yearLabel = isIndiv ? "출생연도" : "설립연도";
+    const dateValue = f.establishment_date || (f.establishment_year ? `${f.establishment_year}-01-01` : "");
+    const dateDisplay = f.establishment_date || (f.establishment_year ? `${f.establishment_year}년` : "");
+
     // 수집된 정보를 시스템 컨텍스트에 설정
     const infoParts = [`고객유형: ${catLabel}`, `기업명: ${f.company_name}`];
-    if (f.establishment_year) infoParts.push(`설립연도: ${f.establishment_year}`);
+    if (dateValue) infoParts.push(`${dateLabel}: ${dateValue}`);
     if (f.industry) infoParts.push(`업종: ${f.industry}`);
     if (f.revenue_bracket) infoParts.push(`매출: ${f.revenue_bracket}`);
     if (f.employee_bracket) infoParts.push(`직원수: ${f.employee_bracket}`);
@@ -403,7 +411,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
     // 입력 요약 메시지 표시
     const summaryLines = [`**${f.company_name}** (${catLabel}) 고객 정보가 등록되었습니다.\n`];
-    if (f.establishment_year) summaryLines.push(`설립: ${f.establishment_year}년`);
+    if (dateDisplay) summaryLines.push(`${isIndiv ? "출생" : "설립"}: ${dateDisplay}`);
     if (f.industry) summaryLines.push(`업종: ${f.industry}`);
     if (f.revenue_bracket) summaryLines.push(`매출: ${f.revenue_bracket}`);
     if (f.employee_bracket) summaryLines.push(`직원수: ${f.employee_bracket}`);
@@ -1190,11 +1198,49 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             placeholder={isIndiv ? "홍길동" : "주식회사 스마트팜코리아"} className={inputCls} />
         </div>
 
-        {/* 설립연도 */}
+        {/* 설립일/생년월일 — 달력 + 연도 입력 둘 다 지원 */}
         <div>
-          <p className={sectionTitle}>{isIndiv ? "출생연도" : "설립연도"} <span className={t.muted}>(선택)</span></p>
-          <input type="text" value={profileForm.establishment_year} onChange={(e) => update("establishment_year", e.target.value.replace(/\D/g, "").slice(0, 4))}
-            placeholder="예: 2020" maxLength={4} className={`${inputCls} w-32`} />
+          <p className={sectionTitle}>{isIndiv ? "생년월일 / 출생연도" : "설립일 / 설립연도"} <span className={t.muted}>(선택 — 정확한 날짜 또는 연도만)</span></p>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 달력 picker */}
+            <input
+              type="date"
+              value={profileForm.establishment_date}
+              onChange={(e) => {
+                const d = e.target.value;
+                update("establishment_date", d);
+                if (d) update("establishment_year", d.slice(0, 4));
+              }}
+              max={new Date().toISOString().slice(0, 10)}
+              className={`${inputCls} w-44`}
+              title="달력에서 선택"
+            />
+            <span className={`text-[11px] ${t.muted}`}>또는</span>
+            {/* 연도만 입력 */}
+            <input
+              type="text"
+              value={profileForm.establishment_year}
+              onChange={(e) => {
+                const y = e.target.value.replace(/\D/g, "").slice(0, 4);
+                update("establishment_year", y);
+                // 연도만 있으면 establishment_date는 비움 (충돌 방지)
+                if (y && y.length === 4) update("establishment_date", "");
+              }}
+              placeholder="연도 (예: 2020)"
+              maxLength={4}
+              inputMode="numeric"
+              className={`${inputCls} w-32`}
+            />
+            {(profileForm.establishment_date || profileForm.establishment_year) && (
+              <button
+                type="button"
+                onClick={() => { update("establishment_date", ""); update("establishment_year", ""); }}
+                className={`text-[11px] px-2 py-1 rounded ${dark ? "text-slate-300 hover:bg-white/[0.05]" : "text-slate-500 hover:bg-slate-100"}`}
+              >
+                지우기
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 업종 (사업자만) */}

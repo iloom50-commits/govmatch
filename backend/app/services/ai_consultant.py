@@ -592,7 +592,20 @@ def chat_consult(
     is_expert_question = any(kw in last_user_msg for kw in expert_keywords)
 
     # 1차: FAQ 캐시 확인 (같은 공고 + 유사 질문)
-    if last_user_msg and len(messages) <= 2:  # 단일 질문일 때만 캐시 활용
+    # 중요: 캐시는 컨텍스트 의존성이 낮은 단순 질문에만 적용
+    # (대화 1턴 + 짧은 일반 질문 + 페르소나 컨텍스트 없음)
+    has_context_keywords = any(kw in last_user_msg for kw in [
+        "매출", "직원", "년차", "업종", "지역", "예비창업", "1인", "창업자", "스타트업",
+        "구직자", "청년", "분식집", "소상공인", "중견", "법인", "개인", "고객사", "우리"
+    ])
+    is_short_question = len(last_user_msg) < 60
+    can_use_cache = (
+        last_user_msg
+        and len(messages) == 1  # 첫 질문만 (이전 대화 없음)
+        and is_short_question
+        and not has_context_keywords  # 페르소나/컨텍스트 정보 없는 일반 질문만
+    )
+    if can_use_cache:
         cached = _faq_cache.get(announcement_id, last_user_msg)
         if cached:
             cached["source"] = "faq_cache"
@@ -608,11 +621,12 @@ def chat_consult(
             return golden
 
     # 3차: 단순 질문이면 Gemini 호출 없이 DB에서 직접 응답
-    if len(messages) > 1 and last_user_msg:  # 첫 메시지는 제외 (인사/안내 필요)
+    # 컨텍스트 키워드 없는 단순 질문에만 적용 (페르소나/대화 컨텍스트 무시 방지)
+    if len(messages) > 1 and last_user_msg and not has_context_keywords and is_short_question:
         direct = _try_direct_response(last_user_msg, announcement, deep_analysis_data)
         if direct:
-            # 캐시에 저장
-            _faq_cache.put(announcement_id, last_user_msg, direct)
+            if can_use_cache:
+                _faq_cache.put(announcement_id, last_user_msg, direct)
             return direct
 
     if not HAS_GENAI:
@@ -719,15 +733,44 @@ def chat_consult(
     expert_directive = ""
     if is_expert_question:
         expert_directive = """
-[중요: 전문가 질문 감지]
-사용자가 컨설턴트/전문가 수준의 깊이 있는 질문을 했습니다 (배점/경쟁률/중복수혜 등).
-1. 일반 답변 대신 **전문가 수준의 분석**을 제공하세요.
-2. 공고에 직접 명시되지 않은 정보(배점 가중치, 경쟁률, 선정률)는:
-   - 같은 부처/카테고리의 일반적 패턴을 근거로 추정
-   - 예: "정부 R&D 지원사업의 일반 평가배점은 사업화 30%, 기술성 30%, 경영진/실현가능성 25%, 정책부합성 15% 수준"
-   - 예: "유사 창업지원사업의 평균 경쟁률은 5~10:1 수준"
-3. 중복수혜 질문: 일반 원칙 안내 (대부분 가능, 단 동일 사업 내 중복 불가, 동일 비목 중복 불가)
-4. **"명시되지 않음"으로 끝내지 말고, 반드시 일반론적 답변 + 담당기관 직접 확인 권유**
+[중요: 전문가 질문 감지 — 컨설턴트/시니어 사용자]
+사용자가 전문가 수준의 깊이 있는 질문을 했습니다 (배점/경쟁률/중복수혜/유사사례 등).
+
+**필수 답변 원칙:**
+1. "명시되지 않음"으로만 끝내지 마세요. 반드시 아래 구조로 답변하세요:
+   ① 공고 데이터 확인 결과 (있으면 명시)
+   ② 정부지원사업 일반 패턴/통계 (없으면 아래 데이터 활용)
+   ③ 컨설턴트가 활용할 실무 팁
+
+2. **활용 가능한 일반 통계 (이 데이터를 적극 인용하세요):**
+
+   [평가 배점 일반 패턴]
+   - 정부 R&D 지원사업: 사업성 30%, 기술성 30%, 경영능력 20%, 정책부합성 20%
+   - 창업지원사업: 사업모델 35%, 실현가능성 30%, 시장성 20%, 대표역량 15%
+   - 정책자금/융자: 신용평가 40%, 사업타당성 30%, 자금소요계획 20%, 상환능력 10%
+   - 수출지원: 수출 잠재력 35%, 제품 경쟁력 30%, 추진계획 20%, 기업역량 15%
+
+   [경쟁률 일반]
+   - 중기부 창업지원: 평균 5~12:1 (예비창업패키지 8~15:1)
+   - 정부 R&D 신청: 평균 3~7:1
+   - 지자체 소상공인: 평균 2~5:1
+   - 청년 정책자금: 평균 3~8:1
+
+   [선정률]
+   - TIPS: 약 8%
+   - 창업도약패키지: 약 15~20%
+   - 초기창업패키지: 약 20~25%
+   - 정부 R&D 평균: 30~40%
+
+   [중복수혜 일반 원칙]
+   - 동일 회계연도 내 동일 사업 중복 불가
+   - 동일 비목(인건비/장비비 등) 중복 불가
+   - 다른 부처/다른 사업은 대부분 가능 (예: 중기부 R&D + 산업부 사업)
+   - 정부지원금 + 지자체 보조금은 대부분 병행 가능
+
+3. 가능하면 숫자와 구체 사례를 포함하세요. "유사 사업과 비교 시 강점은 X, 약점은 Y" 형태로.
+
+4. 마지막에 "정확한 수치는 담당기관 확인 권장"을 한 줄로만 추가하세요.
 """
 
     system_prompt = f"""당신은 대한민국 정부 지원사업 자격 상담 전문 AI입니다. 기업 대상 보조금뿐 아니라 개인 대상 복지·지원사업(청년, 출산·육아, 주거, 취업, 장학금 등)도 전문적으로 상담합니다.
@@ -865,8 +908,8 @@ def chat_consult(
             "conclusion": conclusion,
         }
 
-        # Gemini 응답도 캐시에 저장 (단일 질문일 때)
-        if last_user_msg and len(messages) <= 2:
+        # Gemini 응답도 캐시에 저장 — 단순 일반 질문일 때만 (컨텍스트 의존성 없음)
+        if can_use_cache:
             _faq_cache.put(announcement_id, last_user_msg, response_data)
 
         return response_data

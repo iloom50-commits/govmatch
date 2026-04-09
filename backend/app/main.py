@@ -2906,7 +2906,37 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
     if ann_id:
         db = get_db_connection()
     try:
-        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
+        # ── 사전 정보량 분석: 첫 메시지에 충분한 정보 + 매칭 키워드 → 즉시 매칭 ──
+        if not ann_id and req.messages:
+            first_user_text = ""
+            for m in req.messages:
+                if m.get("role") == "user":
+                    first_user_text = m.get("text", "")
+                    break
+
+            # 정보량 점수 (있는 필드 수)
+            info_signals = {
+                "industry": any(w in first_user_text for w in ["IT", "제조", "음식", "건설", "농업", "교육", "디자인", "스마트팜", "유통", "서비스", "헬스", "패션", "분식"]),
+                "scale": any(w in first_user_text for w in ["1인", "직원", "매출", "억", "만원", "명"]),
+                "region": any(w in first_user_text for w in ["서울", "부산", "경기", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]),
+                "stage": any(w in first_user_text for w in ["창업", "예비", "년차", "법인", "스타트업", "구직", "청년"]),
+                "match_intent": any(w in first_user_text for w in ["매칭", "추천", "찾아", "맞춤", "지원사업", "지원금", "받을 수 있"]),
+            }
+            signal_count = sum(info_signals.values())
+
+            if signal_count >= 3:
+                # 정보 충분 → AI에게 즉시 매칭 신호 전달
+                augmented_messages = list(req.messages)
+                if augmented_messages and augmented_messages[0].get("role") == "user":
+                    augmented_messages[0] = {
+                        **augmented_messages[0],
+                        "text": augmented_messages[0]["text"] + "\n\n[즉시 매칭 모드] 위 정보가 충분합니다. 추가 질문 없이 즉시 done=true와 profile을 반환하여 매칭을 실행하세요.",
+                    }
+                result = chat_pro_consultant(augmented_messages, announcement_id=ann_id, db_conn=db)
+            else:
+                result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
+        else:
+            result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
     finally:
         if db:
             try: db.close()

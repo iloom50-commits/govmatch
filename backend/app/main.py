@@ -4899,6 +4899,75 @@ def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depe
     return {"status": "SUCCESS", "clients": clients}
 
 
+@app.get("/api/pro/clients/with-history")
+def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객 목록 + 최근 상담 요약 (테이블형 리스트용)"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT cp.*,
+                  (SELECT COUNT(*) FROM consultation_history ch WHERE ch.client_id = cp.id) AS consult_count,
+                  (SELECT MAX(ch.created_at) FROM consultation_history ch WHERE ch.client_id = cp.id) AS last_consult_date,
+                  (SELECT ch.summary FROM consultation_history ch WHERE ch.client_id = cp.id ORDER BY ch.created_at DESC LIMIT 1) AS last_consult_summary
+           FROM client_profiles cp
+           WHERE cp.owner_business_number = %s AND cp.is_active = TRUE
+           ORDER BY cp.updated_at DESC""",
+        (current_user["bn"],)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    clients = []
+    for r in rows:
+        d = dict(r)
+        for k in ("establishment_date", "created_at", "updated_at", "last_consult_date"):
+            if d.get(k): d[k] = str(d[k])
+        d["consult_count"] = d.get("consult_count") or 0
+        d["last_consult_summary"] = d.get("last_consult_summary") or ""
+        clients.append(d)
+    return {"status": "SUCCESS", "clients": clients}
+
+
+@app.get("/api/pro/clients/export")
+def api_pro_clients_export(current_user: dict = Depends(_get_current_user)):
+    """PRO: 고객 리스트 CSV 다운로드"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT client_name, COALESCE(client_type,'business') AS client_type, business_number,
+                  address_city, industry_name, industry_code, revenue_bracket, employee_count_bracket,
+                  establishment_date, contact_name, contact_email, contact_phone, tags, COALESCE(status,'new') AS status, memo,
+                  created_at, updated_at
+           FROM client_profiles WHERE owner_business_number = %s AND is_active = TRUE ORDER BY updated_at DESC""",
+        (current_user["bn"],)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["기업명", "유형", "사업자번호", "지역", "업종명", "업종코드", "매출", "직원수", "설립일", "담당자", "이메일", "전화", "태그", "상태", "메모", "등록일", "수정일"])
+    for r in rows:
+        d = dict(r)
+        writer.writerow([d.get("client_name",""), d.get("client_type",""), d.get("business_number",""),
+                         d.get("address_city",""), d.get("industry_name",""), d.get("industry_code",""),
+                         d.get("revenue_bracket",""), d.get("employee_count_bracket",""),
+                         str(d.get("establishment_date","") or ""), d.get("contact_name",""),
+                         d.get("contact_email",""), d.get("contact_phone",""), d.get("tags",""),
+                         d.get("status",""), d.get("memo",""),
+                         str(d.get("created_at","") or "")[:10], str(d.get("updated_at","") or "")[:10]])
+
+    csv_content = output.getvalue()
+    # BOM for Excel 한글 호환
+    return Response(
+        content="\ufeff" + csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="clients.csv"'}
+    )
+
+
 @app.post("/api/pro/clients")
 def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 생성"""

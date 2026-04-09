@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
 import DOMPurify from "dompurify";
@@ -561,8 +561,142 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
 // ─── ProDashboard 서브컴포넌트 래퍼 ───
 function ClientsTabWrapper({ headers, toast }: { headers: () => any; toast: any }) {
-  const { ClientsTab } = require("@/components/ProDashboard");
-  return <ClientsTab headers={headers} toast={toast} clientType="business" />;
+  const [clients, setClients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showEmail, setShowEmail] = useState(false);
+
+  const fetchClients = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/pro/clients/with-history`, { headers: headers() });
+      if (res.ok) {
+        const data = await res.json();
+        setClients(data.clients || []);
+      }
+    } catch { /* */ }
+    setLoading(false);
+  }, [headers]);
+
+  useEffect(() => { fetchClients(); }, [fetchClients]);
+
+  const toggleSelect = (id: number) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const selectAll = () => setSelectedIds(selectedIds.size === clients.length ? new Set() : new Set(clients.map(c => c.id)));
+
+  const handleExport = () => {
+    const token = localStorage.getItem("auth_token") || "";
+    window.open(`${API}/api/pro/clients/export?authorization=Bearer ${token}`, "_blank");
+  };
+
+  const statusLabel: Record<string, string> = { new: "신규", consulting: "상담중", matched: "매칭", applied: "신청", selected: "선정" };
+  const statusColor: Record<string, string> = { new: "bg-slate-100 text-slate-600", consulting: "bg-blue-100 text-blue-700", matched: "bg-indigo-100 text-indigo-700", applied: "bg-amber-100 text-amber-700", selected: "bg-emerald-100 text-emerald-700" };
+
+  if (loading) return <div className="text-center py-10 text-slate-400">로딩 중...</div>;
+
+  return (
+    <div className="space-y-3">
+      {/* 상단 액션 바 */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-slate-700">{clients.length}개 고객사</p>
+        <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <button onClick={() => setShowEmail(true)} className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700">
+              선택 {selectedIds.size}명 이메일
+            </button>
+          )}
+          <button onClick={handleExport} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200">
+            📥 CSV 다운로드
+          </button>
+          <button onClick={() => { const { ClientForm } = require("@/components/ProDashboard"); /* TODO: 추가 모달 */ toast("고객 추가는 상담에서 자동 등록됩니다", "info"); }}
+            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-700">
+            + 고객 추가
+          </button>
+        </div>
+      </div>
+
+      {/* 테이블 */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="py-2 px-2 text-left w-8">
+                <input type="checkbox" checked={selectedIds.size === clients.length && clients.length > 0} onChange={selectAll}
+                  className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600" />
+              </th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500">기업명</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden md:table-cell">업종</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden lg:table-cell">지역</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden lg:table-cell">매출</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500 hidden md:table-cell">전화</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500">최근상담</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500">상담수</th>
+              <th className="py-2 px-2 text-left font-bold text-slate-500">상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map(c => (
+              <React.Fragment key={c.id}>
+                <tr className={`border-b border-slate-100 hover:bg-violet-50/30 cursor-pointer transition-all ${expanded === c.id ? "bg-violet-50/50" : ""}`}
+                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
+                  <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)}
+                      className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600" />
+                  </td>
+                  <td className="py-2.5 px-2 font-bold text-slate-800">{c.client_name}</td>
+                  <td className="py-2.5 px-2 text-slate-500 hidden md:table-cell">{c.industry_name || "-"}</td>
+                  <td className="py-2.5 px-2 text-slate-500 hidden lg:table-cell">{c.address_city || "-"}</td>
+                  <td className="py-2.5 px-2 text-slate-500 hidden lg:table-cell">{c.revenue_bracket || "-"}</td>
+                  <td className="py-2.5 px-2 text-slate-500 hidden md:table-cell">{c.contact_phone || "-"}</td>
+                  <td className="py-2.5 px-2 text-slate-500">{c.last_consult_date ? String(c.last_consult_date).slice(5, 10) : "-"}</td>
+                  <td className="py-2.5 px-2 text-slate-500">{c.consult_count || 0}회</td>
+                  <td className="py-2.5 px-2">
+                    <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${statusColor[c.status] || "bg-slate-100 text-slate-500"}`}>
+                      {statusLabel[c.status] || c.status || "신규"}
+                    </span>
+                  </td>
+                </tr>
+                {/* 펼침 상세 */}
+                {expanded === c.id && (
+                  <tr>
+                    <td colSpan={9} className="bg-slate-50 px-4 py-3 border-b border-slate-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">기본 정보</p>
+                          <p><span className="text-slate-400">담당자:</span> <span className="font-semibold">{c.contact_name || "-"}</span></p>
+                          <p><span className="text-slate-400">이메일:</span> <span className="font-semibold">{c.contact_email || "-"}</span></p>
+                          <p><span className="text-slate-400">전화:</span> <span className="font-semibold">{c.contact_phone || "-"}</span></p>
+                          <p><span className="text-slate-400">설립일:</span> <span className="font-semibold">{c.establishment_date ? String(c.establishment_date).slice(0, 10) : "-"}</span></p>
+                          <p><span className="text-slate-400">직원수:</span> <span className="font-semibold">{c.employee_count_bracket || "-"}</span></p>
+                          {c.tags && <p><span className="text-slate-400">태그:</span> {c.tags.split(",").map((t: string, i: number) => <span key={i} className="ml-1 px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[9px] font-bold rounded">{t.trim()}</span>)}</p>}
+                          {c.memo && <p><span className="text-slate-400">메모:</span> <span className="text-slate-600">{c.memo}</span></p>}
+                        </div>
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">최근 상담</p>
+                          {c.last_consult_summary ? (
+                            <p className="text-slate-600 leading-relaxed">{c.last_consult_summary}</p>
+                          ) : (
+                            <p className="text-slate-400">상담 이력이 없습니다</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 이메일 모달 */}
+      {showEmail && (() => {
+        const { EmailModal } = require("@/components/ProDashboard");
+        return <EmailModal clientIds={Array.from(selectedIds)} clientCount={selectedIds.size} headers={headers} toast={toast}
+          onClose={() => setShowEmail(false)} onDone={() => { setShowEmail(false); setSelectedIds(new Set()); }} />;
+      })()}
+    </div>
+  );
 }
 
 function HistoryTabWrapper({ headers, toast }: { headers: () => any; toast: any }) {

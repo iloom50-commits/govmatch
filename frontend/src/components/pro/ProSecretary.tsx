@@ -123,6 +123,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [systemContext, setSystemContext] = useState("");
+  const [typing, setTyping] = useState(false); // 타이핑 애니메이션 중
+  const [typingText, setTypingText] = useState(""); // 현재까지 타이핑된 텍스트
+  const typingRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -189,26 +192,64 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       }
 
       const data = await res.json();
-      const aiMsg: ChatMessage = {
-        role: "assistant",
-        text: data.reply || "",
-        choices: data.choices || [],
-        done: data.done || false,
-      };
-      setMessages([...chatHistory, aiMsg]);
+      const fullText = data.reply || "";
+      const choices = data.choices || [];
+      const done = data.done || false;
 
-      if (data.done && data.profile) {
+      // 타이핑 애니메이션 시작
+      setLoading(false);
+      setTyping(true);
+      setTypingText("");
+
+      // 타이핑 중인 메시지를 messages에 추가 (빈 텍스트로 시작)
+      const typingMsg: ChatMessage = { role: "assistant", text: "", choices: [], done };
+      setMessages([...chatHistory, typingMsg]);
+
+      let charIdx = 0;
+      const speed = Math.max(10, Math.min(30, 1500 / fullText.length)); // 전체 1.5초 내외
+      if (typingRef.current) clearInterval(typingRef.current);
+      typingRef.current = setInterval(() => {
+        charIdx += 1;
+        const current = fullText.slice(0, charIdx);
+        setTypingText(current);
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") {
+            updated[updated.length - 1] = { ...last, text: current };
+          }
+          return updated;
+        });
+
+        if (charIdx >= fullText.length) {
+          clearInterval(typingRef.current!);
+          typingRef.current = null;
+          // 타이핑 완료 — choices 표시
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = { ...last, text: fullText, choices };
+            }
+            return updated;
+          });
+          setTyping(false);
+          setTypingText("");
+        }
+      }, speed);
+
+      if (done && data.profile) {
         setFlowState("matching");
       }
     } catch {
       toast("서버 연결에 실패했습니다.", "error");
+      setLoading(false);
     }
-    setLoading(false);
   }, [headers, systemContext, toast]);
 
   // ─── 메시지 전송 ───
   const handleSend = (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loading || typing) return;
     const userMsg: ChatMessage = { role: "user", text: text.trim() };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
@@ -299,10 +340,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     { key: "analysis", label: "상세 분석" },
     { key: "done", label: "완료" },
   ];
-
-  const usageUsed = planStatus?.ai_used || 0;
-  const usageLimit = planStatus?.consult_limit || 50;
-  const usagePct = Math.min(100, Math.round((usageUsed / usageLimit) * 100));
 
   return (
     <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${t.root}`}>
@@ -454,7 +491,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     <span className={`${t.muted}`}>·</span>
                     <span className={`${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label || "대기"}</span>
                   </div>
-                  <span className={`text-[11px] ${t.muted}`}>상담 {usageUsed}/{usageLimit}회</span>
+                  <span className={`text-[11px] ${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label}</span>
                 </div>
               )}
 
@@ -522,16 +559,18 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     {loading && (
                       <div className="flex justify-start">
                         <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${t.bubble}`}>
-                          <div className="flex gap-1.5">
-                            <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                            <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                            <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                          <div className="flex items-center gap-2.5">
+                            <svg className="w-4 h-4 text-violet-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span className={`text-[13px] ${dark ? "text-violet-400" : "text-violet-600"}`}>AI가 분석하고 있습니다...</span>
                           </div>
                         </div>
                       </div>
                     )}
                     {/* 인라인 입력 위젯 — AI가 질문할 때만 표시 */}
-                    {!loading && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
+                    {!loading && !typing && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
                       const lastText = messages[messages.length - 1].text.toLowerCase();
 
                       // AI가 질문하는 경우만 감지 (확인/완료 응답은 제외)
@@ -580,12 +619,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
                         placeholder="업무를 지시하세요... (Enter: 전송 / Shift+Enter: 줄바꿈)"
-                        disabled={loading}
+                        disabled={loading || typing}
                         className={`flex-1 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />
                       <button
                         onClick={() => handleSend(input)}
-                        disabled={loading || !input.trim()}
+                        disabled={loading || typing || !input.trim()}
                         className="px-4 py-2 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0 flex items-center gap-1.5"
                       >
                         전송 {Icons.send}
@@ -643,27 +682,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 })}
               </div>
             </div>
-          </div>
-
-          {/* 토큰 사용량 — 그라데이션 프로그레스 바 */}
-          <div className={`p-4 border-b ${t.border}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>상담 사용량</p>
-            <div className={`w-full h-2 rounded-full overflow-hidden ${dark ? "bg-white/[0.06]" : "bg-slate-200"}`}>
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500"
-                style={{ width: `${usagePct}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5">
-              <span className={`text-[11px] font-semibold ${dark ? "text-violet-400" : "text-violet-600"}`}>{usageUsed.toLocaleString()} / {usageLimit.toLocaleString()}</span>
-              <span className={`text-[11px] ${t.muted}`}>{usagePct}%</span>
-            </div>
-          </div>
-
-          {/* 활성 에이전트 */}
-          <div className={`p-4 border-b ${t.border}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>활성 에이전트</p>
-            <p className={`text-[12px] ${t.muted}`}>{loading ? "분석 중..." : "대기 중"}</p>
           </div>
 
           {/* 현재 고객 정보 */}

@@ -4905,14 +4905,12 @@ def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)
     _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
+    # consultation_history 테이블이 없을 수 있으므로 기본 쿼리 + 상담 통계는 별도 조회
     cur.execute(
-        """SELECT cp.*,
-                  (SELECT COUNT(*) FROM consultation_history ch WHERE ch.client_id = cp.id) AS consult_count,
-                  (SELECT MAX(ch.created_at) FROM consultation_history ch WHERE ch.client_id = cp.id) AS last_consult_date,
-                  (SELECT ch.summary FROM consultation_history ch WHERE ch.client_id = cp.id ORDER BY ch.created_at DESC LIMIT 1) AS last_consult_summary
-           FROM client_profiles cp
-           WHERE cp.owner_business_number = %s AND cp.is_active = TRUE
-           ORDER BY cp.updated_at DESC""",
+        """SELECT *
+           FROM client_profiles
+           WHERE owner_business_number = %s AND is_active = TRUE
+           ORDER BY updated_at DESC""",
         (current_user["bn"],)
     )
     rows = cur.fetchall()

@@ -133,6 +133,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [systemContext, setSystemContext] = useState("");
+  const [activeAnnouncementId, setActiveAnnouncementId] = useState<number | null>(null);
   const [typing, setTyping] = useState(false); // 타이핑 애니메이션 중
   const [typingText, setTypingText] = useState(""); // 현재까지 타이핑된 텍스트
   const typingRef = useRef<NodeJS.Timeout | null>(null);
@@ -167,6 +168,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setFlowState("idle");
     setSelectedClient(null);
     setSystemContext("");
+    setActiveAnnouncementId(null);
     setShowProfileForm(false);
     setActiveView("chat");
     toast("상담이 종료되었습니다", "info");
@@ -234,7 +236,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       const res = await fetch(`${API}/api/pro/consultant/chat`, {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({ messages: messagesPayload }),
+        body: JSON.stringify({
+          messages: messagesPayload,
+          announcement_id: activeAnnouncementId,
+        }),
       });
 
       if (!res.ok) {
@@ -807,6 +812,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 setActiveView("chat");
                 setClientCategory("corporate");
                 setFlowState("analysis");
+                setActiveAnnouncementId(ann.id);
                 setSystemContext(`[전문가 상담 모드] 특정 공고 상담\n공고명: ${ann.title}\n공고ID: ${ann.id}\n\n이 공고의 분석 데이터를 바탕으로 고객 자격요건을 검토합니다.`);
                 setMessages([{
                   role: "assistant",

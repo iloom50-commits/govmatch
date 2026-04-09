@@ -1554,11 +1554,13 @@ def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
 # PRO 전문가 전용 상담 채팅
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def chat_pro_consultant(messages: List[Dict]) -> Dict[str, Any]:
+def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None) -> Dict[str, Any]:
     """
     PRO 전문가 전용 상담 채팅.
     컨설턴트가 고객사 정보를 전달 → AI가 정보 수집 → 매칭 프로필 생성.
     일반 상담(chat_consultant)과 완전 분리된 프롬프트 사용.
+
+    announcement_id 전달 시 → 특정 공고 상담 모드 (공고 데이터 자동 주입)
     """
     if not HAS_GENAI:
         return {"reply": "AI 서비스를 사용할 수 없습니다.", "choices": [], "done": False, "profile": None}
@@ -1566,6 +1568,52 @@ def chat_pro_consultant(messages: List[Dict]) -> Dict[str, Any]:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": [], "done": False, "profile": None}
+
+    # ── 특정 공고 상담 모드: announcement_id가 있으면 chat_consult로 위임 ──
+    # 공고 데이터를 주입한 깊이 있는 답변을 위해 일반 공고 상담 엔진 활용
+    if announcement_id and db_conn:
+        try:
+            cur = db_conn.cursor()
+            cur.execute("""
+                SELECT a.*, aa.parsed_sections, aa.deep_analysis, aa.full_text
+                FROM announcements a
+                LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+                WHERE a.announcement_id = %s
+            """, (announcement_id,))
+            row = cur.fetchone()
+            if row:
+                ann = dict(row)
+                deep = {
+                    "parsed_sections": ann.get("parsed_sections") or {},
+                    "deep_analysis": ann.get("deep_analysis") or {},
+                }
+                # PRO 컨설턴트 컨텍스트 추가 (첫 사용자 메시지에 prepend)
+                pro_messages = []
+                pro_prefix = "[전문가 상담 — 컨설턴트가 고객을 대신해 질문 중] 답변을 컨설턴트에게 전문적으로 제공하세요. "
+                for i, m in enumerate(messages):
+                    if i == 0 and m.get("role") == "user":
+                        pro_messages.append({"role": "user", "text": pro_prefix + m.get("text", "")})
+                    else:
+                        pro_messages.append(m)
+
+                result = chat_consult(
+                    announcement_id=announcement_id,
+                    messages=pro_messages,
+                    announcement=ann,
+                    deep_analysis_data=deep,
+                    user_profile=None,
+                    db_conn=db_conn,
+                )
+                return {
+                    "reply": result.get("reply", ""),
+                    "choices": result.get("choices", []),
+                    "done": False,  # PRO 모드에서는 종료 로직 다름
+                    "profile": None,
+                    "collected": {},
+                }
+        except Exception as e:
+            logger.error(f"[chat_pro_consultant] specific ann mode error: {e}")
+            # fall through to general mode
 
     system_prompt = """당신은 지원사업 컨설턴트의 AI 어시스턴트입니다.
 컨설턴트가 고객사(또는 개인 고객) 정보를 당신에게 전달하면, 정보를 수집하여 지원사업 매칭 프로필을 생성합니다.

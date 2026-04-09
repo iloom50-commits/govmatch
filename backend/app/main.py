@@ -2823,6 +2823,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
 
 class AiConsultantChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+    announcement_id: Optional[int] = None  # 특정 공고 상담 모드 (PRO 전용)
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -2882,11 +2883,35 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
-    """PRO 전문가 전용: 고객사 상담 채팅 (일반 상담과 완전 분리)"""
+    """PRO 전문가 전용: 고객사 상담 채팅
+    - 일반 모드: chat_pro_consultant() (고객 정보 수집)
+    - 특정 공고 모드(announcement_id): chat_consult로 위임 (공고 데이터 주입)
+    """
     _require_pro(current_user)
 
     from app.services.ai_consultant import chat_pro_consultant
-    result = chat_pro_consultant(req.messages)
+
+    # announcement_id가 명시되었거나, 메시지에서 자동 추출
+    ann_id = req.announcement_id
+    if not ann_id:
+        # 첫 사용자 메시지에서 "공고ID: 12345" 패턴 추출 (프론트엔드 호환)
+        for m in req.messages[:2]:
+            text = m.get("text", "") if m.get("role") == "user" else ""
+            import re as _re
+            match = _re.search(r'공고\s*ID\s*[:：]\s*(\d+)', text)
+            if match:
+                ann_id = int(match.group(1))
+                break
+
+    db = None
+    if ann_id:
+        db = get_db_connection()
+    try:
+        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
+    finally:
+        if db:
+            try: db.close()
+            except: pass
 
     return {
         "status": "SUCCESS",
@@ -2895,6 +2920,7 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         "done": result.get("done", False),
         "profile": result.get("profile"),
         "collected": result.get("collected", {}),
+        "announcement_id": ann_id,
     }
 
 

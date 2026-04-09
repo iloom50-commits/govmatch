@@ -504,10 +504,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
                       </svg>
                     </div>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>업무를 지시하시면</h2>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>AI 에이전트가 자동으로 실행됩니다.</h2>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>고객 유형을 선택하면</h2>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>AI 상담이 시작됩니다.</h2>
                     <p className={`text-[13px] mb-8 ${t.muted}`}>
-                      예: &ldquo;사업계획서 분석해줘&rdquo; | &ldquo;지원사업 매칭해줘&rdquo; | &ldquo;고객 분석해줘&rdquo;
+                      고객 정보 수집 → 맞춤 지원사업 매칭 → 자격요건 분석까지 한번에
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
@@ -618,7 +618,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
-                        placeholder="업무를 지시하세요... (Enter: 전송 / Shift+Enter: 줄바꿈)"
+                        placeholder="고객 정보를 입력하거나 질문하세요... (Enter: 전송)"
                         disabled={loading || typing}
                         className={`flex-1 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />

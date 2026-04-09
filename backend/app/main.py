@@ -2828,15 +2828,9 @@ class AiConsultantChatRequest(BaseModel):
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
 def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 공고 분석 — DB의 deep_analysis 우선, 없으면 기본 정보만 반환"""
-    bn = current_user["bn"]
+    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    _require_pro(dict(user))
 
     cur.execute("""
         SELECT a.*, aa.parsed_sections, aa.deep_analysis, aa.full_text
@@ -2889,17 +2883,7 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
     """PRO 전문가 전용: 고객사 상담 채팅 (일반 상담과 완전 분리)"""
-    bn = current_user["bn"]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    _require_pro(u)
-    conn.close()
+    _require_pro(current_user)
 
     from app.services.ai_consultant import chat_pro_consultant
     result = chat_pro_consultant(req.messages)

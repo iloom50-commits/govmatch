@@ -27,7 +27,7 @@ interface ClientProfile {
   status?: string;
 }
 
-type ActiveView = "chat" | "clients" | "history" | "reports";
+type ActiveView = "chat" | "clients" | "history" | "reports" | "announce_search";
 type FlowState = "idle" | "info_collect" | "matching" | "analysis" | "done";
 type ClientCategory = "" | "individual_biz" | "corporate" | "individual" | "unknown";
 
@@ -115,6 +115,18 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [existingClients, setExistingClients] = useState<ClientProfile[]>([]);
   const [flowState, setFlowState] = useState<FlowState>("idle");
   const [clientCategory, setClientCategory] = useState<ClientCategory>("");
+
+  // 입력 폼 (고객 정보 수집)
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    company_name: "",
+    establishment_year: "",
+    industry: "",
+    revenue_bracket: "",
+    employee_bracket: "",
+    address_city: "",
+    interests: [] as string[],
+  });
 
   // 대화
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -317,35 +329,71 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setActiveView("chat");
     setClientCategory(category);
     setFlowState("idle");
-    setSystemContext(client
-      ? `[전문가 상담 모드] 당신은 지원사업 컨설턴트의 AI 어시스턴트입니다. 컨설턴트가 고객 상담을 진행하고 있습니다.\n기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}\n\n이미 수집된 정보는 다시 묻지 말고, 추가로 필요한 정보만 질문하세요. 존댓말을 사용하세요.`
-      : `[전문가 상담 모드] 당신은 지원사업 컨설턴트의 AI 어시스턴트입니다. 컨설턴트가 고객 상담을 진행하고 있습니다.\n고객유형: ${category}\n\n컨설턴트에게 고객 정보를 하나씩 질문하세요. 이미 답한 정보는 다시 묻지 마세요. 존댓말을 사용하세요.`);
     setSelectedClient(client || null);
     setLeftOpen(false);
-
-    const catLabel = category === "individual_biz" ? "개인사업자" : category === "corporate" ? "법인사업자" : category === "individual" ? "개인" : "고객";
+    setMessages([]);
 
     if (client) {
+      // 기존 고객 → 정보 이미 있으므로 바로 대화 시작
+      setShowProfileForm(false);
+      setSystemContext(`[전문가 상담 모드] 기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}`);
       setMessages([{
         role: "assistant",
         text: `**${client.client_name}** 고객 정보를 불러왔습니다.\n\n지역: ${client.address_city || "미등록"}\n업종: ${client.industry_name || "미등록"}\n매출: ${client.revenue_bracket || "미등록"}\n\n어떤 상담을 진행하시겠습니까?`,
         choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
       }]);
-    } else if (category === "unknown") {
-      setMessages([{
-        role: "assistant",
-        text: "고객 유형이 아직 파악되지 않았습니다.\n\n고객에 대해 알고 계신 정보를 알려주세요.",
-        choices: ["기업 고객입니다", "개인 고객입니다", "사업 준비 중인 고객입니다"],
-      }]);
     } else {
-      setMessages([{
-        role: "assistant",
-        text: `**${catLabel}** 상담을 시작합니다.\n\n고객사 서류가 있으시면 우측에서 첨부해 주세요.\n고객사의 기업명은 무엇인가요?`,
-        choices: category === "individual"
-          ? ["서류가 있습니다", "구두 정보만 있습니다"]
-          : ["서류가 있습니다", "구두 정보만 있습니다"],
-      }]);
+      // 신규 고객 → 입력 폼 표시
+      setShowProfileForm(true);
+      setProfileForm({
+        company_name: "",
+        establishment_year: "",
+        industry: "",
+        revenue_bracket: "",
+        employee_bracket: "",
+        address_city: "",
+        interests: [],
+      });
     }
+  };
+
+  // ─── 입력 폼 제출 → 매칭 시작 ───
+  const handleProfileSubmit = () => {
+    const f = profileForm;
+    if (!f.company_name.trim()) { toast("기업명/이름은 필수입니다", "error"); return; }
+
+    setShowProfileForm(false);
+    setFlowState("info_collect");
+
+    const isIndiv = clientCategory === "individual";
+    const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
+
+    // 수집된 정보를 시스템 컨텍스트에 설정
+    const infoParts = [`고객유형: ${catLabel}`, `기업명: ${f.company_name}`];
+    if (f.establishment_year) infoParts.push(`설립연도: ${f.establishment_year}`);
+    if (f.industry) infoParts.push(`업종: ${f.industry}`);
+    if (f.revenue_bracket) infoParts.push(`매출: ${f.revenue_bracket}`);
+    if (f.employee_bracket) infoParts.push(`직원수: ${f.employee_bracket}`);
+    if (f.address_city) infoParts.push(`지역: ${f.address_city}`);
+    if (f.interests.length > 0) infoParts.push(`관심분야: ${f.interests.join(", ")}`);
+
+    setSystemContext(`[전문가 상담 모드] ${infoParts.join("\n")}`);
+
+    // 입력 요약 메시지 표시
+    const summaryLines = [`**${f.company_name}** (${catLabel}) 고객 정보가 등록되었습니다.\n`];
+    if (f.establishment_year) summaryLines.push(`설립: ${f.establishment_year}년`);
+    if (f.industry) summaryLines.push(`업종: ${f.industry}`);
+    if (f.revenue_bracket) summaryLines.push(`매출: ${f.revenue_bracket}`);
+    if (f.employee_bracket) summaryLines.push(`직원수: ${f.employee_bracket}`);
+    if (f.address_city) summaryLines.push(`지역: ${f.address_city}`);
+    if (f.interests.length > 0) summaryLines.push(`관심: ${f.interests.join(", ")}`);
+    summaryLines.push("\n어떤 작업을 진행하시겠습니까?");
+
+    setMessages([{
+      role: "assistant",
+      text: summaryLines.join("\n"),
+      choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
+    }]);
   };
 
   // ─── 마크다운 렌더링 ───
@@ -446,6 +494,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             <div className="flex-1 py-2">
               {([
                 { view: "chat" as ActiveView, icon: Icons.chat, label: "상담" },
+                { view: "announce_search" as ActiveView, icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>, label: "특정 공고 상담" },
                 { view: "clients" as ActiveView, icon: Icons.clients, label: "고객 관리" },
                 { view: "history" as ActiveView, icon: Icons.history, label: "상담 이력" },
                 { view: "reports" as ActiveView, icon: Icons.reports, label: "보고서" },
@@ -522,7 +571,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               )}
 
               {/* 유형 선택 (상담 미시작) */}
-              {!clientCategory && messages.length === 0 ? (
+              {!clientCategory && messages.length === 0 && !showProfileForm ? (
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
                   <div className="max-w-md text-center">
                     <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
@@ -552,6 +601,17 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     </div>
                   </div>
                 </div>
+              ) : showProfileForm ? (
+                /* ═══ 고객 정보 입력 폼 (버튼식) ═══ */
+                <ProfileInputForm
+                  dark={dark}
+                  t={t}
+                  clientCategory={clientCategory}
+                  profileForm={profileForm}
+                  setProfileForm={setProfileForm}
+                  onSubmit={handleProfileSubmit}
+                  onBack={() => { setShowProfileForm(false); setClientCategory(""); }}
+                />
               ) : (
                 <>
                   {/* 대화 영역 */}
@@ -676,11 +736,23 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               )}
             </>
           ) : (
-            /* 고객관리 / 상담이력 / 보고서 */
+            /* 고객관리 / 상담이력 / 보고서 / 특정 공고 상담 */
             <div className={`flex-1 overflow-y-auto p-4 ${dark ? "text-slate-200" : ""}`}>
               {activeView === "clients" && <ClientsTabWrapper headers={headers} toast={toast} dark={dark} t={t} />}
               {activeView === "history" && <HistoryTabWrapper headers={headers} toast={toast} />}
               {activeView === "reports" && <ReportsTabWrapper headers={headers} toast={toast} />}
+              {activeView === "announce_search" && <AnnounceSearchPanel headers={headers} toast={toast} dark={dark} t={t} onStartConsult={(ann) => {
+                // 공고 선택 → 상담 시작
+                setActiveView("chat");
+                setClientCategory("corporate");
+                setFlowState("analysis");
+                setSystemContext(`[전문가 상담 모드] 특정 공고 상담\n공고명: ${ann.title}\n공고ID: ${ann.id}\n\n이 공고의 분석 데이터를 바탕으로 고객 자격요건을 검토합니다.`);
+                setMessages([{
+                  role: "assistant",
+                  text: `**${ann.title}**\n\n${ann.summary || "공고 상세 정보를 불러왔습니다."}\n\n이 공고로 어떤 작업을 진행하시겠습니까?`,
+                  choices: ["고객 자격요건 검토", "공고 상세 분석", "다른 고객에게 추천"],
+                }]);
+              }} />}
             </div>
           )}
         </div>
@@ -993,6 +1065,248 @@ function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ─── 고객 정보 입력 폼 (버튼식) ───
+function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm, onSubmit, onBack }: {
+  dark: boolean; t: any; clientCategory: string;
+  profileForm: any; setProfileForm: (f: any) => void;
+  onSubmit: () => void; onBack: () => void;
+}) {
+  const isIndiv = clientCategory === "individual";
+  const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : isIndiv ? "개인" : "고객";
+  const update = (key: string, val: string) => setProfileForm((prev: any) => ({ ...prev, [key]: val }));
+  const toggleInterest = (v: string) => setProfileForm((prev: any) => ({
+    ...prev,
+    interests: prev.interests.includes(v) ? prev.interests.filter((i: string) => i !== v) : [...prev.interests, v],
+  }));
+
+  const btnCls = (selected: boolean) => `px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all active:scale-95 border ${
+    selected
+      ? "bg-violet-600 text-white border-violet-600"
+      : dark ? "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-violet-500/40" : "bg-white border-slate-200 text-slate-600 hover:border-violet-400"
+  }`;
+
+  const inputCls = `w-full px-3 py-2.5 rounded-lg text-[13px] outline-none border transition-all focus:ring-2 focus:ring-violet-500/20 ${
+    dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
+  }`;
+
+  const sectionTitle = `text-[11px] font-bold mb-2 ${dark ? "text-slate-400" : "text-slate-500"}`;
+
+  const revenueOptions = ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"];
+  const employeeOptions = ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"];
+  const cityOptions = ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
+  const bizInterests = ["창업지원", "기술개발", "정책자금", "고용지원", "수출마케팅", "디지털전환", "판로개척", "시설개선", "교육훈련", "에너지환경", "소상공인", "R&D"];
+  const indivInterests = ["취업", "주거", "교육", "청년", "출산/육아", "장학금", "의료", "장애", "저소득", "노인", "문화", "다자녀"];
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-6">
+      <div className="max-w-lg mx-auto space-y-5">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className={`text-lg font-bold ${dark ? "text-slate-100" : "text-slate-800"}`}>{catLabel} 고객 정보</h3>
+            <p className={`text-[12px] mt-0.5 ${t.muted}`}>기업명만 필수, 나머지는 아는 만큼 입력하세요</p>
+          </div>
+          <button onClick={onBack} className={`text-[12px] px-3 py-1.5 rounded-lg ${dark ? "text-slate-400 hover:bg-white/5" : "text-slate-500 hover:bg-slate-100"}`}>
+            뒤로
+          </button>
+        </div>
+
+        {/* 기업명/이름 (필수) */}
+        <div>
+          <p className={sectionTitle}>{isIndiv ? "고객 이름" : "기업명 (상호명)"} <span className="text-red-400">*</span></p>
+          <input type="text" value={profileForm.company_name} onChange={(e) => update("company_name", e.target.value)}
+            placeholder={isIndiv ? "홍길동" : "주식회사 스마트팜코리아"} className={inputCls} />
+        </div>
+
+        {/* 설립연도 */}
+        <div>
+          <p className={sectionTitle}>{isIndiv ? "출생연도" : "설립연도"} <span className={t.muted}>(선택)</span></p>
+          <input type="text" value={profileForm.establishment_year} onChange={(e) => update("establishment_year", e.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="예: 2020" maxLength={4} className={`${inputCls} w-32`} />
+        </div>
+
+        {/* 업종 (사업자만) */}
+        {!isIndiv && (
+          <div>
+            <p className={sectionTitle}>업종 <span className={t.muted}>(선택)</span></p>
+            <input type="text" value={profileForm.industry} onChange={(e) => update("industry", e.target.value)}
+              placeholder="예: IT서비스, 제조업, 음식점" className={inputCls} />
+          </div>
+        )}
+
+        {/* 매출 규모 (사업자만) */}
+        {!isIndiv && (
+          <div>
+            <p className={sectionTitle}>매출 규모 <span className={t.muted}>(선택)</span></p>
+            <div className="flex flex-wrap gap-2">
+              {revenueOptions.map(opt => (
+                <button key={opt} onClick={() => update("revenue_bracket", profileForm.revenue_bracket === opt ? "" : opt)}
+                  className={btnCls(profileForm.revenue_bracket === opt)}>{opt}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 직원수 (사업자만) */}
+        {!isIndiv && (
+          <div>
+            <p className={sectionTitle}>직원수 <span className={t.muted}>(선택)</span></p>
+            <div className="flex flex-wrap gap-2">
+              {employeeOptions.map(opt => (
+                <button key={opt} onClick={() => update("employee_bracket", profileForm.employee_bracket === opt ? "" : opt)}
+                  className={btnCls(profileForm.employee_bracket === opt)}>{opt}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 지역 */}
+        <div>
+          <p className={sectionTitle}>{isIndiv ? "거주 지역" : "소재지"} <span className={t.muted}>(선택)</span></p>
+          <div className="flex flex-wrap gap-1.5">
+            {cityOptions.map(opt => (
+              <button key={opt} onClick={() => update("address_city", profileForm.address_city === opt ? "" : opt)}
+                className={btnCls(profileForm.address_city === opt)}>{opt}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* 관심분야 (복수 선택) */}
+        <div>
+          <p className={sectionTitle}>관심분야 <span className={t.muted}>(복수 선택)</span></p>
+          <div className="flex flex-wrap gap-1.5">
+            {(isIndiv ? indivInterests : bizInterests).map(opt => (
+              <button key={opt} onClick={() => toggleInterest(opt)}
+                className={btnCls(profileForm.interests.includes(opt))}>{opt}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* 제출 */}
+        <div className="flex gap-3 pt-2">
+          <button onClick={onSubmit} disabled={!profileForm.company_name.trim()}
+            className="flex-1 py-3 bg-violet-600 text-white rounded-xl text-[14px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98] disabled:opacity-30">
+            상담 시작
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── 특정 공고 검색 패널 ───
+function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
+  headers: () => any; toast: any; dark: boolean; t: any;
+  onStartConsult: (ann: { id: number; title: string; summary?: string }) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedAnn, setSelectedAnn] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<any>(null);
+
+  const search = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setSelectedAnn(null);
+    setAnalysisData(null);
+    try {
+      const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=20`, { headers: headers() });
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data.announcements || data || []);
+      }
+    } catch { toast("검색 실패", "error"); }
+    setLoading(false);
+  };
+
+  const loadAnalysis = async (ann: any) => {
+    setSelectedAnn(ann);
+    setAnalysisData(null);
+    try {
+      // DB에서 분석 데이터 우선 로드
+      const res = await fetch(`${API}/api/announcements/${ann.id}`, { headers: headers() });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalysisData(data);
+      }
+    } catch { /* */ }
+  };
+
+  const inputCls = `flex-1 px-4 py-2.5 rounded-lg text-[13px] outline-none border transition-all ${
+    dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
+  }`;
+
+  return (
+    <div className="space-y-4">
+      <h3 className={`text-sm font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>특정 공고 상담</h3>
+      <p className={`text-[12px] ${t.muted}`}>공고명이나 키워드로 검색하여 상세 상담을 시작하세요</p>
+
+      {/* 검색 */}
+      <div className="flex gap-2">
+        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+          placeholder="공고명, 키워드 검색..." className={inputCls} />
+        <button onClick={search} disabled={loading || !query.trim()}
+          className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
+          검색
+        </button>
+      </div>
+
+      {loading && <p className={`text-[12px] ${t.muted}`}>검색 중...</p>}
+
+      {/* 결과 목록 */}
+      {results.length > 0 && !selectedAnn && (
+        <div className={`rounded-xl border overflow-hidden ${dark ? "border-white/[0.06]" : "border-slate-200"}`}>
+          {results.map((ann: any) => (
+            <button key={ann.id} onClick={() => loadAnalysis(ann)}
+              className={`w-full text-left px-4 py-3 border-b last:border-b-0 transition-all ${dark ? "border-white/[0.04] hover:bg-white/[0.03]" : "border-slate-100 hover:bg-violet-50/30"}`}>
+              <p className={`text-[13px] font-semibold truncate ${dark ? "text-slate-200" : "text-slate-800"}`}>{ann.title}</p>
+              <div className={`flex gap-3 mt-1 text-[11px] ${t.muted}`}>
+                {ann.organization && <span>{ann.organization}</span>}
+                {ann.support_amount && <span>{ann.support_amount}</span>}
+                {ann.deadline_date && <span>~{String(ann.deadline_date).slice(5, 10)}</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 선택된 공고 상세 */}
+      {selectedAnn && (
+        <div className={`p-4 rounded-xl border ${dark ? "bg-[#1a1c30] border-white/[0.08]" : "bg-white border-slate-200"}`}>
+          <h4 className={`text-[14px] font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>{selectedAnn.title}</h4>
+          {analysisData && (
+            <div className={`text-[12px] space-y-1.5 mb-3 ${dark ? "text-slate-300" : "text-slate-600"}`}>
+              {analysisData.organization && <p><span className={t.muted}>주관:</span> {analysisData.organization}</p>}
+              {analysisData.support_amount && <p><span className={t.muted}>지원금:</span> {analysisData.support_amount}</p>}
+              {analysisData.deadline_date && <p><span className={t.muted}>마감:</span> {String(analysisData.deadline_date).slice(0, 10)}</p>}
+              {(analysisData.parsed_sections?.eligibility || analysisData.eligibility) && (
+                <p><span className={t.muted}>자격요건:</span> {(analysisData.parsed_sections?.eligibility || analysisData.eligibility || "").slice(0, 200)}</p>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => onStartConsult({
+              id: selectedAnn.id,
+              title: selectedAnn.title,
+              summary: analysisData ? `주관: ${analysisData.organization || ""}\n지원금: ${analysisData.support_amount || ""}\n자격: ${(analysisData.parsed_sections?.eligibility || analysisData.eligibility || "").slice(0, 300)}` : "",
+            })} className="px-4 py-2 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500">
+              이 공고로 상담 시작
+            </button>
+            <button onClick={() => { setSelectedAnn(null); setAnalysisData(null); }}
+              className={`px-4 py-2 rounded-lg text-[12px] font-semibold ${dark ? "text-slate-400 hover:bg-white/5" : "text-slate-500 hover:bg-slate-100"}`}>
+              다른 공고 선택
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

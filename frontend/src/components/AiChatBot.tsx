@@ -244,6 +244,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     }
   }, [open, mode, messages.length]);
 
+  // 비PRO 사용자가 ✨ 클릭 → 모드 선택 화면 건너뛰고 바로 free(지원사업 상담) 모드
+  useEffect(() => {
+    if (open && !isPro && mode === "select") {
+      setMode("free");
+    }
+  }, [open, isPro, mode]);
+
   // 스크롤 하단 유지
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });

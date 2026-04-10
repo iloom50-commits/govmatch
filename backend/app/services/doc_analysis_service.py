@@ -744,13 +744,23 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _record_failure(db_conn, announcement_id: int, error_type: str, error_message: str) -> None:
-    """분석 실패를 analysis_failures 테이블에 기록 (재시도 큐 관리)"""
+    """분석 실패를 analysis_failures 테이블에 기록 (테이블 없으면 무시)"""
     if not db_conn:
         return
     try:
         import datetime as _dt
-        # 지수 백오프: 1일 → 3일 → 7일 → 14일
         cur = db_conn.cursor()
+        # 테이블 존재 여부 확인 (safe)
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'analysis_failures'
+            ) AS exists
+        """)
+        row = cur.fetchone()
+        if not row or not row.get("exists"):
+            return  # 테이블 없으면 조용히 무시 (마이그레이션 대기)
+
         cur.execute("""
             SELECT retry_count FROM analysis_failures
             WHERE announcement_id = %s AND error_type = %s
@@ -780,7 +790,7 @@ def _record_failure(db_conn, announcement_id: int, error_type: str, error_messag
 
 
 def _resolve_failure(db_conn, announcement_id: int) -> None:
-    """분석 성공 시 해당 announcement의 모든 실패 기록 해제"""
+    """분석 성공 시 해당 announcement의 모든 실패 기록 해제 (테이블 없으면 무시)"""
     if not db_conn:
         return
     try:

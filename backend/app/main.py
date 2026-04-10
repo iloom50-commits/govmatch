@@ -748,33 +748,35 @@ async def lifespan(app):
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())
 
-    # ── AI 패트롤 스케줄러 (매일 03:00 KST) ──
+    # ── AI 패트롤 스케줄러 (매일 18:00 UTC = 03:00 KST) ──
+    # 임포트/실행 모두 try로 감싸서 패트롤 실패가 서버 부팅을 막지 않게 함
     patrol_scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
-        from app.services.patrol import run_patrol
 
         def _patrol_job():
             try:
+                # 지연 임포트 — 순환 참조 방지
+                from app.services.patrol import run_patrol
                 print("[Patrol] Scheduled run starting...")
                 result = run_patrol(triggered_by="scheduler")
                 print(f"[Patrol] Scheduled run done: {result.get('elapsed_seconds')}s")
             except Exception as e:
                 print(f"[Patrol] Scheduled run error: {e}")
 
-        patrol_scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+        patrol_scheduler = AsyncIOScheduler()  # default UTC
         patrol_scheduler.add_job(
             _patrol_job,
-            CronTrigger(hour=3, minute=0),
+            CronTrigger(hour=18, minute=0),  # 18:00 UTC = 03:00 KST
             id="ai_patrol",
             name="AI 데이터 품질 패트롤",
             replace_existing=True,
         )
         patrol_scheduler.start()
-        print("[Patrol] APScheduler started — daily at 03:00 KST")
+        print("[Patrol] APScheduler started — daily at 18:00 UTC (03:00 KST)")
     except Exception as e:
-        print(f"[Patrol] scheduler init failed: {e}")
+        print(f"[Patrol] scheduler init failed (서버는 정상): {e}")
 
     yield
 

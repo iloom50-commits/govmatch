@@ -7,49 +7,25 @@ import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-// FAB 버튼 + 말풍선 (첫 3초 표시 → 사라짐 → 2분마다 3초 표시, 최대 3회)
+// FAB 버튼 + 라벨 (PRO 도구 항상 명시)
 function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
-  const [showBubble, setShowBubble] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
-  useEffect(() => {
-    let count = 0;
-    // 첫 표시: 1초 후 3초간
-    const first = setTimeout(() => {
-      setShowBubble(true);
-      count++;
-      setTimeout(() => setShowBubble(false), 3000);
-    }, 1000);
-    // 이후: 2분마다 3초간 (최대 3회)
-    const interval = setInterval(() => {
-      if (count >= 3) return;
-      setShowBubble(true);
-      count++;
-      setTimeout(() => setShowBubble(false), 3000);
-    }, 120000);
-    return () => { clearTimeout(first); clearInterval(interval); };
-  }, []);
-
-  const visible = showBubble || hovered;
-
   return (
-    <div className="fixed bottom-6 right-6 z-40"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {visible && (
-        <div className="absolute -top-10 right-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-in fade-in zoom-in-95 duration-200">
-          {label}
-          <div className="absolute -bottom-1 right-5 w-2 h-2 bg-slate-900 rotate-45" />
-        </div>
-      )}
+    <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2">
+      {/* 항상 노출되는 라벨 — "전문가용 지원사업 상담 도구" */}
+      <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
+        <span className="text-[11px] font-bold text-violet-700">전문가용 지원사업 상담 도구</span>
+        <span className="px-1.5 py-0.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[9px] font-black rounded-full">PRO</span>
+      </div>
       <button
         onClick={onClick}
-        className="relative w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center"
+        className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
         style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
         title={label}
+        aria-label="전문가용 지원사업 상담 도구 (PRO)"
       >
         <span className="text-2xl animate-ai-pulse">✨</span>
+        {/* 모바일용 - 작은 PRO 뱃지 */}
+        <span className="sm:hidden absolute -top-1 -right-1 px-1 py-0.5 bg-white text-violet-700 text-[8px] font-black rounded-full border border-violet-200 shadow">PRO</span>
       </button>
     </div>
   );
@@ -244,12 +220,6 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     }
   }, [open, mode, messages.length]);
 
-  // 비PRO 사용자가 ✨ 클릭 → 모드 선택 화면 건너뛰고 바로 free(지원사업 상담) 모드
-  useEffect(() => {
-    if (open && !isPro && mode === "select") {
-      setMode("free");
-    }
-  }, [open, isPro, mode]);
 
   // 스크롤 하단 유지
   useEffect(() => {
@@ -1133,6 +1103,12 @@ ${convHtml}
   if (open && isPro) {
     const ProSecretary = require("@/components/pro/ProSecretary").default;
     return <ProSecretary onClose={handleClose} planStatus={planStatus} onUpgrade={onUpgrade} userType={userType} />;
+  }
+
+  // 비PRO 사용자는 PRO 소개/가입 유도 화면
+  if (open && !isPro) {
+    const ProUpsellScreen = require("@/components/pro/ProUpsellScreen").default;
+    return <ProUpsellScreen onClose={handleClose} onUpgrade={onUpgrade} />;
   }
 
   return (

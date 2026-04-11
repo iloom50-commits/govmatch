@@ -337,12 +337,27 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   // URL 파라미터에서 검색어 읽기 (블로그 연동)
   const urlQ = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") || "" : "";
+  const urlAid = typeof window !== "undefined" ? Number(new URLSearchParams(window.location.search).get("aid")) || 0 : 0;
+  const [highlightAid, setHighlightAid] = useState(urlAid);
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showMyMenu, setShowMyMenu] = useState(false);
   const [totalAnnouncementCount, setTotalAnnouncementCount] = useState(0);
+
+  // 공유 링크로 접속 시 해당 카드로 스크롤 + 하이라이트
+  useEffect(() => {
+    if (!highlightAid) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-aid="${highlightAid}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 1500); // 데이터 로드 후 스크롤
+    const fadeTimer = setTimeout(() => setHighlightAid(0), 5000); // 5초 후 하이라이트 해제
+    return () => { clearTimeout(timer); clearTimeout(fadeTimer); };
+  }, [highlightAid]);
 
   // DB 전체 공고 수 조회
   useEffect(() => {
@@ -1322,6 +1337,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     planStatus={isPublic && !profile ? null : planStatus}
                     onUpgrade={isPublic && !profile ? undefined : onUpgrade}
                     onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
+                    highlight={highlightAid === res.announcement_id}
                   />
                 </div>
               ))}

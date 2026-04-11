@@ -152,6 +152,14 @@ h1, h2, h3, h4 {
   display: inline-block;
 }
 
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(139, 92, 246, 0.4); }
+  50% { box-shadow: 0 0 20px 6px rgba(139, 92, 246, 0.7); }
+}
+.animate-glow-pulse {
+  animation: glow-pulse 1.5s ease-in-out 3;
+}
+
 /* Brand "지원금AI" gold effect — inspired by app icon */
 .brand-name {
   display: inline-block;

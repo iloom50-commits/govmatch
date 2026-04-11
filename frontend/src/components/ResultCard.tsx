@@ -4,10 +4,12 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/ui/Toast";
 
-function ShareMenu({ toast }: { toast: (msg: string, type?: "success" | "error" | "info") => void }) {
+function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: string, type?: "success" | "error" | "info") => void; announcementId?: number; announcementTitle?: string }) {
   const [open, setOpen] = useState(false);
-  const url = "https://govmatch.kr";
-  const shareText = "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
+  const url = announcementId ? `https://govmatch.kr?aid=${announcementId}` : "https://govmatch.kr";
+  const shareText = announcementTitle
+    ? `이 지원사업 한번 확인해보세요!\n"${announcementTitle.slice(0, 40)}"\nAI가 자격 여부까지 분석해줍니다.`
+    : "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
 
   const shareKakao = () => {
     const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
@@ -220,7 +222,7 @@ interface CardProps {
   onLoginRequired?: () => void;
 }
 
-export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade, onLoginRequired }: CardProps) {
+export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade, onLoginRequired, highlight }: CardProps & { highlight?: boolean }) {
   const isPublic = !!onLoginRequired;
   const isExpired = !isPublic && planStatus?.plan === "expired";
   const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
@@ -253,7 +255,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
   const amountIsAmount = amountLabel && /[0-9억만원원]/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} className={`group relative glass-card p-3 md:p-5 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 md:p-5 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
@@ -404,7 +406,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               )}
             </div>
             {/* 공유 버튼 — 토글 시 카카오톡/문자/더보기/링크복사 */}
-            <ShareMenu toast={toast} />
+            <ShareMenu toast={toast} announcementId={res.announcement_id} announcementTitle={res.title} />
           </div>
         </div>
       </div>

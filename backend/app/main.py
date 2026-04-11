@@ -3067,8 +3067,9 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                         first_user_text = m.get("text", "")
                     last_user_text = m.get("text", "")
 
-            # 금융 질문 감지 — 금융 질문이면 즉시 매칭 억제 (마지막 메시지 기준)
-            _fin_question_kws = ["금리", "이자", "한도", "상환", "담보", "보증서", "보증료", "신보", "기보", "연체"]
+            # 금융 관련 감지 — 금융 질문 또는 금융 상담 선택이면 즉시 매칭 억제
+            _fin_question_kws = ["금리", "이자", "한도", "상환", "담보", "보증서", "보증료", "신보", "기보", "연체",
+                                 "정책자금", "융자", "대출", "보증", "자금 상담", "융자 상담", "보증 상담"]
             _is_financial_question = any(kw in last_user_text for kw in _fin_question_kws)
 
             # 정보량 점수 (있는 필드 수)

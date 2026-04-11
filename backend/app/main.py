@@ -4362,6 +4362,29 @@ async def reanalyze_empty_analyses(limit: int = 100):
         conn.close()
 
 
+@app.post("/api/admin/set-plan", dependencies=[Depends(_verify_admin)])
+def admin_set_plan(req: dict):
+    """관리자용 플랜 강제 변경"""
+    email = req.get("email")
+    plan = req.get("plan", "pro")
+    days = req.get("days", 30)
+    if not email:
+        raise HTTPException(status_code=400, detail="email 필수")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        import datetime as _dt
+        expires = (_dt.datetime.utcnow() + _dt.timedelta(days=days)).isoformat()
+        cur.execute(
+            "UPDATE users SET plan = %s, plan_expires_at = %s, ai_usage_month = 0 WHERE email = %s",
+            (plan, expires, email)
+        )
+        conn.commit()
+        return {"status": "SUCCESS", "message": f"{email} → {plan} ({days}일)"}
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/analysis-stats", dependencies=[Depends(_verify_admin)])
 def admin_analysis_stats():
     """공고 분석 현황 통계"""

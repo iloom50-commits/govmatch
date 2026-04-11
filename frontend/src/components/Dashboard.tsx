@@ -1343,13 +1343,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   {trendingItems.map((t, i) => (
                     <div
                       key={t.announcement_id}
-                      onClick={() => {
-                        // 공고 상담 모달 오픈 (나도 받을 수 있나?)
-                        window.dispatchEvent(new CustomEvent("open-ai-consult", {
-                          detail: { announcement: t }
-                        }));
-                      }}
-                      className="relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group cursor-pointer"
+                      className="relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group"
                     >
                       <div className="flex items-center gap-1.5 mb-2">
                         <span className="text-[11px] font-bold text-orange-500">{i + 1}위</span>
@@ -1360,11 +1354,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                           <span className="text-[10px] text-slate-400 ml-auto">~{t.deadline_date.slice(5)}</span>
                         )}
                       </div>
-                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 group-hover:text-orange-700 transition-colors">{t.title}</p>
+                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 mb-2">{t.title}</p>
                       {t.support_amount && (
-                        <p className="text-[11px] text-orange-600 font-semibold mt-1.5">{t.support_amount.slice(0, 30)}</p>
+                        <p className="text-[11px] text-orange-600 font-semibold mb-3">{t.support_amount.slice(0, 30)}</p>
                       )}
-                      <p className="text-[10px] text-orange-500 mt-2 font-semibold">나도 받을 수 있나? →</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: t } }))}
+                          className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-[11px] font-bold hover:bg-violet-500 transition-all active:scale-95"
+                        >
+                          나도 받을 수 있나?
+                        </button>
+                        <button
+                          onClick={() => {
+                            const url = `https://govmatch.kr?aid=${t.announcement_id}`;
+                            const text = `이 지원사업 확인해보세요! "${t.title.slice(0, 30)}"`;
+                            if (navigator.share) {
+                              navigator.share({ title: t.title, text, url });
+                            } else {
+                              navigator.clipboard.writeText(`${text} ${url}`).then(() => {
+                                const toast = document.querySelector("[data-toast]");
+                                if (toast) toast.textContent = "링크가 복사되었습니다!";
+                              });
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg border border-orange-300 text-orange-600 text-[11px] font-bold hover:bg-orange-50 transition-all active:scale-95"
+                        >
+                          추천하기
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

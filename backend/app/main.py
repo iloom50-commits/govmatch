@@ -7017,12 +7017,33 @@ def api_trending():
                 print(f"[Trending] Auto-generate failed: {e}")
                 import traceback; traceback.print_exc()
 
+        # 여전히 비어있으면 — 직접 인기 공고 쿼리 폴백
+        if not rows:
+            try:
+                cur.execute("""
+                    SELECT announcement_id, title, department, category,
+                           support_amount, deadline_date, region, origin_url
+                    FROM announcements
+                    WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                      AND support_amount IS NOT NULL AND support_amount != ''
+                    ORDER BY
+                        CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
+                        deadline_date ASC NULLS LAST
+                    LIMIT 3
+                """)
+                fallback = cur.fetchall()
+                for i, fb in enumerate(fallback, 1):
+                    rows.append({**dict(fb), "rank": i, "trending_keyword": "인기", "trending_reason": "금액 상위"})
+            except Exception:
+                pass
+
         # 날짜 직렬화
         for r in rows:
             if r.get("deadline_date"):
                 r["deadline_date"] = str(r["deadline_date"])
         return {"status": "SUCCESS", "data": rows, "date": str(__import__("datetime").date.today())}
-    except Exception:
+    except Exception as outer_e:
+        print(f"[Trending API] outer error: {outer_e}")
         return {"status": "SUCCESS", "data": [], "date": str(__import__("datetime").date.today())}
     finally:
         conn.close()

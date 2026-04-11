@@ -6982,6 +6982,21 @@ def api_trending():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        # 테이블 생성 보장
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS trending_announcements (
+                    id SERIAL PRIMARY KEY, trending_date DATE NOT NULL,
+                    rank INTEGER NOT NULL, announcement_id INTEGER NOT NULL,
+                    trending_keyword TEXT, trending_reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except: pass
+
         cur.execute("""
             SELECT t.rank, t.trending_keyword, t.trending_reason,
                    a.announcement_id, a.title, a.department, a.category,

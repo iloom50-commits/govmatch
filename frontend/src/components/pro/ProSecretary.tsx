@@ -744,7 +744,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                       if (!isAsking) return null;
 
                       // 각 필드를 "요청"하는 패턴만 감지 (확인 언급 제외)
-                      const fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[] = [];
+                      const fields: { key: string; label: string; type: "text" | "select" | "date" | "multiselect"; options?: string[] }[] = [];
                       const asking = (keyword: string) => {
                         // "기업명을 알려주세요" → true / "기업명이 dd이군요" → false
                         const idx = lastText.indexOf(keyword);
@@ -759,7 +759,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                       if (asking("직원") || asking("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
                       if (asking("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
                       if (asking("업종") || asking("분야") || asking("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
-                      if (asking("지역") || asking("소재지") || asking("거주")) fields.push({ key: "city", label: "지역", type: "select", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
+                      if (asking("지역") || asking("소재지") || asking("거주")) fields.push({ key: "city", label: "지역 (복수 선택)", type: "multiselect", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
                       if (asking("기업명") || asking("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
 
                       if (fields.length === 0) return null;
@@ -1149,7 +1149,7 @@ function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 
 // ─── 인라인 입력 위젯 (건너뛰기 추가) ───
 function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
-  fields: { key: string; label: string; type: "text" | "select" | "date"; options?: string[] }[];
+  fields: { key: string; label: string; type: "text" | "select" | "date" | "multiselect"; options?: string[] }[];
   dark: boolean;
   t: any;
   onSubmit: (values: Record<string, string>) => void;
@@ -1157,18 +1157,37 @@ function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const update = (key: string, val: string) => setValues(prev => ({ ...prev, [key]: val }));
+  const toggleMulti = (key: string, opt: string) => {
+    setValues(prev => {
+      const current = (prev[key] || "").split(",").filter(Boolean);
+      const next = current.includes(opt) ? current.filter((c: string) => c !== opt) : [...current, opt];
+      return { ...prev, [key]: next.join(",") };
+    });
+  };
 
   const inputCls = `px-3 py-2 rounded-lg text-[13px] outline-none border transition-all focus:ring-2 focus:ring-violet-500/20 ${
     dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
+  }`;
+  const chipCls = (selected: boolean) => `px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+    selected
+      ? (dark ? "bg-violet-600 text-white" : "bg-violet-600 text-white")
+      : (dark ? "bg-white/[0.05] text-slate-400 hover:bg-white/10" : "bg-slate-100 text-slate-500 hover:bg-slate-200")
   }`;
 
   return (
     <div className={`mx-4 mb-3 p-3 rounded-xl border ${dark ? "bg-[#1a1c30] border-violet-500/20" : "bg-violet-50/50 border-violet-200"}`}>
       <div className="flex flex-wrap gap-2 items-end">
         {fields.map(f => (
-          <div key={f.key} className="flex-1 min-w-[120px]">
+          <div key={f.key} className={f.type === "multiselect" ? "w-full" : "flex-1 min-w-[120px]"}>
             <label className={`block text-[10px] font-bold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>{f.label}</label>
-            {f.type === "select" && f.options ? (
+            {f.type === "multiselect" && f.options ? (
+              <div className="flex flex-wrap gap-1">
+                {f.options.map(opt => (
+                  <button key={opt} type="button" onClick={() => toggleMulti(f.key, opt)}
+                    className={chipCls((values[f.key] || "").split(",").includes(opt))}>{opt}</button>
+                ))}
+              </div>
+            ) : f.type === "select" && f.options ? (
               <select value={values[f.key] || ""} onChange={(e) => update(f.key, e.target.value)} className={`w-full ${inputCls}`}>
                 <option value="">선택</option>
                 {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}

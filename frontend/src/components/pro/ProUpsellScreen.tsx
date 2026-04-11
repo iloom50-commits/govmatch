@@ -116,9 +116,10 @@ export default function ProUpsellScreen({
         {/* 가격 + CTA */}
         <div className="px-6 sm:px-10 py-6 mt-2">
           <div className="p-5 rounded-2xl bg-gradient-to-br from-violet-600/20 to-purple-600/10 border border-violet-500/30 text-center">
-            <p className="text-[10px] font-bold text-violet-300 mb-1">런칭 특가</p>
+            <p className="text-[10px] font-bold text-red-400 mb-1">3개월 오픈 이벤트</p>
             <div className="flex items-baseline justify-center gap-2 mb-1">
-              <span className="text-3xl font-black text-white">₩19,000</span>
+              <span className="text-[14px] text-slate-500 line-through">₩49,000</span>
+              <span className="text-3xl font-black text-white">₩29,000</span>
               <span className="text-[12px] text-slate-400">/ 월</span>
             </div>
             <p className="text-[11px] text-slate-400 mb-4">AI 상담 무제한 · 고객사 무제한 · 모든 기능 포함</p>

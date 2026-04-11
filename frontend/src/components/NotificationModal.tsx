@@ -7,7 +7,7 @@ import { useModalBack } from "@/hooks/useModalBack";
 const API = process.env.NEXT_PUBLIC_API_URL;
 
 // ── 선택지 상수 ──
-const CITIES = ["전국", "서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
+const CITIES = ["서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 const REVENUE = ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"];
 const EMPLOYEE = ["5인 미만", "5인~10인", "10인~30인", "30인~50인", "50인 이상"];
 
@@ -89,7 +89,7 @@ function getSteps(userType: UserType) {
   // 공통: 유형 → 지역 → ... → 관심분야+키워드+알림
   const steps: { id: string; title: string; subtitle: string }[] = [
     { id: "type", title: "어떤 지원금을 찾고 계세요?", subtitle: "맞춤 공고를 찾아드릴게요" },
-    { id: "region", title: "지역을 선택해주세요", subtitle: "여러 지역을 선택할 수 있어요" },
+    { id: "region", title: "우선 지역을 선택해주세요", subtitle: "전국 공고는 기본 포함, 선택한 지역 공고가 먼저 표시돼요" },
   ];
   if (userType === "individual" || userType === "both") {
     steps.push({ id: "individual", title: "개인 정보를 알려주세요", subtitle: "맞춤 복지 매칭에 활용돼요" });
@@ -268,20 +268,14 @@ export default function NotificationModal({
 
   // ── 토글 헬퍼 ──
   const toggleCity = (city: string) => {
-    if (city === "전국") {
-      // 전국만 단독 선택 (다른 지역 해제)
-      setAddressCities(["전국"]);
-    } else {
-      setAddressCities(prev => {
-        const withoutAll = prev.filter(c => c !== "전국");
-        let next = withoutAll.includes(city)
-          ? withoutAll.filter(c => c !== city)
-          : [...withoutAll, city];
-        // 항상 전국 포함 (전국 공고는 기본 + 선택 지역 우선)
-        if (!next.includes("전국")) next = ["전국", ...next];
-        return next;
-      });
-    }
+    setAddressCities(prev => {
+      const current = prev.filter(c => c !== "전국");
+      const next = current.includes(city)
+        ? current.filter(c => c !== city)
+        : [...current, city];
+      // 전국은 항상 포함 (화면에 안 보이지만 내부적으로 유지)
+      return ["전국", ...next];
+    });
   };
   // toggleInterest 제거 — 자유 텍스트 입력으로 대체
   const toggleKeyword = (kw: string) => setCustomKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw]);
@@ -369,7 +363,7 @@ export default function NotificationModal({
   const canNext = (): boolean => {
     switch (currentStep.id) {
       case "type": return !!userType;
-      case "region": return addressCities.length > 0;
+      case "region": return true;  // 전국이 기본이므로 항상 통과
       case "individual": return true; // 선택사항
       case "business": return true;
       case "interests": return interests.length > 0;
@@ -443,8 +437,8 @@ export default function NotificationModal({
                   {addressCities.length > 0 && (
                     <p className="text-xs text-indigo-500 font-semibold">{
                       addressCities.filter(c => c !== "전국").length > 0
-                        ? `전국 + ${addressCities.filter(c => c !== "전국").join(", ")} 우선`
-                        : "전국"
+                        ? `${addressCities.filter(c => c !== "전국").join(", ")} 우선`
+                        : "전국 (선택 시 해당 지역 우선)"
                     }</p>
                   )}
                 </div>

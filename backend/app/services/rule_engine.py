@@ -19,7 +19,23 @@ REGION_NORMALIZE = {
 def _normalize_region(region: str) -> str:
     if not region:
         return ""
-    return REGION_NORMALIZE.get(region.strip(), region.strip())
+    r = region.strip()
+    # 1. 정확히 매칭
+    if r in REGION_NORMALIZE:
+        return REGION_NORMALIZE[r]
+    # 2. 시/도 + 시/군/구 형태 (예: "경기 시흥", "부산 해운대")
+    #    → 시/도만 추출
+    parts = r.replace("  ", " ").split()
+    if len(parts) >= 2:
+        sido = REGION_NORMALIZE.get(parts[0], parts[0])
+        # "경기도 시흥시" → "경기"
+        if sido in ("서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"):
+            return sido
+    # 3. 접두사 매칭 (예: "경기도" → "경기")
+    for full, short in REGION_NORMALIZE.items():
+        if r.startswith(full) or r.startswith(short):
+            return short
+    return r
 
 
 class RuleEngine:

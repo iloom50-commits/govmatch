@@ -10,12 +10,13 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 // FAB 버튼 + 라벨 (PRO 도구 항상 명시)
 function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
   return (
-    <div className="fixed bottom-24 right-6 z-40 flex items-center gap-2">
-      {/* 항상 노출되는 라벨 — "전문가용 지원사업 상담 도구" */}
+    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
+      {/* 라벨 — 버튼 위에 배치 */}
       <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
         <span className="text-[11px] font-bold text-violet-700">전문가용 지원사업 상담 도구</span>
         <span className="px-1.5 py-0.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[9px] font-black rounded-full">PRO</span>
       </div>
+      {/* 버튼 — 하단 */}
       <button
         onClick={onClick}
         className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
@@ -24,7 +25,6 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
         aria-label="전문가용 지원사업 상담 도구 (PRO)"
       >
         <span className="text-2xl animate-ai-pulse">✨</span>
-        {/* 모바일용 - 작은 PRO 뱃지 */}
         <span className="sm:hidden absolute -top-1 -right-1 px-1 py-0.5 bg-white text-violet-700 text-[8px] font-black rounded-full border border-violet-200 shadow">PRO</span>
       </button>
     </div>

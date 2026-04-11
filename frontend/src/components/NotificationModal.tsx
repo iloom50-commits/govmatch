@@ -269,11 +269,17 @@ export default function NotificationModal({
   // ── 토글 헬퍼 ──
   const toggleCity = (city: string) => {
     if (city === "전국") {
-      setAddressCities(prev => prev.includes("전국") ? [] : ["전국"]);
+      // 전국만 단독 선택 (다른 지역 해제)
+      setAddressCities(["전국"]);
     } else {
       setAddressCities(prev => {
-        const w = prev.filter(c => c !== "전국");
-        return w.includes(city) ? w.filter(c => c !== city) : [...w, city];
+        const withoutAll = prev.filter(c => c !== "전국");
+        let next = withoutAll.includes(city)
+          ? withoutAll.filter(c => c !== city)
+          : [...withoutAll, city];
+        // 항상 전국 포함 (전국 공고는 기본 + 선택 지역 우선)
+        if (!next.includes("전국")) next = ["전국", ...next];
+        return next;
       });
     }
   };
@@ -435,7 +441,11 @@ export default function NotificationModal({
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-bold text-slate-600">{isInd ? "거주 지역" : "소재지"} <span className="font-normal text-slate-400">(복수 선택)</span></p>
                   {addressCities.length > 0 && (
-                    <p className="text-xs text-indigo-500 font-semibold">{addressCities.includes("전국") ? "전국" : `${addressCities.length}개 선택`}</p>
+                    <p className="text-xs text-indigo-500 font-semibold">{
+                      addressCities.filter(c => c !== "전국").length > 0
+                        ? `전국 + ${addressCities.filter(c => c !== "전국").join(", ")} 우선`
+                        : "전국"
+                    }</p>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">

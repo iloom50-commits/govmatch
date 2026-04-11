@@ -7005,7 +7005,7 @@ def api_trending():
                     SELECT t.rank, t.trending_keyword, t.trending_reason,
                            a.announcement_id, a.title, a.department, a.category,
                            a.support_amount, a.deadline_date, a.region,
-                           a.origin_url, a.final_url
+                           a.origin_url
                     FROM trending_announcements t
                     JOIN announcements a ON t.announcement_id = a.announcement_id
                     WHERE t.trending_date = CURRENT_DATE
@@ -7015,6 +7015,7 @@ def api_trending():
                 rows = [dict(r) for r in cur.fetchall()]
             except Exception as e:
                 print(f"[Trending] Auto-generate failed: {e}")
+                import traceback; traceback.print_exc()
 
         # 날짜 직렬화
         for r in rows:

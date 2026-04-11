@@ -3093,8 +3093,18 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
             is_personal_name = profile.get("company_name", "") in ("개인", "")
             is_individual = not has_industry or is_personal_name
 
-            if is_individual:
+            # 개인이라도 창업/R&D 관심이면 기업 매칭 병행
+            interests_str = profile.get("interests", "")
+            biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
+
+            if is_individual and not biz_interests:
                 matches = get_individual_matches_for_user(profile) or []
+            elif is_individual and biz_interests:
+                # 개인 + 기업 매칭 병행
+                ind_matches = get_individual_matches_for_user(profile) or []
+                biz_matches = get_matches_for_user(profile) or []
+                matches = biz_matches + ind_matches
+                matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
             else:
                 matches = get_matches_for_user(profile) or []
 

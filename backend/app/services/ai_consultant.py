@@ -726,10 +726,9 @@ def chat_consult(
 사용자가 추가 질문을 했습니다. 다음 원칙을 반드시 지키세요:
 1. **첫 응답에서 답한 내용을 단순 반복하지 마세요.** 사용자는 이미 그 답을 봤습니다.
 2. 사용자 질문에 **직접적이고 깊이 있게** 답하세요. 형식적인 헤더(📋💰📝)나 불필요한 인사 생략.
-3. 공고 데이터에 명시 없으면, **유사 정부지원사업의 일반 패턴/통계**를 근거로 추정 답변을 제공하세요.
-   예: "이 공고에는 자부담 비율이 명시되지 않았지만, 유사한 R&D 지원사업은 대개 25~30% 자부담을 요구합니다."
+3. 공고 데이터에 없는 일반 지식 질문은 **Google 검색으로 정확한 정보를 찾아** 답변하세요.
 4. **숫자/비율/기간**으로 답할 수 있는 질문에는 반드시 숫자를 포함하세요.
-5. "명시되지 않습니다"만 답하지 말고, 반드시 **추정/일반론/대안 방향**을 함께 제시하세요.
+5. **확인할 수 없는 정보는 추측하지 마세요.** "정확한 정보를 확인하지 못했습니다. 담당기관에 문의하세요."로 답하세요.
 """
 
     expert_directive = ""
@@ -893,9 +892,11 @@ def chat_consult(
 {company_info}
 {_build_knowledge_context(a.get('category', ''), db_conn)}
 
-[핵심 규칙 — 할루시네이션 방지 & 응답 품질]
-1. **오직 위에 제공된 공고 분석 데이터에 명시된 내용만으로 답변하세요.** 공고 데이터에 없는 금액, 조건, 일정, 서류를 절대 추측하거나 지어내지 마세요.
-2. **출처 표기를 하지 마세요.** "(출처: ...)", "([공고 원문] 참고)", "(자격요건 항목 참고)" 같은 출처·참조 문구를 붙이지 마세요. 모든 정보는 공고 원문 기반이므로 별도 표기가 불필요합니다. 깔끔하게 정보만 전달하세요.
+[핵심 규칙 — 정확성 최우선 & 추론 금지]
+1. **공고 분석 데이터에 명시된 내용을 최우선으로 답변하세요.** 공고 데이터에 없는 금액, 조건, 일정, 서류를 추측하거나 지어내지 마세요.
+2. **공고 데이터에 없는 일반 지식 질문**(예: "신보와 기보 차이는?", "정책자금 금리는?") → Google 검색을 통해 **정확한 최신 정보**를 찾아 답변하세요. 검색 결과가 있으면 활용하고, 없으면 "정확한 정보를 확인하지 못했습니다"라고 솔직하게 답하세요.
+3. **절대 추론/추측으로 답변하지 마세요.** "~일 것으로 예상됩니다", "~일 가능성이 높습니다" 같은 추측 표현을 사용하지 마세요. 확실한 정보만 전달하세요. 확실하지 않으면 "이 부분은 담당기관에 직접 확인이 필요합니다"라고 명시하세요.
+4. **출처 표기를 하지 마세요.** "(출처: ...)", "([공고 원문] 참고)" 같은 문구를 붙이지 마세요. 깔끔하게 정보만 전달하세요.
 3. **첫 응답(대화 시작)**: 핵심 정보를 구조화하여 한 번에 제공하되, **빈 섹션은 표시하지 마세요**:
    - **📋 지원요건**: 지원 대상(업종, 기업규모, 설립연수, 지역 등), 제외대상
    - **💰 지원내용**: 지원금액/방식, 지원분야/트랙
@@ -908,7 +909,7 @@ def chat_consult(
 7. **예외조항과 제외대상을 반드시 체크하세요.** 예외조항이 있으면 해당 여부를 질문하세요.
 8. 최종 판단 시 "지원 가능", "조건부 가능", "지원 불가" 중 하나로 명확히 결론 + 근거 설명. **반드시 done=true, conclusion 값을 설정하세요.**
 9. **사용자가 기업 정보(업종, 설립연수, 매출, 직원수 등)를 제공하고 자격 판단을 요청하면, 2~3턴 이내에 결론을 내리세요.** 모든 정보가 100% 확인되지 않더라도, 확인된 항목 기반으로 "조건부 가능(conditional)" 등의 결론을 내리고 done=true로 설정하세요. 무한히 추가 질문만 하지 마세요.
-10. **공고 데이터에 해당 정보가 없거나 판단이 어려운 경우**, 절대 추측하지 말고 솔직하게 "이 내용은 공고문에 명시되어 있지 않아 정확한 답변이 어렵습니다."라고 답변한 뒤, 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}
+10. **공고 데이터에도 없고 검색으로도 확인할 수 없는 경우**, 솔직하게 "이 내용은 정확한 정보를 확인하지 못했습니다."라고 답한 뒤 담당기관 연락처를 안내하세요: {_get_department_contact(a.get('department', ''))}. **절대 "~일 것입니다", "~로 추정됩니다" 같은 추측 답변을 하지 마세요.**
 11. 가점 항목이 있으면 해당 여부도 안내하세요.
 12. 심사기준/배점이 있으면 합격 가능성을 높이는 팁을 제공하세요.
 13. 신청서 양식 정보가 있으면 작성 시 핵심 포인트를 안내하세요.
@@ -931,9 +932,22 @@ def chat_consult(
 반드시 순수 JSON만 반환하세요. JSON 외의 텍스트를 포함하지 마세요."""
 
     genai.configure(api_key=api_key)
+
+    # Google Search Grounding 활성화 — 공고에 없는 정보는 웹 검색으로 보완
+    _model_tools = []
+    try:
+        from google.generativeai.types import Tool
+        _model_tools = [Tool(google_search={})]
+    except Exception:
+        try:
+            _model_tools = [{"google_search": {}}]
+        except Exception:
+            pass
+
     model = genai.GenerativeModel(
         "models/gemini-2.0-flash",
-        generation_config={"max_output_tokens": 4096}
+        generation_config={"max_output_tokens": 4096},
+        tools=_model_tools if _model_tools else None,
     )
 
     gemini_messages = []
@@ -1895,9 +1909,22 @@ done=true일 때 (모든 정보 수집 완료):
 반드시 순수 JSON만 반환하세요."""
 
     genai.configure(api_key=api_key)
+
+    # Google Search Grounding — PRO 상담에서도 웹 검색 활성화
+    _pro_tools = []
+    try:
+        from google.generativeai.types import Tool as _ProTool
+        _pro_tools = [_ProTool(google_search={})]
+    except Exception:
+        try:
+            _pro_tools = [{"google_search": {}}]
+        except Exception:
+            pass
+
     model = genai.GenerativeModel(
         "models/gemini-2.0-flash",
-        generation_config={"max_output_tokens": 4096}
+        generation_config={"max_output_tokens": 4096},
+        tools=_pro_tools if _pro_tools else None,
     )
 
     gemini_messages = []

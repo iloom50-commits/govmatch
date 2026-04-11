@@ -300,18 +300,26 @@ def _extract_with_kordoc(content: bytes, file_type: str, max_chars: int = 50000)
 
 def extract_text_from_bytes(content: bytes, file_type: str, max_chars: int = 50000) -> str:
     """바이트 데이터에서 텍스트 추출 — kordoc 우선, 실패 시 레거시 폴백"""
+    print(f"[DocAnalysis] extract_text_from_bytes: type={file_type}, size={len(content)} bytes")
+
     if file_type in ("hwp", "hwpx", "pdf", "ole"):
         kordoc_text = _extract_with_kordoc(content, file_type, max_chars)
         if kordoc_text:
+            print(f"[DocAnalysis] kordoc success: {len(kordoc_text)} chars")
             return kordoc_text
+        print(f"[DocAnalysis] kordoc failed, trying legacy fallback")
+
     # 레거시 폴백
+    result = ""
     if file_type == "pdf":
-        return _extract_from_pdf(content, max_chars)
+        result = _extract_from_pdf(content, max_chars)
     elif file_type in ("hwp", "ole"):
-        return _extract_from_hwp(content, max_chars)
+        result = _extract_from_hwp(content, max_chars)
     elif file_type in ("hwpx", "docx"):
-        return _extract_from_ooxml(content, max_chars)
-    return ""
+        result = _extract_from_ooxml(content, max_chars)
+
+    print(f"[DocAnalysis] legacy result: {len(result)} chars ({file_type})")
+    return result
 
 
 def extract_text_from_url(url: str, max_chars: int = 50000) -> Tuple[str, str]:

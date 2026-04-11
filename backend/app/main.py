@@ -103,6 +103,12 @@ def init_database():
             )
         """)
 
+        # interest_regions 컬럼 추가 (소재지와 관심지역 분리)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS interest_regions TEXT DEFAULT ''")
+        except Exception:
+            pass
+
         # 상담 세션 테이블 (세션 기반 차감)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS consult_sessions (
@@ -4827,7 +4833,7 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     fields = []
     params = []
     allowed_keys = [
-        "user_type", "address_city", "revenue_bracket", "employee_count_bracket",
+        "user_type", "address_city", "interest_regions", "revenue_bracket", "employee_count_bracket",
         "interests", "custom_needs", "custom_keywords",
         "gender", "age_range", "income_level", "family_type", "employment_status",
         "founded_date", "is_pre_founder", "certifications",

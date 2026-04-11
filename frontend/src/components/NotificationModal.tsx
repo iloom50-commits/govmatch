@@ -198,7 +198,11 @@ export default function NotificationModal({
   const [userType, setUserType] = useState<UserType>(profile?.user_type || "individual");
 
   // 공통
-  const [addressCities, setAddressCities] = useState<string[]>([]);
+  const [homeCity, setHomeCity] = useState("");  // 소재지 (1개)
+  const [interestRegions, setInterestRegions] = useState<string[]>([]);  // 관심지역 (복수)
+  // 하위 호환용 (기존 코드에서 addressCities 참조)
+  const addressCities = homeCity ? ["전국", homeCity, ...interestRegions] : ["전국", ...interestRegions];
+  const setAddressCities = (_: string[]) => {}; // deprecated
 
   // 개인 필드
   const [gender, setGender] = useState("");
@@ -246,7 +250,10 @@ export default function NotificationModal({
 
     if (profile) {
       setUserType(profile.user_type || "individual");
-      setAddressCities(profile.address_city ? String(profile.address_city).split(",").filter(Boolean) : []);
+      // 소재지/관심지역 분리 로드
+      const cities = profile.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국") : [];
+      setHomeCity(cities[0] || "");
+      setInterestRegions(profile.interest_regions ? String(profile.interest_regions).split(",").filter(Boolean) : []);
       setGender(profile.gender || "");
       setAgeRange(profile.age_range || "");
       setIncomeLevel(profile.income_level || "");
@@ -266,17 +273,8 @@ export default function NotificationModal({
     }
   }, [isOpen, businessNumber, profile]);
 
-  // ── 토글 헬퍼 ──
-  const toggleCity = (city: string) => {
-    setAddressCities(prev => {
-      const current = prev.filter(c => c !== "전국");
-      const next = current.includes(city)
-        ? current.filter(c => c !== city)
-        : [...current, city];
-      // 전국은 항상 포함 (화면에 안 보이지만 내부적으로 유지)
-      return ["전국", ...next];
-    });
-  };
+  // ── 토글 헬퍼 (deprecated — UI에서 직접 setHomeCity/setInterestRegions 사용) ──
+  const toggleCity = (_city: string) => {};
   // toggleInterest 제거 — 자유 텍스트 입력으로 대체
   const toggleKeyword = (kw: string) => setCustomKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw]);
   const toggleCert = (c: string) => {
@@ -322,7 +320,8 @@ export default function NotificationModal({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_type: userType,
-          address_city: addressCities.join(","),
+          address_city: homeCity ? `전국,${homeCity}` : "전국",
+          interest_regions: interestRegions.join(","),
           // 개인
           gender: (userType !== "business") ? gender : undefined,
           age_range: (userType !== "business") ? ageRange : undefined,
@@ -429,21 +428,34 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 지역 ===== */}
+            {/* ===== Step: 지역 (소재지 + 관심지역) ===== */}
             {currentStep.id === "region" && (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-bold text-slate-600">{isInd ? "거주 지역" : "소재지"} <span className="font-normal text-slate-400">(복수 선택)</span></p>
-                  {addressCities.length > 0 && (
-                    <p className="text-xs text-indigo-500 font-semibold">{
-                      addressCities.filter(c => c !== "전국").length > 0
-                        ? `${addressCities.filter(c => c !== "전국").join(", ")} 우선`
-                        : "전국 (선택 시 해당 지역 우선)"
-                    }</p>
-                  )}
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-5">
+                {/* 소재지 (1개 선택) */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-slate-600">{isInd ? "거주 지역" : "사업장 소재지"} <span className="font-normal text-slate-400">(1개 선택)</span></p>
+                    {homeCity && <p className="text-xs text-indigo-500 font-semibold">{homeCity}</p>}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2">해당 지역 전용 공고를 받아볼 수 있어요</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {CITIES.map(city => <ChipRect key={city} label={city} selected={addressCities.includes(city)} onClick={() => toggleCity(city)} />)}
+
+                {/* 관심지역 (복수 선택) */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수 선택, 선택사항)</span></p>
+                    {interestRegions.length > 0 && <p className="text-xs text-violet-500 font-semibold">{interestRegions.join(", ")}</p>}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2">다른 지역 공고도 우선적으로 보고 싶으면 선택하세요</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CITIES.filter(c => c !== homeCity).map(city => (
+                      <ChipRect key={city} label={city} selected={interestRegions.includes(city)}
+                        onClick={() => setInterestRegions(prev => prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city])} />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

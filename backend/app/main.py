@@ -6617,7 +6617,7 @@ def _analyze_text_with_ai(text: str, file_name: str, file_type: str) -> dict:
         return {"status": "SUCCESS", "summary": f"분석 오류: {str(e)[:100]}"}
 
 
-def _send_html_email(to_email: str, subject: str, html_body: str) -> bool:
+def _send_html_email(to_email: str, subject: str, html_body: str, reply_to: str = "", sender_name: str = "") -> bool:
     """범용 HTML 이메일 발송"""
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_password = os.getenv("SMTP_PASSWORD", "")
@@ -6631,8 +6631,11 @@ def _send_html_email(to_email: str, subject: str, html_body: str) -> bool:
         from email.mime.text import MIMEText
         msg = MIMEText(html_body, "html", "utf-8")
         msg["Subject"] = subject
-        msg["From"] = f"지원금AI <{smtp_from}>"
+        display_name = f"{sender_name} (via 지원금AI)" if sender_name else "지원금AI"
+        msg["From"] = f"{display_name} <{smtp_from}>"
         msg["To"] = to_email
+        if reply_to:
+            msg["Reply-To"] = reply_to
         with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(smtp_user, smtp_password)
@@ -6712,7 +6715,17 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
             </p>
         </div>"""
 
-        if _send_html_email(email, req.subject, full_html):
+        # PRO 사용자 이름/이메일로 발신자 표시 + Reply-To
+        pro_email = current_user.get("email", "")
+        pro_name = ""
+        try:
+            cur.execute("SELECT company_name FROM users WHERE business_number = %s", (current_user["bn"],))
+            _u = cur.fetchone()
+            if _u:
+                pro_name = _u.get("company_name") or ""
+        except Exception:
+            pass
+        if _send_html_email(email, req.subject, full_html, reply_to=pro_email, sender_name=pro_name):
             sent += 1
         else:
             failed += 1

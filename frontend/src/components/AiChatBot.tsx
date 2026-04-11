@@ -10,7 +10,7 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 // FAB 버튼 + 라벨 (PRO 도구 항상 명시)
 function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2">
+    <div className="fixed bottom-24 right-6 z-40 flex items-center gap-2">
       {/* 항상 노출되는 라벨 — "전문가용 지원사업 상담 도구" */}
       <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
         <span className="text-[11px] font-bold text-violet-700">전문가용 지원사업 상담 도구</span>

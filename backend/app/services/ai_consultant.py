@@ -1013,9 +1013,23 @@ def chat_consult(
             if not done:
                 logger.debug(f"[Auto-detect] No conclusion keywords found in reply (first 200 chars): {clean_reply[:200]}")
 
+        # choices가 비어있으면 기본 선택지 제공
+        choices = result.get("choices", [])
+        if not choices or len(choices) < 2:
+            if done:
+                choices = ["다른 지원사업도 알아보기", "담당기관에 문의하기", "상담 내용 저장하기"]
+            else:
+                choices = ["자격 요건을 더 자세히 알고 싶어요", "제출 서류가 궁금해요", "신청 방법을 알려주세요"]
+
+        # 추측 표현 후처리 — "~일 것입니다" 등을 "~입니다"로 변환하지 않고, 불확실 명시로 교체
+        import re as _re
+        if verified_reply:
+            verified_reply = _re.sub(r'(\S+)일 것으로 예상됩니다', r'\1 여부는 담당기관에 확인이 필요합니다', verified_reply)
+            verified_reply = _re.sub(r'(\S+)일 가능성이 높습니다', r'\1 여부는 담당기관에 확인이 필요합니다', verified_reply)
+
         response_data = {
             "reply": verified_reply,
-            "choices": result.get("choices", []),
+            "choices": choices,
             "done": done,
             "conclusion": conclusion,
         }

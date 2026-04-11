@@ -323,15 +323,15 @@ def get_matches_for_user(user_profile):
         score += 30.0
 
         # A-1. 지역 매칭 보너스
-        # 소재지 일치: +25점 (최우선) / 관심지역 일치: +10점
+        # 소재지 일치: +20점 / 관심지역 일치: +8점
         ad_city_for_match = (bracket_city_match.group(1) if bracket_city_match else None) or \
                             (ad_region if ad_region and ad_region not in ("전국", "", "All") else None)
         if ad_city_for_match:
             if ad_city_for_match == home_city:
-                score += 25.0
+                score += 20.0
                 reasons.append(f"{home_city} 소재지 지원사업")
             elif ad_city_for_match in interest_regions:
-                score += 10.0
+                score += 8.0
                 reasons.append(f"{ad_city_for_match} 관심지역 지원사업")
 
         # B. 소상공인 매칭 (최대 20점)
@@ -347,11 +347,11 @@ def get_matches_for_user(user_profile):
         elif not is_soho and ad_targets_soho:
             score -= 5.0
 
-        # C. 관심분야 키워드 매칭 (최대 25점)
+        # C. 관심분야 키워드 매칭 (최대 35점)
         if interest_keywords:
             matched_interests = [kw for kw in interest_keywords if kw.lower() in search_text]
             if matched_interests:
-                interest_score = min(25.0, len(set(matched_interests)) * 4.0)
+                interest_score = min(35.0, len(set(matched_interests)) * 6.0)
                 score += interest_score
                 for tag in user_interest_tags:
                     tag_kws = INTEREST_KEYWORD_MAP.get(tag, [tag])

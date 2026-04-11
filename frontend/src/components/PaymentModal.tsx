@@ -8,6 +8,7 @@ import * as PortOne from "@portone/browser-sdk/v2";
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
 const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "";
+const CHANNEL_KEY_KAKAO = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_KAKAO || "channel-key-0872602d-c0dc-41fb-ac7f-dc95058eba02";
 
 interface PaymentModalProps {
   planStatus: { plan: string; days_left: number | null; label: string; consult_limit?: number; ai_used?: number } | null;
@@ -20,6 +21,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
   const { toast } = useToast();
   useModalBack(true, onClose);
   const [loading, setLoading] = useState(false);
+  const [payMethod, setPayMethod] = useState<"card" | "kakao">("card");
   const [tab, setTab] = useState<"individual" | "business">(
     userType === "individual" ? "individual" : "business"
   );
@@ -45,8 +47,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
       const token = getToken();
       const billingKeyResponse = await PortOne.requestIssueBillingKey({
         storeId: STORE_ID,
-        channelKey: CHANNEL_KEY,
-        billingKeyMethod: "CARD",
+        channelKey: payMethod === "kakao" ? CHANNEL_KEY_KAKAO : CHANNEL_KEY,
+        billingKeyMethod: payMethod === "kakao" ? "EASY_PAY" : "CARD",
       });
       // 결제창 닫기/취소 모든 케이스 방어
       const code = billingKeyResponse?.code;
@@ -123,6 +125,30 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               }`}
             >
               사업자
+            </button>
+          </div>
+
+          {/* 결제 수단 선택 */}
+          <div className="flex justify-center gap-2 mb-4">
+            <button
+              onClick={() => setPayMethod("card")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
+                payMethod === "card"
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              💳 카드 결제
+            </button>
+            <button
+              onClick={() => setPayMethod("kakao")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
+                payMethod === "kakao"
+                  ? "bg-[#FEE500] text-[#191919] border-[#FEE500]"
+                  : "bg-white text-slate-500 border-slate-200 hover:border-[#FEE500]"
+              }`}
+            >
+              카카오페이
             </button>
           </div>
 

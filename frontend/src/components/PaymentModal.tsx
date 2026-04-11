@@ -176,7 +176,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>1회</strong>/월</Feature>
+                <Feature available>공고AI 상담 — <strong>3회</strong>/월</Feature>
                 <Feature available={false}>맞춤 공고 알림</Feature>
                 <Feature available={false}>마감 알림 (카톡/이메일)</Feature>
                 <Feature available={false}>공고 저장 · 일정관리</Feature>
@@ -249,27 +249,33 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             </div>
 
             {/* PRO */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col ${isPro ? "border-violet-400 bg-violet-50/30" : "border-slate-200"}`}>
+            <div className={`rounded-xl border-2 p-4 flex flex-col ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-300 bg-white"}`}>
               <div className="mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
-                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded">준비 중</span>
+                  <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[9px] font-bold rounded">오픈 이벤트</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-2xl font-black text-violet-700">준비 중</span>
+                  <span className="text-[14px] text-slate-400 line-through mr-1">₩49,000</span>
+                  <span className="text-2xl font-black text-violet-700">₩29,000</span>
                   <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">전문가 · 컨설턴트</p>
+                <p className="text-[11px] text-red-500 mt-1 font-semibold">3개월 한정 이벤트 가격</p>
+                <p className="text-[11px] text-slate-400">전문가 · 컨설턴트 · 세무사 · 회계사</p>
               </div>
 
               {isPro ? (
                 <div className="py-2.5 bg-violet-100 text-violet-700 rounded-lg text-[12px] font-bold text-center mb-4">
-                  현재 플랜
+                  현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
                 </div>
               ) : (
-                <div className="py-2.5 bg-slate-100 text-slate-500 rounded-lg text-[12px] font-bold text-center mb-4">
-                  준비 중
-                </div>
+                <button
+                  onClick={() => handleSubscribe("pro")}
+                  disabled={loading}
+                  className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50 mb-4"
+                >
+                  {loading ? "처리 중..." : "Pro 시작하기"}
+                </button>
               )}
 
               <ul className="space-y-2 flex-1">
@@ -290,7 +296,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isPro && (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">곧 오픈 예정</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
               )}
             </div>
           </div>

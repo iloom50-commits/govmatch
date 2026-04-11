@@ -1267,7 +1267,7 @@ PLAN_LIMITS = {
 # 공고AI 상담 건수 제한
 # free: 1회/월, lite: 50회/월, pro: 무제한
 CONSULT_LIMITS = {
-    "free": 1,
+    "free": 3,
     "lite_trial": 50,  # LITE 체험도 50회
     "lite": 50,
     "basic": 50,       # legacy → LITE 취급
@@ -1276,13 +1276,13 @@ CONSULT_LIMITS = {
 }
 
 # 플랜 가격 (원/월) — user_type에 따라 분기
-# 개인 LITE: 2,900 / 사업자 LITE: 4,900 / PRO: 19,000 (런칭특가, 정상가 39,000)
+# 개인 LITE: 2,900 / 사업자 LITE: 4,900 / PRO: 29,000 (3개월 이벤트, 정상가 49,000)
 PLAN_PRICES = {
     "lite_individual": 2900,
     "lite": 4900,       # 사업자 LITE (기본값)
-    "pro": 19000,       # 런칭특가 (~2026.06.30), 이후 39,000
+    "pro": 29000,       # 3개월 이벤트가 (~2026.07.12), 이후 49,000
     "basic": 4900,      # legacy
-    "biz": 19000,       # legacy → PRO 취급
+    "biz": 29000,       # legacy → PRO 취급
 }
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon

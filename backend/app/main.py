@@ -3069,50 +3069,8 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
     if ann_id:
         db = get_db_connection()
     try:
-        # ── 사전 정보량 분석: 전체 사용자 메시지에 충분한 정보 + 매칭 키워드 → 즉시 매칭 ──
-        if not ann_id and req.messages:
-            # 모든 사용자 메시지를 합쳐서 분석
-            all_user_text = " ".join(m.get("text", "") for m in req.messages if m.get("role") == "user")
-            last_user_text = ""
-            for m in reversed(req.messages):
-                if m.get("role") == "user":
-                    last_user_text = m.get("text", "")
-                    break
-
-            # 금융 관련 감지 — 금융 질문 또는 금융 상담 선택이면 즉시 매칭 억제
-            _fin_question_kws = ["금리", "이자", "한도", "상환", "담보", "보증서", "보증료", "신보", "기보", "연체",
-                                 "자금 상담", "융자 상담", "보증 상담"]
-            _is_financial_question = any(kw in last_user_text for kw in _fin_question_kws)
-
-            # 마지막 메시지에 명시적 매칭 요청이 있는지
-            _has_match_request = any(w in last_user_text for w in ["매칭해", "추천해", "찾아줘", "매칭 진행"])
-
-            # 정보량 점수 (전체 사용자 메시지에서)
-            info_signals = {
-                "industry": any(w in all_user_text for w in ["IT", "제조", "음식", "건설", "농업", "교육", "디자인", "스마트팜", "유통", "서비스", "헬스", "패션", "분식", "택배", "물류", "바이오"]),
-                "scale": any(w in all_user_text for w in ["1인", "직원", "매출", "억", "만원", "명"]),
-                "region": any(w in all_user_text for w in ["서울", "부산", "경기", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]),
-                "stage": any(w in all_user_text for w in ["창업", "예비", "년차", "법인", "스타트업", "구직", "청년"]),
-                "match_intent": _has_match_request,
-            }
-            signal_count = sum(info_signals.values())
-
-            if signal_count >= 3 and _has_match_request and not _is_financial_question:
-                # 정보 충분 + 매칭 요청 명시 → AI에게 즉시 매칭 신호
-                augmented_messages = list(req.messages)
-                last_idx = len(augmented_messages) - 1
-                for i in range(last_idx, -1, -1):
-                    if augmented_messages[i].get("role") == "user":
-                        augmented_messages[i] = {
-                            **augmented_messages[i],
-                            "text": augmented_messages[i]["text"] + "\n\n[즉시 매칭 모드] 위 정보가 충분합니다. 추가 질문 없이 즉시 done=true와 profile을 반환하여 매칭을 실행하세요.",
-                        }
-                        break
-                result = chat_pro_consultant(augmented_messages, announcement_id=ann_id, db_conn=db)
-            else:
-                result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
-        else:
-            result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
+        # AI가 자연스럽게 정보 수집 → done=true + profile 반환
+        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
     finally:
         if db:
             try: db.close()

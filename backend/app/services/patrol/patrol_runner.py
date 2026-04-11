@@ -74,7 +74,19 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
-    # ── 3. 최종 URL 수집 (경유지 → 원본 URL) ──
+    # ── 3. 오늘의 인기 공고 업데이트 ──
+    try:
+        logger.info("[Patrol] Updating trending announcements...")
+        from .trending import run_trending_update
+        result = run_trending_update(conn)
+        summary["trending"] = result
+        logger.info(f"[Patrol] Trending: {result['saved']} announcements selected")
+    except Exception as e:
+        msg = f"trending failed: {e}"
+        logger.error(f"[Patrol] {msg}")
+        summary["errors"].append(msg)
+
+    # ── 4. 최종 URL 수집 (경유지 → 원본 URL) ──
     try:
         logger.info("[Patrol] Resolving final URLs for priority announcements...")
         from .final_url_resolver import resolve_priority_announcements

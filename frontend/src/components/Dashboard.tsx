@@ -359,6 +359,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { clearTimeout(timer); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
+  // 오늘의 인기 공고
+  const [trendingItems, setTrendingItems] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`${API}/api/trending`).then(r => r.json()).then(d => {
+      if (d.data) setTrendingItems(d.data);
+    }).catch(() => {});
+  }, []);
+
   // DB 전체 공고 수 조회
   useEffect(() => {
     (async () => {
@@ -1323,6 +1331,42 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           ) : (
             <>
+            {/* 오늘의 인기 공고 */}
+            {trendingItems.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">🔥</span>
+                  <h3 className="text-[15px] font-bold text-slate-800">오늘의 인기 공고</h3>
+                  <span className="text-[11px] text-slate-400">AI가 실시간 트렌드를 분석하여 선정</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {trendingItems.map((t, i) => (
+                    <a
+                      key={t.announcement_id}
+                      href={t.final_url || t.origin_url || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-[11px] font-bold text-orange-500">{i + 1}위</span>
+                        {t.trending_keyword && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">{t.trending_keyword}</span>
+                        )}
+                        {t.deadline_date && (
+                          <span className="text-[10px] text-slate-400 ml-auto">~{t.deadline_date.slice(5)}</span>
+                        )}
+                      </div>
+                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 group-hover:text-orange-700 transition-colors">{t.title}</p>
+                      {t.support_amount && (
+                        <p className="text-[11px] text-orange-600 font-semibold mt-1.5">{t.support_amount.slice(0, 30)}</p>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
               {(usePublicData && publicData.length > 0 ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
                 <div

@@ -194,7 +194,7 @@ const INDIVIDUAL_TABS: { label: string; key: string; categories: string[] }[] = 
   { label: "금융/세제", key: "finance", categories: ["금융", "세제", "감면", "대출"] },
 ];
 
-type SortKey = "latest" | "deadline";
+type SortKey = "recommend" | "amount" | "deadline";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -312,7 +312,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
   const showIndividualTab = true;
-  const [sortKey, setSortKey] = useState<SortKey>("latest");
+  const [sortKey, setSortKey] = useState<SortKey>("recommend");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   // 프로필 미완성(로그인O) → NotificationModal, 비로그인 → onLoginRequired
   const handleLoginRequired = () => {
@@ -645,9 +645,25 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const filteredMatches = useMemo(() => {
     // 비로그인 또는 프로필 미완성: 서버에서 이미 필터링/정렬된 데이터 사용
+    const _parseAmount = (s: string) => {
+      if (!s) return 0;
+      let n = 0;
+      const m1 = s.match(/(\d[\d,.]*)\s*억/);
+      if (m1) n += parseFloat(m1[1].replace(/,/g, "")) * 100000000;
+      const m2 = s.match(/(\d[\d,.]*)\s*만/);
+      if (m2) n += parseFloat(m2[1].replace(/,/g, "")) * 10000;
+      if (n === 0) {
+        const m3 = s.match(/(\d[\d,.]+)/);
+        if (m3) n = parseFloat(m3[1].replace(/,/g, ""));
+      }
+      return n;
+    };
+
     if (usePublicData && publicData.length > 0) {
       let result = [...publicData];
-      if (sortKey === "deadline") {
+      if (sortKey === "amount") {
+        result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
+      } else if (sortKey === "deadline") {
         result.sort((a, b) => {
           if (!a.deadline_date) return 1;
           if (!b.deadline_date) return -1;
@@ -672,8 +688,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     if (!searchQuery.trim()) {
-      if (sortKey === "latest") {
-        result.sort((a, b) => b.announcement_id - a.announcement_id);
+      if (sortKey === "recommend") {
+        // 맞춤추천: 매칭 점수순 (기본값 — 이미 서버에서 정렬됨)
+        result.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+      } else if (sortKey === "amount") {
+        result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
       } else if (sortKey === "deadline") {
         result.sort((a, b) => {
           if (!a.deadline_date) return 1;
@@ -1215,7 +1234,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
               <div className="flex items-center gap-1 flex-shrink-0">
                 {([
-                  { key: "latest" as SortKey, label: "최신" },
+                  { key: "recommend" as SortKey, label: "맞춤추천" },
+                  { key: "amount" as SortKey, label: "금액순" },
                   { key: "deadline" as SortKey, label: "마감임박" },
                 ]).map((s) => (
                   <button

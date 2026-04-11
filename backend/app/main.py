@@ -6961,7 +6961,7 @@ def api_support_chat(req: dict, request: Request):
 
 @app.get("/api/trending")
 def api_trending():
-    """오늘의 인기 공고 3건 반환"""
+    """오늘의 인기 공고 3건 반환 — 없으면 자동 생성"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -6977,13 +6977,34 @@ def api_trending():
             LIMIT 3
         """)
         rows = [dict(r) for r in cur.fetchall()]
+
+        # 데이터 없으면 자동 생성
+        if not rows:
+            try:
+                from app.services.patrol.trending import run_trending_update
+                run_trending_update(conn)
+                # 재조회
+                cur.execute("""
+                    SELECT t.rank, t.trending_keyword, t.trending_reason,
+                           a.announcement_id, a.title, a.department, a.category,
+                           a.support_amount, a.deadline_date, a.region,
+                           a.origin_url, a.final_url
+                    FROM trending_announcements t
+                    JOIN announcements a ON t.announcement_id = a.announcement_id
+                    WHERE t.trending_date = CURRENT_DATE
+                    ORDER BY t.rank
+                    LIMIT 3
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+            except Exception as e:
+                print(f"[Trending] Auto-generate failed: {e}")
+
         # 날짜 직렬화
         for r in rows:
             if r.get("deadline_date"):
                 r["deadline_date"] = str(r["deadline_date"])
         return {"status": "SUCCESS", "data": rows, "date": str(__import__("datetime").date.today())}
     except Exception:
-        # 테이블 없으면 빈 결과
         return {"status": "SUCCESS", "data": [], "date": str(__import__("datetime").date.today())}
     finally:
         conn.close()

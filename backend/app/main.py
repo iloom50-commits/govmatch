@@ -109,6 +109,23 @@ def init_database():
         except Exception:
             pass
 
+        # trending_announcements 테이블
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trending_announcements (
+                id SERIAL PRIMARY KEY,
+                trending_date DATE NOT NULL,
+                rank INTEGER NOT NULL,
+                announcement_id INTEGER NOT NULL,
+                trending_keyword TEXT,
+                trending_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trending_date ON trending_announcements(trending_date)")
+        except Exception:
+            pass
+
         # interest_regions 컬럼 추가 (소재지와 관심지역 분리)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS interest_regions TEXT DEFAULT ''")

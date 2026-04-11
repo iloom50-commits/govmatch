@@ -591,37 +591,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               ))}
             </div>
 
-            {/* 연동 서비스 — AI Secretary 스타일 */}
+            {/* 연동 서비스 — 향후 제공 */}
             <div className={`p-3 border-t hidden lg:block ${t.border}`}>
-              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
-              <div className="space-y-2">
-                {[
-                  { name: "SmartDoc", desc: "신청서 작성 도구", active: false },
-                  { name: "노무 AI", desc: "근로/4대보험 자문", active: false },
-                  { name: "세무 AI", desc: "법인세/부가세 자문", active: false },
-                  { name: "법무 AI", desc: "계약/규제 자문", active: false },
-                  { name: "산업안전 AI", desc: "산업재해/안전법 자문", active: false },
-                ].map(svc => (
-                  <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] transition-colors ${svc.active ? t.serviceActive : t.serviceInactive}`}>
-                    <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${
-                      svc.active
-                        ? "bg-violet-600 text-white"
-                        : dark ? "bg-white/[0.05] text-slate-500" : "bg-slate-100 text-slate-400"
-                    }`}>
-                      {svc.name[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold truncate ${svc.active ? (dark ? "text-slate-200" : "text-slate-700") : t.muted}`}>{svc.name}</p>
-                      <p className={`text-[9px] truncate ${t.muted}`}>{svc.desc}</p>
-                    </div>
-                    {svc.active ? (
-                      <span className="text-emerald-500 flex-shrink-0">{Icons.link}</span>
-                    ) : (
-                      <span className={`text-[9px] flex-shrink-0 ${t.muted}`}>준비 중</span>
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </nav>
@@ -921,31 +892,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             </label>
           </div>
 
-          {/* 연동 서비스 (모바일) */}
-          <div className={`p-4 lg:hidden`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${t.sectionTitle}`}>연동 서비스</p>
-            <div className="space-y-2">
-              {[
-                { name: "GovMatch", desc: "정부지원사업 매칭", active: true },
-                { name: "SmartDoc", desc: "신청서 작성 도구", active: false },
-                { name: "노무 AI", desc: "근로/4대보험 자문", active: false },
-                { name: "세무 AI", desc: "법인세/부가세 자문", active: false },
-                { name: "법무 AI", desc: "계약/규제 자문", active: false },
-                { name: "산업안전 AI", desc: "산업재해/안전법 자문", active: false },
-              ].map(svc => (
-                <div key={svc.name} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] ${svc.active ? t.serviceActive : t.serviceInactive}`}>
-                  <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold ${
-                    svc.active ? "bg-violet-600 text-white" : dark ? "bg-white/[0.05] text-slate-500" : "bg-slate-100 text-slate-400"
-                  }`}>{svc.name[0]}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-semibold ${svc.active ? (dark ? "text-slate-200" : "text-slate-700") : t.muted}`}>{svc.name}</p>
-                    <p className={`text-[9px] ${t.muted}`}>{svc.desc}</p>
-                  </div>
-                  {svc.active ? <span className="text-emerald-500">{Icons.link}</span> : <span className={`text-[9px] ${t.muted}`}>준비 중</span>}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* 연동 서비스 — 향후 제공 */}
         </aside>
       </div>
     </div>

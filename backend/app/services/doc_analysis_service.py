@@ -398,7 +398,25 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
     total_from_step1 = sum(len(t) for t in all_texts)
     if total_from_step1 < 500:
         redirect_urls = discover_redirect_links(page_url)
-        for rurl in redirect_urls[:3]:  # 최대 3개 원본 사이트 탐색
+
+        # 2-1) 페이지 본문에서 원본 기관 URL 추출 (gov.kr → kosmes/bizinfo 등)
+        try:
+            import re as _re
+            resp_for_urls = requests.get(page_url, headers=_HEADERS, timeout=15, allow_redirects=True)
+            # kosmes, bizinfo, smes24 등 원본 기관 URL 패턴 매칭
+            _org_urls = _re.findall(
+                r'https?://(?:www\.)?(?:kosmes|bizinfo|smes24|smba|mss|sbiz)[^\s\'\"\<\>]*',
+                resp_for_urls.text
+            )
+            for ou in _org_urls:
+                ou = ou.rstrip("',\")")
+                if ou not in redirect_urls and len(ou) > 20:
+                    redirect_urls.append(ou)
+                    print(f"[Crawler] Found org URL in page: {ou[:80]}")
+        except Exception:
+            pass
+
+        for rurl in redirect_urls[:5]:  # 최대 5개 원본 사이트 탐색 (2~3단계 체이닝)
             print(f"[Crawler] Following redirect -> {rurl[:80]}")
 
             # 원본 사이트에서 첨부파일 추출
@@ -412,6 +430,20 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
                     if not attachment_names:
                         source_type = "redirect_html"
                     print(f"[Crawler] Extracted {len(html_text)} chars from redirect HTML")
+
+                    # 2단계: 원본 사이트에서 다시 리다이렉트 찾기 (kosmes → 실제 공고 페이지)
+                    if sum(len(t) for t in all_texts) < 500:
+                        sub_redirects = discover_redirect_links(rurl)
+                        for srurl in sub_redirects[:3]:
+                            print(f"[Crawler] Following sub-redirect -> {srurl[:80]}")
+                            sub_found = _process_attachments(srurl, "원본2단계 ")
+                            if sub_found == 0:
+                                sub_html, _ = extract_text_from_url(srurl)
+                                if sub_html and len(sub_html) > 200:
+                                    all_texts.append(f"[원본2단계 본문]\n{sub_html}")
+                                    print(f"[Crawler] Sub-redirect HTML: {len(sub_html)} chars")
+                            if sum(len(t) for t in all_texts) >= 500:
+                                break
 
             # 충분한 텍스트를 얻었으면 중단
             if sum(len(t) for t in all_texts) >= 500:
@@ -448,9 +480,13 @@ def _extract_from_html(html: str, max_chars: int) -> str:
 
     # 본문 영역 우선 탐색 (정부 사이트 공통 패턴)
     content_selectors = [
+        ("div", "gov-subsidy"),  # 정부24 (gov.kr) 공고 상세
         ("div", "view_cont"), ("div", "dataView"), ("div", "view_con"),
         ("div", "bbs_view"), ("div", "content_view"), ("div", "articleView"),
         ("div", "sub_content"), ("div", "board_view"),
+        ("div", "detail_view"), ("div", "dtl_content"),  # bizinfo
+        ("div", "cont_area"), ("div", "page_content"),   # smes24/kosmes
+        ("article", None),  # 일반 article 태그
     ]
     content_div = None
     for tag_name, class_name in content_selectors:

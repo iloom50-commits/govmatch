@@ -3118,10 +3118,10 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         try:
             from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
             profile = result["profile"]
-            # 개인 모드 판별 (interests에 취업/주거/장학금 등이 있으면 개인)
-            individual_keywords = ["취업", "주거", "장학금", "청년", "출산", "육아", "노인", "복지"]
-            interests_str = profile.get("interests", "")
-            is_individual = any(kw in interests_str for kw in individual_keywords)
+            # 개인 모드 판별: industry_code가 없거나 company_name이 "개인"이면 개인
+            has_industry = bool(profile.get("industry_code", "").strip())
+            is_personal_name = profile.get("company_name", "") in ("개인", "")
+            is_individual = not has_industry or is_personal_name
 
             if is_individual:
                 matches = get_individual_matches_for_user(profile) or []

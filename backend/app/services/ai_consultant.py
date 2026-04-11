@@ -1998,6 +1998,23 @@ done=true일 때 (모든 정보 수집 완료):
                 break
         match_keywords = ["매칭", "추천", "찾아줘", "보여줘", "맞춤", "지원사업 알려", "리스트", "부탁"]
         if not done and last_user_text and any(kw in last_user_text for kw in match_keywords):
+            # 전체 대화에서 관심분야 자동 추출
+            all_text = " ".join(m.get("text", "") for m in messages if m.get("role") == "user")
+            _detected_interests = []
+            _interest_detect = {
+                "창업지원": ["창업", "스타트업", "벤처", "예비창업"],
+                "기술개발": ["R&D", "기술개발", "연구개발", "기술"],
+                "고용지원": ["고용", "채용", "일자리", "인력", "장려금", "인건비"],
+                "정책자금": ["정책자금", "융자", "대출", "자금"],
+                "수출마케팅": ["수출", "해외", "글로벌", "바우처"],
+                "소상공인": ["소상공인", "자영업", "골목상권"],
+                "디지털전환": ["디지털", "스마트", "IT", "AI"],
+            }
+            for tag, kws in _interest_detect.items():
+                if any(kw in all_text for kw in kws):
+                    _detected_interests.append(tag)
+            auto_interests = ",".join(_detected_interests) if _detected_interests else ""
+
             DEFAULTS = {
                 "company_name": "고객사",
                 "establishment_date": "2024-01-01",
@@ -2005,7 +2022,7 @@ done=true일 때 (모든 정보 수집 완료):
                 "revenue_bracket": "1억 미만",
                 "employee_count_bracket": "5인 미만",
                 "address_city": "",
-                "interests": "창업지원",
+                "interests": auto_interests,
             }
             profile = {k: (collected.get(k) or DEFAULTS[k]) for k in REQUIRED}
             done = True

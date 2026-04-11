@@ -103,6 +103,22 @@ def init_database():
             )
         """)
 
+        # 상담 세션 테이블 (세션 기반 차감)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS consult_sessions (
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(64) NOT NULL,
+                business_number VARCHAR(20) NOT NULL,
+                announcement_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # 인덱스 (세션 조회 성능)
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_consult_sessions_lookup ON consult_sessions (session_id, business_number, announcement_id)")
+        except Exception:
+            pass
+
         # SQLite에서 마이그레이션된 기존 테이블의 INTEGER→BOOLEAN 변환 시도
         for tbl, col in [("notification_settings", "is_active"), ("admin_urls", "is_active")]:
             try:
@@ -748,35 +764,50 @@ async def lifespan(app):
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())
 
-    # ── AI 패트롤 스케줄러 (매일 18:00 UTC = 03:00 KST) ──
-    # 임포트/실행 모두 try로 감싸서 패트롤 실패가 서버 부팅을 막지 않게 함
-    patrol_scheduler = None
+    # ── 금융 지식 시딩 (최초 1회) ──
     try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from apscheduler.triggers.cron import CronTrigger
+        from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
+        seed_conn = get_db_connection()
+        seeded = seed_financial_knowledge(seed_conn)
+        seed_conn.close()
+        if seeded:
+            print(f"[KnowledgeSeed] {seeded} financial knowledge items seeded")
+    except Exception as seed_err:
+        print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
 
-        def _patrol_job():
-            try:
-                # 지연 임포트 — 순환 참조 방지
-                from app.services.patrol import run_patrol
-                print("[Patrol] Scheduled run starting...")
-                result = run_patrol(triggered_by="scheduler")
-                print(f"[Patrol] Scheduled run done: {result.get('elapsed_seconds')}s")
-            except Exception as e:
-                print(f"[Patrol] Scheduled run error: {e}")
+    # ── AI 패트롤 스케줄러 (매일 18:00 UTC = 03:00 KST) ──
+    # PATROL_ENABLED=false 환경변수로 비활성화 가능
+    patrol_scheduler = None
+    if os.getenv("PATROL_ENABLED", "true").lower() != "false":
+        try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            from apscheduler.triggers.cron import CronTrigger
 
-        patrol_scheduler = AsyncIOScheduler()  # default UTC
-        patrol_scheduler.add_job(
-            _patrol_job,
-            CronTrigger(hour=18, minute=0),  # 18:00 UTC = 03:00 KST
-            id="ai_patrol",
-            name="AI 데이터 품질 패트롤",
-            replace_existing=True,
-        )
-        patrol_scheduler.start()
-        print("[Patrol] APScheduler started — daily at 18:00 UTC (03:00 KST)")
-    except Exception as e:
-        print(f"[Patrol] scheduler init failed (서버는 정상): {e}")
+            def _patrol_job():
+                try:
+                    from app.services.patrol import run_patrol
+                    print("[Patrol] Scheduled run starting...")
+                    result = run_patrol(triggered_by="scheduler")
+                    print(f"[Patrol] Scheduled run done: {result.get('elapsed_seconds')}s")
+                except Exception as e:
+                    print(f"[Patrol] Scheduled run error: {e}")
+
+            patrol_scheduler = AsyncIOScheduler()
+            patrol_scheduler.add_job(
+                _patrol_job,
+                CronTrigger(hour=18, minute=0),
+                id="ai_patrol",
+                name="AI 데이터 품질 패트롤",
+                replace_existing=True,
+            )
+            patrol_scheduler.start()
+            print("[Patrol] APScheduler started — daily at 18:00 UTC (03:00 KST)")
+        except ImportError as e:
+            print(f"[Patrol] APScheduler not installed: {e}")
+        except Exception as e:
+            print(f"[Patrol] scheduler init failed (서버는 정상): {e}")
+    else:
+        print("[Patrol] disabled by PATROL_ENABLED=false")
 
     yield
 
@@ -2699,6 +2730,7 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
 class AiConsultRequest(BaseModel):
     announcement_id: int
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+    session_id: Optional[str] = None  # 세션ID — 동일 상담 내 추가 질문 시 차감 방지
 
 
 @app.post("/api/ai/consult")
@@ -2766,8 +2798,26 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
         )
 
+    # 세션ID 기반 차감: 기존 세션이면 차감 스킵
+    import uuid as _uuid
+    session_id = req.session_id
+    is_existing_session = False
+
+    if session_id:
+        # 세션 유효성 확인 (24시간 이내)
+        try:
+            cur.execute("""
+                SELECT id FROM consult_sessions
+                WHERE session_id = %s AND business_number = %s AND announcement_id = %s
+                  AND created_at > NOW() - INTERVAL '24 hours'
+            """, (session_id, bn, req.announcement_id))
+            if cur.fetchone():
+                is_existing_session = True
+        except Exception:
+            pass
+
     # 건수 제한 (PRO/무제한 제외)
-    if consult_limit < 999999:
+    if consult_limit < 999999 and not is_existing_session:
         # consult 사용량은 ai_usage_month로 추적
         if ai_usage >= consult_limit:
             conn.close()
@@ -2776,11 +2826,18 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             else:
                 msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
             raise HTTPException(status_code=429, detail=msg)
-        # 첫 메시지일 때만 건수 차감
-        if len(req.messages) <= 1:
-            cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-            conn.commit()
-            ai_usage += 1
+        # 새 세션: 1회 차감 + 세션ID 발급
+        session_id = str(_uuid.uuid4())
+        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
+        try:
+            cur.execute("""
+                INSERT INTO consult_sessions (session_id, business_number, announcement_id)
+                VALUES (%s, %s, %s)
+            """, (session_id, bn, req.announcement_id))
+        except Exception:
+            pass
+        conn.commit()
+        ai_usage += 1
 
     # 1-1) 메시지 수 제한 (사용자 메시지 기준 30회)
     user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
@@ -2854,6 +2911,14 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     conn.close()
 
     is_done = result.get("done", False)
+
+    # done=True 강제 오버라이드: 사용자 메시지가 3개 미만이면 done=false 강제
+    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
+    if is_done and user_msg_count < 3:
+        is_done = False
+        result["done"] = False
+        result["conclusion"] = None
+
     consult_log_id = None
 
     # 상담 완료 시 로그 저장 (학습 데이터 축적)
@@ -2883,6 +2948,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         "consult_log_id": consult_log_id if is_done else None,
         "ai_used": ai_usage,
         "ai_limit": consult_limit,
+        "session_id": session_id,
     }
 
 
@@ -3259,6 +3325,14 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
                     conclusion=conclusion,
                     db_conn=conn,
                 )
+                # 자동 학습: helpful 대화에서 고품질 Q&A 추출 → knowledge_base 축적
+                try:
+                    from app.services.financial_analysis.auto_learner import process_helpful_feedback
+                    learned = process_helpful_feedback(req.consult_log_id, conn)
+                    if learned:
+                        print(f"[AutoLearn] {learned} knowledge items extracted from log #{req.consult_log_id}")
+                except Exception as al_err:
+                    print(f"[AutoLearn] Error (non-critical): {al_err}")
             elif req.feedback == "inaccurate":
                 # "부정확해요" → 골든 답변 비활성화
                 mark_golden_inaccurate(req.consult_log_id, conn)
@@ -4154,6 +4228,48 @@ def admin_patrol_failures(limit: int = 50):
                     if r.get(k):
                         r[k] = str(r[k])
             return {"status": "SUCCESS", "failures": rows, "count": len(rows)}
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/knowledge/seed", dependencies=[Depends(_verify_admin)])
+def admin_knowledge_seed():
+    """금융 지식 수동 시딩 (관리자 전용)"""
+    try:
+        from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
+        conn = get_db_connection()
+        try:
+            seeded = seed_financial_knowledge(conn)
+            return {"status": "SUCCESS", "seeded": seeded}
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/knowledge/stats", dependencies=[Depends(_verify_admin)])
+def admin_knowledge_stats():
+    """knowledge_base 현황 조회"""
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT source, knowledge_type, COUNT(*) as cnt,
+                       ROUND(AVG(confidence)::numeric, 2) as avg_confidence,
+                       SUM(use_count) as total_uses
+                FROM knowledge_base
+                GROUP BY source, knowledge_type
+                ORDER BY source, knowledge_type
+            """)
+            rows = [dict(r) for r in cur.fetchall()]
+
+            cur.execute("SELECT COUNT(*) as total FROM knowledge_base")
+            total = cur.fetchone()["total"]
+
+            return {"status": "SUCCESS", "total": total, "breakdown": rows}
         finally:
             conn.close()
     except Exception as e:
@@ -6746,30 +6862,47 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
     limit = min(limit, 100)
     conn = get_db_connection()
     cur = conn.cursor()
+    # 지역명 감지 (검색어에 포함 시 region 매칭 우선)
+    REGION_NAMES = {"서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"}
     try:
         if search_term:
             words = search_term.split()
             where_parts = []
             params = []
             for w in words:
-                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
-                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
+                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s OR region ILIKE %s)")
+                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
             where_sql = " AND ".join(where_parts)
-            # 다양성 정렬: 카테고리/부처별 분산 + 마감 임박 + 최신
-            # 1) 제목에 모든 키워드가 포함된 것 우선 (관련도)
-            # 2) 같은 부처가 연속으로 나오지 않도록 무작위성 추가
+
+            # 검색어에서 지역명 추출
+            detected_regions = [w for w in words if w in REGION_NAMES]
+
+            # region 매칭 가산점 SQL
+            if detected_regions:
+                region_case_parts = []
+                region_params_pre = []
+                for rg in detected_regions:
+                    region_case_parts.append("WHEN region ILIKE %s THEN 1")
+                    region_params_pre.append(f"%{rg}%")
+                region_score_sql = f"CASE {' '.join(region_case_parts)} ELSE 0 END"
+            else:
+                region_score_sql = "0"
+                region_params_pre = []
+
             cur.execute(
-                f"""SELECT announcement_id, title, department, category, deadline_date, support_amount,
-                           CASE WHEN title ILIKE %s THEN 1 ELSE 0 END as title_match
+                f"""SELECT announcement_id, title, department, category, deadline_date, support_amount, region,
+                           CASE WHEN title ILIKE %s THEN 1 ELSE 0 END as title_match,
+                           {region_score_sql} as region_match
                     FROM announcements
                     WHERE {where_sql}
                     ORDER BY
+                        region_match DESC,
                         title_match DESC,
                         CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0 ELSE 1 END,
                         deadline_date ASC NULLS LAST,
                         MD5(announcement_id::text || %s)
                     LIMIT %s""",
-                [f"%{search_term}%"] + params + [search_term, limit],
+                [f"%{search_term}%"] + region_params_pre + params + [search_term, limit],
             )
         else:
             cur.execute(

@@ -588,7 +588,9 @@ def chat_consult(
 
     # 전문가 패턴 감지: 배점/경쟁률/중복수혜/심사위원 등 깊이 있는 질문
     expert_keywords = ["배점", "가중치", "경쟁률", "선정률", "중복수혜", "중복 가능", "심사위원",
-                       "평가지표", "평가표", "역대", "작년", "전년", "최근 선정", "유사 사례", "타사", "성공 사례"]
+                       "평가지표", "평가표", "역대", "작년", "전년", "최근 선정", "유사 사례", "타사", "성공 사례",
+                       "금리", "이자", "상환", "담보", "보증료", "한도", "융자", "대출", "자부담", "보증서",
+                       "신용등급", "신보", "기보", "신용보증", "기술보증", "연체"]
     is_expert_question = any(kw in last_user_msg for kw in expert_keywords)
 
     # 1차: FAQ 캐시 확인 (같은 공고 + 유사 질문)
@@ -768,14 +770,90 @@ def chat_consult(
    - 다른 부처/다른 사업은 대부분 가능 (예: 중기부 R&D + 산업부 사업)
    - 정부지원금 + 지자체 보조금은 대부분 병행 가능
 
+   [정책자금/융자 상세 — 사용자가 가장 많이 묻는 항목]
+   - 금리: 정책자금 기준금리 연 2.0~3.5% (고정/변동 선택), 우대금리 적용 시 1.0~2.5%
+   - 우대 조건: 청년기업(-0.3~0.5%p), 여성기업(-0.2~0.3%p), 혁신성장기업(-0.5%p), 사회적경제기업(-0.5%p)
+   - 대출 한도: 개인사업자 1~5억, 중소기업 5~100억 (사업별 상이)
+   - 상환 기간: 시설자금 8~10년(거치 3년), 운전자금 5~6년(거치 2년)
+   - 담보: 신용보증서(신보/기보) 또는 부동산, 신용등급 BB 이상 권장
+   - 자부담: 통상 10~30% (융자 비율 70~90%)
+   - 심사 소요: 접수 후 2~4주, 보증서 발급 1~2주 추가
+   - 연체 시: 연체이율 기본금리 + 3%p, 3회 이상 연체 시 기한이익 상실
+
+   [보증 관련]
+   - 신용보증기금(신보): 보증비율 85~100%, 보증료 연 0.5~2.0%
+   - 기술보증기금(기보): 기술력 중심 평가, 보증비율 85~100%, 보증료 연 0.5~1.5%
+   - 지역신용보증재단: 소상공인 위주, 보증한도 2~8억, 보증료 연 0.5~1.0%
+   - 보증 심사기준: 신용등급(40%) + 기술/사업성(30%) + 재무건전성(20%) + 경영능력(10%)
+
+   [융자 vs 보조금 차이 — 반드시 구분하여 안내]
+   - 융자: 상환 의무 있음, 이자 발생, 담보/보증 필요, 한도 큼
+   - 보조금: 상환 의무 없음(무상), 자부담 비율 있음, 정산 의무, 한도 작음
+   - 바우처: 특정 용도 사용권, 자부담 10~30%, 기간 내 사용 필수
+
 3. 가능하면 숫자와 구체 사례를 포함하세요. "유사 사업과 비교 시 강점은 X, 약점은 Y" 형태로.
 
 4. 마지막에 "정확한 수치는 담당기관 확인 권장"을 한 줄로만 추가하세요.
 """
 
+    # 융자/보증/정책자금 공고 감지 + 금융 분석 데이터 주입
+    _title = a.get('title', '')
+    _cat = a.get('category', '')
+    _support = (ps.get('support_details') or '')
+
+    # 금융 모듈에서 상세 데이터 + 유사 공고 참조 로드
+    financial_context = ""
+    cross_ref_context = ""
+    try:
+        from app.services.financial_analysis import (
+            is_financial_announcement, build_financial_context, ensure_financial_analysis,
+            get_similar_financial_announcements, build_cross_reference_context,
+        )
+        is_loan_type = is_financial_announcement(_title, _cat, _support)
+        if is_loan_type:
+            # DB에서 금융 분석 데이터 확보 (없으면 실시간 분석)
+            financial_details = ensure_financial_analysis(
+                announcement_id=announcement_id,
+                title=_title,
+                full_text=da.get("full_text") or "",
+                parsed_sections=ps,
+                deep_analysis=da,
+                db_conn=db_conn,
+            )
+            financial_context = build_financial_context(financial_details)
+
+            # 유사 공고 크로스 러닝 (같은 카테고리 금융 공고 참조)
+            similar = get_similar_financial_announcements(
+                announcement_id=announcement_id,
+                category=_cat,
+                title=_title,
+                db_conn=db_conn,
+                limit=3,
+            )
+            cross_ref_context = build_cross_reference_context(similar)
+    except Exception as fin_err:
+        print(f"[FinancialModule] Error: {fin_err}")
+        is_loan_type = any(kw in _title or kw in _cat or kw in _support for kw in ['융자', '정책자금', '대출', '보증', '금융'])
+
+    loan_directive = ""
+    if is_loan_type:
+        loan_directive = f"""
+[융자/보증/정책자금 공고 특화 안내]
+이 공고는 융자/보증/정책자금 유형입니다. 보조금과 달리 **상환 의무**가 있습니다.
+첫 응답에서 반드시 아래 항목을 포함하세요 (아래 분석 데이터 우선, 없으면 일반 패턴 추정):
+- **💰 융자 조건**: 금리(고정/변동), 한도, 상환기간(거치기간 포함), 자부담 비율
+- **🏦 담보/보증**: 신용보증서 필요 여부, 신보/기보/지역재단 중 해당, 보증료 예상
+- **📋 심사 핵심**: 신용등급 기준, 재무제표 요구사항, 사업계획서 비중
+- **📑 신청요건**: 대상 기업 유형, 업종/매출/직원 제한, 제외 대상
+- 후속 질문에서 금리/상환/담보/신청요건을 물으면 아래 분석 데이터를 적극 활용
+
+{financial_context}
+{cross_ref_context}
+"""
+
     system_prompt = f"""당신은 대한민국 정부 지원사업 자격 상담 전문 AI입니다. 기업 대상 보조금뿐 아니라 개인 대상 복지·지원사업(청년, 출산·육아, 주거, 취업, 장학금 등)도 전문적으로 상담합니다.
 아래 공고의 모든 정밀 분석 데이터를 기반으로 상세하고 정확한 상담을 제공하세요.
-{followup_directive}{expert_directive}
+{followup_directive}{expert_directive}{loan_directive}
 
 [공고 기본 정보] ★ 이 정보는 절대 "명시되지 않음"이라고 답하지 마세요. 아래 값을 그대로 사용하세요.
 제목: {a.get('title', '')}
@@ -1658,13 +1736,64 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             logger.error(f"[chat_pro_consultant] specific ann mode error: {e}")
             # fall through to general mode
 
-    system_prompt = """당신은 지원사업 컨설턴트의 AI 어시스턴트입니다.
+    # ── 일반 상담 중 금융 질문 자동 감지 → knowledge_base 주입 ──
+    financial_knowledge_block = ""
+    if messages:
+        last_user_msg = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user_msg = m.get("text", "")
+                break
+        FINANCIAL_QA_KEYWORDS = [
+            "정책자금", "융자", "대출", "금리", "이자", "한도", "상환", "담보",
+            "보증", "보증서", "신보", "기보", "보증료", "신용등급", "자부담",
+            "사업전환자금", "긴급경영", "운전자금", "시설자금", "연체",
+        ]
+        if any(kw in last_user_msg for kw in FINANCIAL_QA_KEYWORDS):
+            try:
+                # knowledge_base에서 금융 관련 지식 조회
+                if db_conn:
+                    kb_cur = db_conn.cursor()
+                    kb_cur.execute("""
+                        SELECT knowledge_type, content, confidence
+                        FROM knowledge_base
+                        WHERE (category IN ('금융', '보증') OR knowledge_type = 'faq')
+                          AND confidence >= 0.5
+                        ORDER BY confidence DESC, use_count DESC
+                        LIMIT 8
+                    """)
+                    kb_rows = kb_cur.fetchall()
+                    if kb_rows:
+                        parts = ["\n[금융 전문 지식 — 정책자금/보증/융자 질문 감지됨. 아래 데이터를 활용하여 정확하게 답변하세요]"]
+                        for r in kb_rows:
+                            content = r["content"] if isinstance(r["content"], dict) else __import__("json").loads(r["content"])
+                            ktype = r["knowledge_type"]
+                            if ktype == "faq":
+                                parts.append(f"• Q: {content.get('question','')} → A: {content.get('answer','')[:300]}")
+                            elif ktype == "insight":
+                                parts.append(f"• 실무팁: {content.get('relationship','')[:200]}")
+                            elif ktype == "error":
+                                parts.append(f"• ⚠️ 주의: {content.get('wrong_info','')[:100]} → 올바른 정보: {content.get('correct_info','')[:200]}")
+                        financial_knowledge_block = "\n".join(parts)
+                        # use_count 증가
+                        for r in kb_rows:
+                            try:
+                                kb_cur.execute("UPDATE knowledge_base SET use_count = use_count + 1 WHERE id = %s", (r.get("id"),))
+                            except Exception:
+                                pass
+                        db_conn.commit()
+            except Exception as fk_err:
+                print(f"[PRO-FinKnowledge] Error: {fk_err}")
+
+    system_prompt = f"""당신은 지원사업 컨설턴트의 AI 어시스턴트입니다.
 컨설턴트가 고객사(또는 개인 고객) 정보를 당신에게 전달하면, 정보를 수집하여 지원사업 매칭 프로필을 생성합니다.
+{financial_knowledge_block}
 
 [핵심 역할]
 - 당신의 사용자는 **컨설턴트(전문가)**입니다. 고객 본인이 아닙니다.
 - 컨설턴트에게 존댓말로 질문하세요.
 - 고객사 서류(사업계획서, 재무제표 등)가 첨부되면 거기서 정보를 추출하세요.
+- **컨설턴트가 정책자금/융자/보증 관련 질문을 하면, 위 [금융 전문 지식]을 활용하여 전문적으로 답변하세요.** 정보 수집만 하지 말고, 금융 관련 질문에는 즉시 답변 + 정보 수집을 병행하세요.
 
 [대화 규칙]
 1. 정보가 부족하면 반드시 **구체적 질문**을 하세요. "정보가 필요합니다"로만 끝내지 마세요.
@@ -1731,21 +1860,21 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - **이 규칙은 위의 모든 추가 질문 규칙보다 우선합니다.** 컨설턴트가 매칭을 요청하면 더 묻지 마세요.
 
 [응답 형식 — 반드시 이 JSON 형식으로만 응답]
-{
+{{
   "message": "AI의 대화 메시지 (마크다운 사용 가능)",
   "choices": ["추천 응답1", "추천 응답2"],
   "done": false,
-  "collected": {"지금까지 수집된 필드명": "값", ...},
+  "collected": {{"지금까지 수집된 필드명": "값", ...}},
   "profile": null
-}
+}}
 
 done=true일 때 (모든 정보 수집 완료):
-{
+{{
   "message": "고객사 프로필이 완성되었습니다. 매칭을 시작하겠습니다.",
   "choices": [],
   "done": true,
-  "collected": {...모든 필드...},
-  "profile": {
+  "collected": {{...모든 필드...}},
+  "profile": {{
     "company_name": "...",
     "establishment_date": "YYYY-MM-DD",
     "industry_code": "XXXXX",
@@ -1753,8 +1882,8 @@ done=true일 때 (모든 정보 수집 완료):
     "employee_count_bracket": "...",
     "address_city": "...",
     "interests": "관심1,관심2"
-  }
-}
+  }}
+}}
 
 반드시 순수 JSON만 반환하세요."""
 

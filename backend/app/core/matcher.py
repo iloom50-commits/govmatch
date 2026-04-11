@@ -216,6 +216,8 @@ def get_matches_for_user(user_profile):
     user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
     user_city = user_cities[0] if user_cities else ""
     is_nationwide = not user_cities or "전국" in user_cities
+    # 전국 선택 시에도 소재지 기반 보너스를 위해 실제 지역 목록 유지
+    bonus_cities = [c for c in user_cities if c not in ("전국", "")]
 
     results = []
 
@@ -304,11 +306,15 @@ def get_matches_for_user(user_profile):
         score += 30.0
 
         # A-1. 지역 매칭 보너스 (최대 25점)
+        # 전국 선택이어도 소재지(bonus_cities)와 일치하면 보너스 부여
         matched_city = None
-        if bracket_city_match and not is_nationwide:
-            matched_city = bracket_city_match.group(1)
-        elif ad_region and ad_region not in ("전국", "", "All") and not is_nationwide and ad_region in user_cities:
-            matched_city = ad_region
+        if bracket_city_match:
+            bc = bracket_city_match.group(1)
+            if bc in bonus_cities or (not is_nationwide and bc in user_cities):
+                matched_city = bc
+        elif ad_region and ad_region not in ("전국", "", "All"):
+            if ad_region in bonus_cities or (not is_nationwide and ad_region in user_cities):
+                matched_city = ad_region
         if matched_city:
             score += 25.0
             reasons.append(f"{matched_city} 지역 특화 지원사업")
@@ -575,6 +581,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     raw_city = user_profile.get("address_city") or ""
     user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
     is_nationwide = not user_cities or "전국" in user_cities
+    bonus_cities = [c for c in user_cities if c not in ("전국", "")]
     user_interests_raw = user_profile.get("interests") or ""
     user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
 
@@ -672,9 +679,11 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
                 reasons.append(f"{user_employment} 대상")
 
         # F. 지역 매칭 보너스 (최대 10점)
-        if ad_region and ad_region not in ("전국", "", "All") and not is_nationwide and ad_region in user_cities:
-            score += 10.0
-            reasons.append(f"{ad_region} 지역 서비스")
+        # 전국 선택이어도 소재지(bonus_cities)와 일치하면 보너스 부여
+        if ad_region and ad_region not in ("전국", "", "All"):
+            if ad_region in bonus_cities or (not is_nationwide and ad_region in user_cities):
+                score += 10.0
+                reasons.append(f"{ad_region} 지역 서비스")
 
         # G. 생애주기(life_stage) 매칭 (최대 5점)
         if life_stage and age_life_stages:

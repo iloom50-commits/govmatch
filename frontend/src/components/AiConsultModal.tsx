@@ -102,6 +102,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   const [limitReached, setLimitReached] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -144,6 +145,21 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         setFeedbackSent(false);
         setConsultLogId(null);
         setDragPos(null);
+        // 같은 공고 재진입 시 기존 세션 복원 (24시간 이내)
+        const storedSession = localStorage.getItem(`consult_session_${detail.announcement.announcement_id}`);
+        if (storedSession) {
+          try {
+            const s = JSON.parse(storedSession);
+            if (Date.now() - s.ts < 24 * 60 * 60 * 1000) {
+              setSessionId(s.id);
+            } else {
+              localStorage.removeItem(`consult_session_${detail.announcement.announcement_id}`);
+              setSessionId(null);
+            }
+          } catch { setSessionId(null); }
+        } else {
+          setSessionId(null);
+        }
         setOpen(true);
       }
     };
@@ -218,6 +234,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         body: JSON.stringify({
           announcement_id: announcement.announcement_id,
           messages: chatHistory.map((m) => ({ role: m.role, text: m.text })),
+          session_id: sessionId,
         }),
       });
 
@@ -248,6 +265,14 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       };
 
       setMessages([...chatHistory, aiMsg]);
+      // 세션ID 저장 (서버에서 발급 또는 기존 반환)
+      if (data.session_id && announcement) {
+        setSessionId(data.session_id);
+        localStorage.setItem(
+          `consult_session_${announcement.announcement_id}`,
+          JSON.stringify({ id: data.session_id, ts: Date.now() })
+        );
+      }
       // 사용량 갱신
       if (data.ai_used !== undefined) {
         onPlanUpdate?.({ ai_used: data.ai_used, consult_limit: data.ai_limit });
@@ -293,6 +318,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     setLimitReached(false);
     setFeedbackSent(false);
     setConsultLogId(null);
+    // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
   }, []);
 
   // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)

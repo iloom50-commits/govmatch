@@ -1337,15 +1337,41 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
           </div>
         )}
 
-        {/* 지역 */}
+        {/* 지역 — 소재지 선택 (전국은 기본 포함, 소재지 공고 우선) */}
         <div>
-          <p className={sectionTitle}>{isIndiv ? "거주 지역" : "소재지"} <span className={t.muted}>(선택)</span></p>
+          <p className={sectionTitle}>{isIndiv ? "거주 지역" : "소재지"} <span className={t.muted}>(선택 — 전국 공고는 항상 포함, 선택 지역 우선 표시)</span></p>
           <div className="flex flex-wrap gap-1.5">
-            {cityOptions.map(opt => (
-              <button key={opt} onClick={() => update("address_city", profileForm.address_city === opt ? "" : opt)}
-                className={btnCls(profileForm.address_city === opt)}>{opt}</button>
-            ))}
+            {cityOptions.map(opt => {
+              const currentCities = (profileForm.address_city || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+              const isSelected = currentCities.includes(opt);
+              return (
+                <button key={opt} onClick={() => {
+                  let next: string[];
+                  if (isSelected) {
+                    next = currentCities.filter((c: string) => c !== opt);
+                  } else {
+                    next = [...currentCities, opt];
+                  }
+                  // 항상 전국 포함
+                  if (!next.includes("전국")) next = ["전국", ...next];
+                  update("address_city", next.join(","));
+                }}
+                  className={btnCls(isSelected)}>{opt}</button>
+              );
+            })}
           </div>
+          {(() => {
+            const selected = (profileForm.address_city || "").split(",").map((s: string) => s.trim()).filter((s: string) => s && s !== "전국");
+            return selected.length > 0 ? (
+              <p className={`text-[10px] mt-1 ${dark ? "text-violet-300" : "text-violet-600"}`}>
+                전국 공고 + <strong>{selected.join(", ")}</strong> 지역 공고 우선 표시
+              </p>
+            ) : (
+              <p className={`text-[10px] mt-1 ${t.muted}`}>
+                전국 공고 전체 표시 (소재지 선택 시 해당 지역 우선)
+              </p>
+            );
+          })()}
         </div>
 
         {/* 관심분야 (복수 선택) */}

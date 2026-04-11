@@ -3060,10 +3060,16 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         # ── 사전 정보량 분석: 첫 메시지에 충분한 정보 + 매칭 키워드 → 즉시 매칭 ──
         if not ann_id and req.messages:
             first_user_text = ""
+            last_user_text = ""
             for m in req.messages:
                 if m.get("role") == "user":
-                    first_user_text = m.get("text", "")
-                    break
+                    if not first_user_text:
+                        first_user_text = m.get("text", "")
+                    last_user_text = m.get("text", "")
+
+            # 금융 질문 감지 — 금융 질문이면 즉시 매칭 억제 (마지막 메시지 기준)
+            _fin_question_kws = ["금리", "이자", "한도", "상환", "담보", "보증서", "보증료", "신보", "기보", "연체"]
+            _is_financial_question = any(kw in last_user_text for kw in _fin_question_kws)
 
             # 정보량 점수 (있는 필드 수)
             info_signals = {
@@ -3071,11 +3077,11 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 "scale": any(w in first_user_text for w in ["1인", "직원", "매출", "억", "만원", "명"]),
                 "region": any(w in first_user_text for w in ["서울", "부산", "경기", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]),
                 "stage": any(w in first_user_text for w in ["창업", "예비", "년차", "법인", "스타트업", "구직", "청년"]),
-                "match_intent": any(w in first_user_text for w in ["매칭", "추천", "찾아", "맞춤", "지원사업", "지원금", "받을 수 있"]),
+                "match_intent": any(w in first_user_text for w in ["매칭해", "추천해", "찾아줘", "맞춤", "보여줘", "알려줘"]),
             }
             signal_count = sum(info_signals.values())
 
-            if signal_count >= 3:
+            if signal_count >= 3 and not _is_financial_question:
                 # 정보 충분 → AI에게 즉시 매칭 신호 전달
                 augmented_messages = list(req.messages)
                 if augmented_messages and augmented_messages[0].get("role") == "user":

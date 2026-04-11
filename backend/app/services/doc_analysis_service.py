@@ -317,9 +317,61 @@ def extract_text_from_bytes(content: bytes, file_type: str, max_chars: int = 500
         result = _extract_from_hwp(content, max_chars)
     elif file_type in ("hwpx", "docx"):
         result = _extract_from_ooxml(content, max_chars)
+    elif file_type == "zip":
+        result = _extract_from_zip(content, max_chars)
 
     print(f"[DocAnalysis] legacy result: {len(result)} chars ({file_type})")
     return result
+
+
+def _extract_from_zip(content: bytes, max_chars: int = 50000) -> str:
+    """ZIP 파일 해제 → 내부 PDF/HWP/DOCX 파일 텍스트 추출"""
+    import zipfile
+    all_texts = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            for name in zf.namelist():
+                name_lower = name.lower()
+                # 지원 파일 타입만 처리
+                if not any(name_lower.endswith(ext) for ext in (".pdf", ".hwp", ".hwpx", ".docx")):
+                    continue
+                # 숨김 파일/__MACOSX 등 무시
+                if name.startswith("__") or "/." in name:
+                    continue
+
+                try:
+                    inner_bytes = zf.read(name)
+                    if len(inner_bytes) < 100:
+                        continue
+
+                    # 내부 파일 타입 감지
+                    inner_type = _detect_file_type(inner_bytes, name)
+                    print(f"[DocAnalysis] ZIP inner: {name} ({inner_type}, {len(inner_bytes)} bytes)")
+
+                    # 재귀 추출 (ZIP 안의 ZIP은 무시)
+                    inner_text = ""
+                    if inner_type == "pdf":
+                        inner_text = _extract_from_pdf(inner_bytes, max_chars // 2)
+                    elif inner_type in ("hwp", "ole"):
+                        inner_text = _extract_from_hwp(inner_bytes, max_chars // 2)
+                    elif inner_type in ("hwpx", "docx"):
+                        inner_text = _extract_from_ooxml(inner_bytes, max_chars // 2)
+
+                    if inner_text and len(inner_text) > 50:
+                        all_texts.append(f"[ZIP내 파일: {name}]\n{inner_text}")
+                        print(f"[DocAnalysis] ZIP extracted: {name} → {len(inner_text)} chars")
+
+                except Exception as inner_err:
+                    print(f"[DocAnalysis] ZIP inner error ({name}): {inner_err}")
+
+                # max_chars 초과 방지
+                if sum(len(t) for t in all_texts) >= max_chars:
+                    break
+
+    except Exception as e:
+        print(f"[DocAnalysis] ZIP parse error: {e}")
+
+    return "\n\n".join(all_texts)[:max_chars]
 
 
 def extract_text_from_url(url: str, max_chars: int = 50000) -> Tuple[str, str]:

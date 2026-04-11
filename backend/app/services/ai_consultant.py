@@ -1736,52 +1736,46 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             logger.error(f"[chat_pro_consultant] specific ann mode error: {e}")
             # fall through to general mode
 
-    # ── 일반 상담 중 금융 질문 자동 감지 → knowledge_base 주입 ──
+    # ── 금융 상담 모드 감지: 사용자가 "자금 상담", "보증 상담" 선택 시 knowledge_base 주입 ──
     financial_knowledge_block = ""
-    if messages:
-        last_user_msg = ""
-        for m in reversed(messages):
+    _in_financial_mode = False
+    if messages and db_conn:
+        for m in messages:
             if m.get("role") == "user":
-                last_user_msg = m.get("text", "")
-                break
-        FINANCIAL_QA_KEYWORDS = [
-            "정책자금", "융자", "대출", "금리", "이자", "한도", "상환", "담보",
-            "보증", "보증서", "신보", "기보", "보증료", "신용등급", "자부담",
-            "사업전환자금", "긴급경영", "운전자금", "시설자금", "연체",
-        ]
-        if any(kw in last_user_msg for kw in FINANCIAL_QA_KEYWORDS):
+                t = m.get("text", "")
+                if any(kw in t for kw in ["자금 상담", "융자 상담", "자금/융자 상담", "보증 상담", "정책자금 상담"]):
+                    _in_financial_mode = True
+                    break
+        if _in_financial_mode:
             try:
-                # knowledge_base에서 금융 관련 지식 조회
-                if db_conn:
-                    kb_cur = db_conn.cursor()
-                    kb_cur.execute("""
-                        SELECT knowledge_type, content, confidence
-                        FROM knowledge_base
-                        WHERE (category IN ('금융', '보증') OR knowledge_type = 'faq')
-                          AND confidence >= 0.5
-                        ORDER BY confidence DESC, use_count DESC
-                        LIMIT 8
-                    """)
-                    kb_rows = kb_cur.fetchall()
-                    if kb_rows:
-                        parts = ["\n[금융 전문 지식 — 정책자금/보증/융자 질문 감지됨. 아래 데이터를 활용하여 정확하게 답변하세요]"]
-                        for r in kb_rows:
-                            content = r["content"] if isinstance(r["content"], dict) else __import__("json").loads(r["content"])
-                            ktype = r["knowledge_type"]
-                            if ktype == "faq":
-                                parts.append(f"• Q: {content.get('question','')} → A: {content.get('answer','')[:300]}")
-                            elif ktype == "insight":
-                                parts.append(f"• 실무팁: {content.get('relationship','')[:200]}")
-                            elif ktype == "error":
-                                parts.append(f"• ⚠️ 주의: {content.get('wrong_info','')[:100]} → 올바른 정보: {content.get('correct_info','')[:200]}")
-                        financial_knowledge_block = "\n".join(parts)
-                        # use_count 증가
-                        for r in kb_rows:
-                            try:
-                                kb_cur.execute("UPDATE knowledge_base SET use_count = use_count + 1 WHERE id = %s", (r.get("id"),))
-                            except Exception:
-                                pass
-                        db_conn.commit()
+                kb_cur = db_conn.cursor()
+                kb_cur.execute("""
+                    SELECT id, knowledge_type, content, confidence
+                    FROM knowledge_base
+                    WHERE (category IN ('금융', '보증') OR knowledge_type = 'faq')
+                      AND confidence >= 0.5
+                    ORDER BY confidence DESC, use_count DESC
+                    LIMIT 8
+                """)
+                kb_rows = kb_cur.fetchall()
+                if kb_rows:
+                    parts = ["\n[금융 전문 지식 — 자금/보증 상담 모드 활성화. 아래 데이터를 활용하여 정확하게 답변하세요]"]
+                    for r in kb_rows:
+                        content = r["content"] if isinstance(r["content"], dict) else __import__("json").loads(r["content"])
+                        ktype = r["knowledge_type"]
+                        if ktype == "faq":
+                            parts.append(f"• Q: {content.get('question','')} → A: {content.get('answer','')[:300]}")
+                        elif ktype == "insight":
+                            parts.append(f"• 실무팁: {content.get('relationship','')[:200]}")
+                        elif ktype == "error":
+                            parts.append(f"• 주의: {content.get('wrong_info','')[:100]} → 올바른 정보: {content.get('correct_info','')[:200]}")
+                    financial_knowledge_block = "\n".join(parts)
+                    for r in kb_rows:
+                        try:
+                            kb_cur.execute("UPDATE knowledge_base SET use_count = use_count + 1 WHERE id = %s", (r.get("id"),))
+                        except Exception:
+                            pass
+                    db_conn.commit()
             except Exception as fk_err:
                 print(f"[PRO-FinKnowledge] Error: {fk_err}")
 
@@ -1793,7 +1787,6 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - 당신의 사용자는 **컨설턴트(전문가)**입니다. 고객 본인이 아닙니다.
 - 컨설턴트에게 존댓말로 질문하세요.
 - 고객사 서류(사업계획서, 재무제표 등)가 첨부되면 거기서 정보를 추출하세요.
-- **컨설턴트가 정책자금/융자/보증 관련 질문을 하면, 위 [금융 전문 지식]을 활용하여 전문적으로 답변하세요.** 정보 수집만 하지 말고, 금융 관련 질문에는 즉시 답변 + 정보 수집을 병행하세요.
 
 [대화 규칙]
 1. 정보가 부족하면 반드시 **구체적 질문**을 하세요. "정보가 필요합니다"로만 끝내지 마세요.
@@ -1847,7 +1840,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - 모든 필드를 추정/변환 가능하면 즉시 done=true와 profile을 반환하세요.
 
 [★ 매칭 트리거 — 매우 중요]
-- 컨설턴트가 "매칭", "매칭해줘", "추천", "찾아줘", "보여줘", "맞춤", "지원사업 알려" 키워드를 사용하면:
+- 컨설턴트가 **명시적으로** "매칭해줘", "추천해줘", "찾아줘", "보여줘", "매칭 시작" 등 **매칭 실행을 직접 요청**하면:
   → 수집된 정보가 일부만 있어도 즉시 done=true 반환
   → 누락된 필드는 합리적 기본값으로 채우기
     - industry_code: 빈 문자열로 설정 (전체 검색)
@@ -1856,8 +1849,18 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     - establishment_date: "2024-01-01" (최근 창업으로 가정)
     - address_city: "서울" (가장 보편)
     - interests: 컨설턴트 언급 키워드 또는 "창업지원,기술개발,정책자금"
-- 매칭 트리거가 활성화되면 message에 "수집된 정보를 바탕으로 매칭을 시작하겠습니다."라고 응답
 - **이 규칙은 위의 모든 추가 질문 규칙보다 우선합니다.** 컨설턴트가 매칭을 요청하면 더 묻지 마세요.
+
+[★★ 금융 관련 키워드 감지 시 → 선택지 제공]
+- 대화 중 정책자금, 융자, 대출, 보증, 자금, 금리, 담보 등 금융 관련 키워드가 나오면:
+  → **매칭으로 넘기지 말고**, 아래 선택지를 choices에 포함하세요:
+    ["자금/융자 상담", "보증 상담", "매칭 진행"]
+  → message에는 "자금/보증 관련 상담을 원하시면 선택해주세요." 안내
+  → done=false 유지
+- 컨설턴트가 "자금 상담", "자금/융자 상담", "보증 상담", "정책자금 상담"을 선택하면:
+  → 위 [금융 전문 지식] 데이터가 자동 주입됩니다
+  → 해당 주제에 대해 전문적으로 답변하세요 (금리/한도/담보/신청요건 등)
+  → 상담이 끝나면 "매칭을 진행할까요?" 선택지를 다시 제시하세요
 
 [응답 형식 — 반드시 이 JSON 형식으로만 응답]
 {{

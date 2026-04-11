@@ -932,9 +932,12 @@ def chat_consult(
 반드시 순수 JSON만 반환하세요. JSON 외의 텍스트를 포함하지 마세요."""
 
     # ── 새 SDK (google.genai) + Google Search Grounding ──
+    _sdk_used = "unknown"
     try:
         from google import genai as genai_new
         from google.genai import types as genai_types
+        _sdk_used = "google-genai (new)"
+        print(f"[AIConsultant] Using new SDK: google-genai")
 
         _client = genai_new.Client(api_key=api_key)
 
@@ -957,8 +960,10 @@ def chat_consult(
         )
         last_msg = messages[-1].get("text", "시작") if messages else "시작"
         response = _chat.send_message(last_msg)
-    except ImportError:
-        # 새 SDK 없으면 기존 SDK 폴백
+    except Exception as sdk_err:
+        # 새 SDK 실패 → 기존 SDK 폴백
+        _sdk_used = f"google-generativeai (fallback: {type(sdk_err).__name__}: {str(sdk_err)[:100]})"
+        print(f"[AIConsultant] New SDK failed: {sdk_err}, falling back to old SDK")
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 4096})
         gemini_messages = []
@@ -973,6 +978,7 @@ def chat_consult(
         response = _chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
     try:
+        print(f"[AIConsultant] SDK used: {_sdk_used}")
         logger.info(f"[Gemini raw response length] {len(response.text)} chars")
         result = _parse_gemini_json(response.text)
 

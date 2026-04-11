@@ -931,38 +931,48 @@ def chat_consult(
 
 반드시 순수 JSON만 반환하세요. JSON 외의 텍스트를 포함하지 마세요."""
 
-    genai.configure(api_key=api_key)
-
-    # Google Search Grounding 활성화 — 공고에 없는 정보는 웹 검색으로 보완
-    _model_tools = []
+    # ── 새 SDK (google.genai) + Google Search Grounding ──
     try:
-        from google.generativeai.types import Tool
-        _model_tools = [Tool(google_search={})]
-    except Exception:
-        try:
-            _model_tools = [{"google_search": {}}]
-        except Exception:
-            pass
+        from google import genai as genai_new
+        from google.genai import types as genai_types
 
-    model = genai.GenerativeModel(
-        "models/gemini-2.0-flash",
-        generation_config={"max_output_tokens": 4096},
-        tools=_model_tools if _model_tools else None,
-    )
+        _client = genai_new.Client(api_key=api_key)
 
-    gemini_messages = []
-    for msg in messages:
-        role = "user" if msg.get("role") == "user" else "model"
-        gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+        # 대화 히스토리 구성
+        chat_history = [
+            genai_types.Content(role="user", parts=[genai_types.Part(text=system_prompt)]),
+            genai_types.Content(role="model", parts=[genai_types.Part(text='{"done": false, "conclusion": null, "choices": [], "message": "understood"}')]),
+        ]
+        for msg in messages[:-1]:
+            role = "user" if msg.get("role") == "user" else "model"
+            chat_history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=msg.get("text", ""))]))
 
-    try:
-        chat = model.start_chat(history=[
+        _chat = _client.chats.create(
+            model="gemini-2.0-flash",
+            history=chat_history,
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                max_output_tokens=4096,
+            ),
+        )
+        last_msg = messages[-1].get("text", "시작") if messages else "시작"
+        response = _chat.send_message(last_msg)
+    except ImportError:
+        # 새 SDK 없으면 기존 SDK 폴백
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 4096})
+        gemini_messages = []
+        for msg in messages:
+            role = "user" if msg.get("role") == "user" else "model"
+            gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+        _chat = model.start_chat(history=[
             {"role": "user", "parts": [system_prompt]},
             {"role": "model", "parts": ['{"done": false, "conclusion": null, "choices": [], "message": "understood"}']},
             *gemini_messages[:-1]
         ])
-        response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
+        response = _chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
+    try:
         logger.info(f"[Gemini raw response length] {len(response.text)} chars")
         result = _parse_gemini_json(response.text)
 
@@ -1908,38 +1918,47 @@ done=true일 때 (모든 정보 수집 완료):
 
 반드시 순수 JSON만 반환하세요."""
 
-    genai.configure(api_key=api_key)
-
-    # Google Search Grounding — PRO 상담에서도 웹 검색 활성화
-    _pro_tools = []
+    # ── 새 SDK (google.genai) + Google Search Grounding ──
+    _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'
     try:
-        from google.generativeai.types import Tool as _ProTool
-        _pro_tools = [_ProTool(google_search={})]
-    except Exception:
-        try:
-            _pro_tools = [{"google_search": {}}]
-        except Exception:
-            pass
+        from google import genai as genai_new
+        from google.genai import types as genai_types
 
-    model = genai.GenerativeModel(
-        "models/gemini-2.0-flash",
-        generation_config={"max_output_tokens": 4096},
-        tools=_pro_tools if _pro_tools else None,
-    )
+        _client = genai_new.Client(api_key=api_key)
 
-    gemini_messages = []
-    for msg in messages:
-        role = "user" if msg.get("role") == "user" else "model"
-        gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+        chat_history = [
+            genai_types.Content(role="user", parts=[genai_types.Part(text=system_prompt)]),
+            genai_types.Content(role="model", parts=[genai_types.Part(text=_pro_init_response)]),
+        ]
+        for msg in messages[:-1]:
+            role = "user" if msg.get("role") == "user" else "model"
+            chat_history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=msg.get("text", ""))]))
 
-    try:
-        chat = model.start_chat(history=[
+        _chat = _client.chats.create(
+            model="gemini-2.0-flash",
+            history=chat_history,
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                max_output_tokens=4096,
+            ),
+        )
+        last_msg = messages[-1].get("text", "시작") if messages else "시작"
+        response = _chat.send_message(last_msg)
+    except ImportError:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 4096})
+        gemini_messages = []
+        for msg in messages:
+            role = "user" if msg.get("role") == "user" else "model"
+            gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+        _chat = model.start_chat(history=[
             {"role": "user", "parts": [system_prompt]},
-            {"role": "model", "parts": ['{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}']},
+            {"role": "model", "parts": [_pro_init_response]},
             *gemini_messages[:-1]
         ])
-        response = chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
+        response = _chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
 
+    try:
         result = _parse_gemini_json(response.text)
 
         collected = result.get("collected", {})

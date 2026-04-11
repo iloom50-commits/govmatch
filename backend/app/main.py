@@ -4283,6 +4283,104 @@ def admin_knowledge_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/admin/reanalyze-empty", dependencies=[Depends(_verify_admin)])
+async def reanalyze_empty_analyses(limit: int = 100):
+    """full_text가 비어있는 분석을 삭제하고 재분석 대기열에 추가"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # full_text가 비어있거나 NULL인 분석 찾기
+        cur.execute("""
+            SELECT aa.announcement_id, a.title
+            FROM announcement_analysis aa
+            JOIN announcements a ON a.announcement_id = aa.announcement_id
+            WHERE (aa.full_text IS NULL OR aa.full_text = '' OR LENGTH(aa.full_text) < 100)
+              AND a.origin_url IS NOT NULL AND a.origin_url != ''
+            LIMIT %s
+        """, (limit,))
+        empty_rows = cur.fetchall()
+
+        deleted = 0
+        for row in empty_rows:
+            aid = row["announcement_id"]
+            # 빈 분석 삭제
+            cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = %s", (aid,))
+            # 실패 기록도 삭제 (재시도 가능하도록)
+            try:
+                cur.execute("DELETE FROM analysis_failures WHERE announcement_id = %s", (aid,))
+            except Exception:
+                pass
+            deleted += 1
+
+        conn.commit()
+
+        # 패트롤 실행으로 재분석 트리거
+        reanalyzed = 0
+        if deleted > 0:
+            try:
+                from app.services.doc_analysis_service import ensure_analysis
+                for row in empty_rows[:20]:  # 즉시 20건만 재분석
+                    try:
+                        analysis_conn = get_db_connection()
+                        result = ensure_analysis(row["announcement_id"], analysis_conn)
+                        analysis_conn.close()
+                        if result and result.get("full_text"):
+                            reanalyzed += 1
+                            print(f"[Reanalyze] OK: #{row['announcement_id']} {row['title'][:30]} → {len(result.get('full_text',''))} chars")
+                    except Exception as e:
+                        print(f"[Reanalyze] Failed #{row['announcement_id']}: {e}")
+            except Exception as e:
+                print(f"[Reanalyze] Batch error: {e}")
+
+        return {
+            "status": "SUCCESS",
+            "empty_found": len(empty_rows),
+            "deleted": deleted,
+            "reanalyzed_immediately": reanalyzed,
+            "remaining_for_patrol": max(0, deleted - 20),
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/api/admin/analysis-stats", dependencies=[Depends(_verify_admin)])
+def admin_analysis_stats():
+    """공고 분석 현황 통계"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as total FROM announcements WHERE origin_url IS NOT NULL")
+        total = cur.fetchone()["total"]
+
+        cur.execute("SELECT COUNT(*) as analyzed FROM announcement_analysis WHERE full_text IS NOT NULL AND LENGTH(full_text) > 100")
+        analyzed = cur.fetchone()["analyzed"]
+
+        cur.execute("SELECT COUNT(*) as empty FROM announcement_analysis WHERE full_text IS NULL OR full_text = '' OR LENGTH(full_text) < 100")
+        empty = cur.fetchone()["empty"]
+
+        cur.execute("SELECT COUNT(*) as no_analysis FROM announcements a LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id WHERE aa.announcement_id IS NULL AND a.origin_url IS NOT NULL")
+        no_analysis = cur.fetchone()["no_analysis"]
+
+        cur.execute("""
+            SELECT aa.source_type, COUNT(*) as cnt
+            FROM announcement_analysis aa
+            WHERE aa.full_text IS NOT NULL AND LENGTH(aa.full_text) > 100
+            GROUP BY aa.source_type ORDER BY cnt DESC
+        """)
+        by_source = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "status": "SUCCESS",
+            "total_announcements": total,
+            "analyzed_ok": analyzed,
+            "analyzed_empty": empty,
+            "not_analyzed": no_analysis,
+            "by_source_type": by_source,
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/urls/health", dependencies=[Depends(_verify_admin)])
 def get_admin_urls_health():
     """수집 URL 헬스체크 리포트 — 실패/복구 현황"""

@@ -7059,9 +7059,37 @@ def api_trending():
         return {"status": "SUCCESS", "data": rows, "date": str(__import__("datetime").date.today())}
     except Exception as outer_e:
         print(f"[Trending API] outer error: {outer_e}")
+        import traceback; traceback.print_exc()
+        # 별도 커넥션으로 폴백
+        try:
+            conn2 = get_db_connection()
+            cur2 = conn2.cursor()
+            cur2.execute("""
+                SELECT announcement_id, title, department, category,
+                       support_amount, deadline_date, region, origin_url
+                FROM announcements
+                WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                  AND support_amount IS NOT NULL AND support_amount != ''
+                ORDER BY
+                    CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
+                    deadline_date ASC NULLS LAST
+                LIMIT 3
+            """)
+            fallback = [dict(r) for r in cur2.fetchall()]
+            conn2.close()
+            for i, fb in enumerate(fallback, 1):
+                fb["rank"] = i
+                fb["trending_keyword"] = "인기"
+                fb["trending_reason"] = "금액 상위"
+                if fb.get("deadline_date"):
+                    fb["deadline_date"] = str(fb["deadline_date"])
+            return {"status": "SUCCESS", "data": fallback, "date": str(__import__("datetime").date.today())}
+        except Exception:
+            pass
         return {"status": "SUCCESS", "data": [], "date": str(__import__("datetime").date.today())}
     finally:
-        conn.close()
+        try: conn.close()
+        except: pass
 
 
 # ── SmartDoc 연동 API ──

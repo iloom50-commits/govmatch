@@ -1341,11 +1341,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {trendingItems.map((t, i) => (
-                    <a
+                    <div
                       key={t.announcement_id}
-                      href={t.final_url || t.origin_url || "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      onClick={() => {
+                        // 공고 상담 모달 오픈 (나도 받을 수 있나?)
+                        window.dispatchEvent(new CustomEvent("open-ai-consult", {
+                          detail: { announcement: t }
+                        }));
+                      }}
                       className="relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group cursor-pointer"
                     >
                       <div className="flex items-center gap-1.5 mb-2">
@@ -1361,7 +1364,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       {t.support_amount && (
                         <p className="text-[11px] text-orange-600 font-semibold mt-1.5">{t.support_amount.slice(0, 30)}</p>
                       )}
-                    </a>
+                      <p className="text-[10px] text-orange-500 mt-2 font-semibold">나도 받을 수 있나? →</p>
+                    </div>
                   ))}
                 </div>
               </div>

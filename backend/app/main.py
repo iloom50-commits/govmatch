@@ -3139,10 +3139,20 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         except Exception as e:
             print(f"[PRO consultant] auto-match error: {e}")
 
+    # choices가 비어있으면 자동 채움
+    choices = result.get("choices", [])
+    if not choices or len(choices) < 2:
+        if result.get("done") and matched_announcements:
+            choices = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
+        elif result.get("done"):
+            choices = ["다른 조건으로 재매칭", "특정 공고 검색", "상담 종료"]
+        else:
+            choices = ["추가 정보 제공", "이 조건으로 매칭 진행", "자금/융자 상담"]
+
     return {
         "status": "SUCCESS",
         "reply": result.get("reply", ""),
-        "choices": result.get("choices", []),
+        "choices": choices,
         "done": result.get("done", False),
         "profile": result.get("profile"),
         "collected": result.get("collected", {}),

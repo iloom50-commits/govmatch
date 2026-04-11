@@ -295,6 +295,11 @@ def get_matches_for_user(user_profile):
                     if company_age > 0:
                         continue
 
+        # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개 등 제외
+        _info_page_keywords = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황"]
+        if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집", "공고", "신청", "접수"]):
+            continue
+
         # 특정 대상 제한 필터 — 제목에 여성/장애인/보훈 등 키워드가 있으면 해당 대상만 통과
         title_lower = title.lower()
         skip_restricted = False

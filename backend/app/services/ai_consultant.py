@@ -1895,7 +1895,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     - revenue_bracket: "1억 미만" (가장 보수적)
     - employee_count_bracket: "5인 미만" (가장 보수적)
     - establishment_date: "2024-01-01" (최근 창업으로 가정)
-    - address_city: "서울" (가장 보편)
+    - address_city: 컨설턴트가 언급한 지역 (언급 없으면 빈 문자열 ""로 설정 — 전국 취급)
     - interests: 컨설턴트 언급 키워드 또는 "창업지원,기술개발,정책자금"
 - **이 규칙은 위의 모든 추가 질문 규칙보다 우선합니다.** 컨설턴트가 매칭을 요청하면 더 묻지 마세요.
 
@@ -2004,8 +2004,8 @@ done=true일 때 (모든 정보 수집 완료):
                 "industry_code": "",
                 "revenue_bracket": "1억 미만",
                 "employee_count_bracket": "5인 미만",
-                "address_city": "서울",
-                "interests": "창업지원,기술개발,정책자금",
+                "address_city": "",
+                "interests": "창업지원",
             }
             profile = {k: (collected.get(k) or DEFAULTS[k]) for k in REQUIRED}
             done = True

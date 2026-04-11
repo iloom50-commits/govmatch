@@ -141,6 +141,7 @@ interface Result {
   revenue_limit?: number;
   employee_limit?: number;
   origin_url?: string;
+  final_url?: string;
   url?: string;
   category?: string;
   department?: string;
@@ -306,10 +307,10 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
           </span>
         </div>
 
-        {/* Title + Amount — 클릭 시 상세 페이지(origin_url) 이동 */}
+        {/* Title + Amount — 클릭 시 최종 원본 페이지로 이동 (final_url 우선) */}
         {(() => {
-          // URL 정규화: 'https://...https://...' 같은 도메인 중복 제거
-          let rawUrl = res.origin_url || res.url || "";
+          // final_url → origin_url → url 순서로 우선 사용
+          let rawUrl = res.final_url || res.origin_url || res.url || "";
           if (rawUrl) {
             const matches = [...rawUrl.matchAll(/https?:\/\//g)];
             if (matches.length >= 2) {
@@ -320,7 +321,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
         })() ? (
           <a
             href={(() => {
-              let u = res.origin_url || res.url || "";
+              let u = res.final_url || res.origin_url || res.url || "";
               const matches = [...u.matchAll(/https?:\/\//g)];
               if (matches.length >= 2) u = u.substring(matches[matches.length - 1].index || 0);
               return u;

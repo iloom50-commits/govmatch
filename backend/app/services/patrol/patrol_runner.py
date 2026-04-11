@@ -74,7 +74,19 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
-    # ── 3. 분석 실패 재시도 (실제 분석 실행) ──
+    # ── 3. 최종 URL 수집 (경유지 → 원본 URL) ──
+    try:
+        logger.info("[Patrol] Resolving final URLs for priority announcements...")
+        from .final_url_resolver import resolve_priority_announcements
+        result = resolve_priority_announcements(conn, limit=30)
+        summary["final_url"] = result
+        logger.info(f"[Patrol] FinalURL: resolved={result['resolved']}/{result['total']}")
+    except Exception as e:
+        msg = f"final_url failed: {e}"
+        logger.error(f"[Patrol] {msg}")
+        summary["errors"].append(msg)
+
+    # ── 4. 분석 실패 재시도 (실제 분석 실행) ──
     try:
         logger.info("[Patrol] Recovering failed analyses...")
         result = recover_failed_analyses(conn, max_retries=30)

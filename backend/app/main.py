@@ -103,6 +103,12 @@ def init_database():
             )
         """)
 
+        # final_url 컬럼 추가 (중간 경유 없이 최종 원본 URL)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS final_url TEXT DEFAULT ''")
+        except Exception:
+            pass
+
         # interest_regions 컬럼 추가 (소재지와 관심지역 분리)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS interest_regions TEXT DEFAULT ''")

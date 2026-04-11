@@ -72,21 +72,26 @@ CATEGORY_NORMALIZE = {
     "기업지원": "경영", "경영/승계": "경영", "지원사업": "경영",
     "지역경제": "경영", "재기": "창업", "산업/기술": "기술",
     "패션": "경영", "수상": "경영",
+    # 정보 카테고리 — 제목 기반으로 재분류 (title에서 매칭)
+    "정보": "정보",
+    "복지": "복지", "주거": "주거", "교육": "교육",
+    "청년": "청년", "보건의료": "복지",
 }
 
 # 관심분야 → 카테고리 매핑 (관심분야가 있는 카테고리 공고를 부스트)
 INTEREST_CATEGORY_MAP = {
-    "기술개발":   ["기술"],
-    "창업지원":   ["창업"],
+    "기술개발":   ["기술", "R&D"],
+    "창업지원":   ["창업", "경영"],
     "수출마케팅": ["수출"],
-    "고용지원":   ["인력"],
-    "정책자금":   ["금융"],
-    "디지털전환": ["기술", "경영"],
+    "고용지원":   ["인력", "고용"],
+    "청년고용":   ["인력", "고용"],
+    "정책자금":   ["금융", "경영"],
+    "디지털전환": ["기술", "경영", "정보"],
     "판로개척":   ["내수", "수출", "경영"],
     "교육훈련":   ["인력", "경영"],
     "에너지환경": ["기술", "경영"],
-    "소상공인":   ["경영", "내수"],
-    "R&D":        ["기술"],
+    "소상공인":   ["경영", "내수", "소상공인"],
+    "R&D":        ["기술", "R&D"],
     "시설개선":   ["경영"],
 }
 
@@ -312,9 +317,21 @@ def get_matches_for_user(user_profile):
         el_business_types = " ".join(ad_biz_types)
         search_text = f"{title} {clean_summary} {el_keywords} {el_industries} {el_business_types}".lower()
 
-        # 카테고리 정규화
+        # 카테고리 정규화 — "정보" 카테고리는 제목 기반 재분류
         raw_category = ad.get("category") or ""
         ad_category = CATEGORY_NORMALIZE.get(raw_category, raw_category)
+        if ad_category in ("정보", ""):
+            title_lower = title.lower()
+            if any(kw in title_lower for kw in ["r&d", "연구개발", "기술개발", "기술혁신"]):
+                ad_category = "기술"
+            elif any(kw in title_lower for kw in ["창업", "예비창업", "스타트업"]):
+                ad_category = "창업"
+            elif any(kw in title_lower for kw in ["고용", "채용", "일자리", "인력"]):
+                ad_category = "인력"
+            elif any(kw in title_lower for kw in ["융자", "정책자금", "보증", "대출"]):
+                ad_category = "금융"
+            elif any(kw in title_lower for kw in ["수출", "바우처", "해외"]):
+                ad_category = "수출"
 
         score = 0.0
         reasons = []
@@ -370,11 +387,11 @@ def get_matches_for_user(user_profile):
             if "벤처기업" in ad_biz_types:
                 score += 3.0
 
-        # G. 카테고리-관심분야 매칭 보너스 (최대 10점)
+        # G. 카테고리-관심분야 매칭 보너스 (최대 20점)
         if ad_category:
             for tag in user_interest_tags:
                 if ad_category in INTEREST_CATEGORY_MAP.get(tag, []):
-                    score += 10.0
+                    score += 20.0
                     if not any(ad_category in r for r in reasons):
                         reasons.append(f"{ad_category} 분야 지원사업")
                     break

@@ -221,7 +221,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           const data = await res.json();
           setExistingClients(data.clients || []);
         }
-      } catch { /* */ }
+      } catch (e) { console.error("[PRO]", e); }
     })();
   }, [headers]);
 
@@ -692,8 +692,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 space-y-3">
                     {messages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className="max-w-[80%]">
-                          <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
+                        <div className="max-w-[80%] overflow-hidden">
+                          <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed break-words overflow-wrap-anywhere ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
@@ -972,7 +972,7 @@ function ClientsTabWrapper({ headers, toast, dark, t, onResumeConsult }: {
         const data = await res.json();
         setClients(data.clients || []);
       }
-    } catch { /* */ }
+    } catch (e) { console.error("[PRO]", e); }
     setLoading(false);
   }, [headers]);
 
@@ -1492,7 +1492,7 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
         const data = await res.json();
         setAnalysisData(data);
       }
-    } catch { /* */ }
+    } catch (e) { console.error("[PRO]", e); }
   };
 
   const inputCls = `flex-1 px-4 py-2.5 rounded-lg text-[13px] outline-none border transition-all ${
@@ -1548,6 +1548,11 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
       </div>
 
       {loading && <p className={`text-[12px] ${t.muted}`}>검색 중...</p>}
+
+      {/* 검색 결과 없음 */}
+      {!loading && query.trim().length >= 2 && results.length === 0 && !selectedAnn && (
+        <p className={`text-[12px] py-4 text-center ${t.muted}`}>검색 결과가 없습니다. 다른 키워드로 검색해보세요.</p>
+      )}
 
       {/* 결과 목록 */}
       {results.length > 0 && !selectedAnn && (

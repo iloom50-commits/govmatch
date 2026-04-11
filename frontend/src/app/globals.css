@@ -160,6 +160,11 @@ h1, h2, h3, h4 {
   animation: glow-pulse 1.5s ease-in-out 3;
 }
 
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Brand "지원금AI" gold effect — inspired by app icon */
 .brand-name {
   display: inline-block;

@@ -152,12 +152,13 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             </button>
           </div>
 
-          {/* 3열 카드 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+          {/* 3열 카드 — 수평/수직 정렬 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 items-stretch">
 
             {/* FREE */}
             <div className={`rounded-xl border-2 p-4 flex flex-col ${currentPlan === "free" ? "border-slate-300 bg-slate-50" : "border-slate-200"}`}>
-              <div className="mb-4">
+              {/* 헤더 — 고정 높이 */}
+              <div className="h-[90px] mb-4">
                 <h3 className="text-[15px] font-bold text-slate-700">Free</h3>
                 <div className="mt-2">
                   <span className="text-2xl font-black text-slate-900">₩0</span>
@@ -166,13 +167,14 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <p className="text-[11px] text-slate-400 mt-1">기본 공고 열람</p>
               </div>
 
-              {currentPlan === "free" ? (
-                <div className="py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center mb-4">
-                  현재 플랜
-                </div>
-              ) : (
-                <div className="py-2.5 mb-4" />
-              )}
+              {/* 버튼 — 고정 높이 */}
+              <div className="h-[44px] mb-4 flex items-center">
+                {currentPlan === "free" ? (
+                  <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">현재 플랜</div>
+                ) : (
+                  <div className="w-full" />
+                )}
+              </div>
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
@@ -180,7 +182,6 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available={false}>맞춤 공고 알림</Feature>
                 <Feature available={false}>마감 알림 (카톡/이메일)</Feature>
                 <Feature available={false}>공고 저장 · 일정관리</Feature>
-
                 <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
                   <ul className="space-y-1.5">
@@ -189,43 +190,39 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                   </ul>
                 </li>
               </ul>
+
+              <div className="h-[24px]" />
             </div>
 
             {/* LITE */}
             <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isLite ? "border-indigo-400 bg-indigo-50/30" : "border-indigo-300 bg-white"}`}>
-              {/* 추천 배지 */}
               {!isPro && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full">
-                  추천
-                </div>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full">추천</div>
               )}
 
-              <div className="mb-4">
+              <div className="h-[90px] mb-4">
                 <h3 className="text-[15px] font-bold text-indigo-700">Lite</h3>
                 <div className="mt-2">
                   <span className="text-2xl font-black text-slate-900">₩{litePrice}</span>
                   <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {tab === "individual" ? "개인 맞춤 지원금" : "기업 맞춤 지원금"}
-                </p>
+                <p className="text-[11px] text-slate-400 mt-1">{tab === "individual" ? "개인 맞춤 지원금" : "기업 맞춤 지원금"}</p>
               </div>
 
-              {isLite ? (
-                <div className="py-2.5 bg-indigo-100 text-indigo-700 rounded-lg text-[12px] font-bold text-center mb-4">
-                  현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
-                </div>
-              ) : isPro ? (
-                <div className="py-2.5 mb-4" />
-              ) : (
-                <button
-                  onClick={() => handleSubscribe("lite")}
-                  disabled={loading}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50 mb-4"
-                >
-                  {loading ? "처리 중..." : "Lite 시작하기"}
-                </button>
-              )}
+              <div className="h-[44px] mb-4 flex items-center">
+                {isLite ? (
+                  <div className="w-full py-2.5 bg-indigo-100 text-indigo-700 rounded-lg text-[12px] font-bold text-center">
+                    현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
+                  </div>
+                ) : isPro ? (
+                  <div className="w-full" />
+                ) : (
+                  <button onClick={() => handleSubscribe("lite")} disabled={loading}
+                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50">
+                    {loading ? "처리 중..." : "Lite 시작하기"}
+                  </button>
+                )}
+              </div>
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
@@ -233,7 +230,6 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-
                 <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
                   <ul className="space-y-1.5">
@@ -243,40 +239,38 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 </li>
               </ul>
 
-              {!isLite && !isPro && (
+              {!isLite && !isPro ? (
                 <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
-              )}
+              ) : <div className="h-[24px]" />}
             </div>
 
             {/* PRO */}
             <div className={`rounded-xl border-2 p-4 flex flex-col ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-300 bg-white"}`}>
-              <div className="mb-4">
+              <div className="h-[90px] mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
                   <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[9px] font-bold rounded">오픈 이벤트</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[14px] text-slate-400 line-through mr-1">₩49,000</span>
+                  <span className="text-[13px] text-slate-400 line-through mr-1">₩49,000</span>
                   <span className="text-2xl font-black text-violet-700">₩29,000</span>
                   <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
                 <p className="text-[11px] text-red-500 mt-1 font-semibold">3개월 한정 이벤트 가격</p>
-                <p className="text-[11px] text-slate-400">전문가 · 컨설턴트 · 세무사 · 회계사</p>
               </div>
 
-              {isPro ? (
-                <div className="py-2.5 bg-violet-100 text-violet-700 rounded-lg text-[12px] font-bold text-center mb-4">
-                  현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
-                </div>
-              ) : (
-                <button
-                  onClick={() => handleSubscribe("pro")}
-                  disabled={loading}
-                  className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50 mb-4"
-                >
-                  {loading ? "처리 중..." : "Pro 시작하기"}
-                </button>
-              )}
+              <div className="h-[44px] mb-4 flex items-center">
+                {isPro ? (
+                  <div className="w-full py-2.5 bg-violet-100 text-violet-700 rounded-lg text-[12px] font-bold text-center">
+                    현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
+                  </div>
+                ) : (
+                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
+                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
+                    {loading ? "처리 중..." : "Pro 시작하기"}
+                  </button>
+                )}
+              </div>
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
@@ -284,8 +278,6 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
-
-                {/* 전문 컨설팅 도구 묶음 */}
                 <li className="!mt-3 p-2.5 rounded-lg bg-violet-50 border border-violet-200">
                   <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
                   <ul className="space-y-1.5">
@@ -295,9 +287,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 </li>
               </ul>
 
-              {!isPro && (
+              {!isPro ? (
                 <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
-              )}
+              ) : <div className="h-[24px]" />}
             </div>
           </div>
 

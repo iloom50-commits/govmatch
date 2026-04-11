@@ -6986,7 +6986,7 @@ def api_trending():
             SELECT t.rank, t.trending_keyword, t.trending_reason,
                    a.announcement_id, a.title, a.department, a.category,
                    a.support_amount, a.deadline_date, a.region,
-                   a.origin_url, a.final_url
+                   a.origin_url
             FROM trending_announcements t
             JOIN announcements a ON t.announcement_id = a.announcement_id
             WHERE t.trending_date = CURRENT_DATE

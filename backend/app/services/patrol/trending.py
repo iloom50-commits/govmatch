@@ -60,18 +60,24 @@ def select_trending_announcements(db_conn, limit: int = 3) -> List[Dict[str, Any
     seen_ids = set()
 
     for kw in keywords:
-        cur.execute("""
-            SELECT announcement_id, title, department, category, support_amount,
-                   deadline_date, region, origin_url, final_url
-            FROM announcements
-            WHERE (title ILIKE %s OR category ILIKE %s)
-              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
-            ORDER BY
-                CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
-                deadline_date ASC NULLS LAST,
-                created_at DESC
-            LIMIT 3
-        """, (f"%{kw}%", f"%{kw}%"))
+        try:
+            cur.execute("""
+                SELECT announcement_id, title, department, category, support_amount,
+                       deadline_date, region, origin_url
+                FROM announcements
+                WHERE (title ILIKE %s OR category ILIKE %s)
+                  AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                ORDER BY
+                    CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
+                    deadline_date ASC NULLS LAST,
+                    created_at DESC
+                LIMIT 3
+            """, (f"%{kw}%", f"%{kw}%"))
+        except Exception as e:
+            print(f"[Trending] Query error for '{kw}': {e}")
+            try: db_conn.rollback()
+            except: pass
+            continue
 
         for row in cur.fetchall():
             aid = row["announcement_id"]

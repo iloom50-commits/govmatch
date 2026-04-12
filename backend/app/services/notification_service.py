@@ -192,16 +192,19 @@ class NotificationService:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
         try:
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+            # timeout 필수 — 없으면 worker가 무한 hang
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15) as server:
                 server.starttls()
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             print(f"  Email sent to {to_email}")
-            self._log_notification(to_email, company_name, "email", "sent")
+            try: self._log_notification(to_email, company_name, "email", "sent")
+            except Exception: pass
             return True
         except Exception as e:
             print(f"  Email send error ({to_email}): {e}")
-            self._log_notification(to_email, company_name, "email", f"error: {e}")
+            try: self._log_notification(to_email, company_name, "email", f"error: {str(e)[:100]}")
+            except Exception: pass
             return False
 
     def send_push(self, business_number: str, company_name: str, matches: List[Dict]) -> int:

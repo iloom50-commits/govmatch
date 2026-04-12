@@ -6258,6 +6258,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 [형식 규칙] — 매우 중요! 반드시 준수
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 - **반드시 HTML 태그로 작성** (마크다운 아님)
+- **코드펜스(```html ... ```) 절대 사용 금지** — HTML을 그대로 출력
 - 문장 끝맺음은 명사형 (예: "지원 가능", "확인 필요", "신청 권장")
 - 줄바꿈 없이 문장 나열하지 말 것. 각 항목은 분리
 - **표(table)를 최대한 활용:**
@@ -6283,6 +6284,14 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 
             response = model.generate_content(prompt)
             ai_summary = response.text.strip() if response and response.text else "AI 분석을 생성하지 못했습니다."
+            # 코드펜스 제거 (Gemini가 ```html ... ``` 으로 감싸는 경우)
+            if ai_summary.startswith("```"):
+                lines = ai_summary.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                ai_summary = "\n".join(lines).strip()
             print(f"[report] AI summary generated: {len(ai_summary)} chars")
     except Exception as e:
         ai_summary = f"AI 요약 생성 실패: {str(e)[:200]}"

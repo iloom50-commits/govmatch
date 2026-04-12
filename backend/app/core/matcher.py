@@ -350,10 +350,10 @@ def get_matches_for_user(user_profile):
                             (ad_region if ad_region and ad_region not in ("전국", "", "All") else None)
         if ad_city_for_match:
             if ad_city_for_match == home_city:
-                score += 20.0
+                score += 35.0
                 reasons.append(f"{home_city} 소재지 지원사업")
             elif ad_city_for_match in interest_regions:
-                score += 8.0
+                score += 15.0
                 reasons.append(f"{ad_city_for_match} 관심지역 지원사업")
 
         # B. 소상공인 매칭 (최대 20점)
@@ -505,6 +505,8 @@ def get_matches_for_user(user_profile):
         except Exception:
             pass
 
+        # 점수 100 캡 — 사용자 신뢰도 위해 0~100 정규화
+        score = min(score, 100.0)
         ad["match_score"] = round(score, 1)
         # recommendation_reason: "기본 자격" 제외하고 실제 매칭 이유만 표시
         meaningful_reasons = [r for r in reasons if "기본 지원 자격" not in r]
@@ -521,6 +523,9 @@ def get_matches_for_user(user_profile):
             seen_titles.add(norm)
             unique_results.append(r)
     results = unique_results
+
+    # 노이즈 컷오프 — 60점 미만은 제외 (PRO/일반 공통)
+    results = [r for r in results if r.get("match_score", 0) >= 60]
 
     # 점수 순 정렬
     results.sort(key=lambda x: x["match_score"], reverse=True)
@@ -776,6 +781,8 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
             except (ValueError, TypeError):
                 pass
 
+        # 점수 100 캡
+        score = min(score, 100.0)
         ad["match_score"] = round(score, 1)
         meaningful_reasons = reasons[:3]
         ad["recommendation_reason"] = " / ".join(meaningful_reasons) if meaningful_reasons else "지원 자격 충족"
@@ -783,6 +790,9 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         # 카테고리 (다양성 보장용)
         ad["_category"] = ad.get("category") or ""
         results.append(ad)
+
+    # 노이즈 컷오프 — 60점 미만 제외
+    results = [r for r in results if r.get("match_score", 0) >= 60]
 
     # 점수 순 정렬
     results.sort(key=lambda x: x["match_score"], reverse=True)

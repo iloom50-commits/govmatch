@@ -345,82 +345,106 @@ class NotificationService:
             return False
 
     def _log_notification(self, recipient: str, company_name: str, channel: str, status: str):
-        """알림 발송 이력 저장"""
+        """알림 발송 이력 저장 (DB의 기존 컬럼 + 추가된 컬럼 모두 사용)"""
         try:
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+            conn.autocommit = True
             cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notification_logs (
-                    id SERIAL PRIMARY KEY,
-                    recipient TEXT,
-                    company_name TEXT,
-                    channel TEXT,
-                    status TEXT,
-                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+            # 누락 컬럼 자동 보강 (이미 존재하면 무시)
+            for alt in [
+                "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS recipient TEXT",
+                "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS company_name TEXT",
+                "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS channel TEXT",
+            ]:
+                try: cursor.execute(alt)
+                except Exception: pass
             cursor.execute(
-                "INSERT INTO notification_logs (recipient, company_name, channel, status) VALUES (%s, %s, %s, %s)",
-                (recipient, company_name, channel, status)
+                """INSERT INTO notification_logs
+                   (business_number, notification_type, recipient, company_name, channel, status)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (recipient[:20] if recipient else "", channel, recipient, company_name, channel, status[:50])
             )
-            conn.commit()
             conn.close()
         except Exception as e:
             print(f"  Log error: {e}")
 
     async def generate_daily_digest(self):
-        """데일리 다이제스트 생성 + 이메일 발송"""
-        users = await self.get_target_users()
+        """데일리 다이제스트 생성 + 이메일 발송 — 모든 단계 격리"""
+        try:
+            users = await self.get_target_users()
+        except Exception as e:
+            print(f"  [digest] get_target_users error: {e}")
+            return []
 
         digest_results = []
         for user in users:
+            user_email_label = user.get('email','?') if isinstance(user, dict) else '?'
             try:
-                programs = await self.get_filtered_programs(user)
-            except Exception as e:
-                print(f"  [digest] user {user.get('email','?')} skipped: {e}")
-                continue
-
-            matches = []
-            for program in programs:
-                match_result = await self.match_program_with_user(program, user)
-
-                threshold = 80
                 try:
-                    if user['matching_threshold']:
-                        threshold = int(user['matching_threshold'])
-                except (KeyError, TypeError, ValueError):
-                    pass
+                    programs = await self.get_filtered_programs(user)
+                except Exception as e:
+                    print(f"  [digest] {user_email_label}: filter error: {e}")
+                    continue
 
-                if match_result['score'] >= threshold:
-                    matches.append({
-                        "program_title": program['title'],
-                        "score": match_result['score'],
-                        "reasoning": match_result['reasoning'],
-                        "url": program['origin_url'] if program['origin_url'] else '#'
-                    })
+                matches = []
+                for program in programs:
+                    try:
+                        match_result = await self.match_program_with_user(program, user)
+                    except Exception as e:
+                        print(f"  [digest] AI match error: {e}")
+                        match_result = {"score": 60, "reasoning": "AI 매칭 실패 — 기본 추천"}
 
-            if matches:
-                user_dict = dict(user)
-                company_name = user_dict.get('company_name', '기업')
-                email = user_dict.get('notify_email') or user_dict.get('email')
-                bn = user_dict.get('business_number', '')
+                    # 임계값 완화: 80 → 60 (매칭 확대 + AI 실패 시에도 통과)
+                    threshold = 60
+                    try:
+                        if user.get('matching_threshold'):
+                            threshold = int(user['matching_threshold'])
+                    except (KeyError, TypeError, ValueError):
+                        pass
 
-                entry = {
-                    "user_email": email,
-                    "company_name": company_name,
-                    "matches": matches,
-                    "email_sent": False,
-                    "push_sent": 0,
-                    "kakao_sent": False,
-                }
+                    if match_result.get('score', 0) >= threshold:
+                        matches.append({
+                            "program_title": program['title'],
+                            "score": match_result['score'],
+                            "reasoning": match_result.get('reasoning', ''),
+                            "url": program['origin_url'] if program['origin_url'] else '#'
+                        })
 
-                if email:
-                    entry["email_sent"] = self.send_email(email, company_name, matches)
+                if matches:
+                    user_dict = dict(user)
+                    company_name = user_dict.get('company_name') or '회원'
+                    email = user_dict.get('notify_email') or user_dict.get('email')
+                    bn = user_dict.get('business_number', '')
 
-                entry["push_sent"] = self.send_push(bn, company_name, matches)
-                entry["kakao_sent"] = await self.send_kakao_message(bn, company_name, matches)
+                    entry = {
+                        "user_email": email,
+                        "company_name": company_name,
+                        "matches": matches,
+                        "email_sent": False,
+                        "push_sent": 0,
+                        "kakao_sent": False,
+                    }
 
-                digest_results.append(entry)
+                    if email:
+                        try:
+                            entry["email_sent"] = self.send_email(email, company_name, matches)
+                        except Exception as e:
+                            print(f"  [digest] email send error: {e}")
+
+                    try:
+                        entry["push_sent"] = self.send_push(bn, company_name, matches)
+                    except Exception as e:
+                        print(f"  [digest] push send error: {e}")
+
+                    try:
+                        entry["kakao_sent"] = await self.send_kakao_message(bn, company_name, matches)
+                    except Exception as e:
+                        print(f"  [digest] kakao send error: {e}")
+
+                    digest_results.append(entry)
+            except Exception as outer_e:
+                print(f"  [digest] {user_email_label} unexpected error: {outer_e}")
+                continue
 
         return digest_results
 

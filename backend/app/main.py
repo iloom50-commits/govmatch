@@ -3008,6 +3008,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
 class AiConsultantChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
     announcement_id: Optional[int] = None  # 특정 공고 상담 모드 (PRO 전용)
+    explicit_match: Optional[bool] = False  # 명시적 매칭 요청 (버튼 클릭 시 true)
+    profile_override: Optional[dict] = None  # 사용자가 확인/수정한 프로필 (매칭 시 사용)
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3108,25 +3110,26 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
     if ann_id:
         db = get_db_connection()
     try:
-        # AI가 자연스럽게 정보 수집 → done=true + profile 반환
-        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db)
+        # AI가 자연스럽게 정보 수집
+        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db, explicit_match=req.explicit_match)
     finally:
         if db:
             try: db.close()
             except: pass
 
-    # ── 매칭 트리거: 일반 모드에서 done=True + profile 있으면 자동 매칭 실행 ──
+    # ── 매칭 트리거: explicit_match=true(매칭 버튼 클릭)일 때만 ──
     matched_announcements = []
-    if not ann_id and result.get("done"):
-        # profile이 null이면 collected에서 복원 시도
-        profile = result.get("profile") or result.get("collected")
-        if not profile:
-            # reply 텍스트에서 매칭 결과가 있으면 그대로 반환 (AI가 자체 매칭)
-            pass
-    if not ann_id and result.get("done") and (result.get("profile") or result.get("collected")):
+    # explicit_match가 true일 때만 매칭 실행
+    if not ann_id and req.explicit_match:
+        # profile_override(사용자 확인/수정)가 있으면 우선, 없으면 collected 사용
+        profile = req.profile_override or result.get("profile") or result.get("collected")
+        if profile:
+            result["done"] = True
+            result["profile"] = profile
+    if not ann_id and req.explicit_match and (req.profile_override or result.get("profile") or result.get("collected")):
         try:
             from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
-            profile = result.get("profile") or result.get("collected")
+            profile = req.profile_override or result.get("profile") or result.get("collected")
             # 개인 모드 판별: industry_code가 없거나 company_name이 "개인"이면 개인
             has_industry = bool(profile.get("industry_code", "").strip())
             is_personal_name = profile.get("company_name", "") in ("개인", "")

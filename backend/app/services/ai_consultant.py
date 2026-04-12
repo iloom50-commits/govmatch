@@ -1723,7 +1723,7 @@ def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
 # PRO 전문가 전용 상담 채팅
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None) -> Dict[str, Any]:
+def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None, explicit_match: bool = False) -> Dict[str, Any]:
     """
     PRO 전문가 전용 상담 채팅.
     컨설턴트가 고객사 정보를 전달 → AI가 정보 수집 → 매칭 프로필 생성.
@@ -1996,8 +1996,9 @@ done=true일 때 (모든 정보 수집 완료):
             if msg.get("role") == "user":
                 last_user_text = msg.get("text", "")
                 break
-        match_keywords = ["매칭", "추천", "찾아줘", "보여줘", "맞춤", "지원사업 알려", "리스트", "부탁"]
-        if not done and last_user_text and any(kw in last_user_text for kw in match_keywords):
+        # 자동 매칭 트리거 폐기 — explicit_match 파라미터로만 매칭
+        # 단, 명시적으로 매칭 버튼을 눌렀을 때(explicit_match=True)는 즉시 매칭 모드
+        if explicit_match:
             # 전체 대화에서 관심분야 자동 추출
             all_text = " ".join(m.get("text", "") for m in messages if m.get("role") == "user")
             _detected_interests = []

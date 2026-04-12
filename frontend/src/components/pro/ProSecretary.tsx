@@ -132,6 +132,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   // 대화
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [collectedProfile, setCollectedProfile] = useState<any>({});  // 백그라운드 수집 정보
+  const [showMatchModal, setShowMatchModal] = useState(false);  // 매칭 확인 모달
+  const [matchProfile, setMatchProfile] = useState<any>({});  // 모달에서 편집 중인 프로필
   const [loading, setLoading] = useState(false);
   const [systemContext, setSystemContext] = useState("");
   const [activeAnnouncementId, setActiveAnnouncementId] = useState<number | null>(null);
@@ -226,7 +229,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [headers]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[]) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { explicit_match?: boolean; profile_override?: any }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -240,6 +243,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         body: JSON.stringify({
           messages: messagesPayload,
           announcement_id: activeAnnouncementId,
+          explicit_match: options?.explicit_match || false,
+          profile_override: options?.profile_override || null,
         }),
       });
 
@@ -254,6 +259,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       const fullText = data.reply || "";
       const choices = data.choices || [];
       const done = data.done || false;
+
+      // 백그라운드 수집 정보 업데이트 (모든 응답에서)
+      if (data.collected || data.profile) {
+        const newCollected = { ...collectedProfile, ...(data.collected || {}), ...(data.profile || {}) };
+        setCollectedProfile(newCollected);
+      }
 
       // 타이핑 애니메이션 시작
       setLoading(false);
@@ -769,6 +780,18 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         className={`flex-1 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />
                       <button
+                        onClick={() => {
+                          // 매칭 버튼 — 수집된 정보 확인 모달 열기
+                          setMatchProfile({ ...collectedProfile });
+                          setShowMatchModal(true);
+                        }}
+                        disabled={loading || typing}
+                        className="px-3 py-2 border border-violet-500 text-violet-600 rounded-xl text-[12px] font-bold hover:bg-violet-50 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0"
+                        title="수집된 정보로 공고 매칭"
+                      >
+                        📋 매칭
+                      </button>
+                      <button
                         onClick={() => handleSend(input)}
                         disabled={loading || typing || !input.trim()}
                         className="px-4 py-2 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0 flex items-center gap-1.5"
@@ -895,6 +918,62 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           {/* 연동 서비스 — 향후 제공 */}
         </aside>
       </div>
+
+      {/* 매칭 확인 모달 */}
+      {showMatchModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowMatchModal(false)}>
+          <div className={`relative w-full max-w-md rounded-2xl p-6 shadow-2xl ${dark ? "bg-[#0d0e1f] border border-white/10" : "bg-white"}`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>📋 매칭 정보 확인</h3>
+            <p className={`text-[12px] mb-4 ${t.muted}`}>아래 정보로 공고 매칭을 진행합니다. 수정 가능합니다.</p>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {[
+                { key: "company_name", label: "기업명", placeholder: "(미입력)" },
+                { key: "industry_code", label: "업종코드", placeholder: "(미입력 — 전체 검색)" },
+                { key: "revenue_bracket", label: "매출 규모", placeholder: "(미입력)" },
+                { key: "employee_count_bracket", label: "직원수", placeholder: "(미입력)" },
+                { key: "address_city", label: "소재지", placeholder: "(미입력 — 전국)" },
+                { key: "interests", label: "관심분야", placeholder: "(미입력)" },
+              ].map(field => (
+                <div key={field.key}>
+                  <label className={`block text-[11px] font-bold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>{field.label}</label>
+                  <input
+                    type="text"
+                    value={matchProfile[field.key] || ""}
+                    onChange={(e) => setMatchProfile((prev: any) => ({ ...prev, [field.key]: e.target.value }))}
+                    placeholder={field.placeholder}
+                    className={`w-full px-3 py-2 rounded-lg text-[13px] outline-none border transition-all focus:ring-2 focus:ring-violet-500/20 ${
+                      dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowMatchModal(false)}
+                className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold transition-all ${dark ? "text-slate-400 hover:bg-white/[0.05]" : "text-slate-500 hover:bg-slate-100"}`}
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  // 매칭 실행
+                  setShowMatchModal(false);
+                  // 사용자 메시지 추가 + explicit_match로 매칭 실행
+                  const newHistory = [...messages, { role: "user" as const, text: "📋 수집된 정보로 공고 매칭 실행" }];
+                  setMessages(newHistory);
+                  sendToAI(newHistory, { explicit_match: true, profile_override: matchProfile });
+                }}
+                className="flex-[2] py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95"
+              >
+                ✅ 이대로 매칭 실행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

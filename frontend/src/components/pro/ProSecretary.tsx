@@ -118,16 +118,47 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
-  const [profileForm, setProfileForm] = useState({
-    company_name: "",
-    establishment_year: "",   // 연도만 (선택)
-    establishment_date: "",   // 정확한 날짜 (선택)
-    industry: "",
-    revenue_bracket: "",
-    employee_bracket: "",
-    address_city: "",
-    interests: [] as string[],
+  const PROFILE_FORM_STORAGE_KEY = "pro_secretary_profile_form_v1";
+  const [profileForm, setProfileForm] = useState(() => {
+    // localStorage에서 복원 (브라우저 새로고침/뒤로가기 방어)
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(PROFILE_FORM_STORAGE_KEY);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      company_name: "",
+      establishment_year: "",
+      establishment_date: "",
+      industry: "",
+      revenue_bracket: "",
+      employee_bracket: "",
+      address_city: "",
+      interests: [] as string[],
+    };
   });
+
+  // profileForm 변경 시 localStorage 자동 저장
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(PROFILE_FORM_STORAGE_KEY, JSON.stringify(profileForm));
+    } catch {}
+  }, [profileForm]);
+
+  // 입력 중인 값이 있으면 페이지 이탈 시 경고
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hasInput = !!(profileForm.company_name?.trim() || profileForm.industry?.trim() || (profileForm.interests && profileForm.interests.length > 0) || profileForm.address_city?.trim());
+    if (!hasInput || !showProfileForm) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [profileForm, showProfileForm]);
 
   // 대화
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -395,10 +426,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   // ─── 입력 폼 제출 → 매칭 시작 ───
   const handleProfileSubmit = () => {
     const f = profileForm;
-    if (!f.company_name.trim()) { toast("기업명/이름은 필수입니다", "error"); return; }
+    // 모든 필드 선택. 정보가 없어도 즉시 상담 시작 가능 — AI가 대화로 수집
 
     setShowProfileForm(false);
     setFlowState("info_collect");
+    // 상담 시작 시 임시 저장 정리
+    try { if (typeof window !== "undefined") localStorage.removeItem(PROFILE_FORM_STORAGE_KEY); } catch {}
 
     const isIndiv = clientCategory === "individual";
     const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
@@ -409,8 +442,24 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const dateValue = f.establishment_date || (f.establishment_year ? `${f.establishment_year}-01-01` : "");
     const dateDisplay = f.establishment_date || (f.establishment_year ? `${f.establishment_year}년` : "");
 
+    // 정보가 전혀 없으면 빈 상담으로 시작
+    const hasAnyInfo = !!(f.company_name?.trim() || dateValue || f.industry || f.revenue_bracket || f.employee_bracket || f.address_city || (f.interests && f.interests.length > 0));
+
+    if (!hasAnyInfo) {
+      setSystemContext(`[전문가 상담 모드] 고객유형: ${catLabel} (정보 미입력 — 대화 중 수집)`);
+      setMessages([{
+        role: "assistant",
+        text: `안녕하세요! ${catLabel} 상담을 도와드릴 AI입니다.\n\n어떤 도움이 필요하신가요? 편하게 말씀해주세요. 필요한 정보는 대화 중에 자연스럽게 여쭤보겠습니다.`,
+        choices: isIndiv
+          ? ["나에게 맞는 정부지원 알려줘", "주거/생활 지원 알아보기", "교육/취업 지원 알아보기", "복지 혜택 찾아줘"]
+          : ["맞춤 지원사업 매칭", "정책자금/융자 알아보기", "R&D 지원사업 찾아줘", "자격요건 검토"],
+      }]);
+      return;
+    }
+
     // 수집된 정보를 시스템 컨텍스트에 설정
-    const infoParts = [`고객유형: ${catLabel}`, `기업명: ${f.company_name}`];
+    const infoParts = [`고객유형: ${catLabel}`];
+    if (f.company_name?.trim()) infoParts.push(`${isIndiv ? "이름" : "기업명"}: ${f.company_name}`);
     if (dateValue) infoParts.push(`${dateLabel}: ${dateValue}`);
     if (f.industry) infoParts.push(`업종: ${f.industry}`);
     if (f.revenue_bracket) infoParts.push(`매출: ${f.revenue_bracket}`);
@@ -421,7 +470,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setSystemContext(`[전문가 상담 모드] ${infoParts.join("\n")}`);
 
     // 입력 요약 메시지 표시
-    const summaryLines = [`**${f.company_name}** (${catLabel}) 고객 정보가 등록되었습니다.\n`];
+    const greetName = f.company_name?.trim() || catLabel;
+    const summaryLines = [`**${greetName}**${f.company_name?.trim() ? ` (${catLabel})` : ""} 고객 정보가 등록되었습니다.\n`];
     if (dateDisplay) summaryLines.push(`${isIndiv ? "출생" : "설립"}: ${dateDisplay}`);
     if (f.industry) summaryLines.push(`업종: ${f.industry}`);
     if (f.revenue_bracket) summaryLines.push(`매출: ${f.revenue_bracket}`);
@@ -1364,16 +1414,27 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
         <div className="flex items-center justify-between">
           <div>
             <h3 className={`text-lg font-bold ${dark ? "text-slate-100" : "text-slate-800"}`}>{catLabel} 고객 정보</h3>
-            <p className={`text-[12px] mt-0.5 ${t.muted}`}>기업명만 필수, 나머지는 아는 만큼 입력하세요</p>
+            <p className={`text-[12px] mt-0.5 ${t.muted}`}>모든 항목 선택입니다. 입력 없이 바로 시작하실 수 있어요.</p>
           </div>
           <button onClick={onBack} className={`text-[12px] px-3 py-1.5 rounded-lg ${dark ? "text-slate-400 hover:bg-white/5" : "text-slate-500 hover:bg-slate-100"}`}>
             뒤로
           </button>
         </div>
 
-        {/* 기업명/이름 (필수) */}
+        {/* 빠른 시작 — 정보 입력 없이 바로 AI와 대화 */}
+        <button
+          onClick={onSubmit}
+          className="w-full py-3 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-[14px] font-bold rounded-xl hover:from-violet-600 hover:to-purple-600 transition-all active:scale-[0.98] shadow-md flex items-center justify-center gap-2"
+        >
+          🚀 정보 입력 건너뛰고 바로 상담하기
+        </button>
+        <p className={`text-[11px] text-center -mt-3 ${t.muted}`}>
+          AI가 대화 중에 필요한 정보를 자연스럽게 물어봅니다
+        </p>
+
+        {/* 기업명/이름 (선택) */}
         <div>
-          <p className={sectionTitle}>{isIndiv ? "고객 이름" : "기업명 (상호명)"} <span className="text-red-400">*</span></p>
+          <p className={sectionTitle}>{isIndiv ? "고객 이름" : "기업명 (상호명)"} <span className={t.muted}>(선택)</span></p>
           <input type="text" value={profileForm.company_name} onChange={(e) => update("company_name", e.target.value)}
             placeholder={isIndiv ? "홍길동" : "주식회사 스마트팜코리아"} className={inputCls} />
         </div>
@@ -1511,8 +1572,8 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
 
         {/* 제출 */}
         <div className="flex gap-3 pt-2">
-          <button onClick={onSubmit} disabled={!profileForm.company_name.trim()}
-            className="flex-1 py-3 bg-violet-600 text-white rounded-xl text-[14px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98] disabled:opacity-30">
+          <button onClick={onSubmit}
+            className="flex-1 py-3 bg-violet-600 text-white rounded-xl text-[14px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98]">
             상담 시작
           </button>
         </div>

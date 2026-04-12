@@ -1140,7 +1140,7 @@ function IndustryAutocomplete({ value, onChange, dark, inputCls, sectionTitle, m
 
   return (
     <div className="relative">
-      <p className={sectionTitle}>업종 <span className={muted}>(선택 — 입력 시 추천)</span></p>
+      <p className={sectionTitle}>사업내용 <span className={muted}>(선택 — 입력 시 업종코드 추천)</span></p>
       <input
         type="text"
         value={query}

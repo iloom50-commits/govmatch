@@ -148,6 +148,24 @@ def init_database():
         except Exception:
             pass
 
+        # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pro_consult_sessions (
+                session_id VARCHAR(64) PRIMARY KEY,
+                business_number VARCHAR(20) NOT NULL,
+                client_category VARCHAR(20),
+                current_step INTEGER DEFAULT 1,
+                collected JSONB DEFAULT '{}'::jsonb,
+                messages JSONB DEFAULT '[]'::jsonb,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pro_consult_sessions_bn ON pro_consult_sessions (business_number, updated_at DESC)")
+        except Exception:
+            pass
+
         # SQLite에서 마이그레이션된 기존 테이블의 INTEGER→BOOLEAN 변환 시도
         for tbl, col in [("notification_settings", "is_active"), ("admin_urls", "is_active")]:
             try:
@@ -3010,6 +3028,8 @@ class AiConsultantChatRequest(BaseModel):
     announcement_id: Optional[int] = None  # 특정 공고 상담 모드 (PRO 전용)
     explicit_match: Optional[bool] = False  # 명시적 매칭 요청 (버튼 클릭 시 true)
     profile_override: Optional[dict] = None  # 사용자가 확인/수정한 프로필 (매칭 시 사용)
+    session_id: Optional[str] = None  # PRO 세션 ID (서버 측 상태 저장)
+    client_category: Optional[str] = None  # 첫 호출 시 고객 유형 힌트
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3087,13 +3107,11 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
-    """PRO 전문가 전용: 고객사 상담 채팅
-    - 일반 모드: chat_pro_consultant() (고객 정보 수집 → done=True 시 자동 매칭)
-    - 특정 공고 모드(announcement_id): chat_consult로 위임 (공고 데이터 주입)
-    """
+    """PRO 전문가 전용: 고객사 상담 채팅 (세션 기반 상태 관리)"""
     _require_pro(current_user)
 
     from app.services.ai_consultant import chat_pro_consultant
+    import uuid as _uuid
 
     # announcement_id가 명시되었거나, 메시지에서 자동 추출
     ann_id = req.announcement_id
@@ -3106,12 +3124,65 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 ann_id = int(match.group(1))
                 break
 
-    db = None
-    if ann_id:
-        db = get_db_connection()
+    # ── 세션 로드/생성 (특정 공고 모드 제외) ──
+    session_state = None
+    db = get_db_connection() if (ann_id or not ann_id) else None  # 항상 연결
     try:
-        # AI가 자연스럽게 정보 수집
-        result = chat_pro_consultant(req.messages, announcement_id=ann_id, db_conn=db, explicit_match=req.explicit_match)
+        if not ann_id:
+            cur = db.cursor()
+            sid = req.session_id
+            if sid:
+                cur.execute(
+                    "SELECT session_id, client_category, current_step, collected, messages FROM pro_consult_sessions WHERE session_id = %s AND business_number = %s",
+                    (sid, current_user["bn"])
+                )
+                row = cur.fetchone()
+                if row:
+                    session_state = dict(row)
+                    if isinstance(session_state.get("collected"), str):
+                        session_state["collected"] = json.loads(session_state["collected"])
+                    if isinstance(session_state.get("messages"), str):
+                        session_state["messages"] = json.loads(session_state["messages"])
+            if not session_state:
+                # 새 세션 생성
+                sid = str(_uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected, messages) VALUES (%s, %s, %s, 1, '{}'::jsonb, '[]'::jsonb)",
+                    (sid, current_user["bn"], req.client_category or "")
+                )
+                db.commit()
+                session_state = {
+                    "session_id": sid,
+                    "client_category": req.client_category or "",
+                    "current_step": 1,
+                    "collected": {},
+                    "messages": [],
+                }
+
+        # AI 호출 — 세션 상태 주입
+        result = chat_pro_consultant(
+            req.messages,
+            announcement_id=ann_id,
+            db_conn=db,
+            explicit_match=req.explicit_match,
+            session_state=session_state,
+        )
+
+        # 세션 갱신 (특정 공고 모드 아닐 때만)
+        if not ann_id and session_state:
+            new_collected = {**session_state.get("collected", {}), **(result.get("collected") or {})}
+            new_step = max(session_state.get("current_step", 1), result.get("current_step") or session_state.get("current_step", 1))
+            cur = db.cursor()
+            cur.execute(
+                """UPDATE pro_consult_sessions
+                   SET current_step = %s,
+                       collected = %s::jsonb,
+                       messages = %s::jsonb,
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE session_id = %s""",
+                (new_step, json.dumps(new_collected, ensure_ascii=False), json.dumps(req.messages, ensure_ascii=False), session_state["session_id"])
+            )
+            db.commit()
     finally:
         if db:
             try: db.close()
@@ -3202,6 +3273,8 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         "collected": result.get("collected", {}),
         "announcement_id": ann_id,
         "matched_announcements": matched_announcements,
+        "session_id": session_state.get("session_id") if session_state else None,
+        "current_step": result.get("current_step") or (session_state.get("current_step") if session_state else None),
     }
 
 

@@ -259,6 +259,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     })();
   }, [headers]);
 
+  // 세션 ID 상태
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
   // ─── AI 대화 전송 ───
   const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { explicit_match?: boolean; profile_override?: any }) => {
     setLoading(true);
@@ -276,6 +279,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           announcement_id: activeAnnouncementId,
           explicit_match: options?.explicit_match || false,
           profile_override: options?.profile_override || null,
+          session_id: sessionId,
+          client_category: clientCategory || null,
         }),
       });
 
@@ -290,6 +295,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       const fullText = data.reply || "";
       const choices = data.choices || [];
       const done = data.done || false;
+
+      // 세션 ID 저장 (첫 응답에서만 세팅됨)
+      if (data.session_id && !sessionId) {
+        setSessionId(data.session_id);
+      }
 
       // 백그라운드 수집 정보 업데이트 (모든 응답에서)
       if (data.collected || data.profile) {
@@ -346,7 +356,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       toast("서버 연결에 실패했습니다.", "error");
       setLoading(false);
     }
-  }, [headers, systemContext, toast]);
+  }, [headers, systemContext, toast, sessionId, clientCategory, activeAnnouncementId, collectedProfile]);
 
   // ─── 메시지 전송 ───
   const handleSend = (text: string) => {

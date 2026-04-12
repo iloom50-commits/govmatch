@@ -1731,7 +1731,7 @@ def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
 # PRO 전문가 전용 상담 채팅
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None, explicit_match: bool = False) -> Dict[str, Any]:
+def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None, explicit_match: bool = False, session_state: Dict = None) -> Dict[str, Any]:
     """
     PRO 전문가 전용 상담 채팅.
     컨설턴트가 고객사 정보를 전달 → AI가 정보 수집 → 매칭 프로필 생성.
@@ -1953,6 +1953,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
   "message": "고객에게 묻는 질문 한 문장. 자연스러운 한국어. choices나 옵션 목록을 본문에 적지 말 것!",
   "choices": ["옵션1", "옵션2", "옵션3", "옵션4", "✏️ 직접 입력"],
   "done": false,
+  "current_step": 2,
   "collected": {{"필드명": "값"}},
   "profile": null
 }}
@@ -2023,7 +2024,27 @@ done=true일 때 (모든 정보 수집 완료):
                 seed_hint = "\n\n[현재 케이스] 예비창업자. 고객 유형은 이미 확정. 1단계 건너뛰고 2단계부터 시작하세요."
             elif "개인" in first_user:
                 seed_hint = "\n\n[현재 케이스] 개인 고객. 고객 유형은 이미 확정. 1단계 건너뛰고 개인 모드 2단계(니즈 파악)부터 시작하세요. choices는 개인용 카테고리를 제시하세요."
-    system_prompt = system_prompt + seed_hint
+
+    # ── 세션 상태 주입 — 현재 단계 + 이미 수집된 정보를 명시적으로 알림 ──
+    state_hint = ""
+    if session_state:
+        cur_step = session_state.get("current_step", 1)
+        collected_so_far = session_state.get("collected", {}) or {}
+        cat = session_state.get("client_category", "")
+        state_hint = f"\n\n[★★★ 세션 상태 — 매우 중요 — 이걸 무시하지 마세요]\n"
+        state_hint += f"- 고객 유형: {cat or '미정'}\n"
+        state_hint += f"- 현재 진행 단계: {cur_step}단계 / 5단계\n"
+        if collected_so_far:
+            state_hint += f"- 이미 수집된 정보 (절대 다시 묻지 말 것):\n"
+            for k, v in collected_so_far.items():
+                if v:
+                    state_hint += f"  • {k}: {v}\n"
+        else:
+            state_hint += "- 아직 수집된 정보 없음\n"
+        state_hint += f"\n[지시] 이번 응답에서는 반드시 {cur_step + 1}단계로 진행하세요. 같은 단계에 머물지 마세요.\n"
+        state_hint += "이미 받은 정보로 다음 자연스러운 질문을 하세요. 이미 답한 카테고리를 다시 묻는 것은 금지입니다.\n"
+        state_hint += "응답 JSON에 \"current_step\" 필드를 포함하여 다음 단계 번호를 명시하세요.\n"
+    system_prompt = system_prompt + seed_hint + state_hint
 
     # ── 새 SDK (google.genai) + Google Search Grounding ──
     _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'
@@ -2183,6 +2204,7 @@ done=true일 때 (모든 정보 수집 완료):
             "done": done,
             "profile": profile,
             "collected": collected,
+            "current_step": result.get("current_step"),
         }
     except json.JSONDecodeError:
         return {"reply": response.text.strip() if 'response' in dir() else "응답 처리 오류", "choices": [], "done": False, "profile": None, "collected": {}}

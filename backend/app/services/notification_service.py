@@ -74,7 +74,11 @@ class NotificationService:
 
         interests = [k.strip() for k in user['interests'].split(',') if k.strip()] if user['interests'] else []
 
-        params = [f"%{user_loc}%", user_years]
+        # 파라미터 순서 = SQL placeholder 순서
+        # 1) region LIKE %s
+        # 2~) keyword_clause의 (title LIKE %s OR summary_text LIKE %s) 반복
+        # 마지막) established_years_limit >= %s
+        params = [f"%{user_loc}%"]
 
         keyword_clause = ""
         if interests:
@@ -84,6 +88,8 @@ class NotificationService:
                 params.append(f"%{kw}%")
                 params.append(f"%{kw}%")
             keyword_clause = f"AND ({' OR '.join(placeholders)})"
+
+        params.append(user_years)
 
         query = f"""
             SELECT * FROM announcements
@@ -95,9 +101,14 @@ class NotificationService:
             LIMIT 10
         """
 
-        cursor.execute(query, params)
-        programs = cursor.fetchall()
-        conn.close()
+        try:
+            cursor.execute(query, params)
+            programs = cursor.fetchall()
+        except Exception as e:
+            print(f"  [get_filtered_programs] SQL error for {user.get('email','?')}: {e}")
+            programs = []
+        finally:
+            conn.close()
         return programs
 
     async def match_program_with_user(self, program, user):
@@ -363,7 +374,11 @@ class NotificationService:
 
         digest_results = []
         for user in users:
-            programs = await self.get_filtered_programs(user)
+            try:
+                programs = await self.get_filtered_programs(user)
+            except Exception as e:
+                print(f"  [digest] user {user.get('email','?')} skipped: {e}")
+                continue
 
             matches = []
             for program in programs:

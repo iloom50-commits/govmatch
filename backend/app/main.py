@@ -4854,7 +4854,11 @@ def api_parse_interests(req: dict):
         import json as _json
         parsed = _json.loads(resp.text.strip().strip("`").replace("json\n", ""))
         valid = [c for c in parsed if c in cats]
-        return {"status": "SUCCESS", "interests": valid if valid else [text]}
+        # 매핑된 카테고리 + 사용자 원본 입력을 함께 반환
+        result = list(valid)
+        if text not in result and text not in cats:
+            result.append(text)  # 사용자 원본 키워드도 포함
+        return {"status": "SUCCESS", "interests": result if result else [text]}
     except Exception as e:
         print(f"[ParseInterests] Error: {e}")
         return {"status": "SUCCESS", "interests": [text]}

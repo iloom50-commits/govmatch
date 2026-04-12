@@ -1095,6 +1095,82 @@ function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 
 
 // ─── 인라인 입력 위젯 (건너뛰기 추가) ───
+function IndustryAutocomplete({ value, onChange, dark, inputCls, sectionTitle, muted }: {
+  value: string; onChange: (v: string) => void; dark: boolean; inputCls: string; sectionTitle: string; muted: string;
+}) {
+  const [query, setQuery] = useState(value || "");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const timerRef = useRef<any>(null);
+  const API = process.env.NEXT_PUBLIC_API_URL;
+
+  const search = useCallback(async (q: string) => {
+    if (q.length < 1) { setSuggestions([]); return; }
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/api/industry-recommend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_name: q, business_content: q }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const items = d.data || [];
+        setSuggestions(items.slice(0, 8));
+        setShowDropdown(items.length > 0);
+      }
+    } catch (e) { console.error("[Industry]", e); }
+    setLoading(false);
+  }, [API]);
+
+  const handleInput = (v: string) => {
+    setQuery(v);
+    onChange(v);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => search(v), 400);
+  };
+
+  const selectItem = (item: any) => {
+    const label = `${item.name || item.industry_name || ""} (${item.code || item.industry_code || ""})`;
+    setQuery(label);
+    onChange(label);
+    setShowDropdown(false);
+  };
+
+  return (
+    <div className="relative">
+      <p className={sectionTitle}>업종 <span className={muted}>(선택 — 입력 시 추천)</span></p>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder="예: 화장품, IT서비스, 음식점"
+        className={inputCls}
+      />
+      {loading && <p className={`text-[10px] mt-1 ${muted}`}>검색 중...</p>}
+      {showDropdown && suggestions.length > 0 && (
+        <div className={`absolute z-50 w-full mt-1 rounded-xl border shadow-lg max-h-[200px] overflow-y-auto ${dark ? "bg-[#1a1c30] border-white/10" : "bg-white border-slate-200"}`}>
+          {suggestions.map((item: any, idx: number) => (
+            <button
+              key={idx}
+              type="button"
+              onMouseDown={() => selectItem(item)}
+              className={`w-full text-left px-3 py-2 text-[12px] border-b last:border-b-0 transition-colors ${dark ? "border-white/5 hover:bg-white/5 text-slate-200" : "border-slate-100 hover:bg-indigo-50 text-slate-700"}`}
+            >
+              <span className="font-semibold">{item.name || item.industry_name || ""}</span>
+              <span className={`ml-2 ${muted}`}>({item.code || item.industry_code || ""})</span>
+              {item.description && <span className={`block text-[10px] ${muted}`}>{item.description.slice(0, 40)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
   fields: { key: string; label: string; type: "text" | "select" | "date" | "multiselect"; options?: string[] }[];
   dark: boolean;
@@ -1268,13 +1344,16 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
           </div>
         </div>
 
-        {/* 업종 (사업자만) */}
+        {/* 업종 (사업자만) — 자동완성 */}
         {!isIndiv && (
-          <div>
-            <p className={sectionTitle}>업종 <span className={t.muted}>(선택)</span></p>
-            <input type="text" value={profileForm.industry} onChange={(e) => update("industry", e.target.value)}
-              placeholder="예: IT서비스, 제조업, 음식점" className={inputCls} />
-          </div>
+          <IndustryAutocomplete
+            value={profileForm.industry}
+            onChange={(val: string) => update("industry", val)}
+            dark={dark}
+            inputCls={inputCls}
+            sectionTitle={sectionTitle}
+            muted={t.muted}
+          />
         )}
 
         {/* 매출 규모 (사업자만) */}

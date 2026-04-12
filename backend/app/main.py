@@ -5528,9 +5528,14 @@ def api_get_notification_settings(bn: str, current_user: dict = Depends(_get_cur
 @app.post("/api/admin/send-digest", dependencies=[Depends(_verify_admin)])
 async def api_send_digest():
     """데일리 다이제스트를 즉시 생성하고 이메일 발송 (관리자용)"""
+    # 진단 단계: import + 호출을 분리해서 어디서 죽는지 추적
+    stage = "init"
     try:
+        stage = "import_module"
         from app.services.notification_service import notification_service
+        stage = "call_generate_daily_digest"
         results = await notification_service.generate_daily_digest()
+        stage = "post_process"
         sent_count = sum(1 for r in results if r.get("email_sent"))
         _log_system("send_digest", "notification", f"{len(results)}명 대상, {sent_count}건 이메일 발송", "success", sent_count)
         return {
@@ -5541,13 +5546,37 @@ async def api_send_digest():
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
-        print(f"[send-digest] ERROR: {e}\n{tb}")
-        _log_system("send_digest", "notification", f"ERROR: {str(e)[:200]}", "error", 0)
+        print(f"[send-digest] STAGE={stage} ERROR: {e}\n{tb}")
+        try:
+            _log_system("send_digest", "notification", f"stage={stage} ERROR: {str(e)[:150]}", "error", 0)
+        except Exception:
+            pass
         return {
             "status": "ERROR",
+            "stage": stage,
             "error": str(e)[:500],
-            "traceback": tb[-1500:],
+            "traceback": tb[-2000:],
         }
+
+
+@app.get("/api/admin/digest-probe")
+async def api_digest_probe():
+    """진단용: 인증 없이 단계별 stub 응답으로 무엇이 깨지는지 추적"""
+    import traceback
+    out = {"steps": []}
+    try:
+        out["steps"].append("import_module")
+        from app.services.notification_service import notification_service
+        out["steps"].append("imported")
+        out["steps"].append("get_target_users")
+        users = await notification_service.get_target_users()
+        out["steps"].append(f"got_{len(users)}_users")
+        out["users_count"] = len(users)
+        return {"status": "OK", **out}
+    except Exception as e:
+        out["error"] = str(e)[:300]
+        out["traceback"] = traceback.format_exc()[-1500:]
+        return {"status": "ERROR", **out}
 
 
 class SavedBulk(BaseModel):

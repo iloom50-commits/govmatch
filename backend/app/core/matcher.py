@@ -251,9 +251,31 @@ def get_matches_for_user(user_profile):
         if not rule_result["is_eligible"]:
             continue
 
+        title = ad.get("title", "")
+
+        # 만료 공고 필터 — 제목에 작년 이전 연도가 있고 마감일이 없거나 지났으면 제외
+        # (예: "2025년 ..." 공고가 2026년 4월에 노출되는 문제 차단)
+        current_year = today.year
+        title_year_match = re.search(r'(\d{4})년', title)
+        if title_year_match:
+            title_year = int(title_year_match.group(1))
+            if title_year < current_year:
+                # 마감일 명시가 있고 미래면 통과, 그 외 모두 제외
+                dl = ad.get("deadline_date")
+                if not dl:
+                    continue
+                try:
+                    if isinstance(dl, (datetime.date, datetime.datetime)):
+                        dl_date = dl if isinstance(dl, datetime.date) else dl.date()
+                    else:
+                        dl_date = datetime.datetime.strptime(str(dl), "%Y-%m-%d").date()
+                    if dl_date < today:
+                        continue
+                except (ValueError, TypeError):
+                    continue
+
         # 지역 필터: 관심지역이 아닌 곳의 지역 전용 공고만 제외
         # 지역 미표기/전국 공고는 항상 포함
-        title = ad.get("title", "")
         ad_region = _normalize_region(ad.get("region") or "")
 
         # 지역 필터: 소재지 기반 자격 필터
@@ -667,9 +689,28 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         life_stage = (eligibility.get("life_stage") or "").lower()
         theme = (eligibility.get("theme") or "").lower()
         sel_criteria = (eligibility.get("selection_criteria") or "").lower()
-        title = (ad.get("title") or "").lower()
+        raw_title = ad.get("title") or ""
+        title = raw_title.lower()
         raw_summary = ad.get("summary_text") or ""
         clean_summary = _strip_html(raw_summary).lower()
+
+        # 만료 공고 필터 — 작년 이전 연도가 제목에 있고 마감일이 과거/없으면 제외
+        title_year_match = re.search(r'(\d{4})년', raw_title)
+        if title_year_match:
+            title_year = int(title_year_match.group(1))
+            if title_year < today.year:
+                dl = ad.get("deadline_date")
+                if not dl:
+                    continue
+                try:
+                    if isinstance(dl, (datetime.date, datetime.datetime)):
+                        dl_date = dl if isinstance(dl, datetime.date) else dl.date()
+                    else:
+                        dl_date = datetime.datetime.strptime(str(dl), "%Y-%m-%d").date()
+                    if dl_date < today:
+                        continue
+                except (ValueError, TypeError):
+                    continue
 
         # 통합 검색 텍스트
         search_text = f"{title} {target_desc} {clean_summary} {sel_criteria}"

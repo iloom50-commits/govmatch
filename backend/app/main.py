@@ -6035,27 +6035,31 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         a = ann if isinstance(ann, dict) else dict(ann)
         score = a.get("match_score", 0)
         if score >= 80:
-            conclusion = "eligible"
+            conclusion = "지원가능"
             reason = "매칭 점수가 높아 지원 가능성이 높습니다."
             eligible_count += 1
         elif score >= 50:
-            conclusion = "conditional"
+            conclusion = "조건부"
             reason = "일부 조건 확인이 필요합니다."
             conditional_count += 1
         else:
-            conclusion = "conditional"
+            conclusion = "조건부"
             reason = "추가 확인이 필요한 항목이 있습니다."
             conditional_count += 1
+
+        # 마감일 표시: None이면 "상시모집" 표기 (데이터 없음 ≠ 상시지만 사용자에게는 동일 의미)
+        dl_raw = a.get("deadline_date")
+        deadline_display = str(dl_raw) if dl_raw else "상시모집"
 
         results.append({
             "announcement_id": a.get("announcement_id"),
             "title": a.get("title", ""),
             "category": a.get("category", ""),
-            "department": a.get("department", ""),
+            "department": a.get("department", "") or "기관 미상",
             "conclusion": conclusion,
             "reason": reason,
             "support_amount": a.get("support_amount", ""),
-            "deadline_date": str(a.get("deadline_date", "")),
+            "deadline_date": deadline_display,
             "match_score": score,
         })
 

@@ -3181,15 +3181,17 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         except Exception as e:
             print(f"[PRO consultant] auto-match error: {e}")
 
-    # choices가 비어있으면 자동 채움
+    # choices가 비어있으면 매우 최소한의 폴백만 사용 (AI가 생성하는 것이 원칙)
     choices = result.get("choices", [])
-    if not choices or len(choices) < 2:
+    if not choices:
         if result.get("done") and matched_announcements:
-            choices = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
+            # 매칭 후에만 행동 옵션 허용
+            choices = ["📄 보고서 생성", "🔍 특정 공고 자세히 보기", "🔄 조건 변경 후 재매칭"]
         elif result.get("done"):
-            choices = ["다른 조건으로 재매칭", "특정 공고 검색", "상담 종료"]
+            choices = ["🔄 다른 조건으로 재매칭", "✏️ 직접 입력"]
         else:
-            choices = ["추가 정보 제공", "이 조건으로 매칭 진행", "자금/융자 상담"]
+            # 미완료 상태에서는 빈 배열 — 사용자가 자유롭게 입력하도록
+            choices = []
 
     return {
         "status": "SUCCESS",

@@ -446,14 +446,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const hasAnyInfo = !!(f.company_name?.trim() || dateValue || f.industry || f.revenue_bracket || f.employee_bracket || f.address_city || (f.interests && f.interests.length > 0));
 
     if (!hasAnyInfo) {
+      // 정보 없음 → AI에게 첫 인사 + contextual choices를 생성하게 함
       setSystemContext(`[전문가 상담 모드] 고객유형: ${catLabel} (정보 미입력 — 대화 중 수집)`);
-      setMessages([{
-        role: "assistant",
-        text: `안녕하세요! ${catLabel} 상담을 도와드릴 AI입니다.\n\n어떤 도움이 필요하신가요? 편하게 말씀해주세요. 필요한 정보는 대화 중에 자연스럽게 여쭤보겠습니다.`,
-        choices: isIndiv
-          ? ["나에게 맞는 정부지원 알려줘", "주거/생활 지원 알아보기", "교육/취업 지원 알아보기", "복지 혜택 찾아줘"]
-          : ["맞춤 지원사업 매칭", "정책자금/융자 알아보기", "R&D 지원사업 찾아줘", "자격요건 검토"],
-      }]);
+      const seedHistory: ChatMessage[] = [
+        { role: "user", text: `[새 케이스 시작] 고객 유형: ${catLabel}. 고객의 상황 파악부터 함께 진행해주세요.` },
+      ];
+      setMessages(seedHistory);
+      sendToAI(seedHistory);
       return;
     }
 
@@ -469,22 +468,22 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
     setSystemContext(`[전문가 상담 모드] ${infoParts.join("\n")}`);
 
-    // 입력 요약 메시지 표시
-    const greetName = f.company_name?.trim() || catLabel;
-    const summaryLines = [`**${greetName}**${f.company_name?.trim() ? ` (${catLabel})` : ""} 고객 정보가 등록되었습니다.\n`];
+    // 입력된 정보를 첫 사용자 메시지로 AI에게 전달 → AI가 인사 + 상황 파악 질문 + 선택지 생성
+    const summaryLines = [`[새 케이스 시작] ${catLabel} 고객`];
+    if (f.company_name?.trim()) summaryLines.push(`${isIndiv ? "이름" : "기업명"}: ${f.company_name}`);
     if (dateDisplay) summaryLines.push(`${isIndiv ? "출생" : "설립"}: ${dateDisplay}`);
     if (f.industry) summaryLines.push(`업종: ${f.industry}`);
     if (f.revenue_bracket) summaryLines.push(`매출: ${f.revenue_bracket}`);
     if (f.employee_bracket) summaryLines.push(`직원수: ${f.employee_bracket}`);
     if (f.address_city) summaryLines.push(`지역: ${f.address_city}`);
-    if (f.interests.length > 0) summaryLines.push(`관심: ${f.interests.join(", ")}`);
-    summaryLines.push("\n어떤 작업을 진행하시겠습니까?");
+    if (f.interests.length > 0) summaryLines.push(`관심분야: ${f.interests.join(", ")}`);
+    summaryLines.push("\n위 정보를 바탕으로 부족한 부분을 함께 파악해주세요.");
 
-    setMessages([{
-      role: "assistant",
-      text: summaryLines.join("\n"),
-      choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
-    }]);
+    const seedHistory: ChatMessage[] = [
+      { role: "user", text: summaryLines.join("\n") },
+    ];
+    setMessages(seedHistory);
+    sendToAI(seedHistory);
   };
 
   // ─── 마크다운 렌더링 ───
@@ -722,7 +721,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 <>
                   {/* 대화 영역 */}
                   <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 space-y-3">
-                    {messages.map((msg, i) => (
+                    {messages.map((msg, i) => {
+                      // 시드용 시스템 메시지(`[새 케이스 시작]`)는 채팅에 표시하지 않음
+                      if (msg.role === "user" && msg.text.startsWith("[새 케이스 시작]")) return null;
+                      return (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                         <div className="max-w-[80%] overflow-hidden">
                           <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed break-words overflow-wrap-anywhere ${
@@ -747,7 +749,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     {loading && (
                       <div className="flex justify-start">
                         <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${t.bubble}`}>

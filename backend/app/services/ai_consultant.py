@@ -990,6 +990,35 @@ def chat_consult(
         logger.info(f"[Gemini raw response length] {len(response.text)} chars")
         result = _parse_gemini_json(response.text)
 
+        # ── 방어적 후처리: AI가 message에 raw JSON 키를 흘렸을 때 강제 절단 ──
+        msg_text = result.get("message", "")
+        for json_key in ['"choices":', '"done":', '"conclusion":', '"profile":', '"message":']:
+            idx = msg_text.find(json_key)
+            if idx > 0:
+                msg_text = msg_text[:idx].rstrip(' \t\n,;{')
+
+        # 패턴: "choices: [...]" 박혀있으면 분리
+        choices_pattern = re.search(r'choices\s*[:：]\s*\[([^\]]+)\]', msg_text, re.IGNORECASE)
+        ai_choices_inline = []
+        if choices_pattern:
+            try:
+                raw = "[" + choices_pattern.group(1) + "]"
+                raw = raw.replace("'", '"')
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    ai_choices_inline = parsed
+                msg_text = re.sub(r'\n*\s*choices\s*[:：]\s*\[[^\]]+\]\s*', '', msg_text, flags=re.IGNORECASE).strip()
+            except Exception:
+                pass
+
+        # 패턴: "선택지:" / "옵션:" 라벨 라인 제거
+        msg_text = re.sub(r'\n*\s*(선택지|옵션)\s*[:：].*$', '', msg_text, flags=re.MULTILINE).strip()
+        msg_text = msg_text.rstrip('",\n\t ;{}[]')
+
+        result["message"] = msg_text
+        if ai_choices_inline and not result.get("choices"):
+            result["choices"] = ai_choices_inline
+
         # 교차 검증: Gemini 응답을 DB 데이터와 대조
         verified_reply = _verify_response(
             result.get("message", ""), announcement, deep_analysis_data
@@ -1027,7 +1056,10 @@ def chat_consult(
             if done:
                 choices = ["다른 지원사업도 알아보기", "담당기관에 문의하기", "상담 내용 저장하기"]
             else:
-                choices = ["자격 요건을 더 자세히 알고 싶어요", "제출 서류가 궁금해요", "신청 방법을 알려주세요"]
+                choices = ["자격 요건을 더 자세히 알고 싶어요", "제출 서류가 궁금해요", "신청 방법을 알려주세요", "✏️ 직접 입력"]
+        # 직접 입력 옵션이 없으면 마지막에 추가 (사용자 자유 입력 보장)
+        elif not any("직접" in str(c) or "기타" in str(c) for c in choices):
+            choices = list(choices) + ["✏️ 직접 입력"]
 
         # 추측 표현 후처리 — "~일 것입니다" 등을 "~입니다"로 변환하지 않고, 불확실 명시로 교체
         import re as _re

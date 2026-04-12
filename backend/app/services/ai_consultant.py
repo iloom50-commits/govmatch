@@ -1939,16 +1939,36 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - "정책자금", "융자", "대출", "보증", "금리" 등이 언급되면 → 금융 상담 모드로 전환
 - choices: ["💰 자금 한도/금리 상담", "🏛️ 보증서 발급 상담", "📝 신청서류 안내", "📊 매칭 진행 (충분한 정보 수집 시)"]
 
-[응답 형식 — 반드시 순수 JSON]
+[★★★ 응답 형식 — 절대 위반 금지]
+반드시 아래 순수 JSON만 출력. 마크다운 코드블록 금지. JSON 외 다른 텍스트 금지.
+
 {{
-  "message": "AI의 대화 메시지 (마크다운 가능)",
-  "choices": ["맥락에 맞는 카테고리 옵션1", "옵션2", "옵션3", "✏️ 직접 입력"],
+  "message": "고객에게 묻는 질문 한 문장. 자연스러운 한국어. choices나 옵션 목록을 본문에 적지 말 것!",
+  "choices": ["옵션1", "옵션2", "옵션3", "옵션4", "✏️ 직접 입력"],
   "done": false,
   "collected": {{"필드명": "값"}},
   "profile": null
 }}
 
-done=true (5단계 동의 후):
+[★ 절대 금지 — 가장 흔한 실수]
+- ❌ message 안에 "choices: [\\"10대\\", ...]" 같은 텍스트 쓰기
+- ❌ message 안에 "1) 10대 2) 20대 3) 30대" 같은 옵션 나열
+- ❌ message 안에 "[10대][20대][30대]" 같은 버튼 형태 텍스트
+- ❌ "선택지: ..." 또는 "옵션: ..." 같은 메타 표현
+- ❌ ```json 코드블록 사용
+- ✅ 옵션은 오직 choices 배열에만. message에는 질문 한 문장만.
+
+[message 작성 좋은 예]
+- "이 고객의 연령대는 어떻게 되나요?"
+- "고객 거주지를 알려주세요."
+- "주거 분야 중 어떤 지원이 가장 시급한가요?"
+
+[message 작성 나쁜 예]
+- "이 고객의 연령대는 어떻게 되나요?\\nchoices: [\\"10대\\", \\"20대\\"]"  ← ❌
+- "연령대를 골라주세요. 1)10대 2)20대 3)30대"  ← ❌
+- "다음 중 선택해주세요: 10대, 20대, 30대"  ← ❌
+
+done=true (5단계 동의 후만):
 {{
   "message": "고객 프로파일이 완성되었습니다. 매칭을 진행하겠습니다.",
   "choices": [],
@@ -2099,9 +2119,31 @@ done=true일 때 (모든 정보 수집 완료):
             done = True
             logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile")
 
+        # ── 방어적 후처리: AI가 message에 choices를 텍스트로 흘렸을 때 강제 분리 ──
+        msg_text = result.get("message", "")
+        ai_choices = result.get("choices", [])
+
+        # 패턴 1: "choices: [\"...\", \"...\"]" 또는 'choices:[...]'가 message 안에 박힌 경우
+        choices_pattern = re.search(r'choices\s*[:：]\s*\[([^\]]+)\]', msg_text, re.IGNORECASE)
+        if choices_pattern:
+            try:
+                raw = "[" + choices_pattern.group(1) + "]"
+                # 따옴표 정규화
+                raw = raw.replace("'", '"')
+                parsed = json.loads(raw)
+                if isinstance(parsed, list) and not ai_choices:
+                    ai_choices = parsed
+                # message에서 해당 라인 제거
+                msg_text = re.sub(r'\n*\s*choices\s*[:：]\s*\[[^\]]+\]\s*', '', msg_text, flags=re.IGNORECASE).strip()
+            except Exception:
+                pass
+
+        # 패턴 2: "선택지:" 또는 "옵션:" 라벨로 시작하는 라인 제거
+        msg_text = re.sub(r'\n*\s*(선택지|옵션)\s*[:：].*$', '', msg_text, flags=re.MULTILINE).strip()
+
         return {
-            "reply": result.get("message", "") if not done else "수집된 정보를 바탕으로 매칭을 실행합니다.",
-            "choices": result.get("choices", []) if not done else [],
+            "reply": msg_text if not done else "수집된 정보를 바탕으로 매칭을 실행합니다.",
+            "choices": ai_choices if not done else [],
             "done": done,
             "profile": profile,
             "collected": collected,

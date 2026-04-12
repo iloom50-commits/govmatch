@@ -34,8 +34,8 @@ export const metadata: Metadata = {
     description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
     images: [{
       url: "/og-image.png",
-      width: 1032,
-      height: 1024,
+      width: 1200,
+      height: 1200,
       alt: "지원금AI 로고",
     }],
   },

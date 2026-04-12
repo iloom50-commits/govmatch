@@ -6,7 +6,7 @@ import { useToast } from "@/components/ui/Toast";
 
 function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: string, type?: "success" | "error" | "info") => void; announcementId?: number; announcementTitle?: string }) {
   const [open, setOpen] = useState(false);
-  const url = announcementId ? `https://govmatch.kr?aid=${announcementId}` : "https://govmatch.kr";
+  const url = announcementId ? `https://www.govmatch.kr?aid=${announcementId}` : "https://www.govmatch.kr";
   const shareText = announcementTitle
     ? `이 지원사업 한번 확인해보세요!\n"${announcementTitle.slice(0, 40)}"\nAI가 자격 여부까지 분석해줍니다.`
     : "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
@@ -19,7 +19,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
         content: {
           title: "지원금AI — AI 맞춤 지원금 매칭",
           description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
-          imageUrl: "https://govmatch.kr/og-image.png",
+          imageUrl: "https://www.govmatch.kr/og-image-wide.png",
           link: { mobileWebUrl: url, webUrl: url },
         },
         buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+    default: "지원금AI — AI 정부 지원금 자동 매칭",
     template: "%s | 지원금AI",
   },
   description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭. 기업·개인 모두 무료!",
@@ -32,18 +32,26 @@ export const metadata: Metadata = {
     siteName: "지원금AI",
     title: "지원금AI — AI가 구석구석 찾아드리는 정부 지원금 매칭",
     description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
-    images: [{
-      url: "/og-image.png",
-      width: 1200,
-      height: 1200,
-      alt: "지원금AI 로고",
-    }],
+    images: [
+      {
+        url: "/og-image-wide.png",
+        width: 1200,
+        height: 630,
+        alt: "지원금AI — AI 정부 지원금 자동 매칭",
+      },
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 1200,
+        alt: "지원금AI 로고",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "지원금AI — 정부 지원금 AI 자동 매칭",
     description: "17,000+ 정부 지원금 공고 AI 분석. 내 조건에 맞는 보조금 자동 매칭!",
-    images: ["/og-image.png"],
+    images: ["/og-image-wide.png"],
   },
   robots: {
     index: true,

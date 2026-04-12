@@ -227,9 +227,9 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
       (window as any).Kakao.Share.sendDefault({
         objectType: "feed",
         content: {
-          title: "지원금AI — 지원금 찾지 마세요. AI가 구석구석 찾아드림",
+          title: "지원금AI — AI 정부 지원금 자동 매칭",
           description: shareText,
-          imageUrl: `${window.location.origin}/og-image.png`,
+          imageUrl: `${window.location.origin}/og-image-wide.png`,
           link: { mobileWebUrl: url, webUrl: url },
         },
         buttons: [{ title: "지원금 확인하기", link: { mobileWebUrl: url, webUrl: url } }],
@@ -791,7 +791,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => window.location.origin}
-        shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금AI에서 확인해보세요!"
+        shareText="17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭해줘요. 기업·개인 모두 무료!"
         toast={toast}
       />
 
@@ -976,7 +976,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}`}
-            shareText="지원금 찾지 마세요. AI가 구석구석 찾아드림 — 지원금AI에서 확인해보세요!"
+            shareText="17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭해줘요. 기업·개인 모두 무료!"
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (

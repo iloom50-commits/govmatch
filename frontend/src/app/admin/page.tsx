@@ -498,7 +498,25 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-1">관리자 대시보드</h1>
               <p className="text-slate-500 text-sm">데이터 소스 관리 및 수집 현황</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
+              <a
+                href="https://bot.govmatch.kr/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                title="블로그 봇 관리자 대시보드"
+              >
+                🤖 <span className="hidden md:inline">블로그 봇</span>
+              </a>
+              <a
+                href="https://bot.govmatch.kr/posts"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                title="블로그 글 검수/편집"
+              >
+                ✏️ <span className="hidden md:inline">글 검수</span>
+              </a>
               <button
                 onClick={onLogout}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"

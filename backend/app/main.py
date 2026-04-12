@@ -5528,15 +5528,26 @@ def api_get_notification_settings(bn: str, current_user: dict = Depends(_get_cur
 @app.post("/api/admin/send-digest", dependencies=[Depends(_verify_admin)])
 async def api_send_digest():
     """데일리 다이제스트를 즉시 생성하고 이메일 발송 (관리자용)"""
-    from app.services.notification_service import notification_service
-    results = await notification_service.generate_daily_digest()
-    sent_count = sum(1 for r in results if r.get("email_sent"))
-    _log_system("send_digest", "notification", f"{len(results)}명 대상, {sent_count}건 이메일 발송", "success", sent_count)
-    return {
-        "status": "SUCCESS",
-        "message": f"다이제스트 생성 완료: {len(results)}명 대상, {sent_count}건 이메일 발송",
-        "data": results
-    }
+    try:
+        from app.services.notification_service import notification_service
+        results = await notification_service.generate_daily_digest()
+        sent_count = sum(1 for r in results if r.get("email_sent"))
+        _log_system("send_digest", "notification", f"{len(results)}명 대상, {sent_count}건 이메일 발송", "success", sent_count)
+        return {
+            "status": "SUCCESS",
+            "message": f"다이제스트 생성 완료: {len(results)}명 대상, {sent_count}건 이메일 발송",
+            "data": results
+        }
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[send-digest] ERROR: {e}\n{tb}")
+        _log_system("send_digest", "notification", f"ERROR: {str(e)[:200]}", "error", 0)
+        return {
+            "status": "ERROR",
+            "error": str(e)[:500],
+            "traceback": tb[-1500:],
+        }
 
 
 class SavedBulk(BaseModel):

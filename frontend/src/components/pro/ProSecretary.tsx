@@ -779,7 +779,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                       <div className="flex flex-wrap gap-2 mt-1 text-[11px]">
                                         {m.support_amount && <span className="text-emerald-500 font-semibold">💰 {m.support_amount}</span>}
                                         {m.deadline_date && m.deadline_date !== "None" && <span className={t.muted}>📅 {String(m.deadline_date).slice(0,10)}</span>}
-                                        {m.match_score != null && <span className="text-violet-500 font-semibold">⭐ {Math.round(m.match_score)}점</span>}
+                                        {m.eligibility_status === "ineligible" ? (
+                                          <span className="text-slate-400 font-semibold">⊘ 대상 아님</span>
+                                        ) : (
+                                          <span className="text-violet-500 font-semibold">✓ 신청 가능</span>
+                                        )}
                                       </div>
                                     </div>
                                   </div>

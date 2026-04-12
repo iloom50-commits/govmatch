@@ -217,6 +217,23 @@ def get_matches_for_user(user_profile):
 
     is_soho = _is_soho(user_profile)
 
+    # 사용자 보유 인증/자격 (certifications) — 복수, 콤마 구분 문자열
+    user_certs_raw = user_profile.get("certifications") or ""
+    user_certs = [c.strip() for c in user_certs_raw.split(",") if c.strip() and c.strip() != "없음"]
+    has_female = any("여성" in c for c in user_certs)
+    has_disabled = any("장애" in c for c in user_certs)
+    has_social = any(("사회적" in c) or ("협동조합" in c) or ("마을기업" in c) for c in user_certs)
+    has_venture = any("벤처" in c for c in user_certs)
+    has_innobiz = any(("이노비즈" in c) or ("메인비즈" in c) for c in user_certs)
+
+    # 업종 대분류 (KSIC 앞 2자리)
+    user_ind_code = (user_profile.get("industry_code") or "")[:2]
+    # 1차 산업/식품/문화 등 특수 업종 판별
+    is_farmer = user_ind_code in ("01", "02", "03")  # 농업/임업/어업
+    is_fishery = user_ind_code == "03"
+    is_food_mfg = user_ind_code in ("10", "11")       # 식품제조
+    is_culture = user_ind_code in ("58", "59", "60", "90", "91")  # 출판/영상/문화
+
     # 소재지 (1개, 자격 필터용) — address_city에서 첫 번째 실제 지역
     raw_city = user_profile.get("address_city", "")
     user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
@@ -236,6 +253,16 @@ def get_matches_for_user(user_profile):
     bonus_cities.extend([r for r in interest_regions if r not in bonus_cities])
 
     results = []
+    ineligible_results = []  # 자격 미달 — 후순위로 노출
+
+    def _mark_ineligible(ad_obj, reason):
+        """자격 미달 공고를 후순위 리스트에 추가하고 기본 필드 채움"""
+        ad_obj["match_score"] = 0
+        ad_obj["eligibility_status"] = "ineligible"
+        ad_obj["ineligible_reason"] = reason
+        ad_obj["recommendation_reason"] = reason
+        ad_obj.pop("_category", None)
+        ineligible_results.append(ad_obj)
 
     for ad in candidates:
         # eligibility_logic 파싱
@@ -249,6 +276,7 @@ def get_matches_for_user(user_profile):
         # RuleEngine 자격 검증 (업력/지역/인원/매출 하드 필터)
         rule_result = rule_engine.evaluate(user_profile, eligibility_logic)
         if not rule_result["is_eligible"]:
+            _mark_ineligible(ad, "기본 자격 미달")
             continue
 
         title = ad.get("title", "")
@@ -286,6 +314,7 @@ def get_matches_for_user(user_profile):
             if has_home:
                 # 소재지가 있으면: 소재지 일치만 통과
                 if ad_region != home_city:
+                    _mark_ineligible(ad, f"{ad_region} 지역 전용 (소재지 불일치)")
                     continue
             # 소재지 없으면 전국 취급 → 모든 지역 통과
 
@@ -297,41 +326,80 @@ def get_matches_for_user(user_profile):
         if bracket_city_match:
             title_city = bracket_city_match.group(1)
             if has_home and title_city != home_city:
+                _mark_ineligible(ad, f"{title_city} 지역 전용 (소재지 불일치)")
                 continue
 
         # business_type 하드 필터: 배타적 대상 유형이 지정된 경우
         ad_biz_types = _get_biz_types(eligibility_logic)
+        biz_skipped = False
         if ad_biz_types:
             exclusive_types = [bt for bt in ad_biz_types if bt in EXCLUSIVE_BIZ_TYPES]
             if exclusive_types:
                 # 소상공인 전용 → 비소상공인 제외
                 if "소상공인" in exclusive_types and not is_soho:
                     if not any(bt in ad_biz_types for bt in ["중소기업", "스타트업", "기업"]):
-                        continue
+                        _mark_ineligible(ad, "소상공인 전용 (사용자 비해당)")
+                        biz_skipped = True
                 # 수출기업 전용 → 수출 관심 없는 기업 제외
-                if "수출기업" in exclusive_types and len(exclusive_types) == 1:
+                if not biz_skipped and "수출기업" in exclusive_types and len(exclusive_types) == 1:
                     if "수출마케팅" not in user_interest_tags and "수출" not in user_interests_raw:
-                        continue
+                        _mark_ineligible(ad, "수출기업 전용")
+                        biz_skipped = True
                 # 예비창업자 전용 → 기존 창업자 제외
-                if "예비창업자" in exclusive_types and not any(bt in ad_biz_types for bt in ["중소기업", "스타트업"]):
+                if not biz_skipped and "예비창업자" in exclusive_types and not any(bt in ad_biz_types for bt in ["중소기업", "스타트업"]):
                     if company_age > 0:
-                        continue
+                        _mark_ineligible(ad, "예비창업자 전용")
+                        biz_skipped = True
+                # 사회적경제기업 전용 → 사회적기업/협동조합/마을기업 자격 없으면 제외
+                if not biz_skipped:
+                    social_types = [bt for bt in exclusive_types if bt in ("사회적기업", "예비사회적기업", "마을기업", "자활기업")]
+                    if social_types and not has_social:
+                        _mark_ineligible(ad, f"{social_types[0]} 전용 자격")
+                        biz_skipped = True
+        if biz_skipped:
+            continue
 
         # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개 등 제외
         _info_page_keywords = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황"]
         if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집", "공고", "신청", "접수"]):
             continue
 
-        # 특정 대상 제한 필터 — 제목에 여성/장애인/보훈 등 키워드가 있으면 해당 대상만 통과
-        title_lower = title.lower()
-        skip_restricted = False
-        for target_group, keywords in RESTRICTED_TARGET_KEYWORDS.items():
-            if any(kw in title for kw in keywords):
-                # 사용자의 관심분야나 검색어에 해당 키워드가 없으면 제외
-                if not any(kw in user_interests_raw for kw in keywords):
-                    skip_restricted = True
-                    break
-        if skip_restricted:
+        # 특정 대상 제한 필터 — 제목/본문의 대상 키워드와 사용자 certifications/업종 대조
+        # 제목에 여성/장애인/농업/사회적경제 등 전용 키워드가 있는데 사용자 자격이 안 맞으면 후순위
+        _el_kw_list = eligibility_logic.get("target_keywords", []) or []
+        _el_ind_list = eligibility_logic.get("target_industries", []) or []
+        _el_kw_text = " ".join(_el_kw_list) if isinstance(_el_kw_list, list) else str(_el_kw_list)
+        _el_ind_text = " ".join(_el_ind_list) if isinstance(_el_ind_list, list) else str(_el_ind_list)
+        _target_text = f"{title} {_el_kw_text} {_el_ind_text}"
+
+        restricted_reason = None
+        # 여성 전용 (기업 대상)
+        if any(kw in _target_text for kw in ["여성기업", "여성창업", "여성경제인"]) and not has_female:
+            restricted_reason = "여성기업 전용 자격"
+        # 장애인 전용
+        elif any(kw in _target_text for kw in ["장애인기업", "장애인창업", "장애인고용"]) and not has_disabled:
+            restricted_reason = "장애인기업 전용 자격"
+        # 보훈/제대군인 전용
+        elif any(kw in _target_text for kw in ["보훈", "제대군인", "국가유공자"]):
+            restricted_reason = "보훈/제대군인 전용 자격"
+        # 농업/영농 전용 (제목 또는 AI 추출 업종에 농업이 있는 경우)
+        elif (any(kw in title for kw in ["농업인", "농업법인", "영농", "농촌", "농가"]) or
+              any("농업" in x for x in _el_ind_list if isinstance(x, str))) and not is_farmer:
+            restricted_reason = "농업인/영농 전용"
+        # 어업/수산 전용
+        elif (any(kw in title for kw in ["어업인", "수산업", "수산가공"]) or
+              any(("수산" in x) or ("어업" in x) for x in _el_ind_list if isinstance(x, str))) and not is_fishery:
+            restricted_reason = "어업/수산업 전용"
+        # 식품진흥/식품업 전용 (제조업 코드 C10/C11이 아니면 제외)
+        elif (any(kw in title for kw in ["식품진흥", "식품산업진흥", "식품위생업"]) or
+              any(("식품위생" in x) or ("식품산업" in x) for x in _el_ind_list if isinstance(x, str))) and not is_food_mfg:
+            restricted_reason = "식품업 전용"
+        # 사회적경제기업 전용 (제목 기반)
+        elif any(kw in title for kw in ["사회적경제기업", "사회적기업", "마을기업", "자활기업", "협동조합"]) and not has_social:
+            restricted_reason = "사회적경제기업 전용 자격"
+
+        if restricted_reason:
+            _mark_ineligible(ad, restricted_reason)
             continue
 
         # 검색 텍스트 구성
@@ -530,32 +598,44 @@ def get_matches_for_user(user_profile):
         # 점수 100 캡 — 사용자 신뢰도 위해 0~100 정규화
         score = min(score, 100.0)
         ad["match_score"] = round(score, 1)
+        ad["eligibility_status"] = "eligible"
         # recommendation_reason: "기본 자격" 제외하고 실제 매칭 이유만 표시
         meaningful_reasons = [r for r in reasons if "기본 지원 자격" not in r]
         ad["recommendation_reason"] = " / ".join(meaningful_reasons[:2]) if meaningful_reasons else "지원 자격 충족"
         ad["_category"] = ad_category  # 다양성 처리용 임시 필드
         results.append(ad)
 
-    # 중복 공고 제거 (같은 제목)
-    seen_titles = set()
-    unique_results = []
-    for r in results:
-        norm = re.sub(r'\s+', '', r.get("title", ""))
-        if norm not in seen_titles:
-            seen_titles.add(norm)
-            unique_results.append(r)
-    results = unique_results
+    # 중복 공고 제거 (같은 제목) — eligible / ineligible 각각
+    def _dedupe(lst):
+        seen = set()
+        out = []
+        for r in lst:
+            norm = re.sub(r'\s+', '', r.get("title", ""))
+            if norm not in seen:
+                seen.add(norm)
+                out.append(r)
+        return out
+    results = _dedupe(results)
+    ineligible_results = _dedupe(ineligible_results)
 
-    # 노이즈 컷오프 — 60점 미만은 제외 (PRO/일반 공통)
+    # eligible에서 같은 제목이 나온 건 ineligible에서 제거 (중복 노출 방지)
+    eligible_titles = {re.sub(r'\s+', '', r.get("title", "")) for r in results}
+    ineligible_results = [r for r in ineligible_results if re.sub(r'\s+', '', r.get("title", "")) not in eligible_titles]
+
+    # 노이즈 컷오프 — 60점 미만은 eligible에서만 제외
     results = [r for r in results if r.get("match_score", 0) >= 60]
 
-    # 점수 순 정렬
+    # 점수 순 정렬 (eligible)
     results.sort(key=lambda x: x["match_score"], reverse=True)
 
-    # 임시 필드 제거 후 반환
+    # 임시 필드 제거
     for r in results:
         r.pop("_category", None)
-    return results
+    for r in ineligible_results:
+        r.pop("_category", None)
+
+    # eligible 먼저, ineligible 후순위로 합쳐서 반환
+    return results + ineligible_results
 
 
 # ───────────────────────────────────────────────────────────

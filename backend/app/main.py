@@ -6185,7 +6185,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     else:
         matched = get_matches_for_user(profile)
 
-    # 3. 각 공고에 대해 판정
+    # 3. 각 공고에 대해 판정 — matcher의 eligibility_status 기반 (점수 기준 판정 제거)
     results = []
     eligible_count = 0
     conditional_count = 0
@@ -6193,21 +6193,22 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 
     for ann in matched:
         a = ann if isinstance(ann, dict) else dict(ann)
+        status = a.get("eligibility_status", "eligible")
         score = a.get("match_score", 0)
-        if score >= 80:
-            conclusion = "지원가능"
-            reason = "매칭 점수가 높아 지원 가능성이 높습니다."
-            eligible_count += 1
-        elif score >= 50:
-            conclusion = "조건부"
-            reason = "일부 조건 확인이 필요합니다."
+        if status == "ineligible":
+            conclusion = "대상 아님"
+            reason = a.get("ineligible_reason") or "자격 요건 불일치"
+            ineligible_count += 1
+        elif not a.get("eligibility_logic") or a.get("eligibility_logic") in ("{}", "null"):
+            conclusion = "확인 필요"
+            reason = "공고 원문에서 세부 자격요건 확인 필요"
             conditional_count += 1
         else:
-            conclusion = "조건부"
-            reason = "추가 확인이 필요한 항목이 있습니다."
-            conditional_count += 1
+            conclusion = "신청 가능"
+            reason = a.get("recommendation_reason") or "자격 요건 충족"
+            eligible_count += 1
 
-        # 마감일 표시: None이면 "상시모집" 표기 (데이터 없음 ≠ 상시지만 사용자에게는 동일 의미)
+        # 마감일 표시
         dl_raw = a.get("deadline_date")
         deadline_display = str(dl_raw) if dl_raw else "상시모집"
 
@@ -6220,7 +6221,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             "reason": reason,
             "support_amount": a.get("support_amount", ""),
             "deadline_date": deadline_display,
-            "match_score": score,
+            "eligibility_status": status,
         })
 
     # 4. 공고AI 상담 이력 수집 (이 고객사 관련 최근 30건)
@@ -6306,13 +6307,19 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             for r in results:
                 r["amount_value"] = parse_amount(r.get("support_amount", ""))
 
-            # 정렬: 지원금액 큰 순 + 적합도 (eligible > conditional) + match_score 높은 순
+            # 정렬: 신청가능 → 확인필요 → 대상아님, 내부적으로 마감일 임박 + 금액 큰 순
+            _CONC_ORDER = {"신청 가능": 0, "확인 필요": 1, "대상 아님": 2}
             def sort_key(r):
-                conc_priority = 0 if r["conclusion"] == "eligible" else 1
-                return (conc_priority, -r["amount_value"], -r.get("match_score", 0))
+                conc_priority = _CONC_ORDER.get(r["conclusion"], 3)
+                # 마감일: 가까운 것 우선, 상시모집/None은 뒤로
+                dl = r.get("deadline_date") or ""
+                dl_sort = dl if dl and dl != "상시모집" else "9999-99-99"
+                return (conc_priority, dl_sort, -r["amount_value"])
 
             sorted_results = sorted(results, key=sort_key)
-            top10 = sorted_results[:10]
+            # 보고서에는 신청가능 + 확인필요만 상위 10건. 대상아님은 섹션 뒤에 별도
+            actionable = [r for r in sorted_results if r["conclusion"] != "대상 아님"]
+            top10 = actionable[:10]
 
             consult_text = ""
             if consult_summaries:
@@ -6332,7 +6339,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             # f-string에서 줄바꿈 사용 위해 변수로 분리
             NL = "\n"
             top10_lines = NL.join([
-                f"{i+1}. {r['title']} | 지원금: {r['support_amount'] or '미공개'} | 적합도: {r['match_score']}점 | 마감: {r['deadline_date'] or '상시'}"
+                f"{i+1}. {r['title']} | 지원금: {r['support_amount'] or '미공개'} | 판정: {r['conclusion']} | 마감: {r['deadline_date'] or '상시'}"
                 for i, r in enumerate(top10)
             ]) or "없음"
             urgent_lines = NL.join([f"- [2주 내] {r['title']} | 마감: {r['deadline_date']}" for r in roadmap_immediate]) or "없음"
@@ -6356,12 +6363,13 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 직원수: {client.get('employee_count_bracket', '')}
 - 관심분야: {client.get('interests', '')}
 
-[AI 매칭 결과]
-- 총 {len(results)}건 매칭
-- 지원가능(80점+): {eligible_count}건
-- 조건부(50~79점): {conditional_count}건
+[매칭 결과]
+- 총 {len(results)}건 분석
+- 신청 가능: {eligible_count}건
+- 확인 필요: {conditional_count}건
+- 대상 아님(자격 미달): {ineligible_count}건
 
-[추천 공고 TOP 10 — 지원금액 + 적합도 우선]
+[추천 공고 TOP 10 — 신청 가능/확인 필요 우선, 마감 임박 순]
 {top10_lines}
 
 [신청 로드맵]
@@ -6379,40 +6387,32 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 {attached_docs_text[:5000]}
 ''' if attached_docs_text else ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-[리포트 작성 규칙] — 반드시 아래 7개 섹션을 모두 포함
+[리포트 작성 규칙] — 아래 섹션만 작성 (기업 요약·상담 이력은 보고서 상단에 이미 포함되어 있으므로 **절대 중복 작성 금지**)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## 1. 기업 현황 분석
-- 기업 개요 (업종 특성, 업력, 규모)
-- 강점: 매칭에 유리한 조건 (예: 설립 3년 이내 → 창업지원 적합)
-- 약점: 매칭에 불리한 조건 (예: 매출 1억 미만 → 일부 사업 제외)
-
-## 2. 상담 이력 요약
-- 기존 AI 상담에서 확인된 판정 결과 정리
-- 상담이 없으면 "아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다." 로 작성
-
-## 3. 맞춤 공고 분석 (추천 TOP 10)
+## 1. 맞춤 공고 분석 (추천 TOP 10)
 - **위에 제공된 TOP 10 공고를 모두 표 형태로 정리**
-- 표 컬럼: 순위 / 공고명 / 지원금액 / 마감일 / 적합도 / 추천 사유
-- 적합도가 높은 것일수록 위에 배치
+- 표 컬럼: 순위 / 공고명 / 지원금액 / 마감일 / 판정 / 추천 사유
+- 판정 컬럼 값: "신청 가능" / "확인 필요" (점수 금지)
 - 추천 사유: **왜 이 기업에 적합한지** 1~2문장
+- 절대 점수/퍼센트 수치 사용 금지
 
-## 4. 신청 로드맵
+## 2. 신청 로드맵
 - **위 로드맵 데이터를 활용하여 시각적 타임라인 작성**
 - 즉시 신청 (2주 내) / 이번 달 준비 (1개월 내) / 추후 (다음 달 이후) 3단계 구분
 - 각 단계별 표 형태로 우선순위 표시
 - 즉시 신청 공고는 ★★★, 이번 달 ★★, 추후 ★ 표시
 
-## 5. 필요 서류 체크리스트
+## 3. 필요 서류 체크리스트
 - 공통 서류: 사업자등록증, 중소기업확인서, 재무제표 등
 - 공고별 추가 서류 (알 수 있는 범위에서)
 
-## 6. 경쟁력 분석
+## 4. 경쟁력 분석
 - 이 기업이 선정될 가능성을 높이는 방법
 - 사업계획서 작성 팁
 - 강조해야 할 포인트
 
-## 7. 종합 의견
+## 5. 종합 의견
 - 컨설턴트의 최종 판단
 - 즉시 신청 권장 공고 (1~2개)
 - 준비 후 신청 권장 공고
@@ -6539,9 +6539,89 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         print(f"[report] gantt error: {gerr}")
         gantt_html = ""
 
-    brief = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건"
-    # summary에 간트차트 + AI 분석 전문 포함
-    full_summary = f"{brief}\n\n{gantt_html}\n\n{ai_summary}" if ai_summary else f"{brief}\n\n{gantt_html}"
+    brief = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 분석, 신청가능 {eligible_count}건, 확인필요 {conditional_count}건, 대상아님 {ineligible_count}건"
+
+    # ── 기업 요약 카드 (하드코딩 HTML, AI 미사용) ──
+    def _fmt_years(est):
+        try:
+            if not est: return "-"
+            est_str = str(est)[:10]
+            est_d = datetime.datetime.strptime(est_str, "%Y-%m-%d").date()
+            yrs = datetime.date.today().year - est_d.year
+            return f"{est_str} (업력 {yrs}년)"
+        except Exception:
+            return str(est) if est else "-"
+
+    _cname = client.get('client_name', '-') or '-'
+    _ind = client.get('industry_name') or client.get('industry_code') or '-'
+    _city = client.get('address_city') or '-'
+    _rev = client.get('revenue_bracket') or '-'
+    _emp = client.get('employee_count_bracket') or '-'
+    _interests = client.get('interests') or '-'
+    _est_disp = _fmt_years(client.get('establishment_date'))
+
+    company_summary_html = f'''
+<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">🏢 기업 요약</h2>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
+<tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;width:18%;">기업명</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;width:32%;">{_cname}</td>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;width:18%;">업종</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;width:32%;">{_ind}</td>
+</tr>
+<tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;">설립일</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;">{_est_disp}</td>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;">소재지</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;">{_city}</td>
+</tr>
+<tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;">매출 규모</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;">{_rev}</td>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;">직원 수</th>
+<td style="padding:8px 12px;border:1px solid #e5e7eb;">{_emp}</td>
+</tr>
+<tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-weight:bold;">관심분야</th>
+<td colspan="3" style="padding:8px 12px;border:1px solid #e5e7eb;">{_interests}</td>
+</tr>
+</table>
+<p style="font-size:12px;color:#64748b;margin:4px 0 16px 0;">📊 매칭 결과: 신청 가능 <b style="color:#16a34a;">{eligible_count}건</b> · 확인 필요 <b style="color:#ea580c;">{conditional_count}건</b> · 대상 아님 <b style="color:#94a3b8;">{ineligible_count}건</b></p>
+'''
+
+    # ── 상담 요약 카드 (DB consult_summaries 직접 렌더) ──
+    if consult_summaries:
+        _rows = ""
+        for cs in consult_summaries[:10]:
+            _ct = (cs.get('title') or '')[:60]
+            _cc = cs.get('conclusion') or '미판정'
+            _cs_text = (cs.get('summary') or '')[:120]
+            _rows += f'''
+<tr>
+<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:12px;width:45%;">{_ct}</td>
+<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:12px;width:15%;color:#7c3aed;font-weight:bold;">{_cc}</td>
+<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:11px;width:40%;color:#475569;">{_cs_text}</td>
+</tr>'''
+        consult_summary_html = f'''
+<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">💬 상담 이력 요약</h2>
+<p style="font-size:12px;color:#64748b;margin:4px 0;">최근 공고별 AI 상담 판정 결과 (최대 10건)</p>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
+<thead><tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">공고명</th>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">판정</th>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">요약</th>
+</tr></thead>
+<tbody>{_rows}</tbody>
+</table>
+'''
+    else:
+        consult_summary_html = '''
+<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">💬 상담 이력 요약</h2>
+<p style="font-size:13px;color:#64748b;margin:8px 0 16px 0;padding:12px;background:#f8fafc;border-left:3px solid #c4b5fd;">아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다.</p>
+'''
+
+    # summary 조립: brief + 기업요약 + 상담요약 + 간트 + AI 분석
+    full_summary = f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n\n{ai_summary}" if ai_summary else f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}"
 
     # 6. DB 저장
     cur.execute(

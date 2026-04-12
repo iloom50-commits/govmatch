@@ -349,14 +349,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 공유 링크로 접속 시 해당 카드로 스크롤 + 하이라이트
   useEffect(() => {
     if (!highlightAid) return;
-    const timer = setTimeout(() => {
+    // 여러 번 시도 (데이터 로드 타이밍에 따라)
+    const tryScroll = (delay: number) => setTimeout(() => {
       const el = document.querySelector(`[data-aid="${highlightAid}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 1500); // 데이터 로드 후 스크롤
-    const fadeTimer = setTimeout(() => setHighlightAid(0), 5000); // 5초 후 하이라이트 해제
-    return () => { clearTimeout(timer); clearTimeout(fadeTimer); };
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, delay);
+    const t1 = tryScroll(1500);
+    const t2 = tryScroll(3000);
+    const t3 = tryScroll(5000);
+    const fadeTimer = setTimeout(() => setHighlightAid(0), 8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
   // 오늘의 인기 공고
@@ -1363,21 +1365,30 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   {trendingItems.map((t, i) => (
                     <div
                       key={t.announcement_id}
-                      className="relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group"
+                      data-aid={t.announcement_id}
+                      className={`relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group ${highlightAid === t.announcement_id ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}
                     >
-                      <div className="flex items-center gap-1.5 mb-2">
+                      {/* 태그 행: 부처 · 카테고리 · 마감일 */}
+                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                         <span className="text-[11px] font-bold text-orange-500">{i + 1}위</span>
-                        {t.trending_keyword && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">{t.trending_keyword}</span>
+                        {t.department && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold">{t.department.slice(0, 12)}</span>
+                        )}
+                        {t.category && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">{t.category}</span>
+                        )}
+                        {t.region && t.region !== "All" && t.region !== "전국" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-semibold">{t.region}</span>
                         )}
                         {t.deadline_date && (
                           <span className="text-[10px] text-slate-400 ml-auto">~{t.deadline_date.slice(5)}</span>
                         )}
                       </div>
-                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 mb-2">{t.title}</p>
+                      {/* 금액 배지 */}
                       {t.support_amount && (
-                        <p className="text-[11px] text-orange-600 font-semibold mb-3">{t.support_amount.slice(0, 30)}</p>
+                        <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-red-500 text-white font-bold mb-1.5">{t.support_amount.slice(0, 20)}</span>
                       )}
+                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 mb-3">{t.title}</p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: t } }))}

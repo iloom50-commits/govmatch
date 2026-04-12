@@ -4,4 +4,16 @@ Disallow: /admin
 Disallow: /api/
 Disallow: /auth/
 
+User-agent: Yeti
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/
+
+User-agent: NaverBot
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/
+
 Sitemap: https://govmatch.kr/sitemap.xml

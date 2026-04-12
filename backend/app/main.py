@@ -6462,9 +6462,86 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         print(f"[report] AI summary error: {e}")
 
     import json as _json
+
+    # ── 간트차트 로드맵 HTML 생성 (백엔드 직접 — AI 의존 X) ──
+    gantt_html = ""
+    try:
+        import datetime as _dt
+        today = _dt.date.today()
+        # TOP 10에서 마감일이 미래인 것만 추출
+        timeline_items = []
+        for r in (sorted_results[:10] if 'sorted_results' in dir() else results[:10]):
+            dl_str = str(r.get("deadline_date") or "").strip()
+            if not dl_str or dl_str in ("None", "null", "상시모집"):
+                # 상시모집은 별도로 표시
+                timeline_items.append({"r": r, "days_left": None, "label": "상시모집"})
+                continue
+            try:
+                dl = _dt.datetime.strptime(dl_str[:10], "%Y-%m-%d").date()
+                days = (dl - today).days
+                if days < 0:
+                    continue
+                timeline_items.append({"r": r, "days_left": days, "label": f"D-{days}"})
+            except Exception:
+                continue
+        # 마감일 가까운 순으로 정렬
+        dated = sorted([t for t in timeline_items if t["days_left"] is not None], key=lambda x: x["days_left"])
+        always = [t for t in timeline_items if t["days_left"] is None]
+        ordered = dated + always
+
+        if ordered:
+            max_days = max((t["days_left"] for t in ordered if t["days_left"] is not None), default=60) or 60
+            chart_max = max(max_days, 30)  # 최소 30일 스케일
+            rows_html = ""
+            for t in ordered[:10]:
+                rr = t["r"]
+                title = (rr.get("title") or "")[:55]
+                amt = rr.get("support_amount") or "-"
+                if t["days_left"] is None:
+                    bar_color = "#94a3b8"
+                    bar_width = 100
+                    label = "상시모집"
+                elif t["days_left"] <= 7:
+                    bar_color = "#dc2626"
+                    bar_width = max(5, int(100 * t["days_left"] / chart_max))
+                    label = f"⚠ D-{t['days_left']} (긴급)"
+                elif t["days_left"] <= 30:
+                    bar_color = "#ea580c"
+                    bar_width = max(5, int(100 * t["days_left"] / chart_max))
+                    label = f"D-{t['days_left']}"
+                else:
+                    bar_color = "#7c3aed"
+                    bar_width = max(5, int(100 * t["days_left"] / chart_max))
+                    label = f"D-{t['days_left']}"
+                rows_html += f'''
+                <tr>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;width:40%;vertical-align:middle;">{title}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;width:18%;color:#16a34a;font-weight:bold;vertical-align:middle;">{amt}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;width:42%;vertical-align:middle;">
+                        <div style="position:relative;height:18px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                            <div style="position:absolute;left:0;top:0;height:100%;width:{bar_width}%;background:{bar_color};border-radius:3px;"></div>
+                            <span style="position:relative;display:block;text-align:right;padding-right:6px;font-size:10px;line-height:18px;color:#1f2937;font-weight:bold;">{label}</span>
+                        </div>
+                    </td>
+                </tr>'''
+            gantt_html = f'''
+<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">📅 신청 로드맵 (간트차트)</h2>
+<p style="font-size:12px;color:#64748b;margin:8px 0;">긴급(7일내) · 이번달(30일내) · 추후 — 색상으로 마감 임박도 표시</p>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
+<thead><tr>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">공고명</th>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">금액</th>
+<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">D-day</th>
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>'''
+    except Exception as gerr:
+        print(f"[report] gantt error: {gerr}")
+        gantt_html = ""
+
     brief = f"{client['client_name']} 기업 분석 결과: 총 {len(results)}건 매칭, 지원가능 {eligible_count}건, 조건부 {conditional_count}건"
-    # summary에 AI 분석 전문 포함 (brief + ai_summary)
-    full_summary = f"{brief}\n\n{ai_summary}" if ai_summary else brief
+    # summary에 간트차트 + AI 분석 전문 포함
+    full_summary = f"{brief}\n\n{gantt_html}\n\n{ai_summary}" if ai_summary else f"{brief}\n\n{gantt_html}"
 
     # 6. DB 저장
     cur.execute(
@@ -6567,6 +6644,114 @@ def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_curr
     if d.get("establishment_date"):
         d["establishment_date"] = str(d["establishment_date"])
     return {"status": "SUCCESS", "report": d}
+
+
+class ReportEditSectionRequest(BaseModel):
+    selected_text: str          # 사용자가 드래그로 선택한 텍스트
+    instruction: str            # AI에게 보낼 수정 지시 ("더 강한 톤으로", "표로 바꿔줘" 등)
+
+
+@app.post("/api/pro/reports/{report_id}/edit-section")
+def api_pro_report_edit_section(report_id: int, req: ReportEditSectionRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO: 보고서의 일부 텍스트를 AI로 부분 수정.
+    선택한 텍스트 + 지시 → AI가 같은 길이/톤으로 다시 작성하여 반환.
+    클라이언트가 받은 결과를 원본에서 selected_text 위치에 치환.
+    """
+    _require_pro(current_user)
+    if not req.selected_text or not req.selected_text.strip():
+        raise HTTPException(status_code=400, detail="선택한 텍스트가 비어있습니다.")
+    if not req.instruction or not req.instruction.strip():
+        raise HTTPException(status_code=400, detail="수정 지시가 비어있습니다.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, summary FROM client_reports WHERE id=%s AND owner_business_number=%s",
+        (report_id, current_user["bn"])
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+
+    full_summary = (dict(row).get("summary") or "")[:6000]
+
+    try:
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="AI 서비스가 설정되지 않았습니다.")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+        prompt = f"""당신은 정부 지원사업 컨설턴트의 보고서 편집 어시스턴트입니다.
+
+[전체 보고서 컨텍스트]
+{full_summary}
+
+[사용자가 선택한 부분]
+\"\"\"
+{req.selected_text}
+\"\"\"
+
+[수정 지시]
+{req.instruction}
+
+위 [선택한 부분]을 [수정 지시]에 따라 다시 작성하세요.
+
+규칙:
+1. 결과는 [선택한 부분]을 대체할 텍스트만 출력. 다른 설명이나 마크다운 코드블록 금지.
+2. 비슷한 길이를 유지 (지시가 명시적으로 늘리거나 줄이라고 안 하면).
+3. [전체 보고서] 톤과 일관성 유지.
+4. HTML 태그가 원본에 있으면 그대로 유지하되, 지시에 따라 태그 변경 가능.
+5. 절대 ```html 같은 코드펜스 사용 금지.
+6. 한국어, 전문 컨설턴트 톤."""
+
+        response = model.generate_content(prompt)
+        new_text = (response.text or "").strip()
+        # 코드펜스 제거
+        if new_text.startswith("```"):
+            lines = new_text.split("\n")
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            new_text = "\n".join(lines).strip()
+
+        return {
+            "status": "SUCCESS",
+            "original": req.selected_text,
+            "rewritten": new_text,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[edit-section] error: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 수정 실패: {str(e)[:200]}")
+
+
+class ReportSaveRequest(BaseModel):
+    summary: str  # 수정된 전체 HTML/텍스트
+
+
+@app.put("/api/pro/reports/{report_id}")
+def api_pro_report_update(report_id: int, req: ReportSaveRequest, current_user: dict = Depends(_get_current_user)):
+    """PRO: 보고서 summary를 통째로 업데이트 (편집 모달 최종 저장용)"""
+    _require_pro(current_user)
+    if not req.summary or len(req.summary) < 10:
+        raise HTTPException(status_code=400, detail="저장할 내용이 너무 짧습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE client_reports SET summary=%s WHERE id=%s AND owner_business_number=%s",
+        (req.summary, report_id, current_user["bn"])
+    )
+    conn.commit()
+    rows = cur.rowcount
+    conn.close()
+    if not rows:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "report_id": report_id}
 
 
 @app.get("/api/pro/reports/{report_id}/pdf")

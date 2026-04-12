@@ -12,6 +12,8 @@ interface ChatMessage {
   text: string;
   choices?: string[];
   announcements?: any[];
+  matched?: any[];          // 매칭 결과 카드 표시용
+  showReportButton?: boolean; // 보고서 생성 버튼 표시용
   done?: boolean;
 }
 
@@ -335,12 +337,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         if (charIdx >= fullText.length) {
           clearInterval(typingRef.current!);
           typingRef.current = null;
-          // 타이핑 완료 — choices 표시
+          // 타이핑 완료 — choices + 매칭 결과 + 보고서 버튼 표시
           setMessages(prev => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
             if (last && last.role === "assistant") {
-              updated[updated.length - 1] = { ...last, text: fullText, choices };
+              const matched = data.matched_announcements || [];
+              updated[updated.length - 1] = {
+                ...last,
+                text: fullText,
+                choices,
+                matched: matched.length > 0 ? matched : undefined,
+                showReportButton: matched.length > 0,
+              };
             }
             return updated;
           });
@@ -755,6 +764,78 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   {choice}
                                 </button>
                               ))}
+                            </div>
+                          )}
+                          {/* 매칭 결과 카드 + 보고서 생성 버튼 */}
+                          {msg.role === "assistant" && msg.matched && msg.matched.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {msg.matched.slice(0, 5).map((m: any, mi: number) => (
+                                <div key={mi} className={`p-3 rounded-xl border ${dark ? "bg-white/[0.03] border-white/[0.08]" : "bg-white border-slate-200"}`}>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
+                                        {m.title || m.program_title || "공고"}
+                                      </p>
+                                      <div className="flex flex-wrap gap-2 mt-1 text-[11px]">
+                                        {m.support_amount && <span className="text-emerald-500 font-semibold">💰 {m.support_amount}</span>}
+                                        {m.deadline_date && m.deadline_date !== "None" && <span className={t.muted}>📅 {String(m.deadline_date).slice(0,10)}</span>}
+                                        {m.match_score != null && <span className="text-violet-500 font-semibold">⭐ {Math.round(m.match_score)}점</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              {msg.showReportButton && (
+                                <button
+                                  onClick={async () => {
+                                    if (loading || typing) return;
+                                    setLoading(true);
+                                    try {
+                                      // 임시 client_profile 생성 후 reports/generate 호출
+                                      const isIndiv = clientCategory === "individual";
+                                      const tempName = `상담${new Date().toLocaleString("ko-KR", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}`;
+                                      const cf = await fetch(`${API}/api/pro/clients`, {
+                                        method: "POST",
+                                        headers: headers(),
+                                        body: JSON.stringify({
+                                          client_name: profileForm.company_name || tempName,
+                                          client_type: isIndiv ? "individual" : "business",
+                                          establishment_date: profileForm.establishment_date || (profileForm.establishment_year ? `${profileForm.establishment_year}-01-01` : null),
+                                          address_city: profileForm.address_city || collectedProfile.address_city || "",
+                                          industry_code: profileForm.industry || collectedProfile.industry_code || "",
+                                          revenue_bracket: profileForm.revenue_bracket || (isIndiv ? "1억 미만" : ""),
+                                          employee_count_bracket: profileForm.employee_bracket || (isIndiv ? "5인 미만" : ""),
+                                          interests: (profileForm.interests && profileForm.interests.length > 0)
+                                            ? profileForm.interests.join(",")
+                                            : (collectedProfile.interests || ""),
+                                          memo: "ProSecretary 매칭에서 자동 생성",
+                                        }),
+                                      });
+                                      if (!cf.ok) throw new Error("client_profile 생성 실패");
+                                      const cfData = await cf.json();
+                                      const cid = cfData.id;
+                                      // 보고서 생성
+                                      const rg = await fetch(`${API}/api/pro/reports/generate`, {
+                                        method: "POST",
+                                        headers: headers(),
+                                        body: JSON.stringify({ client_profile_id: cid }),
+                                      });
+                                      if (!rg.ok) throw new Error("보고서 생성 실패");
+                                      const rgData = await rg.json();
+                                      toast(`📄 보고서 생성 완료 (${rgData.total}건 매칭, ${rgData.eligible}건 적합)`, "success");
+                                      // 보고서 탭으로 이동
+                                      setActiveView("reports");
+                                    } catch (e: any) {
+                                      toast(e?.message || "보고서 생성 실패", "error");
+                                    } finally {
+                                      setLoading(false);
+                                    }
+                                  }}
+                                  className="w-full mt-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                >
+                                  📄 이 매칭 결과로 보고서 생성
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>

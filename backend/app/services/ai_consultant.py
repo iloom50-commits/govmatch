@@ -1851,11 +1851,18 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - 컨설턴트가 충분한 정보를 정리하도록 단계적으로 도와주세요.
 - 정보가 부족한데 매칭을 강행하면 안 됩니다. 반드시 핵심 정보를 먼저 수집하세요.
 
+[★ 시드 메시지 인식 — 매우 중요]
+사용자 첫 메시지가 "[새 케이스 시작]"으로 시작하면 그 안에 이미 고객 유형이 명시되어 있습니다.
+- "[새 케이스 시작] 개인 고객" → 1단계 건너뛰고 즉시 2단계(니즈 파악)부터 시작
+- "[새 케이스 시작] 사업자/법인 고객" → 1단계 건너뛰고 사업자 2단계부터 시작
+- "[새 케이스 시작] 예비창업자" → 즉시 예비창업 맥락으로 2단계
+- 다시 "어떤 고객 유형인가요?" 묻지 마세요. 이미 명시되었습니다.
+
 [대화 단계 — 이 순서를 지키세요]
 
-▶ 1단계: 케이스 개요 확인
+▶ 1단계: 케이스 개요 확인 (시드 메시지에 유형이 없을 때만)
    "어떤 고객 케이스인지 알려주시면 그에 맞춰 정보를 정리해보겠습니다."
-   choices: ["🏢 사업자/법인 고객", "👤 개인 고객", "🌱 예비창업자", "📁 기존 등록 고객"]
+   choices: ["🏢 사업자/법인 고객", "👤 개인 고객", "🌱 예비창업자", "✏️ 직접 입력"]
 
 ▶ 2단계: 고객의 주요 니즈/관심 영역 파악 (큰 카테고리)
    "고객이 현재 어떤 분야 지원을 가장 필요로 하나요?"
@@ -2005,6 +2012,19 @@ done=true일 때 (모든 정보 수집 완료):
 
 반드시 순수 JSON만 반환하세요."""
 
+    # ── 시드 메시지에서 고객 유형 사전 추출 → system_prompt에 강한 힌트 주입 ──
+    seed_hint = ""
+    if messages:
+        first_user = next((m.get("text", "") for m in messages if m.get("role") == "user"), "")
+        if "[새 케이스 시작]" in first_user:
+            if "사업자" in first_user or "법인" in first_user or "기업" in first_user:
+                seed_hint = "\n\n[현재 케이스] 사업자/법인 고객. 고객 유형은 이미 확정. 1단계 건너뛰고 2단계(니즈 파악)부터 시작하세요."
+            elif "예비창업" in first_user or "예비 창업" in first_user:
+                seed_hint = "\n\n[현재 케이스] 예비창업자. 고객 유형은 이미 확정. 1단계 건너뛰고 2단계부터 시작하세요."
+            elif "개인" in first_user:
+                seed_hint = "\n\n[현재 케이스] 개인 고객. 고객 유형은 이미 확정. 1단계 건너뛰고 개인 모드 2단계(니즈 파악)부터 시작하세요. choices는 개인용 카테고리를 제시하세요."
+    system_prompt = system_prompt + seed_hint
+
     # ── 새 SDK (google.genai) + Google Search Grounding ──
     _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'
     try:
@@ -2119,27 +2139,43 @@ done=true일 때 (모든 정보 수집 완료):
             done = True
             logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile")
 
-        # ── 방어적 후처리: AI가 message에 choices를 텍스트로 흘렸을 때 강제 분리 ──
+        # ── 방어적 후처리: AI가 message에 JSON 조각/choices를 흘렸을 때 강제 정리 ──
         msg_text = result.get("message", "")
         ai_choices = result.get("choices", [])
 
-        # 패턴 1: "choices: [\"...\", \"...\"]" 또는 'choices:[...]'가 message 안에 박힌 경우
+        # 패턴 0: message 안에 "\"choices\":" 또는 "\"done\":" 같은 raw JSON 키가 등장하면
+        # 그 위치 이전까지만 사용 (가장 흔한 누출 패턴)
+        for json_key in ['"choices":', '"done":', '"collected":', '"profile":', '"message":']:
+            idx = msg_text.find(json_key)
+            if idx > 0:
+                msg_text = msg_text[:idx].rstrip(' \t\n,;{')
+
+        # 패턴 1: "choices: [...]" 박혀 있으면 분리 (닫는 ] 있는 경우)
         choices_pattern = re.search(r'choices\s*[:：]\s*\[([^\]]+)\]', msg_text, re.IGNORECASE)
         if choices_pattern:
             try:
                 raw = "[" + choices_pattern.group(1) + "]"
-                # 따옴표 정규화
                 raw = raw.replace("'", '"')
                 parsed = json.loads(raw)
                 if isinstance(parsed, list) and not ai_choices:
                     ai_choices = parsed
-                # message에서 해당 라인 제거
                 msg_text = re.sub(r'\n*\s*choices\s*[:：]\s*\[[^\]]+\]\s*', '', msg_text, flags=re.IGNORECASE).strip()
             except Exception:
                 pass
 
-        # 패턴 2: "선택지:" 또는 "옵션:" 라벨로 시작하는 라인 제거
-        msg_text = re.sub(r'\n*\s*(선택지|옵션)\s*[:：].*$', '', msg_text, flags=re.MULTILINE).strip()
+        # 패턴 2: "선택지:" / "옵션:" 라벨 라인 제거
+        msg_text = re.sub(r'\n*\s*(선택지|옵션|choices)\s*[:：].*$', '', msg_text, flags=re.MULTILINE | re.IGNORECASE).strip()
+
+        # 패턴 3: 닫히지 않은 따옴표/괄호로 끝나면 잘라냄
+        msg_text = msg_text.rstrip('",\n\t ;{}[]')
+
+        # 패턴 4: 빈 reply 폴백
+        if not msg_text.strip():
+            msg_text = "고객 케이스에 대해 좀 더 알려주세요."
+
+        # 첫 인사 직접 입력 옵션 강제 추가 (없으면)
+        if ai_choices and not any("직접" in str(c) or "기타" in str(c) for c in ai_choices):
+            ai_choices = list(ai_choices) + ["✏️ 직접 입력"]
 
         return {
             "reply": msg_text if not done else "수집된 정보를 바탕으로 매칭을 실행합니다.",

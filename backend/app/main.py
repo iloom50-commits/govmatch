@@ -7039,8 +7039,30 @@ def api_support_chat(req: dict, request: Request):
 
 
 @app.get("/api/trending")
-def api_trending():
-    """오늘의 인기 공고 3건 반환 — 없으면 자동 생성"""
+def api_trending(authorization: Optional[str] = Header(None)):
+    """오늘의 인기 공고 3건 반환 — 사용자 소재지와 무관한 지역 한정 공고는 제외"""
+    # 사용자 소재지 추출 (로그인 시)
+    user_home_city = ""
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            _token = authorization.split(" ", 1)[1]
+            _payload = jwt.decode(_token, JWT_SECRET, algorithms=["HS256"])
+            _bn = _payload.get("bn")
+            if _bn:
+                _conn = get_db_connection()
+                _cur = _conn.cursor()
+                _cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_bn,))
+                _row = _cur.fetchone()
+                _conn.close()
+                if _row:
+                    _city = _row.get("address_city", "") or ""
+                    # 첫 번째 실제 지역 추출 (전국 제외)
+                    _cities = [c.strip() for c in _city.split(",") if c.strip() and c.strip() != "전국"]
+                    if _cities:
+                        user_home_city = _cities[0]
+        except Exception:
+            pass
+
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -7114,11 +7136,56 @@ def api_trending():
             except Exception:
                 pass
 
+        # 사용자 소재지 기반 필터링 — 다른 지역 한정 공고 제외 (전국/소재지는 통과)
+        if user_home_city:
+            from app.services.rule_engine import _normalize_region
+            _user_region = _normalize_region(user_home_city)
+            import re as _re
+            filtered = []
+            for r in rows:
+                ad_region = _normalize_region(r.get("region", "") or "")
+                title = r.get("title", "") or ""
+                # 1. region 필드 체크
+                if ad_region and ad_region not in ("전국", "", "All"):
+                    if ad_region != _user_region:
+                        continue
+                # 2. 제목 [도시명] 패턴 체크
+                m = _re.search(r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]', title)
+                if m and m.group(1) != _user_region:
+                    continue
+                filtered.append(r)
+            rows = filtered
+
+            # 필터링 후 부족하면 추가 인기 공고로 보충
+            if len(rows) < 3:
+                needed = 3 - len(rows)
+                existing_ids = {r.get("announcement_id") for r in rows}
+                cur.execute("""
+                    SELECT announcement_id, title, department, category,
+                           support_amount, deadline_date, region, origin_url
+                    FROM announcements
+                    WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                      AND support_amount IS NOT NULL AND support_amount != ''
+                      AND (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region ILIKE %s)
+                      AND title NOT ILIKE %s
+                    ORDER BY
+                        CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
+                        deadline_date ASC NULLS LAST
+                    LIMIT %s
+                """, (f"%{_user_region}%", "%[%]%", needed * 3))
+                for fb in cur.fetchall():
+                    fbd = dict(fb)
+                    if fbd.get("announcement_id") in existing_ids:
+                        continue
+                    rows.append({**fbd, "rank": len(rows) + 1, "trending_keyword": "전국", "trending_reason": "전국/소재지 인기"})
+                    if len(rows) >= 3:
+                        break
+
         # 날짜 직렬화
         for r in rows:
             if r.get("deadline_date"):
                 r["deadline_date"] = str(r["deadline_date"])
-        return {"status": "SUCCESS", "data": rows, "date": str(__import__("datetime").date.today())}
+        return {"status": "SUCCESS", "data": rows[:3], "date": str(__import__("datetime").date.today())}
     except Exception as outer_e:
         print(f"[Trending API] outer error: {outer_e}")
         import traceback; traceback.print_exc()

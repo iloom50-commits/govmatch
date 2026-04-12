@@ -364,7 +364,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 오늘의 인기 공고
   const [trendingItems, setTrendingItems] = useState<any[]>([]);
   useEffect(() => {
-    fetch(`${API}/api/trending`).then(r => r.json()).then(d => {
+    const _token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
+    fetch(`${API}/api/trending`, {
+      headers: _token ? { Authorization: `Bearer ${_token}` } : {},
+    }).then(r => r.json()).then(d => {
       if (d.data) setTrendingItems(d.data);
     }).catch(() => {});
   }, []);

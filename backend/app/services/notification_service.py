@@ -112,40 +112,31 @@ class NotificationService:
         return programs
 
     async def match_program_with_user(self, program, user):
-        """AI를 사용하여 공고와 사용자 프로필 매칭 및 사유 생성"""
+        """간단 키워드 매칭 — AI 호출 없이 빠르게 (디지스트 timeout 방지)"""
         user_data = dict(user) if not isinstance(user, dict) else user
 
-        if not self.model:
-            return {"score": 0, "reasoning": "AI 모델 미설정"}
+        # 간단 점수 산출: 키워드 일치 + 지역 일치
+        score = 60  # 기본 통과 점수
+        title = (program.get('title') or '').lower()
+        summary = (program.get('summary_text') or '').lower()
+        text = title + ' ' + summary
 
-        prompt = f"""
-        당신은 기업 지원사업 전문 컨설턴트입니다.
-        아래의 기업 프로필과 지원사업 공고를 분석하여 매칭 점수와 구체적인 추천 사유를 작성해 주세요.
+        # 관심사 키워드 일치 보너스
+        interests_str = user_data.get('interests') or ''
+        interests = [k.strip().lower() for k in interests_str.split(',') if k.strip()]
+        kw_hits = sum(1 for kw in interests if kw and kw in text)
+        score += min(kw_hits * 10, 30)
 
-        [기업 프로필]
-        - 기업명: {user_data.get('company_name', '알 수 없음')}
-        - 지역: {user_data.get('address_city', '전국')}
-        - 주요분야: {user_data.get('industry_code', '미지정')}
-        - 관심사: {user_data.get('interests', '없음')}
+        # 지역 일치 보너스
+        user_city = (user_data.get('address_city') or '').strip()
+        ad_region = (program.get('region') or '').strip()
+        if user_city and user_city in ad_region:
+            score += 10
 
-        [지원사업 공고]
-        - 제목: {program['title']}
-        - 요약: {program['summary_text'] if program['summary_text'] else '요약 정보 없음'}
+        score = min(score, 100)
 
-        결과는 반드시 아래 JSON 형식으로만 답변해 주세요:
-        {{
-            "score": (0~100 사이의 정수),
-            "reasoning": "(사용자에게 직접 말하는 듯한 친절한 말투의 추천 사유, 2~3문장)"
-        }}
-        """
-
-        try:
-            response = self.model.generate_content(prompt)
-            result = json.loads(response.text.replace('```json', '').replace('```', '').strip())
-            return result
-        except Exception as e:
-            print(f"Error in AI Matching: {e}")
-            return {"score": 0, "reasoning": "분석 중 오류가 발생했습니다."}
+        reasoning = f"고객 관심사와 {kw_hits}개 키워드 일치" if kw_hits else "전국 공통 지원사업"
+        return {"score": score, "reasoning": reasoning}
 
     def _build_email_html(self, company_name: str, matches: List[Dict]) -> str:
         """매칭 결과를 HTML 이메일 본문으로 변환"""

@@ -1138,6 +1138,20 @@ class SecurityAgentMiddleware(BaseHTTPMiddleware):
         if method == "OPTIONS":
             return await call_next(request)
 
+        # 오너 화이트리스트 — 항상 접근 허용
+        _owner_emails = os.getenv("OWNER_EMAILS", "osung94@naver.com").split(",")
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            try:
+                _token = auth_header.split(" ", 1)[1]
+                _payload = jwt.decode(_token, JWT_SECRET, algorithms=["HS256"])
+                if _payload.get("email") in _owner_emails:
+                    # 오너는 차단 목록에서도 제거
+                    security_agent._blocked_ips.discard(ip)
+                    return await call_next(request)
+            except Exception:
+                pass
+
         # 요청 검사
         block_reason = security_agent.check_request(ip, path, method, query, user_agent=user_agent)
         if block_reason in ("IP_BLOCKED", "SUSPICIOUS_BLOCKED"):

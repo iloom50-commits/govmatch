@@ -84,10 +84,25 @@ def get_db_connection():
 
 
 def init_database():
-    """DB 연결 확인 + 누락 테이블 자동 생성"""
+    """DB 연결 확인 + 누락 테이블 자동 생성
+
+    각 statement를 독립 실행 (autocommit) — 한 statement가 실패해도
+    다음 statement에 영향 주지 않도록 격리. PostgreSQL의 트랜잭션 차단 회피.
+    """
     try:
         conn = get_db_connection()
+        conn.autocommit = True  # 핵심: 각 statement 별 즉시 commit
         cursor = conn.cursor()
+
+        def _safe_exec(sql, label=""):
+            """단일 statement 안전 실행 — 실패해도 다음 진행"""
+            try:
+                cursor.execute(sql)
+                return True
+            except Exception as e:
+                print(f"  [init_db] skip {label}: {str(e)[:80]}")
+                return False
+
         cursor.execute("SELECT 1")
 
         # notification_settings 테이블이 없으면 자동 생성 (SQLite→PostgreSQL 마이그레이션 대비)

@@ -2015,6 +2015,26 @@ done=true일 때 (모든 정보 수집 완료):
                     _detected_interests.append(tag)
             auto_interests = ",".join(_detected_interests) if _detected_interests else ""
 
+            # 대화에서 구체적 키워드 추출 (카테고리에 매핑 안 되는 원본 키워드)
+            _specific_keywords = []
+            _specific_patterns = [
+                "스마트공장", "스마트팜", "스마트시티", "전기차", "수소", "반도체",
+                "바이오", "의료기기", "로봇", "드론", "메타버스", "블록체인",
+                "탄소중립", "ESG", "친환경", "재생에너지", "2차전지",
+                "콘텐츠", "게임", "웹툰", "K-뷰티", "K-푸드", "한류",
+                "프랜차이즈", "물류", "택배", "배달", "공유경제",
+            ]
+            for kw in _specific_patterns:
+                if kw in all_text:
+                    _specific_keywords.append(kw)
+            # 사용자가 직접 언급한 2글자 이상 명사도 추출 (간단 휴리스틱)
+            for word in all_text.replace(",", " ").replace(".", " ").split():
+                if len(word) >= 3 and word not in _specific_keywords and not any(word in tag for tag in _detected_interests):
+                    if any(kw in word for kw in ["공장", "산업", "사업", "기술", "서비스", "플랫폼", "솔루션"]):
+                        _specific_keywords.append(word)
+
+            auto_custom = ",".join(_specific_keywords) if _specific_keywords else ""
+
             DEFAULTS = {
                 "company_name": "고객사",
                 "establishment_date": "2024-01-01",
@@ -2025,6 +2045,9 @@ done=true일 때 (모든 정보 수집 완료):
                 "interests": auto_interests,
             }
             profile = {k: (collected.get(k) or DEFAULTS[k]) for k in REQUIRED}
+            # 구체적 키워드를 custom_keywords로 추가
+            if auto_custom:
+                profile["custom_keywords"] = collected.get("custom_keywords") or auto_custom
             done = True
             logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile")
 

@@ -381,6 +381,15 @@ def get_matches_for_user(user_profile):
                         reasons.append(f'"{tag}" 관심분야 부합')
                         break
 
+        # C-2. 구체적 키워드 직접 매칭 부스트 (최대 30점)
+        # custom_keywords(스마트공장, 바이오 등)가 제목에 직접 포함되면 최우선
+        if custom_kw_list:
+            title_lower = title.lower()
+            direct_match = [kw for kw in custom_kw_list if kw.lower() in title_lower]
+            if direct_match:
+                score += min(30.0, len(direct_match) * 15.0)
+                reasons.append(f'"{direct_match[0]}" 키워드 직접 매칭')
+
         # D. business_type 보너스 매칭 (최대 10점)
         if ad_biz_types and not ad_targets_soho:
             if "중소기업" in ad_biz_types and not is_soho:

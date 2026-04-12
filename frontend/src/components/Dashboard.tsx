@@ -1380,15 +1380,25 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                         {t.region && t.region !== "All" && t.region !== "전국" && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-semibold">{t.region}</span>
                         )}
-                        {t.deadline_date && (
-                          <span className="text-[10px] text-slate-400 ml-auto">~{t.deadline_date.slice(5)}</span>
+                        {t.deadline_date && t.deadline_date !== "None" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-semibold ml-auto">~{t.deadline_date.slice(5)}</span>
+                        )}
+                        {(!t.deadline_date || t.deadline_date === "None") && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 font-semibold ml-auto">상시모집</span>
                         )}
                       </div>
                       {/* 금액 배지 */}
                       {t.support_amount && (
                         <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-red-500 text-white font-bold mb-1.5">{t.support_amount.slice(0, 20)}</span>
                       )}
-                      <p className="text-[13px] font-bold text-slate-800 line-clamp-2 mb-3">{t.title}</p>
+                      {/* 제목 — 클릭 시 원문 이동 */}
+                      <a
+                        href={t.origin_url || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-[13px] font-bold text-slate-800 line-clamp-2 mb-3 hover:text-orange-700 hover:underline underline-offset-2 transition-colors cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >{t.title}</a>
                       <div className="flex gap-2">
                         <button
                           onClick={() => window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: t } }))}

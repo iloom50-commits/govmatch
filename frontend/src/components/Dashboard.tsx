@@ -332,6 +332,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false); // 카톡/네이버/라인 등 인앱 브라우저
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [androidBannerDismissed, setAndroidBannerDismissed] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
@@ -397,6 +398,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     // iOS 감지 (Safari에서는 beforeinstallprompt 미지원)
     const ua = window.navigator.userAgent;
     const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    // 인앱 브라우저 감지 (카카오톡/네이버/라인/페북/인스타 등 — PWA 설치 미지원)
+    const inApp = /KAKAOTALK|NAVER|Line|FBAN|FBAV|Instagram|; wv\)|EveryTalk/i.test(ua);
+    setIsInAppBrowser(inApp);
     if (isiOS) {
       setIsIos(true);
       const dismissed = sessionStorage.getItem("ios_pwa_dismissed");
@@ -1596,30 +1600,65 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-[11px] font-bold text-slate-700 mb-2">설치 방법</p>
-              {isIos ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
-                    <span className="text-base">□↑</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
-                    <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+            {isInAppBrowser ? (
+              /* 카톡/네이버/라인 등 인앱 브라우저 — PWA 설치 불가, 외부 브라우저로 유도 */
+              <>
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 mb-3">
+                  <p className="text-[12px] font-bold text-amber-700 mb-1">⚠ 카카오톡 브라우저에서는 설치할 수 없어요</p>
+                  <p className="text-[11px] text-amber-600 leading-relaxed">
+                    Chrome(안드로이드) 또는 Safari(아이폰)에서 열어야 설치 가능합니다.
                   </p>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
-                    <span className="text-base font-bold">⋮</span>
-                  </div>
+                <button
+                  onClick={() => {
+                    // 안드로이드: intent URL로 Chrome 강제 실행
+                    if (/Android/i.test(navigator.userAgent)) {
+                      window.location.href = "intent://govmatch.kr#Intent;scheme=https;package=com.android.chrome;end";
+                    } else {
+                      // iOS: 카톡 인앱 브라우저는 Safari로 자동 전환 불가
+                      // 사용자에게 우측 상단 메뉴에서 "다른 브라우저로 열기" 선택 안내
+                      alert("화면 우측 상단 ⋮(또는 ⋯) 메뉴를 누르고\n'다른 브라우저로 열기' 또는 'Safari로 열기'를 선택해주세요.");
+                    }
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:opacity-90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  🌐 외부 브라우저에서 열기
+                </button>
+                <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <p className="text-[11px] font-bold text-slate-700 mb-2">또는 수동으로:</p>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
-                    <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
+                    화면 우측 상단 <span className="font-bold text-indigo-600">⋮ 메뉴</span> →<br/>
+                    <span className="font-bold text-indigo-600">&quot;다른 브라우저로 열기&quot;</span> 선택<br/>
+                    → Chrome/Safari에서 설치하기
                   </p>
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-[11px] font-bold text-slate-700 mb-2">설치 방법</p>
+                {isIos ? (
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
+                      <span className="text-base">□↑</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
+                      <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
+                      <span className="text-base font-bold">⋮</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
+                      <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

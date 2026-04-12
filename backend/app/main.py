@@ -3341,13 +3341,10 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
     )
     conn.commit()
 
-    # 순환 학습: 피드백 기반으로 골든답변 + 지식 저장
+    # 순환 학습: 피드백 기반으로 지식 추출 (golden_answers 제거됨 — 캐시 부작용)
     try:
-        from app.services.ai_consultant import (
-            save_golden_answer, mark_golden_inaccurate, extract_knowledge_from_consult
-        )
+        from app.services.ai_consultant import extract_knowledge_from_consult
 
-        # 상담 로그 조회
         cur.execute(
             "SELECT announcement_id, messages, conclusion FROM ai_consult_logs WHERE id = %s",
             (req.consult_log_id,)
@@ -3361,22 +3358,11 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
                 messages = json.loads(messages)
             conclusion = log_data.get("conclusion")
 
-            # 공고 카테고리 조회
             cur.execute("SELECT category FROM announcements WHERE announcement_id = %s", (ann_id,))
             ann_row = cur.fetchone()
             category = dict(ann_row).get("category", "") if ann_row else ""
 
             if req.feedback == "helpful":
-                # "도움됐어요" → 골든 답변으로 저장
-                save_golden_answer(
-                    consult_log_id=req.consult_log_id,
-                    announcement_id=ann_id,
-                    category=category,
-                    messages=messages,
-                    conclusion=conclusion,
-                    db_conn=conn,
-                )
-                # 자동 학습: helpful 대화에서 고품질 Q&A 추출 → knowledge_base 축적
                 try:
                     from app.services.financial_analysis.auto_learner import process_helpful_feedback
                     learned = process_helpful_feedback(req.consult_log_id, conn)
@@ -3384,11 +3370,7 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
                         print(f"[AutoLearn] {learned} knowledge items extracted from log #{req.consult_log_id}")
                 except Exception as al_err:
                     print(f"[AutoLearn] Error (non-critical): {al_err}")
-            elif req.feedback == "inaccurate":
-                # "부정확해요" → 골든 답변 비활성화
-                mark_golden_inaccurate(req.consult_log_id, conn)
 
-            # 공통: 지식 추출 (패턴/오류 저장)
             extract_knowledge_from_consult(
                 announcement_id=ann_id,
                 category=category,
@@ -3456,6 +3438,67 @@ def api_analyze_announcements(req: AdminAuthRequest):
 
     conn.close()
     return {"status": "SUCCESS", **results}
+
+
+@app.post("/api/admin/backfill-support-amount")
+def api_backfill_support_amount(req: AdminAuthRequest, commit: bool = False, limit: int = 0):
+    """관리자: 기존 공고의 support_amount 빈 필드를 summary_text/title 에서 정규식으로 채움.
+
+    - commit=false (기본): dry-run, 추출 가능한 건수 + 샘플만 반환
+    - commit=true: 실제 UPDATE
+    - limit=0: 전체, 그 외 N건만 처리
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    from app.services.public_api_service import GovernmentAPIService
+    extract = GovernmentAPIService._extract_amount_from_text
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    sql = """
+        SELECT announcement_id, title, summary_text
+        FROM announcements
+        WHERE (support_amount IS NULL OR support_amount = '')
+        ORDER BY announcement_id DESC
+    """
+    if limit > 0:
+        sql += f" LIMIT {int(limit)}"
+    cur.execute(sql)
+    rows = cur.fetchall()
+
+    updated = 0
+    samples = []
+    for row in rows:
+        r = dict(row)
+        text = (r.get("summary_text") or "") + " " + (r.get("title") or "")
+        amount = extract(text)
+        if not amount:
+            continue
+        if commit:
+            cur.execute(
+                "UPDATE announcements SET support_amount = %s WHERE announcement_id = %s",
+                (amount, r["announcement_id"]),
+            )
+        updated += 1
+        if len(samples) < 10:
+            samples.append({
+                "id": r["announcement_id"],
+                "title": (r.get("title") or "")[:60],
+                "amount": amount,
+            })
+
+    if commit:
+        conn.commit()
+    conn.close()
+
+    return {
+        "status": "SUCCESS",
+        "mode": "commit" if commit else "dry-run",
+        "candidates": len(rows),
+        "extracted": updated,
+        "samples": samples,
+    }
 
 
 @app.get("/api/admin/analysis-stats")

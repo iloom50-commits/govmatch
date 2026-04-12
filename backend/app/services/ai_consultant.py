@@ -618,17 +618,8 @@ def chat_consult(
             cached["source"] = "faq_cache"
             return cached
 
-    # 2차: 골든 답변 검색 (사용자 검증된 고품질 답변)
-    # 단, 금융/구체수치 질문은 골든 답변 우회 (검색이 필요한 동적 정보)
-    _financial_kw = ["금리", "이자", "상환", "담보", "보증료", "보증서", "신용등급", "우대", "이자율"]
-    is_financial_query = any(fk in last_user_msg for fk in _financial_kw)
-    if db_conn and last_user_msg and len(messages) > 1 and not is_financial_query:
-        golden = find_golden_answer(
-            announcement_id, last_user_msg, db_conn,
-            category=announcement.get("category")
-        )
-        if golden:
-            return golden
+    # 골든 답변 시스템 제거됨 — 통째 캐시는 컨텍스트/시점 변화 반영 불가
+    # 대신 announcement_analysis + knowledge_base를 AI에게 참고 자료로 전달
 
     # 3차: 단순 질문이면 Gemini 호출 없이 DB에서 직접 응답
     # 컨텍스트 키워드 없는 단순 질문에만 적용 (페르소나/대화 컨텍스트 무시 방지)

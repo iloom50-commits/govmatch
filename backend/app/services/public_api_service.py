@@ -113,6 +113,45 @@ class GovernmentAPIService:
             print(f"KISED API Error: {e}")
             return []
 
+    @staticmethod
+    def _extract_amount_from_text(text: str) -> str:
+        """공고 텍스트에서 지원금액 표현을 추출. 못 찾으면 빈 문자열."""
+        if not text:
+            return ""
+        import re
+        t = str(text).replace(",", "")
+        # 우선순위 1: "최대/한도 N억/N백만원/N천만원" 형태
+        patterns = [
+            r"최대\s*([0-9]+(?:\.[0-9]+)?\s*(?:억|천만|백만|만)\s*원)",
+            r"한도\s*([0-9]+(?:\.[0-9]+)?\s*(?:억|천만|백만|만)\s*원)",
+            r"([0-9]+(?:\.[0-9]+)?\s*억\s*원\s*(?:이내|한도|규모|내외)?)",
+            r"([0-9]+\s*(?:천만|백만)\s*원\s*(?:이내|한도|규모|내외)?)",
+            r"([0-9]+\s*만\s*원\s*(?:이내|한도)?)",
+            r"지원(?:금액|한도)\s*[:：]\s*([0-9]+(?:\.[0-9]+)?\s*(?:억|천만|백만|만)\s*원)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, t)
+            if m:
+                return m.group(1).strip()
+        return ""
+
+    @staticmethod
+    def _format_amount_number(value) -> str:
+        """숫자형 금액을 '최대 N억원/만원' 형태 문자열로 변환."""
+        if value is None or value == "":
+            return ""
+        try:
+            amt = int(float(value))
+        except (ValueError, TypeError):
+            return str(value)
+        if amt <= 0:
+            return ""
+        if amt >= 100000000:
+            return f"최대 {amt // 100000000}억원"
+        if amt >= 10000:
+            return f"최대 {amt // 10000}만원"
+        return f"{amt}원"
+
     def _map_mss_fields(self, items):
         mapped = []
         for item in items:
@@ -122,6 +161,14 @@ class GovernmentAPIService:
             deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("rcritEndDt") or item.get("endDt")
             
             if title and url:
+                support_amount = (
+                    item.get("sprtScale") or item.get("totBgtAmt") or
+                    item.get("bsnsBgtAmt") or ""
+                )
+                if isinstance(support_amount, (int, float)):
+                    support_amount = self._format_amount_number(support_amount)
+                if not support_amount:
+                    support_amount = self._extract_amount_from_text(content or title)
                 mapped.append({
                     "title": title,
                     "url": url,
@@ -130,6 +177,7 @@ class GovernmentAPIService:
                     "category": "Small Business/Startup",
                     "origin_source": "mss-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
 
@@ -212,14 +260,24 @@ class GovernmentAPIService:
                         url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
 
                     deadline = cols.get("rcrit_end_de") or cols.get("rcritEndDe") or cols.get("pbanc_end_de") or cols.get("pbancEndDe")
+                    desc = cols.get("pbancCn") or cols.get("intg_pbanc_biz_nm") or ""
+                    support_amount = (
+                        cols.get("sprtScale") or cols.get("sprt_scale") or
+                        cols.get("sprtAmt") or cols.get("totBgtAmt") or ""
+                    )
+                    if isinstance(support_amount, (int, float)):
+                        support_amount = self._format_amount_number(support_amount)
+                    if not support_amount:
+                        support_amount = self._extract_amount_from_text(desc or title)
                     mapped.append({
                         "title": title,
                         "url": url,
-                        "description": cols.get("pbancCn") or cols.get("intg_pbanc_biz_nm") or "",
+                        "description": desc,
                         "department": cols.get("pbancDeptNm") or "창업진흥원",
                         "category": "Entrepreneurship",
                         "origin_source": "kised-api",
                         "deadline_date": self._normalize_date(deadline),
+                        "support_amount": str(support_amount) if support_amount else "",
                     })
             print(f"    [OK] KISED XML Parsed {len(mapped)} items")
             return mapped
@@ -242,14 +300,24 @@ class GovernmentAPIService:
                 if url.rstrip("/") in ("https://www.k-startup.go.kr", "http://www.k-startup.go.kr") and pbanc_sn:
                     url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
 
+                desc = item.get("pbancCn") or ""
+                support_amount = (
+                    item.get("sprtScale") or item.get("sprtAmt") or
+                    item.get("totBgtAmt") or ""
+                )
+                if isinstance(support_amount, (int, float)):
+                    support_amount = self._format_amount_number(support_amount)
+                if not support_amount:
+                    support_amount = self._extract_amount_from_text(desc or title)
                 mapped.append({
                     "title": title,
                     "url": url,
-                    "description": item.get("pbancCn") or "",
+                    "description": desc,
                     "department": item.get("pbancDeptNm") or "창업진흥원",
                     "category": "Entrepreneurship",
                     "origin_source": "kised-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
 
@@ -410,15 +478,22 @@ class GovernmentAPIService:
             deadline = item.get("pbaEndDe") or item.get("rcritEndDe")
             
             if title and url:
+                desc = item.get("pbaContents") or ""
+                support_amount = item.get("pbaAmount") or item.get("sprtScale") or ""
+                if isinstance(support_amount, (int, float)):
+                    support_amount = self._format_amount_number(support_amount)
+                if not support_amount:
+                    support_amount = self._extract_amount_from_text(desc or title)
                 mapped.append({
                     "title": title,
                     "url": url,
-                    "description": item.get("pbaContents") or "",
+                    "description": desc,
                     "department": item.get("pbaInst") or "기업마당",
                     "category": "General Business Support",
                     "origin_source": "bizinfo-api",
                     "region": item.get("pbaArea") or "All",
                     "deadline_date": self._normalize_date(deadline),
+                    "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
 
@@ -447,6 +522,7 @@ class GovernmentAPIService:
             if title and url:
                 if not url.startswith("http"):
                     url = f"https://www.msit.go.kr{url}"
+                support_amount = self._extract_amount_from_text(title)
                 mapped.append({
                     "title": title,
                     "url": url,
@@ -455,6 +531,7 @@ class GovernmentAPIService:
                     "category": "R&D",
                     "origin_source": "msit-rnd-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "support_amount": support_amount,
                 })
         return mapped
 
@@ -491,6 +568,7 @@ class GovernmentAPIService:
                         "category": "R&D",
                         "origin_source": "msit-rnd-api",
                         "deadline_date": self._normalize_date(deadline),
+                        "support_amount": self._extract_amount_from_text(title),
                     })
             print(f"    [OK] MSIT XML Parsed {len(mapped)} items")
             return mapped
@@ -725,15 +803,18 @@ class GovernmentAPIService:
                 url = "https://www.foodpolis.kr"
 
             deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("endDt")
+            desc = item.get("bbsCn") or item.get("sportCnts") or ""
+            support_amount = self._extract_amount_from_text(desc or title)
             mapped.append({
                 "title": title,
                 "url": url,
-                "description": item.get("bbsCn") or item.get("sportCnts") or "",
+                "description": desc,
                 "department": "한국식품산업클러스터진흥원",
                 "category": "Food Industry",
                 "origin_source": "foodpolis-api",
                 "region": item.get("areaNm") or "전국",
                 "deadline_date": self._normalize_date(deadline),
+                "support_amount": support_amount,
             })
         return mapped
 
@@ -854,6 +935,7 @@ class GovernmentAPIService:
             if org_type in ("지방자치단체", "시도", "시군구"):
                 region = dept[:2] if dept else "전국"  # 서울시→서울, 부산시→부산 등
 
+            support_amount = self._extract_amount_from_text(support_content or summary or title)
             mapped.append({
                 "title": title,
                 "url": detail_url,
@@ -864,6 +946,7 @@ class GovernmentAPIService:
                 "region": region,
                 "deadline_date": deadline,
                 "eligibility_logic": eligibility,
+                "support_amount": support_amount,
             })
         return mapped
 
@@ -968,6 +1051,7 @@ class GovernmentAPIService:
             if sel:
                 eligibility["selection_criteria"] = sel[:500]
 
+            support_amount = self._extract_amount_from_text(support or target or title)
             mapped.append({
                 "title": title,
                 "url": detail_url,
@@ -979,6 +1063,7 @@ class GovernmentAPIService:
                 "deadline_date": None,
                 "eligibility_logic": eligibility,
                 "target_type": "individual",
+                "support_amount": support_amount,
             })
         return mapped
 
@@ -1387,6 +1472,7 @@ class GovernmentAPIService:
             if org_type in ("지방자치단체", "시도", "시군구"):
                 region = dept[:2] if dept else "전국"
 
+            support_amount = self._extract_amount_from_text(support_content or summary or title)
             mapped.append({
                 "title": title,
                 "url": detail_url,
@@ -1398,6 +1484,7 @@ class GovernmentAPIService:
                 "deadline_date": deadline,
                 "eligibility_logic": eligibility,
                 "target_type": "individual",
+                "support_amount": support_amount,
             })
         return mapped
 

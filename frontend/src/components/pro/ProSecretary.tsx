@@ -1442,50 +1442,26 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             placeholder={isIndiv ? "홍길동" : "주식회사 스마트팜코리아"} className={inputCls} />
         </div>
 
-        {/* 설립일/생년월일 — 달력 + 연도 입력 둘 다 지원 */}
-        <div>
-          <p className={sectionTitle}>{isIndiv ? "생년월일 / 출생연도" : "설립일 / 설립연도"} <span className={t.muted}>(선택 — 정확한 날짜 또는 연도만)</span></p>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* 달력 picker */}
-            <input
-              type="date"
-              value={profileForm.establishment_date}
-              onChange={(e) => {
-                const d = e.target.value;
-                update("establishment_date", d);
-                if (d) update("establishment_year", d.slice(0, 4));
-              }}
-              max={new Date().toISOString().slice(0, 10)}
-              className={`${inputCls} w-44`}
-              title="달력에서 선택"
-            />
-            <span className={`text-[11px] ${t.muted}`}>또는</span>
-            {/* 연도만 입력 */}
+        {/* 설립일/생년월일 — 사업자 모드에서만 (개인은 AI가 대화 중 수집) */}
+        {!isIndiv && (
+          <div>
+            <p className={sectionTitle}>설립연도 <span className={t.muted}>(선택)</span></p>
             <input
               type="text"
               value={profileForm.establishment_year}
               onChange={(e) => {
                 const y = e.target.value.replace(/\D/g, "").slice(0, 4);
                 update("establishment_year", y);
-                // 연도만 있으면 establishment_date는 비움 (충돌 방지)
-                if (y && y.length === 4) update("establishment_date", "");
+                if (y && y.length === 4) update("establishment_date", `${y}-01-01`);
+                else update("establishment_date", "");
               }}
-              placeholder="연도 (예: 2020)"
+              placeholder="예: 2020"
               maxLength={4}
               inputMode="numeric"
               className={`${inputCls} w-32`}
             />
-            {(profileForm.establishment_date || profileForm.establishment_year) && (
-              <button
-                type="button"
-                onClick={() => { update("establishment_date", ""); update("establishment_year", ""); }}
-                className={`text-[11px] px-2 py-1 rounded ${dark ? "text-slate-300 hover:bg-white/[0.05]" : "text-slate-500 hover:bg-slate-100"}`}
-              >
-                지우기
-              </button>
-            )}
           </div>
-        </div>
+        )}
 
         {/* 업종 (사업자만) — 자동완성 */}
         {!isIndiv && (

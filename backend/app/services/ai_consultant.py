@@ -350,6 +350,11 @@ def _try_direct_response(query: str, announcement: Dict, deep_analysis_data: Dic
     if any(ck in query_lower for ck in complex_keywords):
         return None  # Gemini로 넘김
 
+    # 금리/이자/상환/담보/보증 등 금융 질문 — DB에 모호한 답변만 있을 가능성 → Gemini로 검색
+    financial_query_keywords = ["금리", "이자", "이자율", "상환", "거치", "담보", "보증", "신용등급", "우대"]
+    if any(fk in query_lower for fk in financial_query_keywords):
+        return None  # Gemini로 넘김 (검색 활성화)
+
     # 패턴은 매칭되었지만 DB에 데이터가 없는 경우 → "모르겠다" 응답
     if not matched_fields and matched_but_empty:
         a = announcement

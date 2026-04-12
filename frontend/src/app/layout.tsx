@@ -21,14 +21,14 @@ export const metadata: Metadata = {
   description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭. 기업·개인 모두 무료!",
   keywords: ["정부지원금", "보조금", "정책자금", "중소기업지원", "소상공인지원", "창업지원", "개인복지", "AI매칭", "지원금찾기"],
   manifest: "/manifest.json",
-  metadataBase: new URL("https://govmatch.kr"),
+  metadataBase: new URL("https://www.govmatch.kr"),
   alternates: {
-    canonical: "https://govmatch.kr",
+    canonical: "https://www.govmatch.kr",
   },
   openGraph: {
     type: "website",
     locale: "ko_KR",
-    url: "https://govmatch.kr",
+    url: "https://www.govmatch.kr",
     siteName: "지원금AI",
     title: "지원금AI — AI가 구석구석 찾아드리는 정부 지원금 매칭",
     description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
@@ -122,7 +122,7 @@ export default function RootLayout({
                   if (sessionStorage.getItem('ext_redirect_tried') === '1') return;
                   sessionStorage.setItem('ext_redirect_tried', '1');
                   // Chrome intent URL로 즉시 전환
-                  var url = 'govmatch.kr' + path + (location.search || '') + (location.hash || '');
+                  var url = 'www.govmatch.kr' + path + (location.search || '') + (location.hash || '');
                   location.href = 'intent://' + url + '#Intent;scheme=https;package=com.android.chrome;end';
                 } catch(_) {}
               })();
@@ -163,7 +163,7 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "WebApplication",
               "name": "지원금AI",
-              "url": "https://govmatch.kr",
+              "url": "https://www.govmatch.kr",
               "description": "17,000+ 정부 지원금 공고를 AI가 실시간 분석하여 내 조건에 맞는 보조금·정책자금을 자동 매칭해드리는 서비스",
               "applicationCategory": "BusinessApplication",
               "operatingSystem": "Web",
@@ -176,7 +176,7 @@ export default function RootLayout({
               "provider": {
                 "@type": "Organization",
                 "name": "밸류파인더",
-                "url": "https://govmatch.kr",
+                "url": "https://www.govmatch.kr",
                 "email": "osung94@naver.com",
                 "address": {
                   "@type": "PostalAddress",

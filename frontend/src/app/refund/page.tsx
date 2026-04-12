@@ -3,7 +3,7 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: "환불 정책",
   description: "지원금AI 환불 정책 — 유료 플랜 결제 취소 및 환불 절차 안내",
-  alternates: { canonical: "https://govmatch.kr/refund" },
+  alternates: { canonical: "https://www.govmatch.kr/refund" },
 };
 
 export default function RefundPage() {

@@ -16,4 +16,4 @@ Disallow: /admin
 Disallow: /api/
 Disallow: /auth/
 
-Sitemap: https://govmatch.kr/sitemap.xml
+Sitemap: https://www.govmatch.kr/sitemap.xml

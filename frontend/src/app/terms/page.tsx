@@ -3,7 +3,7 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: "이용약관",
   description: "지원금AI 서비스 이용약관 — 서비스 이용 조건, 회원 권리와 의무, 결제 및 환불 정책",
-  alternates: { canonical: "https://govmatch.kr/terms" },
+  alternates: { canonical: "https://www.govmatch.kr/terms" },
 };
 
 export default function TermsPage() {

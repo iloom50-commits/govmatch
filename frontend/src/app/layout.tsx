@@ -104,6 +104,26 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // ── 카톡 인앱 → 외부 브라우저 자동 전환 (Android만, iOS는 시스템 제약으로 불가) ──
+              (function(){
+                try {
+                  var ua = navigator.userAgent || '';
+                  var isKakao = /KAKAOTALK/i.test(ua);
+                  var isAndroid = /Android/i.test(ua);
+                  if (!isKakao || !isAndroid) return;
+                  // 제외 경로: 결제/OAuth 콜백 등 세션 민감 페이지
+                  var path = location.pathname || '/';
+                  var skip = /^\\/(payment|auth\\/callback|api\\/auth)/.test(path);
+                  if (skip) return;
+                  // 무한 루프 방지 — 세션당 1회만
+                  if (sessionStorage.getItem('ext_redirect_tried') === '1') return;
+                  sessionStorage.setItem('ext_redirect_tried', '1');
+                  // Chrome intent URL로 즉시 전환
+                  var url = 'govmatch.kr' + path + (location.search || '') + (location.hash || '');
+                  location.href = 'intent://' + url + '#Intent;scheme=https;package=com.android.chrome;end';
+                } catch(_) {}
+              })();
+
               window.__pwaPrompt = null;
               window.addEventListener('beforeinstallprompt', function(e) {
                 e.preventDefault();

@@ -401,6 +401,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     // 인앱 브라우저 감지 (카카오톡/네이버/라인/페북/인스타 등 — PWA 설치 미지원)
     const inApp = /KAKAOTALK|NAVER|Line|FBAN|FBAV|Instagram|; wv\)|EveryTalk/i.test(ua);
     setIsInAppBrowser(inApp);
+    // iOS 카톡 인앱 진입 시 자동으로 설치 안내 모달 오픈 (Android는 layout.tsx 인라인 스크립트가 자동 전환)
+    if (inApp && isiOS) {
+      const shown = sessionStorage.getItem("ios_inapp_guide_shown");
+      if (!shown) {
+        setShowInstallGuide(true);
+        sessionStorage.setItem("ios_inapp_guide_shown", "1");
+      }
+    }
     if (isiOS) {
       setIsIos(true);
       const dismissed = sessionStorage.getItem("ios_pwa_dismissed");

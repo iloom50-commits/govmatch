@@ -619,7 +619,10 @@ def chat_consult(
             return cached
 
     # 2차: 골든 답변 검색 (사용자 검증된 고품질 답변)
-    if db_conn and last_user_msg and len(messages) > 1:
+    # 단, 금융/구체수치 질문은 골든 답변 우회 (검색이 필요한 동적 정보)
+    _financial_kw = ["금리", "이자", "상환", "담보", "보증료", "보증서", "신용등급", "우대", "이자율"]
+    is_financial_query = any(fk in last_user_msg for fk in _financial_kw)
+    if db_conn and last_user_msg and len(messages) > 1 and not is_financial_query:
         golden = find_golden_answer(
             announcement_id, last_user_msg, db_conn,
             category=announcement.get("category")

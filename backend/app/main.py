@@ -3124,65 +3124,93 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 ann_id = int(match.group(1))
                 break
 
-    # ── 세션 로드/생성 (특정 공고 모드 제외) ──
+    # ── 세션 로드/생성 (특정 공고 모드 제외) — 실패해도 chat은 계속 동작 ──
     session_state = None
-    db = get_db_connection() if (ann_id or not ann_id) else None  # 항상 연결
+    db = get_db_connection()
     try:
         if not ann_id:
-            cur = db.cursor()
-            sid = req.session_id
-            if sid:
+            try:
+                cur = db.cursor()
+                sid = req.session_id
+                if sid:
+                    cur.execute(
+                        "SELECT session_id, client_category, current_step, collected FROM pro_consult_sessions WHERE session_id = %s AND business_number = %s",
+                        (sid, current_user["bn"])
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        d = dict(row)
+                        coll = d.get("collected")
+                        if isinstance(coll, str):
+                            try: coll = json.loads(coll)
+                            except: coll = {}
+                        session_state = {
+                            "session_id": d.get("session_id"),
+                            "client_category": d.get("client_category") or "",
+                            "current_step": d.get("current_step") or 1,
+                            "collected": coll or {},
+                        }
+                if not session_state:
+                    sid = str(_uuid.uuid4())
+                    cur.execute(
+                        "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected) VALUES (%s, %s, %s, 1, '{}'::jsonb)",
+                        (sid, current_user["bn"], req.client_category or "")
+                    )
+                    db.commit()
+                    session_state = {
+                        "session_id": sid,
+                        "client_category": req.client_category or "",
+                        "current_step": 1,
+                        "collected": {},
+                    }
+            except Exception as sess_err:
+                print(f"[PRO chat] session load/create error (continuing without session): {sess_err}")
+                try: db.rollback()
+                except: pass
+                session_state = None
+
+        # AI 호출 — 세션 상태 주입 (있을 경우)
+        try:
+            result = chat_pro_consultant(
+                req.messages,
+                announcement_id=ann_id,
+                db_conn=db,
+                explicit_match=req.explicit_match,
+                session_state=session_state,
+            )
+        except TypeError:
+            # 구버전 호환 (session_state 미지원)
+            result = chat_pro_consultant(
+                req.messages,
+                announcement_id=ann_id,
+                db_conn=db,
+                explicit_match=req.explicit_match,
+            )
+
+        # 세션 갱신 (실패해도 응답은 정상 반환)
+        if not ann_id and session_state:
+            try:
+                new_collected = {**session_state.get("collected", {}), **(result.get("collected") or {})}
+                ai_step = result.get("current_step")
+                cur_step = session_state.get("current_step", 1)
+                if ai_step and isinstance(ai_step, int):
+                    new_step = max(cur_step, ai_step)
+                else:
+                    new_step = cur_step
+                cur = db.cursor()
                 cur.execute(
-                    "SELECT session_id, client_category, current_step, collected, messages FROM pro_consult_sessions WHERE session_id = %s AND business_number = %s",
-                    (sid, current_user["bn"])
-                )
-                row = cur.fetchone()
-                if row:
-                    session_state = dict(row)
-                    if isinstance(session_state.get("collected"), str):
-                        session_state["collected"] = json.loads(session_state["collected"])
-                    if isinstance(session_state.get("messages"), str):
-                        session_state["messages"] = json.loads(session_state["messages"])
-            if not session_state:
-                # 새 세션 생성
-                sid = str(_uuid.uuid4())
-                cur.execute(
-                    "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected, messages) VALUES (%s, %s, %s, 1, '{}'::jsonb, '[]'::jsonb)",
-                    (sid, current_user["bn"], req.client_category or "")
+                    """UPDATE pro_consult_sessions
+                       SET current_step = %s,
+                           collected = %s::jsonb,
+                           updated_at = CURRENT_TIMESTAMP
+                       WHERE session_id = %s""",
+                    (new_step, json.dumps(new_collected, ensure_ascii=False), session_state["session_id"])
                 )
                 db.commit()
-                session_state = {
-                    "session_id": sid,
-                    "client_category": req.client_category or "",
-                    "current_step": 1,
-                    "collected": {},
-                    "messages": [],
-                }
-
-        # AI 호출 — 세션 상태 주입
-        result = chat_pro_consultant(
-            req.messages,
-            announcement_id=ann_id,
-            db_conn=db,
-            explicit_match=req.explicit_match,
-            session_state=session_state,
-        )
-
-        # 세션 갱신 (특정 공고 모드 아닐 때만)
-        if not ann_id and session_state:
-            new_collected = {**session_state.get("collected", {}), **(result.get("collected") or {})}
-            new_step = max(session_state.get("current_step", 1), result.get("current_step") or session_state.get("current_step", 1))
-            cur = db.cursor()
-            cur.execute(
-                """UPDATE pro_consult_sessions
-                   SET current_step = %s,
-                       collected = %s::jsonb,
-                       messages = %s::jsonb,
-                       updated_at = CURRENT_TIMESTAMP
-                   WHERE session_id = %s""",
-                (new_step, json.dumps(new_collected, ensure_ascii=False), json.dumps(req.messages, ensure_ascii=False), session_state["session_id"])
-            )
-            db.commit()
+            except Exception as upd_err:
+                print(f"[PRO chat] session update error (non-critical): {upd_err}")
+                try: db.rollback()
+                except: pass
     finally:
         if db:
             try: db.close()

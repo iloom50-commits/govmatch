@@ -4068,9 +4068,10 @@ def api_embeddings_batch(req: AdminAuthRequest):
 
             # Gemini 임베딩 호출
             res = genai.embed_content(
-                model="models/embedding-001",
+                model="models/gemini-embedding-001",
                 content=source_text,
                 task_type="retrieval_document",
+                output_dimensionality=768,
             )
             vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
             if not vec or len(vec) < 100:
@@ -4088,7 +4089,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
                     source_text = EXCLUDED.source_text,
                     model_name = EXCLUDED.model_name,
                     updated_at = CURRENT_TIMESTAMP
-            """, (row["announcement_id"], vec_str, source_text[:3000], "text-embedding-004"))
+            """, (row["announcement_id"], vec_str, source_text[:3000], "gemini-embedding-001"))
             conn.commit()
             success += 1
             processed += 1

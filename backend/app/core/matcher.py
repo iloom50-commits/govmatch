@@ -978,9 +978,10 @@ def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_fi
         _genai.configure(api_key=api_key)
         profile_text = _profile_to_text(user_profile)
         res = _genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=profile_text,
             task_type="retrieval_query",
+            output_dimensionality=768,
         )
         vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
         if not vec:

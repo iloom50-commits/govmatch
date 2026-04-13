@@ -315,6 +315,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   const [activeTab, setActiveTab] = useState("all");
+  // 슬라이드 방향: "left"=오른쪽→왼쪽 진입(개인 탭 진입), "right"=왼쪽→오른쪽 진입(기업 탭 진입)
+  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
+  const switchMajorTab = (next: MajorTab) => {
+    if (next === majorTab) return;
+    setSlideDir(next === "individual" ? "left" : "right");
+    setMajorTab(next);
+    setActiveTab("all");
+  };
   // 모바일 좌우 스와이프로 기업/개인 탭 전환
   const swipeStartX = useRef<number | null>(null);
   const swipeStartY = useRef<number | null>(null);
@@ -328,10 +336,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     const dy = e.changedTouches[0].clientY - swipeStartY.current;
     swipeStartX.current = null;
     swipeStartY.current = null;
-    // 가로 60px 이상 + 세로 변화의 1.5배 이상일 때만 (수직 스크롤 오인 방지)
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (dx < 0 && majorTab === "business") { setMajorTab("individual"); setActiveTab("all"); }
-    else if (dx > 0 && majorTab === "individual") { setMajorTab("business"); setActiveTab("all"); }
+    if (dx < 0 && majorTab === "business") switchMajorTab("individual");
+    else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
   };
   const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
 
@@ -1148,7 +1155,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 return (
                   <button
                     key={tab.key}
-                    onClick={() => { setMajorTab(tab.key); setActiveTab("all"); }}
+                    onClick={() => switchMajorTab(tab.key)}
                     className={`relative flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold transition-all duration-200 ${
                       isActive
                         ? "text-slate-900"
@@ -1181,6 +1188,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           </div>
 
+          <div
+            key={majorTab}
+            className={`animate-in fade-in duration-300 ${slideDir === "left" ? "slide-in-from-right-8" : "slide-in-from-left-8"}`}
+          >
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
               <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
@@ -1558,6 +1569,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </button>
             </div>
           )}
+          </div>
         </main>
       </div>
 

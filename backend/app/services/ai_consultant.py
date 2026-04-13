@@ -2134,10 +2134,29 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
   또는: ["1인 가구", "2~3인 가구", "4인 이상", "✏️ 직접 입력"]
   또는: ["서울", "경기", "부산", "기타 (직접 입력)"]
 
-[수집할 필드 — 백그라운드로 자동 채움]
+[수집할 필드 — 백그라운드로 자동 채움 · 매칭 엔진이 기대하는 정확한 키 이름 사용]
 사업자: company_name, establishment_date, industry_code, revenue_bracket, employee_count_bracket, address_city, interests
-개인:   company_name(이름), establishment_date(생년월일), address_city, interests
+개인:   company_name(이름), establishment_date(생년월일), age_range, address_city, interests,
+        income_level (중위소득 %), family_type (가구형태), employment_status (고용상태),
+        housing_status (주거형태), special_conditions (특수자격, 쉼표구분)
    - 개인은 industry_code="", revenue_bracket="1억 미만", employee_count_bracket="5인 미만" 자동 설정
+   - age_range 값: "10대이하" / "20대" / "30대" / "40대" / "50대" / "60대이상"
+   - income_level 값: "중위소득 50% 이하" / "50~100%" / "100~150%" / "150% 이상" / "미응답"
+   - family_type 값: "1인가구" / "신혼부부" / "다자녀(2+)" / "한부모" / "조손가정" / "일반가구"
+   - employment_status 값: "구직중" / "재직중" / "자영업" / "학생" / "은퇴자" / "전업주부"
+   - housing_status 값: "자가" / "전세" / "월세" / "기숙사·공공임대" / "기타"
+   - special_conditions 값(쉼표 구분 가능): "장애인", "기초생활수급자", "차상위계층", "다문화가정", "북한이탈주민", "국가유공자", "해당없음"
+
+[★ 개인 모드 단계 확장 — 복지 매칭용]
+개인 고객의 경우 4단계 대신 아래 순서로 필수 정보를 모아야 정확한 복지 매칭이 가능합니다:
+▶ 2단계: 니즈 분야 (취업/주거/교육/육아/의료)
+▶ 3단계: 연령대 + 거주지역
+▶ 4단계: 소득 수준 (중위소득 %) — 대부분 복지사업의 핵심 필터
+▶ 5단계: 가구 형태 + 고용 상태 (한 질문에 2개 묶어서 물어볼 수 있음)
+▶ 6단계: 특수 자격 (장애/수급/다문화 등) — 해당없음 포함 choices
+▶ 7단계: 정리 + 매칭 제안
+
+각 단계 choices는 위 필드의 허용값에서 선택하게 유도. **개인 복지 매칭은 income_bracket + special_conditions이 가장 강력한 필터이므로 절대 생략 금지.**
 
 [자동 추론]
 - 업종명 → KSIC 코드 자동 변환 (물어보지 말 것)

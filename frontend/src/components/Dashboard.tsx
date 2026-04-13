@@ -316,6 +316,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const switchMajorTab = (next: MajorTab) => {
     if (next === majorTab) return;
     const apply = () => { setMajorTab(next); setActiveTab("all"); };
+    // PC(마우스 호버 가능 + 정밀 포인터)에서는 View Transitions API 잔상 이슈로 즉시 전환
+    // 모바일(터치)에서만 슬라이드 애니메이션 사용
+    const isDesktop = typeof window !== "undefined"
+      && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (isDesktop) {
+      apply();
+      return;
+    }
     try {
       const doc = document as any;
       if (typeof doc.startViewTransition === "function") {

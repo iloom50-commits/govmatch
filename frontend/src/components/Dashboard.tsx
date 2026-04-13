@@ -223,8 +223,13 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   const url = typeof window !== "undefined" ? getUrl() : "";
 
   const shareKakao = () => {
-    if (typeof window !== "undefined" && (window as any).Kakao?.Share) {
-      (window as any).Kakao.Share.sendDefault({
+    if (typeof window === "undefined") return;
+    const K = (window as any).Kakao;
+    if (K && !K.isInitialized?.()) {
+      try { K.init('832265e411dd686c3fcf925f3558d8f0'); } catch {}
+    }
+    if (K?.Share) {
+      K.Share.sendDefault({
         objectType: "feed",
         content: {
           title: "지원금AI — AI 정부 지원금 자동 매칭",
@@ -235,7 +240,10 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
         buttons: [{ title: "지원금 확인하기", link: { mobileWebUrl: url, webUrl: url } }],
       });
     } else {
-      window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
+      navigator.clipboard.writeText(`${shareText} ${url}`).then(
+        () => toast("카카오톡 SDK 로딩 중입니다. 링크를 복사했어요!", "info"),
+        () => toast("잠시 후 다시 시도해주세요.", "error")
+      );
     }
     setOpen(false);
   };
@@ -307,6 +315,24 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   const [activeTab, setActiveTab] = useState("all");
+  // 모바일 좌우 스와이프로 기업/개인 탭 전환
+  const swipeStartX = useRef<number | null>(null);
+  const swipeStartY = useRef<number | null>(null);
+  const handleTabSwipeStart = (e: React.TouchEvent) => {
+    swipeStartX.current = e.touches[0].clientX;
+    swipeStartY.current = e.touches[0].clientY;
+  };
+  const handleTabSwipeEnd = (e: React.TouchEvent) => {
+    if (swipeStartX.current == null || swipeStartY.current == null) return;
+    const dx = e.changedTouches[0].clientX - swipeStartX.current;
+    const dy = e.changedTouches[0].clientY - swipeStartY.current;
+    swipeStartX.current = null;
+    swipeStartY.current = null;
+    // 가로 60px 이상 + 세로 변화의 1.5배 이상일 때만 (수직 스크롤 오인 방지)
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0 && majorTab === "business") { setMajorTab("individual"); setActiveTab("all"); }
+    else if (dx > 0 && majorTab === "individual") { setMajorTab("business"); setActiveTab("all"); }
+  };
   const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
@@ -1091,7 +1117,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {isPublic && !profile ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>
 
-        <main className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0">
+        <main
+          className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0"
+          onTouchStart={handleTabSwipeStart}
+          onTouchEnd={handleTabSwipeEnd}
+        >
           {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
           {/* 컨설턴트 매칭 → 내 매칭 복원 버튼 */}

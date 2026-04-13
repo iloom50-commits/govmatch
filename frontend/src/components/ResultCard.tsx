@@ -12,9 +12,13 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
     : "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
 
   const shareKakao = () => {
-    const kakao = typeof window !== "undefined" ? (window as any).Kakao : null;
-    if (kakao?.Share) {
-      kakao.Share.sendDefault({
+    if (typeof window === "undefined") return;
+    const K = (window as any).Kakao;
+    if (K && !K.isInitialized?.()) {
+      try { K.init('832265e411dd686c3fcf925f3558d8f0'); } catch {}
+    }
+    if (K?.Share) {
+      K.Share.sendDefault({
         objectType: "feed",
         content: {
           title: "지원금AI — AI 맞춤 지원금 매칭",
@@ -25,7 +29,10 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
         buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
       });
     } else {
-      window.open(`https://story.kakao.com/share?url=${encodeURIComponent(url)}`, "_blank", "width=500,height=600");
+      navigator.clipboard.writeText(`${shareText} ${url}`).then(
+        () => toast("카카오톡 SDK 로딩 중입니다. 링크를 복사했어요!", "info"),
+        () => toast("잠시 후 다시 시도해주세요.", "error")
+      );
     }
     setOpen(false);
   };

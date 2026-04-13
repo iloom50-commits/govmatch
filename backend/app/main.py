@@ -3975,6 +3975,32 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/embeddings/list-models")
+def api_embeddings_list_models(req: AdminAuthRequest):
+    """사용 가능한 Gemini 모델 리스트 조회 (임베딩 지원 모델만)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+    try:
+        import google.generativeai as _g
+        sdk_ver = getattr(_g, "__version__", "unknown")
+    except Exception:
+        sdk_ver = "unknown"
+    models = []
+    try:
+        for m in genai.list_models():
+            methods = list(getattr(m, "supported_generation_methods", []) or [])
+            if "embedContent" in methods or "embed_content" in methods:
+                models.append({"name": m.name, "methods": methods})
+        return {"sdk_version": sdk_ver, "embedding_models": models, "total": len(models)}
+    except Exception as e:
+        return {"sdk_version": sdk_ver, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+
+
 @app.post("/api/admin/embeddings/batch")
 def api_embeddings_batch(req: AdminAuthRequest):
     """임베딩 배치 생성 — 미임베딩 공고를 Gemini text-embedding-004로 벡터화.

@@ -923,10 +923,20 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
-                        placeholder="고객 정보를 입력하거나 질문하세요... (Enter: 전송)"
+                        placeholder="입력 후 전송 또는 매칭"
                         disabled={loading || typing}
-                        className={`flex-1 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
+                        className={`flex-1 min-w-0 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />
+                      <button
+                        onClick={() => handleSend(input)}
+                        disabled={loading || typing || !input.trim()}
+                        className="p-2 sm:px-4 sm:py-2 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0 flex items-center gap-1.5"
+                        title="메시지 전송"
+                        aria-label="전송"
+                      >
+                        <span className="hidden sm:inline">전송</span>
+                        {Icons.send}
+                      </button>
                       <button
                         onClick={() => {
                           // 매칭 버튼 — 수집된 정보 확인 모달 열기
@@ -934,17 +944,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           setShowMatchModal(true);
                         }}
                         disabled={loading || typing}
-                        className="px-3 py-2 border border-violet-500 text-violet-600 rounded-xl text-[12px] font-bold hover:bg-violet-50 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0"
+                        className="p-2 sm:px-3 sm:py-2 border border-violet-500 text-violet-600 rounded-xl text-[12px] font-bold hover:bg-violet-50 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0"
                         title="수집된 정보로 공고 매칭"
+                        aria-label="매칭 실행"
                       >
-                        📋 매칭
-                      </button>
-                      <button
-                        onClick={() => handleSend(input)}
-                        disabled={loading || typing || !input.trim()}
-                        className="px-4 py-2 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0 flex items-center gap-1.5"
-                      >
-                        전송 {Icons.send}
+                        <span className="sm:hidden">📋</span>
+                        <span className="hidden sm:inline">📋 매칭</span>
                       </button>
                     </div>
                   </div>

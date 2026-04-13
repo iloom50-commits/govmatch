@@ -7790,8 +7790,11 @@ def api_support_chat(req: dict, request: Request):
 
 
 @app.get("/api/trending")
-def api_trending(authorization: Optional[str] = Header(None)):
-    """오늘의 인기 공고 3건 반환 — 사용자 소재지와 무관한 지역 한정 공고는 제외"""
+def api_trending(target_type: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    """오늘의 인기 공고 3건 반환 — target_type=business|individual 로 필터, 미지정 시 전체"""
+    tt = (target_type or "").strip().lower()
+    if tt not in ("business", "individual"):
+        tt = ""
     # 사용자 소재지 추출 (로그인 시)
     user_home_city = ""
     if authorization and authorization.startswith("Bearer "):
@@ -7832,17 +7835,23 @@ def api_trending(authorization: Optional[str] = Header(None)):
             try: conn.rollback()
             except: pass
 
-        cur.execute("""
+        tt_filter_sql = ""
+        tt_params: tuple = ()
+        if tt == "business":
+            tt_filter_sql = " AND COALESCE(a.target_type, 'business') IN ('business', 'both')"
+        elif tt == "individual":
+            tt_filter_sql = " AND COALESCE(a.target_type, 'business') IN ('individual', 'both')"
+        cur.execute(f"""
             SELECT t.rank, t.trending_keyword, t.trending_reason,
                    a.announcement_id, a.title, a.department, a.category,
                    a.support_amount, a.deadline_date, a.region,
                    a.origin_url
             FROM trending_announcements t
             JOIN announcements a ON t.announcement_id = a.announcement_id
-            WHERE t.trending_date = CURRENT_DATE
+            WHERE t.trending_date = CURRENT_DATE{tt_filter_sql}
             ORDER BY t.rank
             LIMIT 3
-        """)
+        """, tt_params)
         rows = [dict(r) for r in cur.fetchall()]
 
         # 데이터 없으면 자동 생성
@@ -7851,14 +7860,14 @@ def api_trending(authorization: Optional[str] = Header(None)):
                 from app.services.patrol.trending import run_trending_update
                 run_trending_update(conn)
                 # 재조회
-                cur.execute("""
+                cur.execute(f"""
                     SELECT t.rank, t.trending_keyword, t.trending_reason,
                            a.announcement_id, a.title, a.department, a.category,
                            a.support_amount, a.deadline_date, a.region,
                            a.origin_url
                     FROM trending_announcements t
                     JOIN announcements a ON t.announcement_id = a.announcement_id
-                    WHERE t.trending_date = CURRENT_DATE
+                    WHERE t.trending_date = CURRENT_DATE{tt_filter_sql}
                     ORDER BY t.rank
                     LIMIT 3
                 """)
@@ -7870,12 +7879,17 @@ def api_trending(authorization: Optional[str] = Header(None)):
         # 여전히 비어있으면 — 직접 인기 공고 쿼리 폴백
         if not rows:
             try:
-                cur.execute("""
+                fb_tt_sql = ""
+                if tt == "business":
+                    fb_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
+                elif tt == "individual":
+                    fb_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+                cur.execute(f"""
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
                     WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
-                      AND support_amount IS NOT NULL AND support_amount != ''
+                      AND support_amount IS NOT NULL AND support_amount != ''{fb_tt_sql}
                     ORDER BY
                         CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
                         deadline_date ASC NULLS LAST
@@ -7911,12 +7925,17 @@ def api_trending(authorization: Optional[str] = Header(None)):
             if len(rows) < 3:
                 needed = 3 - len(rows)
                 existing_ids = {r.get("announcement_id") for r in rows}
-                cur.execute("""
+                _reg_tt_sql = ""
+                if tt == "business":
+                    _reg_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
+                elif tt == "individual":
+                    _reg_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+                cur.execute(f"""
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
                     WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
-                      AND support_amount IS NOT NULL AND support_amount != ''
+                      AND support_amount IS NOT NULL AND support_amount != ''{_reg_tt_sql}
                       AND (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region ILIKE %s)
                       AND title NOT ILIKE %s
                     ORDER BY
@@ -7944,12 +7963,17 @@ def api_trending(authorization: Optional[str] = Header(None)):
         try:
             conn2 = get_db_connection()
             cur2 = conn2.cursor()
-            cur2.execute("""
+            _outer_tt_sql = ""
+            if tt == "business":
+                _outer_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
+            elif tt == "individual":
+                _outer_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+            cur2.execute(f"""
                 SELECT announcement_id, title, department, category,
                        support_amount, deadline_date, region, origin_url
                 FROM announcements
                 WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
-                  AND support_amount IS NOT NULL AND support_amount != ''
+                  AND support_amount IS NOT NULL AND support_amount != ''{_outer_tt_sql}
                 ORDER BY
                     CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
                     deadline_date ASC NULLS LAST

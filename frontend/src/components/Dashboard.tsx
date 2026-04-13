@@ -388,16 +388,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
-  // 오늘의 인기 공고
+  // 오늘의 인기 공고 — majorTab(기업/개인) 따라 분기
   const [trendingItems, setTrendingItems] = useState<any[]>([]);
   useEffect(() => {
     const _token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
-    fetch(`${API}/api/trending`, {
+    fetch(`${API}/api/trending?target_type=${majorTab}`, {
       headers: _token ? { Authorization: `Bearer ${_token}` } : {},
     }).then(r => r.json()).then(d => {
       if (d.data) setTrendingItems(d.data);
     }).catch(() => {});
-  }, []);
+  }, [majorTab]);
 
   // DB 전체 공고 수 조회
   useEffect(() => {

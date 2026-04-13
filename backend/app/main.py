@@ -2937,7 +2937,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     # 2) 공고 정보 조회
     cur.execute(
         """SELECT announcement_id, title, department, category, support_amount, deadline_date,
-                  summary_text, region, eligibility_logic, origin_url
+                  summary_text, region, eligibility_logic, origin_url, target_type
            FROM announcements WHERE announcement_id = %s""",
         (req.announcement_id,)
     )

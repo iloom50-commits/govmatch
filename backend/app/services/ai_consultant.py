@@ -855,6 +855,12 @@ def chat_consult(
 아래 공고의 모든 정밀 분석 데이터를 기반으로 상세하고 정확한 상담을 제공하세요.
 {followup_directive}{expert_directive}{loan_directive}
 
+[데이터 활용 우선순위] ★ 답변 시 아래 순서대로 정보 우선 사용 ★
+  1순위) 공고 기본 정보 (지원금액·마감일·지역) — 절대 "명시되지 않음" 금지
+  2순위) 정밀 분석 결과 (parsed_sections + deep_analysis) — 사실 답변의 핵심 근거
+  3순위) 공고 원문 전체 — 위 1·2가 부족할 때만 보조 자료로 사용
+  ※ 정밀 분석 데이터에 답이 있는데 원문에서 다른 표현으로 추측 답변 금지
+
 [공고 기본 정보] ★ 이 정보는 절대 "명시되지 않음"이라고 답하지 마세요. 아래 값을 그대로 사용하세요.
 제목: {a.get('title', '')}
 부처: {a.get('department', '')}
@@ -865,10 +871,7 @@ def chat_consult(
 자격요건(기본): {json.dumps(elig, ensure_ascii=False)[:500]}
 {support_info}
 
-[★ 공고 원문 전체 — 아래 정밀 분석이 빈약해도 이 원문에서 직접 정보를 추출하여 답변하세요]
-{_clean_summary_text(a.get('summary_text') or '')[:4000]}
-
-[정밀 분석 — 공고 원문 기반]
+[정밀 분석 — 핵심 근거 자료] ← 답변의 1차 근거
 신청자격 원문: {(ps.get('eligibility') or '')[:2000]}
 제외대상 원문: {(ps.get('exclusions') or '')[:1000]}
 예외조항 원문: {(ps.get('exceptions') or '')[:1000]}
@@ -878,6 +881,9 @@ def chat_consult(
 지원내용 원문: {(ps.get('support_details') or '')[:1000]}
 일정 원문: {(ps.get('timeline') or '')[:500]}
 신청방법 원문: {(ps.get('application_method') or '')[:500]}
+
+[공고 원문 전체 — 보조 자료] ← 위 분석에 없는 내용만 여기서 보충
+{_clean_summary_text(a.get('summary_text') or '')[:2000]}
 
 [구조화된 분석]
 자격 상세: {json.dumps(da.get('eligibility_detail') or {}, ensure_ascii=False)[:1000]}

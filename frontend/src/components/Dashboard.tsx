@@ -240,7 +240,15 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // 모바일·태블릿: OS 네이티브 공유 시트 즉시 호출 (인기공고 추천하기와 동일 UX)
+          if (typeof navigator !== "undefined" && (navigator as any).share) {
+            (navigator as any).share({ title: "지원금AI", text: shareText, url }).catch(() => {});
+          } else {
+            // 데스크톱 PC 등 미지원 환경: 커스텀 모달 표시
+            setOpen(true);
+          }
+        }}
         className="relative z-10 w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span>
@@ -1142,8 +1150,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
-          {/* 대분류 탭 — 밑줄(underline) 스타일 */}
-          <div className="-mx-3 md:-mx-6 px-3 md:px-6 mb-5 border-b border-slate-200">
+          {/* 대분류 탭 — 밑줄(underline) 스타일, 스크롤 시 상단 고정 */}
+          <div className="sticky top-0 z-30 -mx-3 md:-mx-6 px-3 md:px-6 mb-5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md">
             <div className="flex items-center gap-6">
               {([
                 { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab, color: "indigo" },

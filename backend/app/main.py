@@ -3915,6 +3915,184 @@ def api_backfill_support_amount(req: AdminAuthRequest, commit: bool = False, lim
     }
 
 
+@app.post("/api/admin/embeddings/init")
+def api_embeddings_init(req: AdminAuthRequest):
+    """임베딩 매칭 인프라 초기화 — pgvector 확장 + announcement_embeddings 테이블 생성.
+    안전: 기존 스키마 손대지 않음. 실패해도 부작용 없음.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    result = {"pgvector": False, "table": False, "index": False, "errors": []}
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # 1) pgvector 확장 활성화 (권한 있으면 성공, 없으면 실패 → errors에 기록)
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+            result["pgvector"] = True
+        except Exception as e:
+            conn.rollback()
+            result["errors"].append(f"pgvector: {str(e)[:200]}")
+            return result  # pgvector 없으면 더 진행 불가
+
+        # 2) 임베딩 테이블 생성 (별도 테이블, 기존 announcements와 격리)
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS announcement_embeddings (
+                    announcement_id INTEGER PRIMARY KEY,
+                    embedding vector(768),
+                    source_text TEXT,
+                    model_name VARCHAR(64),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            result["table"] = True
+        except Exception as e:
+            conn.rollback()
+            result["errors"].append(f"table: {str(e)[:200]}")
+            return result
+
+        # 3) HNSW 인덱스 (cosine 유사도)
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_announcement_embeddings_cosine
+                ON announcement_embeddings
+                USING hnsw (embedding vector_cosine_ops)
+            """)
+            conn.commit()
+            result["index"] = True
+        except Exception as e:
+            conn.rollback()
+            result["errors"].append(f"index: {str(e)[:200]}")
+
+        return {"status": "SUCCESS", **result}
+    finally:
+        try: conn.close()
+        except: pass
+
+
+@app.post("/api/admin/embeddings/batch")
+def api_embeddings_batch(req: AdminAuthRequest):
+    """임베딩 배치 생성 — 미임베딩 공고를 Gemini text-embedding-004로 벡터화.
+    한 번 호출 시 최대 250초 동안 가능한 많이 처리. 크론으로 반복 호출.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    import time as _time
+    import google.generativeai as genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    DEADLINE_SEC = 250
+    MAX_ITEMS = 300
+    BATCH_SIZE = 10  # Gemini 임베딩 병렬 처리 단위
+    start_ts = _time.time()
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 미임베딩 공고 선별 (마감 안 된 것 우선, 지원금액 있는 것 우선)
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.department, a.category,
+               a.support_amount, a.region, a.summary_text
+        FROM announcements a
+        LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
+        WHERE e.announcement_id IS NULL
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
+        ORDER BY
+            CASE WHEN a.support_amount ILIKE '%%억%%' THEN 0
+                 WHEN a.support_amount ILIKE '%%천만%%' THEN 1
+                 WHEN a.support_amount ILIKE '%%백만%%' THEN 2
+                 ELSE 3 END,
+            a.deadline_date ASC NULLS LAST
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+
+    if not rows:
+        conn.close()
+        return {"status": "SUCCESS", "processed": 0, "done": True, "message": "모든 공고 임베딩 완료"}
+
+    processed = 0
+    success = 0
+    failed = 0
+
+    for row in rows:
+        if _time.time() - start_ts > DEADLINE_SEC:
+            break
+        try:
+            # 임베딩 대상 텍스트 구성
+            title = (row.get("title") or "")[:200]
+            dept = (row.get("department") or "")[:100]
+            cat = (row.get("category") or "")[:50]
+            amount = (row.get("support_amount") or "")[:50]
+            region = (row.get("region") or "")[:50]
+            summary = (row.get("summary_text") or "")[:2000]
+            source_text = f"제목: {title}\n부처: {dept}\n카테고리: {cat}\n지원금액: {amount}\n지역: {region}\n내용: {summary}"
+
+            # Gemini 임베딩 호출
+            res = genai.embed_content(
+                model="models/text-embedding-004",
+                content=source_text,
+                task_type="retrieval_document",
+            )
+            vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+            if not vec or len(vec) < 100:
+                failed += 1
+                processed += 1
+                continue
+
+            # pgvector 형식으로 저장 (str로 직렬화: '[v1,v2,...]')
+            vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+            cur.execute("""
+                INSERT INTO announcement_embeddings (announcement_id, embedding, source_text, model_name, updated_at)
+                VALUES (%s, %s::vector, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (announcement_id) DO UPDATE SET
+                    embedding = EXCLUDED.embedding,
+                    source_text = EXCLUDED.source_text,
+                    model_name = EXCLUDED.model_name,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (row["announcement_id"], vec_str, source_text[:3000], "text-embedding-004"))
+            conn.commit()
+            success += 1
+            processed += 1
+        except Exception as e:
+            conn.rollback()
+            failed += 1
+            processed += 1
+            print(f"[EmbBatch] #{row.get('announcement_id')} error: {str(e)[:150]}")
+
+    # 남은 건수 확인
+    cur.execute("""
+        SELECT COUNT(*) AS remaining FROM announcements a
+        LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
+        WHERE e.announcement_id IS NULL
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
+    """)
+    remaining = cur.fetchone()["remaining"]
+    conn.close()
+
+    return {
+        "status": "SUCCESS",
+        "processed": processed,
+        "success": success,
+        "failed": failed,
+        "remaining_after": remaining,
+        "elapsed_seconds": round(_time.time() - start_ts, 1),
+        "done": remaining == 0,
+    }
+
+
 @app.get("/api/admin/analysis-stats")
 def api_analysis_stats(req: AdminAuthRequest = Depends()):
     """관리자: 분석 현황 통계"""

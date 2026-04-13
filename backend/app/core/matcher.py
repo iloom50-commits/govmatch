@@ -922,3 +922,131 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     for r in results:
         r.pop("_category", None)
     return results
+
+
+# ── 임베딩 기반 매칭 (Feature Flag로 제어, 기본 OFF) ──
+def _profile_to_text(user_profile: dict) -> str:
+    """사용자 프로파일을 임베딩용 자연어로 변환."""
+    parts = []
+    if user_profile.get("company_name"):
+        parts.append(f"기업명: {user_profile['company_name']}")
+    if user_profile.get("industry_code"):
+        parts.append(f"업종코드: {user_profile['industry_code']}")
+    if user_profile.get("industry_name"):
+        parts.append(f"업종명: {user_profile['industry_name']}")
+    if user_profile.get("address_city"):
+        parts.append(f"지역: {user_profile['address_city']}")
+    if user_profile.get("revenue_bracket"):
+        parts.append(f"매출규모: {user_profile['revenue_bracket']}")
+    if user_profile.get("employee_count_bracket"):
+        parts.append(f"직원수: {user_profile['employee_count_bracket']}")
+    if user_profile.get("establishment_date"):
+        parts.append(f"설립일: {user_profile['establishment_date']}")
+    if user_profile.get("interests"):
+        parts.append(f"관심분야: {user_profile['interests']}")
+    # 개인용 필드
+    if user_profile.get("age_range"):
+        parts.append(f"연령대: {user_profile['age_range']}")
+    if user_profile.get("income_level"):
+        parts.append(f"소득수준: {user_profile['income_level']}")
+    if user_profile.get("family_type"):
+        parts.append(f"가구형태: {user_profile['family_type']}")
+    if user_profile.get("employment_status"):
+        parts.append(f"고용상태: {user_profile['employment_status']}")
+    if user_profile.get("housing_status"):
+        parts.append(f"주거형태: {user_profile['housing_status']}")
+    if user_profile.get("special_conditions"):
+        parts.append(f"특수자격: {user_profile['special_conditions']}")
+    return "\n".join(parts) if parts else "일반 지원사업"
+
+
+def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_filter: str = None) -> list:
+    """임베딩 유사도 기반 상위 K개 공고 추출.
+    실패 시 빈 리스트 반환 (호출자가 fallback 처리).
+    """
+    import os as _os
+    try:
+        import google.generativeai as _genai
+    except ImportError:
+        return []
+
+    api_key = _os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return []
+
+    try:
+        _genai.configure(api_key=api_key)
+        profile_text = _profile_to_text(user_profile)
+        res = _genai.embed_content(
+            model="models/text-embedding-004",
+            content=profile_text,
+            task_type="retrieval_query",
+        )
+        vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+        if not vec:
+            return []
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+    except Exception as e:
+        print(f"[EmbMatch] embed error: {str(e)[:150]}")
+        return []
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # target_type 필터
+        tt_filter = ""
+        params: list = [vec_str]
+        if target_type_filter in ("business", "individual"):
+            tt_filter = " AND COALESCE(a.target_type, 'business') IN (%s, 'both')"
+            params.append(target_type_filter)
+        params.append(top_k)
+        sql = f"""
+            SELECT a.announcement_id, a.title, a.department, a.category,
+                   a.support_amount, a.deadline_date, a.region, a.origin_url,
+                   a.summary_text, a.eligibility_logic, a.target_type,
+                   1 - (e.embedding <=> %s::vector) AS similarity
+            FROM announcement_embeddings e
+            JOIN announcements a ON e.announcement_id = a.announcement_id
+            WHERE (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE){tt_filter}
+            ORDER BY e.embedding <=> %s::vector
+            LIMIT %s
+        """
+        # ORDER BY에도 vec_str 필요
+        params.insert(-1, vec_str)
+        cur.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+        return rows
+    except Exception as e:
+        print(f"[EmbMatch] query error: {str(e)[:200]}")
+        return []
+    finally:
+        try: conn.close()
+        except: pass
+
+
+def get_matches_hybrid(user_profile: dict, is_individual: bool = False) -> list:
+    """하이브리드 매칭 — USE_EMBEDDING_MATCHING 환경변수 ON일 때만 임베딩 사용.
+    OFF 또는 실패 시 기존 rule-based 함수로 자동 fallback.
+    """
+    import os as _os
+    use_emb = _os.environ.get("USE_EMBEDDING_MATCHING", "false").lower() == "true"
+
+    # 기본: rule-based 사용
+    if not use_emb:
+        return get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+
+    # 임베딩 검색으로 상위 50개 후보 추출
+    tt = "individual" if is_individual else "business"
+    candidates = get_matches_by_embedding(user_profile, top_k=50, target_type_filter=tt)
+
+    # 임베딩 실패 → rule-based fallback
+    if not candidates:
+        print("[MatchHybrid] embedding returned empty, fallback to rule-based")
+        return get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+
+    # 임베딩 결과에 match_score 주입 (similarity를 0~100 스케일로 환산)
+    for c in candidates:
+        sim = c.pop("similarity", 0.0) or 0.0
+        c["match_score"] = round(max(0, min(100, sim * 100)))
+        c["match_reason"] = "의미 유사도 기반 매칭"
+    return candidates

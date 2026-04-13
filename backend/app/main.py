@@ -4042,7 +4042,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
 
             # Gemini 임베딩 호출
             res = genai.embed_content(
-                model="models/text-embedding-004",
+                model="models/embedding-001",
                 content=source_text,
                 task_type="retrieval_document",
             )

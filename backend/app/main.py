@@ -3560,6 +3560,116 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+@app.post("/api/admin/analyze-batch-priority")
+def api_analyze_batch_priority(req: AdminAuthRequest):
+    """관리자: 지원금액 있는 미분석 공고를 금액 크기·마감일 순으로 자동 배치 분석.
+    한 번 호출 시 최대 250초 동안 가능한 많이 처리 (Railway 300초 타임아웃 여유).
+    크론으로 10분마다 반복 호출 → 전체 백필 자동 완료.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    import time as _time
+    from app.services.doc_analysis_service import analyze_and_store
+
+    DEADLINE_SEC = 250
+    MAX_ITEMS = 200  # 한 호출당 최대 처리 건수 (안전장치)
+    start_ts = _time.time()
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 우선순위:
+    # 1) 지원금액에 "억"이 포함된 공고 (큰 금액)
+    # 2) "천만" 포함
+    # 3) "백만" 포함
+    # 4) "만" 포함
+    # 5) 그 외 숫자 포함
+    # 각 그룹 내에서는 마감일 가까운 순, NULL(상시)은 뒤로
+    # + summary_text가 200자 이상인 것만 (분석 의미 없으면 skip)
+    # + 마감일 미래 또는 NULL
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.origin_url, a.summary_text, a.support_amount, a.deadline_date,
+          CASE
+            WHEN a.support_amount ILIKE '%억%' THEN 1
+            WHEN a.support_amount ILIKE '%천만%' THEN 2
+            WHEN a.support_amount ILIKE '%백만%' THEN 3
+            WHEN a.support_amount ILIKE '%만%' THEN 4
+            ELSE 5
+          END AS amt_priority
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE aa.id IS NULL
+          AND a.support_amount IS NOT NULL AND a.support_amount != ''
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+        ORDER BY amt_priority ASC,
+                 CASE WHEN a.deadline_date IS NULL THEN 1 ELSE 0 END,
+                 a.deadline_date ASC NULLS LAST,
+                 a.announcement_id DESC
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+
+    # 남은 건수 카운트 (같은 조건)
+    cur.execute("""
+        SELECT COUNT(*) AS cnt
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE aa.id IS NULL
+          AND a.support_amount IS NOT NULL AND a.support_amount != ''
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+    """)
+    _cnt_row = cur.fetchone()
+    total_remaining = dict(_cnt_row)["cnt"] if _cnt_row else 0
+
+    processed = 0
+    success = 0
+    failed = 0
+    skipped_timeout = 0
+
+    for row in rows:
+        # 시간 체크 — 250초 초과 시 중단
+        elapsed = _time.time() - start_ts
+        if elapsed > DEADLINE_SEC:
+            skipped_timeout = len(rows) - processed
+            break
+
+        r = dict(row)
+        try:
+            res = analyze_and_store(
+                announcement_id=r["announcement_id"],
+                origin_url=r.get("origin_url") or "",
+                title=r["title"],
+                db_conn=conn,
+                summary_text=r.get("summary_text") or "",
+            )
+            if res.get("success"):
+                success += 1
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            print(f"[analyze-batch] id={r['announcement_id']} error: {str(e)[:100]}")
+
+        processed += 1
+
+    conn.close()
+
+    elapsed_total = round(_time.time() - start_ts, 1)
+    return {
+        "status": "SUCCESS",
+        "processed": processed,
+        "success": success,
+        "failed": failed,
+        "skipped_timeout": skipped_timeout,
+        "remaining_after": max(0, total_remaining - success),
+        "elapsed_seconds": elapsed_total,
+        "done": (total_remaining - success) <= 0,
+    }
+
+
 @app.post("/api/admin/backfill-support-amount")
 def api_backfill_support_amount(req: AdminAuthRequest, commit: bool = False, limit: int = 0):
     """관리자: 기존 공고의 support_amount 빈 필드를 summary_text/title 에서 정규식으로 채움.

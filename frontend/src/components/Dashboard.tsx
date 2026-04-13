@@ -1190,7 +1190,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           <div
             key={majorTab}
-            className={`animate-in fade-in duration-300 ${slideDir === "left" ? "slide-in-from-right-8" : "slide-in-from-left-8"}`}
+            className={slideDir === "left" ? "tab-slide-from-right" : "tab-slide-from-left"}
           >
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">

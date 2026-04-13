@@ -333,22 +333,57 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       apply();
     }
   };
-  // 모바일 좌우 스와이프로 기업/개인 탭 전환
+  // 모바일 좌우 스와이프 — 손가락 follow 드래그 캐러셀
   const swipeStartX = useRef<number | null>(null);
   const swipeStartY = useRef<number | null>(null);
+  const swipeDirLocked = useRef<"h" | "v" | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const handleTabSwipeStart = (e: React.TouchEvent) => {
     swipeStartX.current = e.touches[0].clientX;
     swipeStartY.current = e.touches[0].clientY;
+    swipeDirLocked.current = null;
+    setIsDragging(false);
   };
-  const handleTabSwipeEnd = (e: React.TouchEvent) => {
+  const handleTabSwipeMove = (e: React.TouchEvent) => {
     if (swipeStartX.current == null || swipeStartY.current == null) return;
-    const dx = e.changedTouches[0].clientX - swipeStartX.current;
-    const dy = e.changedTouches[0].clientY - swipeStartY.current;
+    const dx = e.touches[0].clientX - swipeStartX.current;
+    const dy = e.touches[0].clientY - swipeStartY.current;
+    // 첫 8px 이후 방향 판정
+    if (swipeDirLocked.current === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      swipeDirLocked.current = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      if (swipeDirLocked.current === "h") setIsDragging(true);
+    }
+    if (swipeDirLocked.current !== "h") return;
+    // 가장자리 저항: 첫 탭에서 오른쪽으로, 마지막 탭에서 왼쪽으로 당기면 절반 효과
+    let offset = dx;
+    if ((majorTab === "business" && dx > 0) || (majorTab === "individual" && dx < 0)) {
+      offset = dx * 0.35;
+    }
+    setDragX(offset);
+  };
+  const handleTabSwipeEnd = () => {
+    if (swipeStartX.current == null) { setIsDragging(false); setDragX(0); return; }
+    const finalDx = dragX;
+    const wasDragging = isDragging;
     swipeStartX.current = null;
     swipeStartY.current = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (dx < 0 && majorTab === "business") switchMajorTab("individual");
-    else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
+    swipeDirLocked.current = null;
+    if (!wasDragging) { setDragX(0); setIsDragging(false); return; }
+    const w = typeof window !== "undefined" ? window.innerWidth : 360;
+    const threshold = Math.min(w * 0.25, 100);
+    setIsDragging(false);
+    if (finalDx < -threshold && majorTab === "business") {
+      // 화면 밖으로 더 슬라이드 시킨 후 탭 전환
+      setDragX(-w);
+      setTimeout(() => { setMajorTab("individual"); setActiveTab("all"); setDragX(0); }, 220);
+    } else if (finalDx > threshold && majorTab === "individual") {
+      setDragX(w);
+      setTimeout(() => { setMajorTab("business"); setActiveTab("all"); setDragX(0); }, 220);
+    } else {
+      setDragX(0);
+    }
   };
   const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
 
@@ -1137,7 +1172,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <main
           className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0"
           onTouchStart={handleTabSwipeStart}
+          onTouchMove={handleTabSwipeMove}
           onTouchEnd={handleTabSwipeEnd}
+          onTouchCancel={handleTabSwipeEnd}
         >
           {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
@@ -1198,7 +1235,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           </div>
 
-          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
+          <div
+            style={{
+              viewTransitionName: "major-tab",
+              transform: dragX !== 0 ? `translateX(${dragX}px)` : undefined,
+              transition: isDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+              touchAction: "pan-y",
+            } as React.CSSProperties}
+          >
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
               <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>

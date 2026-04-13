@@ -2,7 +2,7 @@
 
 import ResultCard from "./ResultCard";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import NotificationModal from "./NotificationModal";
 import SmartDocModal from "./SmartDocModal";
 import ProDashboard from "./ProDashboard";
@@ -315,13 +315,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   const [activeTab, setActiveTab] = useState("all");
-  // 슬라이드 방향: "left"=오른쪽→왼쪽 진입(개인 탭 진입), "right"=왼쪽→오른쪽 진입(기업 탭 진입)
-  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
+  // 탭 전환 — View Transitions API (미지원 브라우저는 즉시 전환)
   const switchMajorTab = (next: MajorTab) => {
     if (next === majorTab) return;
-    setSlideDir(next === "individual" ? "left" : "right");
-    setMajorTab(next);
-    setActiveTab("all");
+    const apply = () => { setMajorTab(next); setActiveTab("all"); };
+    try {
+      const doc = document as any;
+      if (typeof doc.startViewTransition === "function") {
+        doc.documentElement.setAttribute("data-vt-dir", next === "business" ? "right" : "left");
+        doc.startViewTransition(() => {
+          flushSync(apply);
+        });
+      } else {
+        apply();
+      }
+    } catch {
+      apply();
+    }
   };
   // 모바일 좌우 스와이프로 기업/개인 탭 전환
   const swipeStartX = useRef<number | null>(null);
@@ -1188,10 +1198,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           </div>
 
-          <div
-            key={majorTab}
-            className={slideDir === "left" ? "tab-slide-from-right" : "tab-slide-from-left"}
-          >
+          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
           <header className="space-y-3">
             <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
               <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>

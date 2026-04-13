@@ -621,14 +621,32 @@ ${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? 
                   </svg>
                 </button>
               </div>
-              {/* 상담 중 종료 버튼 — 첫 AI 응답 이후 표시 */}
+              {/* 첫 AI 응답 이후 — 저장하고 닫기 + PDF 출력 버튼 */}
               {messages.length >= 2 && !loading && (
-                <button
-                  onClick={handleManualEnd}
-                  className="w-full py-2 text-slate-400 hover:text-slate-600 text-[12px] font-semibold transition-all text-center hover:bg-slate-50 rounded-lg"
-                >
-                  상담 종료
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      handleManualEnd();
+                      toast("저장되었습니다 ✓ 내 상담 기록에서 다시 볼 수 있어요", "success");
+                      setTimeout(() => handleClose(), 800);
+                    }}
+                    className="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    저장하고 닫기
+                  </button>
+                  <button
+                    onClick={handlePrintReport}
+                    className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    PDF로 출력
+                  </button>
+                </div>
               )}
             </div>
           )}

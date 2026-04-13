@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
+import { generateConsultReportHTML } from "@/components/consult/reportTemplate";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -349,44 +350,46 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     }]);
   };
 
-  // 상담 보고서 인쇄 (PDF 저장 가능)
-  const handlePrintReport = () => {
-    const aiMessages = messages.filter(m => m.role === "assistant" && !m.done);
-    const userMessages = messages.filter(m => m.role === "user");
-    const now = new Date().toLocaleString("ko-KR");
+  // 상담 보고서 출력 — 공통 템플릿 사용 (상담 기록 페이지와 동일 포맷)
+  const handlePrintReport = async () => {
+    // 사용자 프로필 로드 (기업 정보 섹션용)
+    let userProfile: any = {};
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (token) {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          userProfile = data.user || {};
+        }
+      }
+    } catch {}
 
-    const html = `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="utf-8"><title>상담 보고서 — ${announcement?.title || ""}</title>
-<style>
-  @page { margin: 20mm; }
-  body { font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; color: #1e293b; line-height: 1.7; font-size: 13px; }
-  h1 { font-size: 18px; color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 8px; margin-bottom: 16px; }
-  .meta { color: #64748b; font-size: 12px; margin-bottom: 20px; }
-  .meta span { margin-right: 16px; }
-  .section { margin-bottom: 20px; }
-  .section h2 { font-size: 14px; color: #334155; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; }
-  .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; }
-  .msg.user { background: #eef2ff; border-left: 3px solid #6366f1; }
-  .msg.ai { background: #f8fafc; border-left: 3px solid #10b981; }
-  .msg .role { font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 4px; }
-  .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 11px; text-align: center; }
-</style></head><body>
-<h1>AI 지원대상 상담 보고서</h1>
-<div class="meta">
-  <span>공고: <strong>${announcement?.title || ""}</strong></span><br/>
-  <span>부처: ${announcement?.department || "-"}</span>
-  <span>카테고리: ${announcement?.category || "-"}</span>
-  <span>마감: ${announcement?.deadline_date || "상시"}</span><br/>
-  <span>상담일시: ${now}</span>
-</div>
-<div class="section"><h2>상담 내용</h2>
-${messages.filter(m => !m.done).map(m => `<div class="msg ${m.role === "user" ? "user" : "ai"}">
-  <div class="role">${m.role === "user" ? "질문" : "AI 상담사"}</div>
-  <div>${m.role === "user" ? m.text.replace(/</g, "&lt;") : renderMarkdown(m.text)}</div>
-</div>`).join("")}
-</div>
-<div class="footer">지원금AI — AI 맞춤 지원금 매칭 (govmatch.kr) | 본 보고서는 AI가 생성한 참고용 자료이며, 최종 판단은 주관기관의 심사에 따릅니다.</div>
-</body></html>`;
+    // 결론 추출 — 마지막 AI 메시지의 done/conclusion 또는 본문 키워드
+    let conclusion = "";
+    const lastAi = [...messages].reverse().find(m => m.role === "assistant" && !m.done);
+    if (lastAi) {
+      const txt = lastAi.text.toLowerCase();
+      if (/미충족|지원\s*불가|대상이?\s*아니|해당되?지\s*않|자격이?\s*없/.test(txt)) conclusion = "ineligible";
+      else if (/조건부|확인\s*필요|일부\s*충족/.test(txt)) conclusion = "conditional";
+      else if (/지원\s*가능|자격을?\s*충족|신청\s*가능/.test(txt)) conclusion = "eligible";
+    }
+
+    const html = generateConsultReportHTML({
+      announcement: {
+        title: announcement?.title,
+        department: announcement?.department,
+        category: announcement?.category,
+        region: (announcement as any)?.region,
+        deadline_date: announcement?.deadline_date,
+        support_amount: (announcement as any)?.support_amount,
+      },
+      profile: userProfile,
+      messages: messages.map(m => ({ role: m.role, text: m.text, done: m.done })),
+      conclusion,
+    });
 
     const printWindow = window.open("", "_blank");
     if (printWindow) {

@@ -211,6 +211,12 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
               </>
             )}
 
+            <Row
+              label="📋 내 상담 이력"
+              value=""
+              onClick={() => { onClose(); window.location.href = "/my/consults"; }}
+            />
+            <Divider />
             <Row label="고객문의" value="" onClick={() => { onClose(); window.location.href = "/support"; }} />
             <Divider />
             {onLogout && (

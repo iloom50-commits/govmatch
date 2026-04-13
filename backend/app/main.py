@@ -3506,6 +3506,154 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
     return {"status": "SUCCESS"}
 
 
+# ══════════════════════════════════════════
+# 내 상담 기록 (사용자 본인의 ai_consult_logs 열람)
+# ══════════════════════════════════════════
+
+@app.get("/api/my/consults")
+def api_my_consults(
+    current_user: dict = Depends(_get_current_user),
+    page: int = 1,
+    size: int = 20,
+    filter: str = "all",  # all | eligible | conditional | ineligible
+):
+    """내 상담 기록 목록 — 최신순."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    offset = max(0, (page - 1) * size)
+    size = min(max(1, size), 100)
+
+    where_sql = "WHERE l.business_number = %s"
+    params: list = [current_user["bn"]]
+    if filter in ("eligible", "conditional", "ineligible"):
+        where_sql += " AND l.conclusion = %s"
+        params.append(filter)
+
+    cur.execute(
+        f"""SELECT COUNT(*) AS total FROM ai_consult_logs l {where_sql}""",
+        tuple(params),
+    )
+    total_row = cur.fetchone()
+    total = dict(total_row).get("total", 0) if total_row else 0
+
+    cur.execute(
+        f"""SELECT l.id, l.announcement_id, l.conclusion, l.feedback, l.created_at, l.messages,
+                   a.title, a.category, a.department, a.deadline_date, a.support_amount
+            FROM ai_consult_logs l
+            LEFT JOIN announcements a ON a.announcement_id = l.announcement_id
+            {where_sql}
+            ORDER BY l.created_at DESC
+            LIMIT %s OFFSET %s""",
+        tuple(params + [size, offset]),
+    )
+    rows = cur.fetchall()
+
+    items = []
+    for row in rows:
+        r = dict(row)
+        messages = r.get("messages") or []
+        if isinstance(messages, str):
+            try:
+                messages = json.loads(messages)
+            except Exception:
+                messages = []
+        # 마지막 AI 응답에서 미리보기 추출
+        last_ai = ""
+        if isinstance(messages, list):
+            for m in reversed(messages):
+                if m.get("role") == "assistant":
+                    last_ai = (m.get("text") or "")[:200]
+                    break
+        items.append({
+            "id": r["id"],
+            "announcement_id": r["announcement_id"],
+            "announcement_title": r.get("title") or "(삭제된 공고)",
+            "category": r.get("category") or "",
+            "department": r.get("department") or "",
+            "deadline_date": str(r.get("deadline_date")) if r.get("deadline_date") else "",
+            "support_amount": r.get("support_amount") or "",
+            "conclusion": r.get("conclusion") or "",
+            "feedback": r.get("feedback") or "",
+            "created_at": str(r.get("created_at")) if r.get("created_at") else "",
+            "preview": last_ai,
+            "message_count": len(messages) if isinstance(messages, list) else 0,
+        })
+
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "total": total,
+        "page": page,
+        "size": size,
+        "items": items,
+    }
+
+
+@app.get("/api/my/consults/{consult_id}")
+def api_my_consult_detail(consult_id: int, current_user: dict = Depends(_get_current_user)):
+    """내 상담 기록 상세 — 본인 상담만 열람 가능."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT l.id, l.announcement_id, l.conclusion, l.feedback, l.feedback_detail,
+                  l.created_at, l.messages,
+                  a.title, a.category, a.department, a.deadline_date, a.support_amount,
+                  a.region, a.origin_url, a.summary_text
+           FROM ai_consult_logs l
+           LEFT JOIN announcements a ON a.announcement_id = l.announcement_id
+           WHERE l.id = %s AND l.business_number = %s""",
+        (consult_id, current_user["bn"]),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="상담 기록을 찾을 수 없습니다.")
+    r = dict(row)
+    messages = r.get("messages") or []
+    if isinstance(messages, str):
+        try:
+            messages = json.loads(messages)
+        except Exception:
+            messages = []
+    return {
+        "status": "SUCCESS",
+        "consult": {
+            "id": r["id"],
+            "announcement_id": r["announcement_id"],
+            "announcement_title": r.get("title") or "(삭제된 공고)",
+            "category": r.get("category") or "",
+            "department": r.get("department") or "",
+            "region": r.get("region") or "",
+            "deadline_date": str(r.get("deadline_date")) if r.get("deadline_date") else "",
+            "support_amount": r.get("support_amount") or "",
+            "origin_url": r.get("origin_url") or "",
+            "conclusion": r.get("conclusion") or "",
+            "feedback": r.get("feedback") or "",
+            "feedback_detail": r.get("feedback_detail") or "",
+            "created_at": str(r.get("created_at")) if r.get("created_at") else "",
+            "messages": messages,
+        },
+    }
+
+
+@app.delete("/api/my/consults/{consult_id}")
+def api_my_consult_delete(consult_id: int, current_user: dict = Depends(_get_current_user)):
+    """내 상담 기록 삭제 — 본인 상담만."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM ai_consult_logs WHERE id = %s AND business_number = %s",
+        (consult_id, current_user["bn"]),
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="상담 기록을 찾을 수 없습니다.")
+    return {"status": "SUCCESS", "deleted": deleted}
+
+
 # ── 공고 원문 정밀 분석 (배치) ─────────────────────────────
 
 class AdminAuthRequest(BaseModel):

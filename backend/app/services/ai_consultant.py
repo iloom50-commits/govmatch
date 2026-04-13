@@ -33,6 +33,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _clean_summary_text(text: str) -> str:
+    """공고 원문에서 HTML 태그 제거·공백 정리. 프롬프트에 깔끔히 주입하기 위함."""
+    if not text:
+        return ""
+    # HTML 태그 제거
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # HTML 엔티티 치환
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&#\d+;', ' ', text)
+    # 연속 공백 압축
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # FAQ 캐시 (같은 공고 + 유사 질문 → 캐시된 응답 재활용)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -847,6 +864,9 @@ def chat_consult(
 지역: {a.get('region', '전국')}
 자격요건(기본): {json.dumps(elig, ensure_ascii=False)[:500]}
 {support_info}
+
+[★ 공고 원문 전체 — 아래 정밀 분석이 빈약해도 이 원문에서 직접 정보를 추출하여 답변하세요]
+{_clean_summary_text(a.get('summary_text') or '')[:4000]}
 
 [정밀 분석 — 공고 원문 기반]
 신청자격 원문: {(ps.get('eligibility') or '')[:2000]}

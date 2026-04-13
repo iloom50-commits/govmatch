@@ -222,27 +222,16 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   const [open, setOpen] = useState(false);
   const url = typeof window !== "undefined" ? getUrl() : "";
 
+  // OS 네이티브 공유 시트 (안드로이드/iOS) → 사용자가 카카오톡 등을 직접 선택
+  // Kakao SDK는 도메인 mismatch 시 카톡 로그인 화면으로 빠지는 문제가 있어 사용 안 함.
   const shareKakao = () => {
     if (typeof window === "undefined") return;
-    const K = (window as any).Kakao;
-    if (K && !K.isInitialized?.()) {
-      try { K.init('832265e411dd686c3fcf925f3558d8f0'); } catch {}
-    }
-    if (K?.Share) {
-      K.Share.sendDefault({
-        objectType: "feed",
-        content: {
-          title: "지원금AI — AI 정부 지원금 자동 매칭",
-          description: shareText,
-          imageUrl: `${window.location.origin}/og-image-wide.png`,
-          link: { mobileWebUrl: url, webUrl: url },
-        },
-        buttons: [{ title: "지원금 확인하기", link: { mobileWebUrl: url, webUrl: url } }],
-      });
+    if (navigator.share) {
+      navigator.share({ title: "지원금AI", text: shareText, url }).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(
-        () => toast("카카오톡 SDK 로딩 중입니다. 링크를 복사했어요!", "info"),
-        () => toast("잠시 후 다시 시도해주세요.", "error")
+        () => toast("링크가 복사되었습니다!", "success"),
+        () => toast("복사에 실패했습니다.", "error")
       );
     }
     setOpen(false);

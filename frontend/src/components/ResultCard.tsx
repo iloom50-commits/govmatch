@@ -11,27 +11,16 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
     ? `이 지원사업 한번 확인해보세요!\n"${announcementTitle.slice(0, 40)}"\nAI가 자격 여부까지 분석해줍니다.`
     : "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";
 
+  // OS 네이티브 공유 시트 → 카카오톡/메시지/메일 등 사용자가 직접 선택
+  // Kakao SDK는 도메인 검증 이슈로 카톡 로그인 화면이 뜨는 문제가 있어 사용 안 함.
   const shareKakao = () => {
     if (typeof window === "undefined") return;
-    const K = (window as any).Kakao;
-    if (K && !K.isInitialized?.()) {
-      try { K.init('832265e411dd686c3fcf925f3558d8f0'); } catch {}
-    }
-    if (K?.Share) {
-      K.Share.sendDefault({
-        objectType: "feed",
-        content: {
-          title: "지원금AI — AI 맞춤 지원금 매칭",
-          description: "정부지원금, 아직도 직접 찾고 계세요? AI가 내 조건에 맞는 지원금을 자동으로 찾아드립니다.",
-          imageUrl: "https://www.govmatch.kr/og-image-wide.png",
-          link: { mobileWebUrl: url, webUrl: url },
-        },
-        buttons: [{ title: "지원금AI 시작하기", link: { mobileWebUrl: url, webUrl: url } }],
-      });
+    if (navigator.share) {
+      navigator.share({ title: "지원금AI", text: shareText, url }).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(
-        () => toast("카카오톡 SDK 로딩 중입니다. 링크를 복사했어요!", "info"),
-        () => toast("잠시 후 다시 시도해주세요.", "error")
+        () => toast("링크가 복사되었습니다!", "success"),
+        () => toast("복사에 실패했습니다.", "error")
       );
     }
     setOpen(false);

@@ -4025,6 +4025,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
     processed = 0
     success = 0
     failed = 0
+    error_samples = []
 
     for row in rows:
         if _time.time() - start_ts > DEADLINE_SEC:
@@ -4069,6 +4070,8 @@ def api_embeddings_batch(req: AdminAuthRequest):
             conn.rollback()
             failed += 1
             processed += 1
+            if len(error_samples) < 3:
+                error_samples.append(f"#{row.get('announcement_id')}: {type(e).__name__}: {str(e)[:300]}")
             print(f"[EmbBatch] #{row.get('announcement_id')} error: {str(e)[:150]}")
 
     # 남은 건수 확인
@@ -4090,6 +4093,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
         "remaining_after": remaining,
         "elapsed_seconds": round(_time.time() - start_ts, 1),
         "done": remaining == 0,
+        "error_samples": error_samples,
     }
 
 

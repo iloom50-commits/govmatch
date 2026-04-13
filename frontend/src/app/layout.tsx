@@ -143,6 +143,12 @@ export default function RootLayout({
               if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/sw.js').catch(function(){});
               }
+              // 로그인 상태 감지 → SEO 섹션 숨김용 클래스 (FOUC 방지)
+              try {
+                if (localStorage.getItem('auth_token')) {
+                  document.documentElement.classList.add('is-logged-in');
+                }
+              } catch(_) {}
             `,
           }}
         />
@@ -206,9 +212,17 @@ export default function RootLayout({
           <Providers>{children}</Providers>
         </div>
 
-        {/* ── SEO 정적 콘텐츠 (SSR) — 검색엔진 노출용 ── */}
-        <section className="w-full border-t border-slate-200/60 bg-white" aria-label="서비스 소개">
-          <div className="max-w-5xl mx-auto px-4 py-10 text-slate-700">
+        {/* ── SEO 정적 콘텐츠 (SSR) — 검색엔진 노출용
+             비로그인: details로 접힘 제공
+             로그인: 아래 is-logged-in CSS로 완전 숨김 (크롤러는 항상 비로그인이라 SEO 영향 0) ── */}
+        <section className="seo-intro w-full border-t border-slate-200/60 bg-white" aria-label="서비스 소개">
+          <details className="max-w-5xl mx-auto px-4 py-6 text-slate-700">
+            <summary className="cursor-pointer list-none flex items-center gap-2 text-[13px] md:text-sm font-semibold text-slate-600 hover:text-indigo-600 select-none">
+              <span className="text-indigo-500">💡</span>
+              <span>지원금AI 서비스 소개 · 주요 키워드 · 데이터 출처</span>
+              <span className="ml-auto text-[11px] text-slate-400 group-open:hidden">펼치기 ▼</span>
+            </summary>
+            <div className="pt-6">
             <h2 className="text-lg md:text-xl font-bold text-slate-900 mb-3">
               지원금AI — 정부 지원금·보조금·정책자금 AI 자동 매칭 서비스
             </h2>
@@ -265,7 +279,8 @@ export default function RootLayout({
                 <strong>연관 키워드:</strong> 정부지원금, 정부보조금, 중소기업지원금, 소상공인지원금, 창업지원금, 정책자금 신청, 청년지원금, 지자체 지원사업, 바우처 사업, R&amp;D 과제, 사업계획서 컨설팅, 지원금 찾기
               </p>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
 
         <footer className="w-full border-t border-slate-200/60 bg-slate-50/80">

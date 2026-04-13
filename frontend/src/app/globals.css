@@ -17,6 +17,9 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 로그인 사용자에겐 SEO 소개 섹션 숨김 (크롤러는 항상 비로그인이라 SEO 영향 없음) */
+html.is-logged-in .seo-intro { display: none; }
+
 /* 탭 전환 — View Transitions API 기반 슬라이드 효과
    브라우저가 자동으로 DOM 변경 전후 스냅샷을 찍어서 페이지 전환 효과 적용.
    미지원 브라우저는 즉시 전환으로 graceful fallback. */

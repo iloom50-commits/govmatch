@@ -3570,14 +3570,18 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
         raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
 
     import time as _time
+    import traceback as _tb
     from app.services.doc_analysis_service import analyze_and_store
 
     DEADLINE_SEC = 250
     MAX_ITEMS = 200  # 한 호출당 최대 처리 건수 (안전장치)
     start_ts = _time.time()
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 연결 실패: {str(e)[:200]}")
 
     # 우선순위:
     # 1) 지원금액에 "억"이 포함된 공고 (큰 금액)
@@ -3588,28 +3592,33 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
     # 각 그룹 내에서는 마감일 가까운 순, NULL(상시)은 뒤로
     # + summary_text가 200자 이상인 것만 (분석 의미 없으면 skip)
     # + 마감일 미래 또는 NULL
-    cur.execute("""
-        SELECT a.announcement_id, a.title, a.origin_url, a.summary_text, a.support_amount, a.deadline_date,
-          CASE
-            WHEN a.support_amount ILIKE '%억%' THEN 1
-            WHEN a.support_amount ILIKE '%천만%' THEN 2
-            WHEN a.support_amount ILIKE '%백만%' THEN 3
-            WHEN a.support_amount ILIKE '%만%' THEN 4
-            ELSE 5
-          END AS amt_priority
-        FROM announcements a
-        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-        WHERE aa.id IS NULL
-          AND a.support_amount IS NOT NULL AND a.support_amount != ''
-          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
-        ORDER BY amt_priority ASC,
-                 CASE WHEN a.deadline_date IS NULL THEN 1 ELSE 0 END,
-                 a.deadline_date ASC NULLS LAST,
-                 a.announcement_id DESC
-        LIMIT %s
-    """, (MAX_ITEMS,))
-    rows = cur.fetchall()
+    try:
+        cur.execute("""
+            SELECT a.announcement_id, a.title, a.origin_url, a.summary_text, a.support_amount, a.deadline_date,
+              CASE
+                WHEN a.support_amount ILIKE '%%억%%' THEN 1
+                WHEN a.support_amount ILIKE '%%천만%%' THEN 2
+                WHEN a.support_amount ILIKE '%%백만%%' THEN 3
+                WHEN a.support_amount ILIKE '%%만%%' THEN 4
+                ELSE 5
+              END AS amt_priority
+            FROM announcements a
+            LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+            WHERE aa.id IS NULL
+              AND a.support_amount IS NOT NULL AND a.support_amount != ''
+              AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
+              AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+            ORDER BY amt_priority ASC,
+                     CASE WHEN a.deadline_date IS NULL THEN 1 ELSE 0 END,
+                     a.deadline_date ASC NULLS LAST,
+                     a.announcement_id DESC
+            LIMIT %s
+        """, (MAX_ITEMS,))
+        rows = cur.fetchall()
+    except Exception as e:
+        try: conn.close()
+        except: pass
+        raise HTTPException(status_code=500, detail=f"SELECT 쿼리 실패: {str(e)[:200]}\n{_tb.format_exc()[-500:]}")
 
     # 남은 건수 카운트 (같은 조건)
     cur.execute("""

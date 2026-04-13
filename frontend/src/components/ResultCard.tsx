@@ -48,7 +48,15 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
   return (
     <>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          // 모바일·태블릿: OS 네이티브 공유 시트 즉시 호출
+          if (typeof navigator !== "undefined" && (navigator as any).share) {
+            (navigator as any).share({ title: "지원금AI", text: shareText, url }).catch(() => {});
+          } else {
+            setOpen(true);
+          }
+        }}
         className="w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span> 친구에게 추천하기

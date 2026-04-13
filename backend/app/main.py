@@ -3450,6 +3450,33 @@ class ConsultFeedbackRequest(BaseModel):
     detail: Optional[str] = None
 
 
+class ConsultSaveRequest(BaseModel):
+    announcement_id: int
+    messages: list
+    conclusion: Optional[str] = None
+
+
+@app.post("/api/ai/consult/save")
+def api_consult_save(req: ConsultSaveRequest, current_user: dict = Depends(_get_current_user)):
+    """상담 명시적 저장 — '저장하고 닫기' 버튼에서 호출. AI 호출 없이 ai_consult_logs에 INSERT만 수행."""
+    bn = current_user["bn"]
+    if not req.messages or len(req.messages) < 2:
+        raise HTTPException(status_code=400, detail="저장할 대화가 없습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
+               VALUES (%s, %s, %s, %s) RETURNING id""",
+            (req.announcement_id, bn, json.dumps(req.messages, ensure_ascii=False), req.conclusion),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return {"status": "SUCCESS", "consult_log_id": row["id"] if row else None}
+    finally:
+        conn.close()
+
+
 @app.post("/api/ai/consult/feedback")
 def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depends(_get_current_user)):
     """상담 결과 피드백 저장 + 순환 학습 (골든답변/지식 저장)"""

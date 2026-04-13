@@ -325,21 +325,40 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)
   useModalBack(open, handleClose);
 
-  // 사용자가 직접 상담 종료
-  const handleManualEnd = () => {
+  // 사용자가 직접 상담 종료 — ai_consult_logs에 명시 저장
+  const handleManualEnd = async () => {
     setIsDone(true);
 
-    // 마지막 AI 메시지에서 결론 추출
     const lastAiMsg = [...messages].reverse().find(m => m.role === "assistant");
     const lastText = lastAiMsg?.text || "";
 
-    // 결과를 이벤트로 발행 → 고객사 상담에서 수신 가능
+    // 명시 저장 호출 (AI 호출 없이 INSERT만)
+    let savedId: number | null = consultLogId;
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (token && announcement?.announcement_id && messages.length >= 2) {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/consult/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            announcement_id: announcement.announcement_id,
+            messages: messages,
+            conclusion: null,
+          }),
+        });
+        if (res.ok) {
+          const j = await res.json();
+          savedId = j.consult_log_id || null;
+        }
+      }
+    } catch {}
+
     window.dispatchEvent(new CustomEvent("consult-result", {
       detail: {
         announcement_id: announcement?.announcement_id,
         title: announcement?.title,
         summary: lastText.substring(0, 500),
-        consult_log_id: consultLogId,
+        consult_log_id: savedId,
       }
     }));
 

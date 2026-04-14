@@ -4406,6 +4406,33 @@ def api_run_migrations(req: AdminAuthRequest):
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_consult_logs_session_id ON ai_consult_logs(session_id) WHERE session_id IS NOT NULL"),
         ("ksic_classification cleanup bad codes",
          "DELETE FROM ksic_classification WHERE LENGTH(code) != 5"),
+        ("announcement_sections table",
+         """CREATE TABLE IF NOT EXISTS announcement_sections (
+                id SERIAL PRIMARY KEY,
+                announcement_id INTEGER NOT NULL,
+                section_type VARCHAR(40) NOT NULL,
+                section_title TEXT,
+                section_text TEXT NOT NULL,
+                section_order INTEGER DEFAULT 0,
+                embedding vector(768),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""),
+        ("idx_announcement_sections_ann",
+         "CREATE INDEX IF NOT EXISTS idx_announcement_sections_ann ON announcement_sections(announcement_id, section_type)"),
+        ("idx_announcement_sections_type",
+         "CREATE INDEX IF NOT EXISTS idx_announcement_sections_type ON announcement_sections(section_type)"),
+        ("idx_announcement_sections_emb",
+         "CREATE INDEX IF NOT EXISTS idx_announcement_sections_emb ON announcement_sections USING hnsw (embedding vector_cosine_ops)"),
+        ("section_feedback table",
+         """CREATE TABLE IF NOT EXISTS section_feedback (
+                id SERIAL PRIMARY KEY,
+                section_id INTEGER NOT NULL,
+                business_number VARCHAR(20),
+                rating SMALLINT,
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""),
         ("pro_consult_sessions.phase",
          "ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS phase VARCHAR(20) DEFAULT 'collecting'"),
         ("pro_consult_sessions.matched_snapshot",
@@ -4646,6 +4673,195 @@ def api_embeddings_debug_match(req: AdminAuthRequest):
             {"id": r.get("announcement_id"), "title": (r.get("title") or "")[:60], "score": r.get("match_score")}
             for r in hybrid_results[:5]
         ],
+    }
+
+
+@app.post("/api/admin/sections/extract-from-analysis")
+def api_sections_extract(req: AdminAuthRequest):
+    """기존 announcement_analysis.parsed_sections에서 announcement_sections로 추출 적재.
+    (한 번 호출 시 최대 300건 처리)
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    SECTION_KEYS = [
+        ("eligibility", "자격요건"),
+        ("target", "지원대상"),
+        ("required_documents", "제출서류"),
+        ("application_method", "신청방법"),
+        ("support_amount", "지원금액"),
+        ("support_content", "지원내용"),
+        ("schedule", "일정"),
+        ("contact", "문의처"),
+        ("notes", "유의사항"),
+    ]
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT aa.announcement_id, aa.parsed_sections, aa.deep_analysis
+        FROM announcement_analysis aa
+        WHERE aa.parsed_sections IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM announcement_sections s WHERE s.announcement_id = aa.announcement_id
+          )
+        ORDER BY aa.announcement_id
+        LIMIT 300
+    """)
+    rows = cur.fetchall()
+    if not rows:
+        conn.close()
+        return {"status": "SUCCESS", "done": True, "processed": 0, "remaining": 0}
+
+    inserted_total = 0
+    processed = 0
+    for r in rows:
+        ann_id = r["announcement_id"]
+        ps = r.get("parsed_sections")
+        if isinstance(ps, str):
+            try: ps = json.loads(ps)
+            except: ps = None
+        if not isinstance(ps, dict):
+            processed += 1
+            continue
+        order = 0
+        for key, label in SECTION_KEYS:
+            v = ps.get(key)
+            if not v:
+                continue
+            text = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+            text = text.strip()
+            if len(text) < 10:
+                continue
+            try:
+                cur.execute(
+                    """INSERT INTO announcement_sections
+                       (announcement_id, section_type, section_title, section_text, section_order)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (ann_id, key, label, text[:5000], order),
+                )
+                inserted_total += 1
+                order += 1
+            except Exception as ie:
+                conn.rollback()
+                continue
+        # deep_analysis 핵심포인트 별도 섹션
+        da = r.get("deep_analysis")
+        if isinstance(da, str):
+            try: da = json.loads(da)
+            except: da = None
+        if isinstance(da, dict):
+            for k in ("key_points", "summary", "strategy"):
+                v = da.get(k)
+                if isinstance(v, str) and len(v.strip()) >= 20:
+                    try:
+                        cur.execute(
+                            """INSERT INTO announcement_sections
+                               (announcement_id, section_type, section_title, section_text, section_order)
+                               VALUES (%s, %s, %s, %s, %s)""",
+                            (ann_id, f"insight_{k}", k, v.strip()[:5000], order),
+                        )
+                        inserted_total += 1
+                        order += 1
+                    except Exception:
+                        conn.rollback()
+        conn.commit()
+        processed += 1
+
+    cur.execute("""
+        SELECT COUNT(DISTINCT aa.announcement_id) AS c
+        FROM announcement_analysis aa
+        WHERE aa.parsed_sections IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM announcement_sections s WHERE s.announcement_id = aa.announcement_id
+          )
+    """)
+    remaining = cur.fetchone()["c"]
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "processed": processed,
+        "inserted_sections": inserted_total,
+        "remaining_announcements": remaining,
+        "done": remaining == 0,
+    }
+
+
+@app.post("/api/admin/sections/embed-batch")
+def api_sections_embed_batch(req: AdminAuthRequest):
+    """announcement_sections 중 embedding 미생성된 것을 batch로 임베딩 (최대 300건/호출)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    import time as _time
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    DEADLINE = 250
+    MAX_ITEMS = 300
+    start = _time.time()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT s.id, s.section_type, s.section_title, s.section_text,
+               a.title AS ann_title, a.department, a.support_amount
+        FROM announcement_sections s
+        LEFT JOIN announcements a ON s.announcement_id = a.announcement_id
+        WHERE s.embedding IS NULL
+        ORDER BY s.id
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+    if not rows:
+        conn.close()
+        return {"status": "SUCCESS", "done": True, "processed": 0, "remaining": 0}
+
+    ok = 0
+    fail = 0
+    for r in rows:
+        if _time.time() - start > DEADLINE:
+            break
+        try:
+            ann_title = (r.get("ann_title") or "")[:150]
+            dept = (r.get("department") or "")[:80]
+            stype = r.get("section_type") or ""
+            stitle = r.get("section_title") or ""
+            stext = (r.get("section_text") or "")[:3500]
+            text = f"공고: {ann_title}\n부처: {dept}\n섹션: {stitle} ({stype})\n내용: {stext}"
+            res = genai.embed_content(
+                model="models/gemini-embedding-001",
+                content=text,
+                task_type="retrieval_document",
+                output_dimensionality=768,
+            )
+            vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+            if not vec or len(vec) < 100:
+                fail += 1
+                continue
+            vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+            cur.execute(
+                "UPDATE announcement_sections SET embedding = %s::vector, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (vec_str, r["id"]),
+            )
+            conn.commit()
+            ok += 1
+        except Exception as e:
+            conn.rollback()
+            fail += 1
+            print(f"[SectEmb] #{r.get('id')}: {str(e)[:120]}")
+
+    cur.execute("SELECT COUNT(*) AS c FROM announcement_sections WHERE embedding IS NULL")
+    remaining = cur.fetchone()["c"]
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "success": ok,
+        "failed": fail,
+        "remaining": remaining,
+        "done": remaining == 0,
+        "elapsed": round(_time.time() - start, 1),
     }
 
 

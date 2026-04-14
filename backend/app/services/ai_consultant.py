@@ -33,6 +33,148 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def classify_question_intent(query: str) -> List[str]:
+    """질문에서 관심 section_type을 추출 (간단한 키워드 기반 — LLM 호출 없이 50ms).
+    여러 의도를 동시에 반환할 수 있음. 빈 리스트면 전 섹션 검색.
+    """
+    q = (query or "").lower()
+    intents: List[str] = []
+    rules = [
+        (["자격", "신청 자격", "대상", "할 수 있", "되나요", "해당되"], ["eligibility", "target"]),
+        (["서류", "제출", "준비", "필요한 거", "필요한것"], ["required_documents"]),
+        (["신청 방법", "어떻게 신청", "절차", "신청해", "어디서", "어디에"], ["application_method"]),
+        (["얼마", "지원금", "지원 금액", "한도", "보조금", "최대"], ["support_amount", "support_content"]),
+        (["내용", "혜택", "지원하는 게", "뭐 받"], ["support_content"]),
+        (["언제", "마감", "기간", "일정", "신청기간"], ["schedule"]),
+        (["문의", "전화", "연락", "담당자"], ["contact"]),
+        (["주의", "유의", "벌칙", "감점"], ["notes"]),
+        (["전략", "팁", "포인트", "꿀팁", "어떻게 하면"], ["insight_key_points", "insight_strategy"]),
+    ]
+    for kws, types in rules:
+        if any(kw in q for kw in kws):
+            for t in types:
+                if t not in intents:
+                    intents.append(t)
+    return intents
+
+
+def search_sections_for_rag(
+    query: str,
+    db_conn,
+    top_k: int = 6,
+    user_profile: Optional[Dict] = None,
+    section_types: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """섹션 단위 RAG — 질문 의도(section_type) + 사용자 프로필(메타 사전필터) + 임베딩 유사도.
+
+    Returns: {"sections": [...], "text_block": "..."}
+    """
+    result: Dict[str, Any] = {"sections": [], "text_block": ""}
+    if not query or len(query.strip()) < 2 or not db_conn or not HAS_GENAI:
+        return result
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return result
+
+    # 1) 질문 의도 → section_type 필터
+    if not section_types:
+        section_types = classify_question_intent(query)
+
+    # 2) 임베딩 생성
+    try:
+        genai.configure(api_key=api_key)
+        res = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=query,
+            task_type="retrieval_query",
+            output_dimensionality=768,
+        )
+        vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+        if not vec:
+            return result
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+    except Exception as e:
+        logger.warning(f"[Sec-RAG embed] {e}")
+        return result
+
+    # 3) 메타 사전 필터 — user_profile에서 region/industry/마감 적용
+    where_parts = ["s.embedding IS NOT NULL"]
+    params: list = [vec_str]
+    if section_types:
+        placeholders = ",".join(["%s"] * len(section_types))
+        where_parts.append(f"s.section_type IN ({placeholders})")
+        params.extend(section_types)
+    # 마감 안 된 공고만
+    where_parts.append("(a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)")
+    # region 필터 (공고 region이 사용자 지역과 일치하거나 전국)
+    if user_profile and user_profile.get("address_city"):
+        city = user_profile["address_city"][:20]
+        where_parts.append("(a.region IS NULL OR a.region ILIKE %s OR a.region ILIKE '%%전국%%')")
+        params.append(f"%{city}%")
+    where_sql = " AND ".join(where_parts)
+    params.append(vec_str)
+    params.append(top_k)
+
+    sql = f"""
+        SELECT s.id, s.announcement_id, s.section_type, s.section_title, s.section_text,
+               a.title AS ann_title, a.department, a.support_amount, a.deadline_date,
+               1 - (s.embedding <=> %s::vector) AS similarity
+        FROM announcement_sections s
+        LEFT JOIN announcements a ON s.announcement_id = a.announcement_id
+        WHERE {where_sql}
+        ORDER BY s.embedding <=> %s::vector
+        LIMIT %s
+    """
+    try:
+        cur = db_conn.cursor()
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    except Exception as e:
+        logger.warning(f"[Sec-RAG query] {e}")
+        try: db_conn.rollback()
+        except: pass
+        return result
+
+    parts = []
+    parts.append("\n\n[★★ 섹션 단위 RAG — 사용자 질문에 정확히 매칭되는 공고 섹션]")
+    if section_types:
+        parts.append(f"(필터: {', '.join(section_types)})")
+    accepted = 0
+    for r in rows:
+        d = dict(r)
+        sim = float(d.get("similarity") or 0)
+        if sim < 0.5:
+            continue
+        accepted += 1
+        result["sections"].append({
+            "id": d.get("id"),
+            "announcement_id": d.get("announcement_id"),
+            "ann_title": d.get("ann_title"),
+            "department": d.get("department"),
+            "section_type": d.get("section_type"),
+            "section_title": d.get("section_title"),
+            "section_text": d.get("section_text"),
+            "support_amount": d.get("support_amount"),
+            "deadline_date": str(d.get("deadline_date") or ""),
+            "similarity": round(sim, 3),
+        })
+        line = f"\n#{accepted} [{int(sim*100)}%] 『{d.get('ann_title','')[:80]}』"
+        if d.get("department"):
+            line += f" — {d['department'][:40]}"
+        parts.append(line)
+        parts.append(f"  [{d.get('section_title','')}] {(d.get('section_text','') or '')[:600]}")
+        if d.get("support_amount"):
+            parts.append(f"  💰 {d['support_amount']}")
+        if d.get("deadline_date") and str(d.get("deadline_date")) != "None":
+            parts.append(f"  📅 마감: {str(d['deadline_date'])[:10]}")
+    if accepted == 0:
+        result["text_block"] = ""
+        return result
+    parts.append("\n[지시] 위 섹션의 본문 문장을 그대로 인용하여 답변. 공고명과 부처를 반드시 명시.")
+    result["text_block"] = "\n".join(parts)
+    return result
+
+
 def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro_consult") -> int:
     """상담 종료 시 AI에게 재요청 — FAQ/인사이트 추출 후 knowledge_base에 저장.
 
@@ -2463,7 +2605,7 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
                     if m.get("key_points"):
                         matched_hint += f"   • 핵심포인트: {m['key_points'][:200]}\n"
 
-    # 매 턴 RAG — 사용자 마지막 메시지에 맞춰 관련 공고 + 지식을 실시간 검색하여 주입
+    # 매 턴 RAG — 섹션 단위 우선 + 공고/지식 보조
     rag_hint = ""
     try:
         last_user_msg = ""
@@ -2471,21 +2613,42 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
             if m.get("role") == "user":
                 last_user_msg = m.get("text", "")
                 break
-        # 시드 메시지는 너무 포괄적이라 RAG 품질이 떨어짐 → 실제 질문이 있는 3턴 이상부터 적용
-        user_turn_count = sum(1 for m in messages if m.get("role") == "user")
-        if last_user_msg and user_turn_count >= 1 and db_conn and "[새 케이스 시작]" not in last_user_msg:
-            # 질문 + 현재까지 수집된 주요 키워드를 합쳐 쿼리 생성
-            query_parts = [last_user_msg[:400]]
+        if last_user_msg and db_conn and "[새 케이스 시작]" not in last_user_msg:
+            # 사용자 프로필 합성 (collected + selected_client → 메타필터용)
+            user_profile_for_rag = {}
+            if selected_client:
+                user_profile_for_rag.update({
+                    "address_city": selected_client.get("address_city"),
+                    "industry_code": selected_client.get("industry_code"),
+                    "revenue_bracket": selected_client.get("revenue_bracket"),
+                })
             if session_state and session_state.get("collected"):
                 col = session_state["collected"]
-                for k in ("interests", "industry_code", "address_city", "age_range"):
-                    v = col.get(k)
-                    if v:
-                        query_parts.append(str(v)[:60])
-            rag_query = " ".join(query_parts)
-            rag = search_knowledge_for_rag(rag_query, db_conn, top_k_ann=5, top_k_kb=3)
-            if rag.get("text_block"):
-                rag_hint = rag["text_block"]
+                for k in ("address_city", "industry_code", "revenue_bracket", "age_range"):
+                    if col.get(k) and not user_profile_for_rag.get(k):
+                        user_profile_for_rag[k] = col[k]
+
+            # 1) 섹션 단위 RAG (라우팅 + 메타필터 적용)
+            sec_rag = search_sections_for_rag(
+                last_user_msg, db_conn, top_k=6,
+                user_profile=user_profile_for_rag if user_profile_for_rag else None,
+            )
+            if sec_rag.get("text_block"):
+                rag_hint += sec_rag["text_block"]
+
+            # 2) 보조: 공고/지식 단위 RAG (섹션이 부족할 때만)
+            if not sec_rag.get("sections") or len(sec_rag.get("sections", [])) < 3:
+                query_parts = [last_user_msg[:400]]
+                if session_state and session_state.get("collected"):
+                    col = session_state["collected"]
+                    for k in ("interests", "industry_code", "address_city", "age_range"):
+                        v = col.get(k)
+                        if v:
+                            query_parts.append(str(v)[:60])
+                rag_query = " ".join(query_parts)
+                rag = search_knowledge_for_rag(rag_query, db_conn, top_k_ann=4, top_k_kb=2)
+                if rag.get("text_block"):
+                    rag_hint += rag["text_block"]
     except Exception as rag_err:
         logger.warning(f"[RAG inject] {rag_err}")
 

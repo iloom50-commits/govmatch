@@ -294,7 +294,7 @@ export default function ApiPartnershipPage() {
           <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[320px]">
             {chatMessages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
+                <div className={`max-w-[80%] px-3.5 py-2.5 rounded-xl text-[14px] leading-relaxed whitespace-pre-wrap ${
                   msg.role === "user"
                     ? "bg-indigo-600 text-white rounded-br-none"
                     : "bg-slate-100 text-slate-700 rounded-bl-none"

@@ -168,7 +168,7 @@ export default function ConsultDetailPage() {
                   <div className="text-[10px] font-bold opacity-70 mb-1">
                     {msg.role === "user" ? "질문" : "AI 상담사"}
                   </div>
-                  <div className="text-[13px] whitespace-pre-wrap leading-relaxed">
+                  <div className="text-[14px] whitespace-pre-wrap leading-relaxed">
                     {msg.text}
                   </div>
                 </div>

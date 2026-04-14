@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/Toast";
+import IndustryPicker from "@/components/shared/IndustryPicker";
+import EstablishmentDateInput from "@/components/shared/EstablishmentDateInput";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -449,11 +451,14 @@ export function ClientForm({ initial, clientType, headers, onDone, onCancel, toa
           </div>
         )}
 
-        {/* 설립일/생년월일 */}
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">{isInd ? "생년월일" : "설립일"}</label>
-          <input type="date" value={form.establishment_date} onChange={(e) => setForm({ ...form, establishment_date: e.target.value })}
-            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" />
+        {/* 설립일/생년월일 — 입력+달력 */}
+        <div className="col-span-2">
+          <EstablishmentDateInput
+            value={form.establishment_date}
+            onChange={(v) => setForm({ ...form, establishment_date: v })}
+            label={isInd ? "생년월일" : "설립일"}
+            dark={false}
+          />
         </div>
 
         {/* 소재지/거주지 */}
@@ -466,12 +471,16 @@ export function ClientForm({ initial, clientType, headers, onDone, onCancel, toa
           </select>
         </div>
 
-        {/* 업종 — 기업만 */}
+        {/* 업종 — 기업만 · KSIC 임베딩 기반 AI 추천 */}
         {!isInd && (
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">업종</label>
-            <input value={form.industry_name} onChange={(e) => setForm({ ...form, industry_name: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none" placeholder="소프트웨어 개발" />
+          <div className="col-span-2">
+            <IndustryPicker
+              value={form.industry_name}
+              selectedCode={form.industry_code}
+              onSelect={(code, name) => setForm({ ...form, industry_code: code, industry_name: name })}
+              dark={false}
+              label="업종"
+            />
           </div>
         )}
 

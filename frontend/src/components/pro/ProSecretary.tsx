@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
+import IndustryPicker from "@/components/shared/IndustryPicker";
+import EstablishmentDateInput from "@/components/shared/EstablishmentDateInput";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -133,7 +135,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       company_name: "",
       establishment_year: "",
       establishment_date: "",
-      industry: "",
+      industry: "",           // 표시용 라벨
+      industry_code: "",      // KSIC 코드 (5자리)
+      industry_name: "",      // KSIC 이름
       revenue_bracket: "",
       employee_bracket: "",
       address_city: "",
@@ -437,6 +441,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         establishment_year: "",
         establishment_date: "",
         industry: "",
+        industry_code: "",
+        industry_name: "",
         revenue_bracket: "",
         employee_bracket: "",
         address_city: "",
@@ -809,7 +815,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                           client_type: isIndiv ? "individual" : "business",
                                           establishment_date: profileForm.establishment_date || (profileForm.establishment_year ? `${profileForm.establishment_year}-01-01` : null),
                                           address_city: profileForm.address_city || collectedProfile.address_city || "",
-                                          industry_code: profileForm.industry || collectedProfile.industry_code || "",
+                                          industry_code: profileForm.industry_code || collectedProfile.industry_code || "",
                                           revenue_bracket: profileForm.revenue_bracket || (isIndiv ? "1억 미만" : ""),
                                           employee_count_bracket: profileForm.employee_bracket || (isIndiv ? "5인 미만" : ""),
                                           interests: (profileForm.interests && profileForm.interests.length > 0)
@@ -1330,85 +1336,7 @@ function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 
 
 // ─── 인라인 입력 위젯 (건너뛰기 추가) ───
-function IndustryAutocomplete({ value, onChange, dark, inputCls, sectionTitle, muted }: {
-  value: string; onChange: (v: string) => void; dark: boolean; inputCls: string; sectionTitle: string; muted: string;
-}) {
-  const [query, setQuery] = useState(value || "");
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const timerRef = useRef<any>(null);
-  const API = process.env.NEXT_PUBLIC_API_URL;
-
-  const search = useCallback(async (q: string) => {
-    if (q.length < 1) { setSuggestions([]); return; }
-    setLoading(true);
-    try {
-      const r = await fetch(`${API}/api/industry-recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_name: q, business_content: q }),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        const items: any[] = Array.isArray(d.data?.candidates)
-          ? d.data.candidates
-          : Array.isArray(d.data)
-            ? d.data
-            : [];
-        setSuggestions(items.slice(0, 8));
-        setShowDropdown(items.length > 0);
-      }
-    } catch (e) { console.error("[Industry]", e); }
-    setLoading(false);
-  }, [API]);
-
-  const handleInput = (v: string) => {
-    setQuery(v);
-    onChange(v);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => search(v), 400);
-  };
-
-  const selectItem = (item: any) => {
-    const label = `${item.name || item.industry_name || ""} (${item.code || item.industry_code || ""})`;
-    setQuery(label);
-    onChange(label);
-    setShowDropdown(false);
-  };
-
-  return (
-    <div className="relative">
-      <p className={sectionTitle}>사업내용 <span className={muted}>(선택 — 입력 시 업종코드 추천)</span></p>
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => handleInput(e.target.value)}
-        onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
-        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-        placeholder="예: 화장품, IT서비스, 음식점"
-        className={inputCls}
-      />
-      {loading && <p className={`text-[10px] mt-1 ${muted}`}>검색 중...</p>}
-      {showDropdown && suggestions.length > 0 && (
-        <div className={`absolute z-50 w-full mt-1 rounded-xl border shadow-lg max-h-[200px] overflow-y-auto ${dark ? "bg-[#1a1c30] border-white/10" : "bg-white border-slate-200"}`}>
-          {suggestions.map((item: any, idx: number) => (
-            <button
-              key={idx}
-              type="button"
-              onMouseDown={() => selectItem(item)}
-              className={`w-full text-left px-3 py-2 text-[12px] border-b last:border-b-0 transition-colors ${dark ? "border-white/5 hover:bg-white/5 text-slate-200" : "border-slate-100 hover:bg-indigo-50 text-slate-700"}`}
-            >
-              <span className="font-semibold">{item.name || item.industry_name || ""}</span>
-              <span className={`ml-2 ${muted}`}>({item.code || item.industry_code || ""})</span>
-              {item.description && <span className={`block text-[10px] ${muted}`}>{item.description.slice(0, 40)}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// (구 IndustryAutocomplete → @/components/shared/IndustryPicker 로 교체됨)
 
 function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
   fields: { key: string; label: string; type: "text" | "select" | "date" | "multiselect"; options?: string[] }[];
@@ -1551,34 +1479,40 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
 
         {/* 설립일/생년월일 — 사업자 모드에서만 (개인은 AI가 대화 중 수집) */}
         {!isIndiv && (
-          <div>
-            <p className={sectionTitle}>설립연도 <span className={t.muted}>(선택)</span></p>
-            <input
-              type="text"
-              value={profileForm.establishment_year}
-              onChange={(e) => {
-                const y = e.target.value.replace(/\D/g, "").slice(0, 4);
-                update("establishment_year", y);
-                if (y && y.length === 4) update("establishment_date", `${y}-01-01`);
-                else update("establishment_date", "");
-              }}
-              placeholder="예: 2020"
-              maxLength={4}
-              inputMode="numeric"
-              className={`${inputCls} w-32`}
-            />
-          </div>
+          <EstablishmentDateInput
+            value={profileForm.establishment_date || profileForm.establishment_year}
+            onChange={(v) => {
+              // YYYY만 입력 → establishment_year 세팅, YYYY-MM-DD → establishment_date 세팅
+              if (/^\d{4}$/.test(v)) {
+                update("establishment_year", v);
+                update("establishment_date", `${v}-01-01`);
+              } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                update("establishment_date", v);
+                update("establishment_year", v.slice(0, 4));
+              } else {
+                update("establishment_date", v);
+                update("establishment_year", v.slice(0, 4));
+              }
+            }}
+            dark={dark}
+            label="설립연도"
+          />
         )}
 
-        {/* 업종 (사업자만) — 자동완성 */}
+        {/* 업종 (사업자만) — KSIC 임베딩 기반 AI 추천 */}
         {!isIndiv && (
-          <IndustryAutocomplete
-            value={profileForm.industry}
-            onChange={(val: string) => update("industry", val)}
+          <IndustryPicker
+            value={profileForm.industry_name || profileForm.industry}
+            selectedCode={profileForm.industry_code}
+            onSelect={(code, name) => {
+              setProfileForm((prev: any) => ({
+                ...prev,
+                industry_code: code,
+                industry_name: name,
+                industry: code ? `${name} (${code})` : "",
+              }));
+            }}
             dark={dark}
-            inputCls={inputCls}
-            sectionTitle={sectionTitle}
-            muted={t.muted}
           />
         )}
 

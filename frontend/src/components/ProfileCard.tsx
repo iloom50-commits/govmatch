@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
+import IndustryPicker from "@/components/shared/IndustryPicker";
 
 interface ProfileCardProps {
   data: any;
@@ -29,6 +30,7 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
     address_city: data?.address_city || "전국",
     establishment_date: data?.establishment_date || "",
     industry_code: data?.industry_code || "",
+    industry_name: data?.industry_name || "",
     revenue: "1억 미만",
     employees: "5인 미만",
   });
@@ -272,61 +274,25 @@ export default function ProfileCard({ data, onConfirm, onLogout, onClose }: Prof
             </div>
           )}
 
-          {/* STEP 3: Industry Selection */}
+          {/* STEP 3: Industry Selection — KSIC 임베딩 기반 AI 추천 */}
           {step === 3 && (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
-              <div className="flex justify-between items-end px-1">
-                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">사업내용 키워드 검색</label>
-                <button 
-                  onClick={() => handleRecommendIndustry(false)}
-                  disabled={isRecommending}
-                  className="text-indigo-600 text-xs font-black flex items-center gap-1 hover:text-indigo-800 transition-colors"
-                >
-                  {isRecommending ? '⏳ 분석 중...' : '✨ 상세 AI 업종 추천'}
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <textarea 
-                  placeholder="예: 화장품 온라인 쇼핑몰 및 SNS 광고 대행"
-                  className="w-full p-6 border border-slate-200 rounded-3xl bg-slate-50/50 focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all text-sm font-medium outline-none min-h-[100px]"
-                  value={businessContent}
-                  onChange={(e) => setBusinessContent(e.target.value)}
-                />
-
-                <input 
-                  type="text"
-                  placeholder="업종 코드 직접 입력 (5자리)"
-                  maxLength={5}
-                  className="w-full p-4 border border-slate-200 rounded-2xl bg-white focus:ring-4 focus:ring-indigo-100 transition-all text-xl font-black outline-none text-center tracking-widest"
-                  value={formData.industry_code}
-                  onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
-                />
-
-                {candidates.length > 0 && (
-                  <div className="space-y-3 mt-4 overflow-y-auto max-h-[180px] pr-2">
-                    <span className="text-[11px] font-black text-indigo-600 uppercase tracking-widest px-1">DB 검색 결과 (하나를 선택하세요)</span>
-                    {candidates.map((cand, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectCandidate(cand)}
-                        className={`w-full p-5 rounded-2xl text-left border-2 transition-all block mb-3 ${
-                          formData.industry_code === cand.code
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg scale-[1.02]"
-                            : "bg-white border-slate-100 text-slate-900 hover:border-indigo-200"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className={`text-[11px] font-black uppercase tracking-widest ${formData.industry_code === cand.code ? 'text-indigo-200' : 'text-slate-400'}`}>
-                            KSIC {cand.code}
-                          </span>
-                        </div>
-                        <p className="text-sm font-black mb-1">{cand.name}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <IndustryPicker
+                value={formData.industry_name || ""}
+                selectedCode={formData.industry_code}
+                onSelect={(code, name) => setFormData({ ...formData, industry_code: code, industry_name: name } as any)}
+                dark={false}
+                label="사업내용"
+                placeholder="예: 화장품 온라인 쇼핑몰, 드론 정비, 소프트웨어 개발"
+              />
+              <input
+                type="text"
+                placeholder="또는 업종 코드 직접 입력 (5자리)"
+                maxLength={5}
+                className="w-full p-4 border border-slate-200 rounded-2xl bg-white focus:ring-4 focus:ring-indigo-100 transition-all text-lg font-black outline-none text-center tracking-widest"
+                value={formData.industry_code}
+                onChange={(e) => setFormData({ ...formData, industry_code: e.target.value.replace(/[^0-9]/g, "") })}
+              />
             </div>
           )}
 

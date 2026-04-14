@@ -6030,12 +6030,77 @@ def get_reanalyze_status():
 def read_root():
     return {"message": "Welcome to Auto_Gov_Macting API"}
 
+def _search_ksic_by_embedding(query: str, top_k: int = 5) -> list:
+    """KSIC 임베딩 기반 유사 업종 검색 (gemini-embedding-001 768d + pgvector)."""
+    if not query or len(query.strip()) < 1:
+        return []
+    try:
+        import google.generativeai as _genai
+    except ImportError:
+        return []
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return []
+    try:
+        _genai.configure(api_key=api_key)
+        res = _genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=f"업종 질의: {query}",
+            task_type="retrieval_query",
+            output_dimensionality=768,
+        )
+        vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+        if not vec:
+            return []
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+    except Exception as e:
+        print(f"[KSIC embed search] {e}")
+        return []
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT k.code, k.name, k.description,
+                   1 - (e.embedding <=> %s::vector) AS similarity
+            FROM ksic_embeddings e
+            JOIN ksic_classification k ON e.code = k.code
+            ORDER BY e.embedding <=> %s::vector
+            LIMIT %s
+        """, (vec_str, vec_str, top_k))
+        rows = cur.fetchall()
+        return [
+            {
+                "code": r["code"],
+                "name": r["name"],
+                "description": r.get("description") or "",
+                "similarity": round(float(r.get("similarity") or 0), 4),
+                "reason": f"의미 유사도 {round((r.get('similarity') or 0) * 100)}%",
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"[KSIC embed query] {e}")
+        return []
+    finally:
+        try: conn.close()
+        except: pass
+
+
 @app.post("/api/industry-recommend")
 async def api_industry_recommend(request: CompanyNameRequest):
-    """기업명과 사업 내용을 기반으로 DB 검색 + AI 보완 하이브리드 추천 업종 후보군을 반환합니다."""
+    """KSIC 임베딩 기반 유사 업종 Top-5 추천 (임베딩 실패 시 기존 DB LIKE + LLM 폴백)."""
+    query = (request.business_content or request.company_name or "").strip()
+    if not query:
+        return {"status": "SUCCESS", "data": {"candidates": []}}
+
+    # 1) 임베딩 기반 유사도 검색 (가장 정확)
+    emb_results = _search_ksic_by_embedding(query, top_k=5)
+    if emb_results:
+        return {"status": "SUCCESS", "data": {"candidates": emb_results}}
+
+    # 2) 폴백: 기존 하이브리드 (DB LIKE + LLM)
     from app.services.ai_service import ai_service
-    # Use business_content if available, otherwise fallback to company_name
-    query = request.business_content if request.business_content else request.company_name
     result = await ai_service.search_industry_hybrid(query)
     return {"status": "SUCCESS", "data": result}
 

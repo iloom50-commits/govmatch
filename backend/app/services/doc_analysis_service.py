@@ -79,6 +79,17 @@ def _embed_single_announcement_inline(db_conn, announcement_id: int) -> bool:
         try: db_conn.rollback()
         except: pass
         print(f"[embed_single inline] #{announcement_id}: {str(e)[:150]}")
+        # system_logs에 실패 기록 (운영 모니터링용)
+        try:
+            cur = db_conn.cursor()
+            cur.execute(
+                "INSERT INTO system_logs (action, category, detail, result) VALUES (%s, %s, %s, %s)",
+                ("inline_embed", "rag", f"ann_id={announcement_id}: {str(e)[:180]}", "error"),
+            )
+            db_conn.commit()
+        except Exception:
+            try: db_conn.rollback()
+            except: pass
         return False
 
 # 환경변수 로드 (독립 실행 시에도 작동하도록)

@@ -4088,6 +4088,191 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+class KsicBulkRequest(BaseModel):
+    password: str
+    records: List[dict]  # [{"code": "01110", "name": "...", "ksic11_name": "..."}]
+
+
+@app.post("/api/admin/ksic/bulk-import")
+def api_ksic_bulk_import(req: KsicBulkRequest):
+    """KSIC 마스터 일괄 업로드 — ksic_classification에 UPSERT."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # ksic_classification 테이블이 SQLite 스키마로 생성된 상태일 수 있음 → PG용으로 재생성
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ksic_classification (
+                code VARCHAR(5) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+
+    inserted = 0
+    updated = 0
+    failed = 0
+    for rec in req.records:
+        code = (rec.get("code") or rec.get("ksic10_code") or "").strip()
+        name = (rec.get("name") or rec.get("ksic10_name") or "").strip()
+        desc = (rec.get("description") or rec.get("ksic11_name") or "").strip()
+        if not code or not name:
+            failed += 1
+            continue
+        try:
+            cur.execute("""
+                INSERT INTO ksic_classification (code, name, description)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (code) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description
+            """, (code, name, desc))
+            if cur.rowcount == 1:
+                inserted += 1
+            else:
+                updated += 1
+        except Exception as e:
+            conn.rollback()
+            failed += 1
+            continue
+    conn.commit()
+    cur.execute("SELECT COUNT(*) AS c FROM ksic_classification")
+    total = cur.fetchone()["c"]
+    conn.close()
+    return {"status": "SUCCESS", "inserted": inserted, "updated": updated, "failed": failed, "total_now": total}
+
+
+@app.post("/api/admin/ksic/init-embeddings")
+def api_ksic_init_embeddings(req: AdminAuthRequest):
+    """KSIC 임베딩 테이블 생성."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    result = {"table": False, "index": False, "errors": []}
+    try:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ksic_embeddings (
+                code VARCHAR(5) PRIMARY KEY,
+                embedding vector(768),
+                source_text TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        result["table"] = True
+    except Exception as e:
+        conn.rollback()
+        result["errors"].append(f"table: {str(e)[:150]}")
+    try:
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ksic_embeddings_cosine
+            ON ksic_embeddings USING hnsw (embedding vector_cosine_ops)
+        """)
+        conn.commit()
+        result["index"] = True
+    except Exception as e:
+        conn.rollback()
+        result["errors"].append(f"index: {str(e)[:150]}")
+    conn.close()
+    return result
+
+
+@app.post("/api/admin/ksic/embed-batch")
+def api_ksic_embed_batch(req: AdminAuthRequest):
+    """KSIC 항목을 Gemini로 임베딩 (한 번 호출 시 최대 300개)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    import google.generativeai as genai
+    import time as _time
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    DEADLINE = 250
+    MAX_ITEMS = 300
+    start = _time.time()
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT k.code, k.name, k.description
+        FROM ksic_classification k
+        LEFT JOIN ksic_embeddings e ON k.code = e.code
+        WHERE e.code IS NULL
+        ORDER BY k.code
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+    if not rows:
+        conn.close()
+        return {"status": "SUCCESS", "done": True, "processed": 0, "remaining": 0}
+
+    ok = 0
+    fail = 0
+    errors = []
+    for r in rows:
+        if _time.time() - start > DEADLINE:
+            break
+        code = r["code"]
+        name = r["name"]
+        desc = r.get("description") or ""
+        text = f"업종코드: {code}\n업종명: {name}\n{desc}"
+        try:
+            res = genai.embed_content(
+                model="models/gemini-embedding-001",
+                content=text,
+                task_type="retrieval_document",
+                output_dimensionality=768,
+            )
+            vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+            if not vec or len(vec) < 100:
+                fail += 1
+                continue
+            vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+            cur.execute("""
+                INSERT INTO ksic_embeddings (code, embedding, source_text, updated_at)
+                VALUES (%s, %s::vector, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (code) DO UPDATE SET
+                    embedding = EXCLUDED.embedding,
+                    source_text = EXCLUDED.source_text,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (code, vec_str, text[:2000]))
+            conn.commit()
+            ok += 1
+        except Exception as e:
+            conn.rollback()
+            fail += 1
+            if len(errors) < 3:
+                errors.append(f"{code}: {type(e).__name__}: {str(e)[:200]}")
+
+    cur.execute("""
+        SELECT COUNT(*) AS c FROM ksic_classification k
+        LEFT JOIN ksic_embeddings e ON k.code = e.code
+        WHERE e.code IS NULL
+    """)
+    remaining = cur.fetchone()["c"]
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "processed": ok + fail,
+        "success": ok,
+        "failed": fail,
+        "remaining": remaining,
+        "done": remaining == 0,
+        "errors": errors,
+        "elapsed": round(_time.time() - start, 1),
+    }
+
+
 @app.post("/api/admin/run-migrations")
 def api_run_migrations(req: AdminAuthRequest):
     """P1: email_logs, match_history 등 누락 테이블 강제 생성."""

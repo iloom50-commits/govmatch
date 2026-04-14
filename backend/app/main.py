@@ -4550,6 +4550,60 @@ class EvalRunRequest(BaseModel):
     test_set_name: Optional[str] = "default"
 
 
+@app.post("/api/admin/debug-user-match")
+def api_debug_user_match(req: AdminAuthRequest):
+    """디버그: 최근 사용자 5명의 프로필 저장 상태 + 매칭 결과 확인."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT business_number, email, company_name, address_city, industry_code,
+               revenue_bracket, employee_count_bracket, interests, user_type,
+               age_range, income_level, family_type, employment_status,
+               establishment_date, plan, created_at
+        FROM users
+        WHERE plan != 'free' OR ai_usage_month > 0
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 5
+    """)
+    users = []
+    for r in cur.fetchall():
+        d = dict(r)
+        d["created_at"] = str(d.get("created_at"))
+        d["establishment_date"] = str(d.get("establishment_date"))
+        # 채워진 필드 카운트
+        meta_fields = ["address_city", "industry_code", "revenue_bracket", "employee_count_bracket", "interests", "establishment_date"]
+        d["filled_count"] = sum(1 for f in meta_fields if d.get(f))
+        d["filled_total"] = len(meta_fields)
+        users.append(d)
+    conn.close()
+
+    # 각 사용자에 대해 매칭 시도
+    out = []
+    for u in users:
+        try:
+            from app.core.matcher import get_matches_hybrid
+            user_type = u.get("user_type") or "both"
+            is_indiv = user_type == "individual"
+            matches = get_matches_hybrid(u, is_individual=is_indiv) or []
+            top3 = [{"id": m.get("announcement_id"), "title": (m.get("title") or "")[:80], "score": m.get("match_score")} for m in matches[:3]]
+            out.append({
+                "bn": u.get("business_number"),
+                "company": u.get("company_name"),
+                "user_type": user_type,
+                "filled": f"{u['filled_count']}/{u['filled_total']}",
+                "industry_code": u.get("industry_code"),
+                "address_city": u.get("address_city"),
+                "interests": u.get("interests"),
+                "match_count": len(matches),
+                "top3": top3,
+            })
+        except Exception as e:
+            out.append({"bn": u.get("business_number"), "error": str(e)[:200]})
+    return {"users_checked": len(users), "results": out}
+
+
 @app.post("/api/admin/eval/run")
 def api_eval_run(req: EvalRunRequest):
     """K: PRO 상담 품질 자동 측정. 사전 정의된 Eval Set으로 RAG 검색 + 답변 정확도 측정.

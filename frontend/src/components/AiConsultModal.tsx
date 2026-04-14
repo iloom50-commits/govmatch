@@ -463,7 +463,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`${msg.role === "user" ? "max-w-[75%] order-1" : "max-w-[95%]"}`}>
                 {/* Message bubble */}
-                <div className={`rounded-2xl text-[13px] leading-relaxed ${
+                <div className={`rounded-2xl text-[14px] leading-relaxed ${
                   msg.role === "user"
                     ? "px-3.5 py-2.5 bg-indigo-600 text-white rounded-br-md"
                     : "px-4 py-3 bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-md"

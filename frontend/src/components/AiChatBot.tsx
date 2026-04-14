@@ -1668,7 +1668,7 @@ ${convHtml}
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`${mode === "consultant" && clientCategory ? "max-w-[80%]" : "max-w-[88%]"} ${msg.role === "user" ? "order-1" : ""}`}>
                     {/* Message bubble */}
-                    <div className={`px-3.5 py-2.5 rounded-2xl ${mode === "consultant" && clientCategory ? "text-[15px]" : "text-[13px]"} leading-relaxed ${
+                    <div className={`px-3.5 py-2.5 rounded-2xl ${mode === "consultant" && clientCategory ? "text-[15px]" : "text-[14px]"} leading-relaxed ${
                       msg.role === "user"
                         ? mode === "consultant" ? "bg-violet-600 text-white rounded-br-md" : "bg-indigo-600 text-white rounded-br-md"
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
@@ -1888,9 +1888,9 @@ ${convHtml}
                     {m.role === "user" ? "Q." : "A."}
                   </p>
                   {m.role === "user" ? (
-                    <p className="text-[13px] text-slate-700">{m.text}</p>
+                    <p className="text-[14px] text-slate-700">{m.text}</p>
                   ) : (
-                    <div className="text-[13px] text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(m.text)) }} />
+                    <div className="text-[14px] text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(m.text)) }} />
                   )}
                 </div>
               ))}

@@ -19,7 +19,7 @@ import hashlib
 import jwt
 import bcrypt
 from app.core.url_checker import check_duplicate_url
-from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
+from app.core.matcher import get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid
 from app.config import DATABASE_URL
 
 # Admin Scraper Import for Manual Sync
@@ -3258,7 +3258,7 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
             result["profile"] = profile
     if not ann_id and req.explicit_match and (req.profile_override or result.get("profile") or result.get("collected")):
         try:
-            from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
+            from app.core.matcher import get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid
             profile = req.profile_override or result.get("profile") or result.get("collected")
             # 개인 모드 판별: industry_code가 없거나 company_name이 "개인"이면 개인
             has_industry = bool(profile.get("industry_code", "").strip())
@@ -3270,15 +3270,14 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
             biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
 
             if is_individual and not biz_interests:
-                matches = get_individual_matches_for_user(profile) or []
+                matches = get_matches_hybrid(profile, is_individual=True) or []
             elif is_individual and biz_interests:
-                # 개인 + 기업 매칭 병행
-                ind_matches = get_individual_matches_for_user(profile) or []
-                biz_matches = get_matches_for_user(profile) or []
+                ind_matches = get_matches_hybrid(profile, is_individual=True) or []
+                biz_matches = get_matches_hybrid(profile, is_individual=False) or []
                 matches = biz_matches + ind_matches
                 matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
             else:
-                matches = get_matches_for_user(profile) or []
+                matches = get_matches_hybrid(profile, is_individual=False) or []
 
             # 상위 5개만 응답에 포함
             for ann in matches[:10]:
@@ -3436,10 +3435,7 @@ def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = De
     # 가상 프로필로 매칭 엔진 실행 — 프로필의 industry_code 유무로 기업/개인 분기
     virtual_profile = req.profile
     is_individual = not virtual_profile.get("industry_code")
-    if is_individual:
-        matches = get_individual_matches_for_user(virtual_profile)
-    else:
-        matches = get_matches_for_user(virtual_profile)
+    matches = get_matches_hybrid(virtual_profile, is_individual=is_individual)
 
     # 직렬화 (date 등)
     for m in matches:
@@ -5962,14 +5958,14 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     # user_type에 따라 매칭 엔진 분기 (미설정 시 both로 개인+기업 모두)
     user_type = user_dict.get("user_type") or "both"
     if user_type == "individual":
-        matches = get_individual_matches_for_user(user_dict)
+        matches = get_matches_hybrid(user_dict, is_individual=True)
     elif user_type == "both":
-        biz_matches = get_matches_for_user(user_dict)
-        ind_matches = get_individual_matches_for_user(user_dict)
+        biz_matches = get_matches_hybrid(user_dict, is_individual=False)
+        ind_matches = get_matches_hybrid(user_dict, is_individual=True)
         matches = biz_matches + ind_matches
         matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
     else:
-        matches = get_matches_for_user(user_dict)
+        matches = get_matches_hybrid(user_dict, is_individual=False)
     # 상위 100건만 반환 (점수순 정렬 후, 프론트에서 20건씩 페이지네이션)
     matches = matches[:100]
 
@@ -6687,7 +6683,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     client = dict(client)
 
     # 2. 매칭 엔진으로 공고 검색 — 기업/개인 분기
-    from app.core.matcher import get_matches_for_user, get_individual_matches_for_user
+    from app.core.matcher import get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid
     profile = {
         "address_city": client.get("address_city") or "",
         "industry_code": client.get("industry_code") or "",
@@ -6697,10 +6693,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         "establishment_date": str(client.get("establishment_date") or ""),
     }
     is_individual_client = (client.get("client_type") or "business") == "individual"
-    if is_individual_client:
-        matched = get_individual_matches_for_user(profile)
-    else:
-        matched = get_matches_for_user(profile)
+    matched = get_matches_hybrid(profile, is_individual=is_individual_client)
 
     # 3. 각 공고에 대해 판정 — matcher의 eligibility_status 기반 (점수 기준 판정 제거)
     results = []

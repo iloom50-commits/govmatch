@@ -374,7 +374,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
     setInput("");
-    sendToAI(newHistory);
+    // E: 재매칭 키워드 감지 시 explicit_match=true
+    const rematchKeywords = ["재매칭", "다시 매칭", "매칭 진행", "이 조건으로 매칭", "매칭해"];
+    const isRematch = rematchKeywords.some(kw => text.includes(kw));
+    sendToAI(newHistory, isRematch ? { explicit_match: true } : undefined);
     if (flowState === "idle") setFlowState("info_collect");
   };
 

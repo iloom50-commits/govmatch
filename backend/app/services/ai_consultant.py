@@ -1920,7 +1920,7 @@ def _format_announcements_for_prompt(announcements: List[Dict]) -> str:
 # PRO 전문가 전용 상담 채팅
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None, explicit_match: bool = False, session_state: Dict = None) -> Dict[str, Any]:
+def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_conn=None, explicit_match: bool = False, session_state: Dict = None, selected_client: Dict = None) -> Dict[str, Any]:
     """
     PRO 전문가 전용 상담 채팅.
     컨설턴트가 고객사 정보를 전달 → AI가 정보 수집 → 매칭 프로필 생성.
@@ -2076,7 +2076,9 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - housing_status: 자가/전세/월세/기숙사·공공임대/기타
 - special_conditions (쉼표구분): 장애인/기초생활수급자/차상위계층/다문화가정/북한이탈주민/국가유공자/해당없음
 - 관심분야(사업자): 창업지원, 기술개발, 수출마케팅, 고용지원, 시설개선, 정책자금, 디지털전환, 판로개척, 교육훈련, R&D, 소상공인
-- 관심분야(개인): 취업, 주거, 교육, 청년, 출산, 육아, 다자녀, 장학금, 의료, 장애, 저소득
+- 관심분야(개인) — 분야/영역만. 연령/가구형태/특수자격 섞지 말 것:
+    취업, 주거, 교육, 출산·육아, 의료, 복지일반, 창업, 문화·여가, 금융지원
+  (청년/중장년/다자녀/장애인 등은 별도 필드에서 수집)
 
 [자동 추론]
 - 업종명 → KSIC (IT=62010, 음식=56111, 소매=47190, 제조식품=10000, 제조전자=26000, 건설=41000, 숙박=55000, 교육=85000, 컨설팅=70000, 디자인=74000)
@@ -2086,6 +2088,23 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 - 사업자: company_name + 업종 + 지역 + 관심분야 수집 후 5단계 정리 + 동의 → done=true
 - 개인: age_range + address_city + interests 수집 후 7단계 정리 + 동의 → done=true
 - 부족하면 done=false 유지.
+
+[★ 정보 활용 — collected를 실제로 사용할 것]
+- 사용자가 "정리해줘", "지금까지", "요약", "확인"을 요청하면 **반드시 collected의 모든 필드를 한국어로 풀어서 message에 출력**.
+  예: "지금까지 정리한 고객 프로파일입니다:
+      • 연령: 30대  • 지역: 성남시  • 소득: 중위 50~100%  • 가구형태: 1인가구 ..."
+- "드리겠습니다", "정리해드릴게요" 같은 말만 하고 내용 출력 안 하는 것 금지.
+- collected에 값이 없는 필드는 "(미수집)"으로 표시.
+- 질문을 반복하기 전에 collected를 확인. 이미 있으면 그 정보를 반영해 답변할 것.
+
+[★★ 상담 심화 모드 — 매칭 완료 후]
+phase가 'consulting'이거나 이미 매칭이 완료된 상태에서 사용자가 추가 질문을 하면,
+**절대 처음부터 정보 수집을 다시 하지 말 것**. 아래 역할로 전환:
+- 매칭된 공고 목록이 프롬프트에 [매칭 결과]로 주입되어 있음. 이 공고들을 근거로 답변.
+- 사용자가 "자세히 설명", "선정 가능성 높은 것", "어떤 서류 필요" 등을 물으면 공고 데이터를 활용해 구체적으로 응답.
+- "재매칭"/"조건 변경"을 원하면 어느 필드를 바꿀지 1개만 물어보고, 받은 뒤 explicit_match=true 경로로 재실행.
+- 이 모드에서는 current_step 진행 규칙을 따르지 않음. done=true 유지.
+- choices는 행동형 허용: "📄 보고서 생성", "✏️ 조건 수정", "🔍 특정 공고 상세".
 
 [응답 형식 — 순수 JSON만. 마크다운/코드블록 금지]
 {{
@@ -2102,6 +2121,30 @@ message 좋은 예: "이 고객의 연령대는 어떻게 되나요?"
 
 done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 done=false."""
 
+    # I: 선택된 고객 프로필 주입
+    client_hint = ""
+    if selected_client:
+        cp = selected_client
+        client_hint = "\n\n[★★ 선택된 고객 프로파일 — 이 고객을 위한 상담입니다]\n"
+        fields = [
+            ("고객명", cp.get("client_name")),
+            ("유형", cp.get("client_type")),
+            ("사업자번호", cp.get("business_number")),
+            ("업종코드", cp.get("industry_code")),
+            ("소재지", cp.get("address_city")),
+            ("설립일", cp.get("establishment_date")),
+            ("매출", cp.get("revenue_bracket")),
+            ("직원수", cp.get("employee_count_bracket")),
+            ("관심분야", cp.get("interests")),
+            ("연락처", cp.get("contact_phone")),
+            ("담당자", cp.get("contact_name")),
+            ("메모", cp.get("memo")),
+        ]
+        for label, val in fields:
+            if val:
+                client_hint += f"- {label}: {val}\n"
+        client_hint += "\n이미 알려진 고객 정보는 절대 다시 묻지 말 것. collected에 자동 반영해서 사용.\n"
+
     # ── 시드 메시지에서 고객 유형 사전 추출 → system_prompt에 강한 힌트 주입 ──
     seed_hint = ""
     if messages:
@@ -2116,13 +2159,19 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
 
     # ── 세션 상태 주입 — 현재 단계 + 이미 수집된 정보를 명시적으로 알림 ──
     state_hint = ""
+    matched_hint = ""
     if session_state:
         cur_step = session_state.get("current_step", 1)
         collected_so_far = session_state.get("collected", {}) or {}
         cat = session_state.get("client_category", "")
-        state_hint = f"\n\n[★★★ 세션 상태 — 매우 중요 — 이걸 무시하지 마세요]\n"
+        phase = session_state.get("phase", "collecting")
+        matched_snap = session_state.get("matched_snapshot") or []
+        max_step = 7 if cat.startswith("개인") else 5
+
+        state_hint = f"\n\n[★★★ 세션 상태 — 매우 중요]\n"
+        state_hint += f"- 상담 페이즈: {phase}  (collecting=정보수집 / consulting=매칭 후 상담 심화)\n"
         state_hint += f"- 고객 유형: {cat or '미정'}\n"
-        state_hint += f"- 현재 진행 단계: {cur_step}단계 / 5단계\n"
+        state_hint += f"- 현재 진행 단계: {cur_step}단계 / {max_step}단계\n"
         if collected_so_far:
             state_hint += f"- 이미 수집된 정보 (절대 다시 묻지 말 것):\n"
             for k, v in collected_so_far.items():
@@ -2130,10 +2179,40 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
                     state_hint += f"  • {k}: {v}\n"
         else:
             state_hint += "- 아직 수집된 정보 없음\n"
-        state_hint += f"\n[지시] 이번 응답에서는 반드시 {cur_step + 1}단계로 진행하세요. 같은 단계에 머물지 마세요.\n"
-        state_hint += "이미 받은 정보로 다음 자연스러운 질문을 하세요. 이미 답한 카테고리를 다시 묻는 것은 금지입니다.\n"
-        state_hint += "응답 JSON에 \"current_step\" 필드를 포함하여 다음 단계 번호를 명시하세요.\n"
-    system_prompt = system_prompt + seed_hint + state_hint
+        if phase == "consulting":
+            state_hint += "\n[지시] 이 세션은 이미 매칭을 완료한 상태입니다. 정보 수집 단계로 되돌아가지 말 것.\n"
+            state_hint += "사용자 질문을 그대로 이해해서 [매칭 결과] 기반으로 답변하세요.\n"
+            state_hint += "done=true를 유지하고, choices에 ['📄 보고서 생성', '✏️ 조건 수정', '🔍 특정 공고 상세'] 등 행동형을 허용.\n"
+        else:
+            state_hint += f"\n[지시] 이번 응답에서 반드시 {cur_step + 1}단계로 진행하세요. 같은 단계에 머물지 말 것.\n"
+            state_hint += "이미 받은 정보로 다음 질문을 하세요. 이미 답한 카테고리 재질문 금지.\n"
+            state_hint += "응답 JSON의 \"current_step\"에 다음 단계 번호를 명시하세요.\n"
+
+        # D+G: 매칭 결과 + 상위 3개 상세분석 프롬프트 주입
+        if matched_snap:
+            matched_hint = "\n\n[매칭 결과 — 상담 근거로 사용]\n"
+            for i, m in enumerate(matched_snap[:10], 1):
+                title = m.get("title", "")[:80]
+                dept = m.get("department", "")[:40]
+                amount = m.get("support_amount", "")[:40]
+                deadline = str(m.get("deadline_date", ""))[:10]
+                score = m.get("match_score", 0)
+                matched_hint += f"{i}. [{score}점] {title}\n"
+                if dept: matched_hint += f"   • 부처: {dept}\n"
+                if amount: matched_hint += f"   • 지원금: {amount}\n"
+                if deadline and deadline != "None": matched_hint += f"   • 마감: {deadline}\n"
+                # G: 상세분석 필드 (상위 3개만)
+                if i <= 3:
+                    if m.get("eligibility"):
+                        matched_hint += f"   • 자격요건: {m['eligibility'][:300]}\n"
+                    if m.get("required_docs"):
+                        matched_hint += f"   • 제출서류: {m['required_docs'][:300]}\n"
+                    if m.get("how_to_apply"):
+                        matched_hint += f"   • 신청방법: {m['how_to_apply'][:200]}\n"
+                    if m.get("key_points"):
+                        matched_hint += f"   • 핵심포인트: {m['key_points'][:200]}\n"
+
+    system_prompt = system_prompt + client_hint + seed_hint + state_hint + matched_hint
 
     # ── 새 SDK (google.genai) + Google Search Grounding ──
     _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'
@@ -2324,8 +2403,10 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
         if ai_choices and not any("직접" in str(c) or "기타" in str(c) for c in ai_choices):
             ai_choices = list(ai_choices) + ["✏️ 직접 입력"]
 
+        # C: 하드코딩 reply 제거 — AI가 생성한 실제 응답 그대로 사용
+        # done=true여도 AI의 정리 메시지 유지
         return {
-            "reply": msg_text if not done else "수집된 정보를 바탕으로 매칭을 실행합니다.",
+            "reply": msg_text,
             "choices": ai_choices if not done else [],
             "done": done,
             "profile": profile,

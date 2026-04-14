@@ -187,6 +187,16 @@ def init_database():
             cursor.execute("ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS messages JSONB DEFAULT '[]'::jsonb")
         except Exception:
             pass
+        # B: phase 컬럼 (collecting | consulting) 추가
+        try:
+            cursor.execute("ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS phase VARCHAR(20) DEFAULT 'collecting'")
+        except Exception:
+            pass
+        # D: 매칭 결과 스냅샷 저장 컬럼
+        try:
+            cursor.execute("ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS matched_snapshot JSONB DEFAULT '[]'::jsonb")
+        except Exception:
+            pass
         # P0.4: ai_consult_logs에 session_id + updated_at 추가 (매 턴 UPSERT 목적)
         try:
             cursor.execute("ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)")
@@ -3129,6 +3139,7 @@ class AiConsultantChatRequest(BaseModel):
     profile_override: Optional[dict] = None  # 사용자가 확인/수정한 프로필 (매칭 시 사용)
     session_id: Optional[str] = None  # PRO 세션 ID (서버 측 상태 저장)
     client_category: Optional[str] = None  # 첫 호출 시 고객 유형 힌트
+    client_id: Optional[int] = None  # I: 선택된 고객 프로필 ID (있으면 프롬프트에 주입)
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3233,7 +3244,10 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 sid = req.session_id
                 if sid:
                     cur.execute(
-                        "SELECT session_id, client_category, current_step, collected FROM pro_consult_sessions WHERE session_id = %s AND business_number = %s",
+                        """SELECT session_id, client_category, current_step, collected,
+                                  phase, matched_snapshot
+                           FROM pro_consult_sessions
+                           WHERE session_id = %s AND business_number = %s""",
                         (sid, current_user["bn"])
                     )
                     row = cur.fetchone()
@@ -3243,11 +3257,17 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                         if isinstance(coll, str):
                             try: coll = json.loads(coll)
                             except: coll = {}
+                        matched_snap = d.get("matched_snapshot")
+                        if isinstance(matched_snap, str):
+                            try: matched_snap = json.loads(matched_snap)
+                            except: matched_snap = []
                         session_state = {
                             "session_id": d.get("session_id"),
                             "client_category": d.get("client_category") or "",
                             "current_step": d.get("current_step") or 1,
                             "collected": coll or {},
+                            "phase": d.get("phase") or "collecting",
+                            "matched_snapshot": matched_snap or [],
                         }
                 if not session_state:
                     sid = str(_uuid.uuid4())
@@ -3268,7 +3288,25 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 except: pass
                 session_state = None
 
-        # AI 호출 — 세션 상태 주입 (있을 경우)
+        # I: 선택된 고객 프로필 조회
+        selected_client = None
+        if req.client_id:
+            try:
+                cur2 = db.cursor()
+                cur2.execute(
+                    """SELECT * FROM client_profiles
+                       WHERE id = %s AND owner_business_number = %s AND is_active = TRUE""",
+                    (req.client_id, current_user["bn"])
+                )
+                row = cur2.fetchone()
+                if row:
+                    selected_client = dict(row)
+            except Exception as cl_err:
+                print(f"[PRO chat] client load error: {cl_err}")
+                try: db.rollback()
+                except: pass
+
+        # AI 호출 — 세션 상태 + 선택 고객 주입
         try:
             result = chat_pro_consultant(
                 req.messages,
@@ -3276,14 +3314,16 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 db_conn=db,
                 explicit_match=req.explicit_match,
                 session_state=session_state,
+                selected_client=selected_client,
             )
         except TypeError:
-            # 구버전 호환 (session_state 미지원)
+            # 구버전 호환 (session_state/selected_client 미지원)
             result = chat_pro_consultant(
                 req.messages,
                 announcement_id=ann_id,
                 db_conn=db,
                 explicit_match=req.explicit_match,
+                session_state=session_state,
             )
 
         # 세션 갱신 (실패해도 응답은 정상 반환)
@@ -3316,15 +3356,21 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 cur = db.cursor()
                 # P0.3: messages 전체도 저장 (assistant 응답 포함)
                 full_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+                # B/D: phase 계산 (result의 done=true이거나 matching이 실행됐으면 consulting)
+                new_phase = session_state.get("phase", "collecting")
+                if result.get("done") or (req.explicit_match):
+                    new_phase = "consulting"
                 cur.execute(
                     """UPDATE pro_consult_sessions
                        SET current_step = %s,
                            collected = %s::jsonb,
                            messages = %s::jsonb,
+                           phase = %s,
                            updated_at = CURRENT_TIMESTAMP
                        WHERE session_id = %s""",
                     (new_step, json.dumps(new_collected, ensure_ascii=False),
                      json.dumps(full_msgs, ensure_ascii=False),
+                     new_phase,
                      session_state["session_id"])
                 )
                 db.commit()
@@ -3397,6 +3443,62 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 lines.append(f"\n총 {len(matched_announcements)}건이 매칭되었습니다. 보고서를 생성하시겠습니까?")
                 result["reply"] = (result.get("reply", "") + "\n\n" + "\n".join(lines)).strip()
                 result["choices"] = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
+
+            # D+G: 매칭 결과 스냅샷 + 상위 3개 상세분석 주입
+            if session_state and matched_announcements:
+                try:
+                    snap_cur = db.cursor()
+                    top_ids = [m.get("announcement_id") for m in matched_announcements[:3] if m.get("announcement_id")]
+                    sections_map = {}
+                    if top_ids:
+                        try:
+                            snap_cur.execute(
+                                """SELECT announcement_id, parsed_sections, deep_analysis
+                                   FROM announcement_analysis
+                                   WHERE announcement_id = ANY(%s)""",
+                                (top_ids,),
+                            )
+                            for r in snap_cur.fetchall():
+                                sections_map[r["announcement_id"]] = {
+                                    "ps": r.get("parsed_sections"),
+                                    "da": r.get("deep_analysis"),
+                                }
+                        except Exception:
+                            pass
+                    enriched = []
+                    for m in matched_announcements[:10]:
+                        it = dict(m)
+                        aid = m.get("announcement_id")
+                        if aid and aid in sections_map:
+                            ps = sections_map[aid].get("ps") or {}
+                            da = sections_map[aid].get("da") or {}
+                            if isinstance(ps, str):
+                                try: ps = json.loads(ps)
+                                except: ps = {}
+                            if isinstance(da, str):
+                                try: da = json.loads(da)
+                                except: da = {}
+                            def _s(v, n=400):
+                                return v[:n] if isinstance(v, str) else ""
+                            it["eligibility"] = _s(ps.get("eligibility"))
+                            it["required_docs"] = _s(ps.get("required_documents"))
+                            it["how_to_apply"] = _s(ps.get("application_method"), 300)
+                            it["key_points"] = _s(da.get("key_points"), 300)
+                        enriched.append(it)
+                    snap_cur.execute(
+                        """UPDATE pro_consult_sessions
+                           SET matched_snapshot = %s::jsonb,
+                               phase = 'consulting',
+                               updated_at = CURRENT_TIMESTAMP
+                           WHERE session_id = %s""",
+                        (json.dumps(enriched, ensure_ascii=False),
+                         session_state["session_id"]),
+                    )
+                    db.commit()
+                except Exception as snap_err:
+                    print(f"[PRO matched_snapshot] {snap_err}")
+                    try: db.rollback()
+                    except: pass
         except Exception as e:
             print(f"[PRO consultant] auto-match error: {e}")
 

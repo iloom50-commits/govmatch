@@ -3988,6 +3988,80 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/debug-persistence")
+def api_debug_persistence(req: AdminAuthRequest):
+    """상담/세션/고객 데이터 저장 상태 확인."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    out: dict = {}
+    tables = [
+        "pro_consult_sessions",
+        "consult_sessions",
+        "pro_clients",
+        "consultation_history",
+        "consult_history",
+        "pro_consult_saves",
+    ]
+    for t in tables:
+        try:
+            cur.execute(f"SELECT COUNT(*) AS c FROM {t}")
+            out[t] = {"exists": True, "count": cur.fetchone()["c"]}
+        except Exception as e:
+            out[t] = {"exists": False, "error": str(e)[:120]}
+            try: conn.rollback()
+            except: pass
+
+    # pro_consult_sessions 최근 5건 샘플
+    try:
+        cur.execute("""
+            SELECT session_id, business_number, client_category, current_step,
+                   collected, updated_at
+            FROM pro_consult_sessions
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT 5
+        """)
+        rows = cur.fetchall()
+        out["pro_consult_sessions_sample"] = [
+            {
+                "session_id": str(r["session_id"])[:12] + "...",
+                "bn": r["business_number"],
+                "category": r.get("client_category"),
+                "step": r.get("current_step"),
+                "collected_keys": list((r.get("collected") or {}).keys()) if isinstance(r.get("collected"), dict) else "non-dict",
+                "collected_size": len(json.dumps(r.get("collected") or {}, ensure_ascii=False)),
+                "updated_at": str(r.get("updated_at")),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        out["pro_consult_sessions_sample_error"] = str(e)[:200]
+        try: conn.rollback()
+        except: pass
+
+    # pro_clients 최근 5건
+    try:
+        cur.execute("""
+            SELECT id, business_number, client_name, client_type, industry_code, address_city, created_at
+            FROM pro_clients
+            ORDER BY created_at DESC NULLS LAST
+            LIMIT 5
+        """)
+        rows = cur.fetchall()
+        out["pro_clients_sample"] = [dict(r) for r in rows]
+        for r in out["pro_clients_sample"]:
+            if r.get("created_at"):
+                r["created_at"] = str(r["created_at"])
+    except Exception as e:
+        out["pro_clients_sample_error"] = str(e)[:200]
+        try: conn.rollback()
+        except: pass
+
+    conn.close()
+    return out
+
+
 @app.post("/api/admin/embeddings/debug-match")
 def api_embeddings_debug_match(req: AdminAuthRequest):
     """임베딩 매칭 디버그 — 샘플 프로필로 검색 + 환경변수 확인."""

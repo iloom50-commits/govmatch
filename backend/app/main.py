@@ -4393,6 +4393,8 @@ def api_run_migrations(req: AdminAuthRequest):
          "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
         ("idx_ai_consult_logs_session_id",
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_consult_logs_session_id ON ai_consult_logs(session_id) WHERE session_id IS NOT NULL"),
+        ("ksic_classification cleanup bad codes",
+         "DELETE FROM ksic_classification WHERE LENGTH(code) != 5"),
         ("pro_consult_sessions.phase",
          "ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS phase VARCHAR(20) DEFAULT 'collecting'"),
         ("pro_consult_sessions.matched_snapshot",

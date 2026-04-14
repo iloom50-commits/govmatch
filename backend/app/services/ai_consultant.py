@@ -2194,12 +2194,22 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
         if not done and collected and all(collected.get(k) for k in REQUIRED):
             done = True
             profile = {k: collected[k] for k in REQUIRED}
-        # 개인 모드 자동 완료: age_range + address_city + interests 최소 조합
+        # 개인 모드 자동 완료: 기본 3 필드 + 복지 필터 최소 2개 (소득/가구/고용/주거/특수 중)
         INDIV_MIN = ["age_range", "address_city", "interests"]
+        INDIV_WELFARE = ["income_level", "family_type", "employment_status", "housing_status", "special_conditions"]
         is_individual_flow = bool(
             collected.get("age_range") or collected.get("income_level") or collected.get("family_type")
         )
-        if not done and is_individual_flow and all(collected.get(k) for k in INDIV_MIN):
+        welfare_count = sum(1 for k in INDIV_WELFARE if collected.get(k))
+        # 자동 완료 조건: AI가 명시적 동의를 감지한 경우(done=true)만 허용, 또는 사용자가 마지막 메시지에서 매칭을 명시 요청
+        last_user_text_auto = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user_text_auto = m.get("text", "")
+                break
+        user_asked_match = any(kw in last_user_text_auto for kw in ["매칭 진행", "매칭해", "이 조건으로", "찾아주", "진행해"])
+        if (not done and is_individual_flow and all(collected.get(k) for k in INDIV_MIN)
+                and welfare_count >= 2 and user_asked_match):
             done = True
             profile = {
                 "company_name": collected.get("company_name") or "개인",

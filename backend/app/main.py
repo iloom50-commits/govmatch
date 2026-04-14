@@ -3217,12 +3217,15 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                         last_user_text = (m.get("text") or "").strip()
                         break
                 user_responded = bool(last_user_text) and "[새 케이스 시작]" not in last_user_text
-                if ai_step and isinstance(ai_step, int):
-                    # AI가 단계를 명시하면 존중하되, 사용자가 답변했으면 최소 +1 보장
-                    new_step = max(cur_step + (1 if user_responded else 0), ai_step)
-                elif user_responded:
-                    # AI가 단계를 안 주고 사용자가 답변했으면 서버가 강제 +1
-                    new_step = cur_step + 1
+                if user_responded:
+                    # 사용자가 답변했으면 반드시 +1 (AI가 같은 step을 반복하지 못하게)
+                    baseline = cur_step + 1
+                    if ai_step and isinstance(ai_step, int) and ai_step > baseline:
+                        new_step = ai_step
+                    else:
+                        new_step = baseline
+                elif ai_step and isinstance(ai_step, int):
+                    new_step = max(cur_step, ai_step)
                 else:
                     new_step = cur_step
                 # 개인 모드 7단계 / 사업자 5단계 상한

@@ -88,14 +88,27 @@ export default function Home() {
   const [openNotifyOnReturn, setOpenNotifyOnReturn] = useState(false);
   const { toast } = useToast();
 
-  // 맞춤 설정 유도: 프로필 미설정 사용자 감지
+  // 맞춤 설정 유도: 프로필 미설정 사용자 감지 — user_type별 기준 분리
   const userType = profileData?.user_type || "both";
-  const isProfileIncomplete = profileData && (
-    // 기업/both인데 업종 미설정
-    (userType !== "individual" && (!profileData.industry_code || profileData.industry_code === "00000")) ||
-    // 아예 프로필 정보가 하나도 없는 경우
-    (!profileData.industry_code && !profileData.age_range && !profileData.address_city)
-  );
+  const isProfileIncomplete = profileData && (() => {
+    if (userType === "individual") {
+      // 개인: 연령대 또는 거주지 + (소득 또는 가구형태 또는 관심분야) 중 1개라도 있으면 OK
+      const hasBasic = !!(profileData.age_range || profileData.address_city);
+      const hasContext = !!(profileData.income_level || profileData.family_type ||
+                            profileData.employment_status || profileData.interests);
+      return !(hasBasic && hasContext);
+    }
+    if (userType === "business") {
+      // 사업자: 업종코드 또는 (지역 + 관심분야) 있으면 OK
+      const hasIndustry = !!(profileData.industry_code && profileData.industry_code !== "00000");
+      const hasRegionInterest = !!(profileData.address_city && profileData.interests);
+      return !(hasIndustry || hasRegionInterest);
+    }
+    // both: 어느 한 쪽이라도 만족하면 OK
+    const bizOk = !!(profileData.industry_code && profileData.industry_code !== "00000");
+    const indOk = !!(profileData.age_range || (profileData.address_city && profileData.interests));
+    return !(bizOk || indOk);
+  })();
 
   // 맞춤 설정 모달: 최초 1회만
   useEffect(() => {
@@ -235,15 +248,24 @@ export default function Home() {
         return;
       }
 
-      // 프로필 미완성이면 매칭 건너뛰기 (공개 공고 뷰로 표시)
-      const userType = user.user_type || "both";
-      const isIncomplete = (
-        // 기업 또는 both인데 업종/지역 미설정
-        (userType !== "individual" && (!user.industry_code || user.industry_code === "00000")) ||
-        // 아예 프로필 정보가 하나도 없는 경우
-        (!user.industry_code && !user.age_range && !user.address_city)
-      );
-      if (isIncomplete) {
+      // 프로필 매칭 가능 여부 — user_type별 기준 분리
+      const utype = user.user_type || "both";
+      const canMatch = (() => {
+        if (utype === "individual") {
+          const hasBasic = !!(user.age_range || user.address_city);
+          const hasContext = !!(user.income_level || user.family_type || user.employment_status || user.interests);
+          return hasBasic && hasContext;
+        }
+        if (utype === "business") {
+          const hasIndustry = !!(user.industry_code && user.industry_code !== "00000");
+          const hasRegionInterest = !!(user.address_city && user.interests);
+          return hasIndustry || hasRegionInterest;
+        }
+        const bizOk = !!(user.industry_code && user.industry_code !== "00000");
+        const indOk = !!(user.age_range || (user.address_city && user.interests));
+        return bizOk || indOk;
+      })();
+      if (!canMatch) {
         setStep("RESULTS");
         setMatches([]);
         return;
@@ -276,13 +298,25 @@ export default function Home() {
       const meData = await meRes.json();
       setProfileData(meData.user);
 
-      // 프로필 미완성이면 매칭 건너뛰기 (공개 공고 뷰로 표시)
-      const userType2 = meData.user.user_type || "both";
-      const isIncomplete = (
-        (userType2 !== "individual" && (!meData.user.industry_code || meData.user.industry_code === "00000")) ||
-        (!meData.user.industry_code && !meData.user.age_range && !meData.user.address_city)
-      );
-      if (isIncomplete) {
+      // 프로필 매칭 가능 여부 — user_type별 기준 분리
+      const u2 = meData.user;
+      const utype2 = u2.user_type || "both";
+      const canMatch2 = (() => {
+        if (utype2 === "individual") {
+          const hasBasic = !!(u2.age_range || u2.address_city);
+          const hasContext = !!(u2.income_level || u2.family_type || u2.employment_status || u2.interests);
+          return hasBasic && hasContext;
+        }
+        if (utype2 === "business") {
+          const hasIndustry = !!(u2.industry_code && u2.industry_code !== "00000");
+          const hasRegionInterest = !!(u2.address_city && u2.interests);
+          return hasIndustry || hasRegionInterest;
+        }
+        const bizOk = !!(u2.industry_code && u2.industry_code !== "00000");
+        const indOk = !!(u2.age_range || (u2.address_city && u2.interests));
+        return bizOk || indOk;
+      })();
+      if (!canMatch2) {
         setStep("RESULTS");
         setMatches([]);
         setShowProfileNudge(true);

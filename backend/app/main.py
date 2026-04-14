@@ -182,6 +182,18 @@ def init_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_pro_consult_sessions_bn ON pro_consult_sessions (business_number, updated_at DESC)")
         except Exception:
             pass
+        # 기존 테이블 마이그레이션: messages 컬럼 없으면 추가 (P0.3)
+        try:
+            cursor.execute("ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS messages JSONB DEFAULT '[]'::jsonb")
+        except Exception:
+            pass
+        # P0.4: ai_consult_logs에 session_id + updated_at 추가 (매 턴 UPSERT 목적)
+        try:
+            cursor.execute("ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)")
+            cursor.execute("ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_consult_logs_session_id ON ai_consult_logs(session_id) WHERE session_id IS NOT NULL")
+        except Exception:
+            pass
 
         # SQLite에서 마이그레이션된 기존 테이블의 INTEGER→BOOLEAN 변환 시도
         for tbl, col in [("notification_settings", "is_active"), ("admin_urls", "is_active")]:
@@ -2798,6 +2810,22 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     # 통합 AI 엔진으로 자유 상담
     from app.services.ai_consultant import chat_free
     result = chat_free(req.messages, conn, user_profile=u)
+
+    # ── 대화 저장 (P0.1): 매 턴마다 ai_consult_logs에 UPSERT ──
+    # announcement_id=NULL 이면 자유상담, session_id(없으므로 연속 세션은 user bn + NULL)
+    try:
+        all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+        cur.execute(
+            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
+               VALUES (NULL, %s, %s::jsonb, %s)""",
+            (bn, json.dumps(all_msgs, ensure_ascii=False), "free_chat")
+        )
+        conn.commit()
+    except Exception as save_err:
+        print(f"[chat_free save] {save_err}")
+        try: conn.rollback()
+        except: pass
+
     conn.close()
 
     return {
@@ -3007,23 +3035,28 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
 
     consult_log_id = None
 
-    # 상담 완료 시 로그 저장 (학습 데이터 축적)
-    if is_done:
-        try:
-            all_msgs = req.messages + [{"role": "assistant", "text": result.get("reply", "")}]
-            log_conn = get_db_connection()
-            log_cur = log_conn.cursor()
-            log_cur.execute("""
-                INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
-                VALUES (%s, %s, %s, %s) RETURNING id
-            """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False), result.get("conclusion")))
-            row = log_cur.fetchone()
-            consult_log_id = row["id"] if row else None
-            log_conn.commit()
-            log_conn.close()
-        except Exception as log_err:
-            consult_log_id = None
-            print(f"[ConsultLog] Save error: {log_err}")
+    # P0.4: 매 턴 UPSERT 저장 (done 여부 무관) — session_id로 그룹핑
+    try:
+        all_msgs = req.messages + [{"role": "assistant", "text": result.get("reply", "")}]
+        log_conn = get_db_connection()
+        log_cur = log_conn.cursor()
+        log_cur.execute("""
+            INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
+            VALUES (%s, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                messages = EXCLUDED.messages,
+                conclusion = COALESCE(EXCLUDED.conclusion, ai_consult_logs.conclusion),
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+        """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False),
+              result.get("conclusion") if is_done else None, session_id))
+        row = log_cur.fetchone()
+        consult_log_id = row["id"] if row else None
+        log_conn.commit()
+        log_conn.close()
+    except Exception as log_err:
+        consult_log_id = None
+        print(f"[ConsultLog] Save error: {log_err}")
 
     return {
         "status": "SUCCESS",
@@ -3232,13 +3265,18 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 max_step = 7 if (session_state.get("client_category") or "").startswith("개인") else 5
                 new_step = min(new_step, max_step)
                 cur = db.cursor()
+                # P0.3: messages 전체도 저장 (assistant 응답 포함)
+                full_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
                 cur.execute(
                     """UPDATE pro_consult_sessions
                        SET current_step = %s,
                            collected = %s::jsonb,
+                           messages = %s::jsonb,
                            updated_at = CURRENT_TIMESTAMP
                        WHERE session_id = %s""",
-                    (new_step, json.dumps(new_collected, ensure_ascii=False), session_state["session_id"])
+                    (new_step, json.dumps(new_collected, ensure_ascii=False),
+                     json.dumps(full_msgs, ensure_ascii=False),
+                     session_state["session_id"])
                 )
                 db.commit()
             except Exception as upd_err:
@@ -3362,11 +3400,24 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
         conn.close()
         raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
 
-    conn.close()
-
     # 조건 수집 대화는 건수 차감 없음 (매칭 실행 시 차감)
     from app.services.ai_consultant import chat_consultant
     result = chat_consultant(req.messages)
+
+    # ── 대화 저장 (P0.2): ai_consult_logs에 conclusion='lite_consultant'로 기록 ──
+    try:
+        all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+        cur.execute(
+            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
+               VALUES (NULL, %s, %s::jsonb, %s)""",
+            (bn, json.dumps(all_msgs, ensure_ascii=False), "lite_consultant")
+        )
+        conn.commit()
+    except Exception as save_err:
+        print(f"[chat_consultant save] {save_err}")
+        try: conn.rollback()
+        except: pass
+    conn.close()
 
     return {
         "status": "SUCCESS",

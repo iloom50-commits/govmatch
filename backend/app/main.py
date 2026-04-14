@@ -4088,6 +4088,71 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/run-migrations")
+def api_run_migrations(req: AdminAuthRequest):
+    """P1: email_logs, match_history 등 누락 테이블 강제 생성."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    results = {}
+
+    migrations = [
+        ("pro_consult_sessions.messages",
+         "ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS messages JSONB DEFAULT '[]'::jsonb"),
+        ("ai_consult_logs.session_id",
+         "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)"),
+        ("ai_consult_logs.updated_at",
+         "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ("idx_ai_consult_logs_session_id",
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_consult_logs_session_id ON ai_consult_logs(session_id) WHERE session_id IS NOT NULL"),
+        ("client_files.client_id nullable",
+         "ALTER TABLE client_files ALTER COLUMN client_id DROP NOT NULL"),
+        ("client_files.ai_summary",
+         "ALTER TABLE client_files ADD COLUMN IF NOT EXISTS ai_summary TEXT DEFAULT ''"),
+        ("email_logs table",
+         """CREATE TABLE IF NOT EXISTS email_logs (
+                id SERIAL PRIMARY KEY,
+                owner_business_number VARCHAR(20) NOT NULL,
+                client_id INTEGER,
+                recipient_email VARCHAR(255),
+                recipient_name VARCHAR(100),
+                subject TEXT,
+                body TEXT,
+                status VARCHAR(20),
+                error_detail TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""),
+        ("idx_email_logs_owner",
+         "CREATE INDEX IF NOT EXISTS idx_email_logs_owner ON email_logs(owner_business_number, created_at DESC)"),
+        ("match_history table",
+         """CREATE TABLE IF NOT EXISTS match_history (
+                id SERIAL PRIMARY KEY,
+                business_number VARCHAR(20) NOT NULL,
+                user_type VARCHAR(20),
+                profile_snapshot JSONB,
+                total_matches INTEGER DEFAULT 0,
+                top_matches JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""),
+        ("idx_match_history_bn",
+         "CREATE INDEX IF NOT EXISTS idx_match_history_bn ON match_history(business_number, created_at DESC)"),
+    ]
+
+    for name, sql in migrations:
+        try:
+            cur.execute(sql)
+            conn.commit()
+            results[name] = "OK"
+        except Exception as e:
+            try: conn.rollback()
+            except: pass
+            results[name] = f"ERR: {str(e)[:150]}"
+
+    conn.close()
+    return {"status": "SUCCESS", "results": results}
+
+
 @app.post("/api/admin/db-audit")
 def api_db_audit(req: AdminAuthRequest):
     """전체 DB 테이블 감사 — public 스키마의 모든 테이블 + 행수."""

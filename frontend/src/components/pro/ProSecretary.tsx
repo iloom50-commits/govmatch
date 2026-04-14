@@ -17,6 +17,7 @@ interface ChatMessage {
   matched?: any[];          // 매칭 결과 카드 표시용
   showReportButton?: boolean; // 보고서 생성 버튼 표시용
   done?: boolean;
+  rag_sources?: any[];      // 답변에 참고한 출처 (공고 섹션) 카드
 }
 
 interface ClientProfile {
@@ -347,12 +348,14 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             const last = updated[updated.length - 1];
             if (last && last.role === "assistant") {
               const matched = data.matched_announcements || [];
+              const ragSources = data.rag_sources || [];
               updated[updated.length - 1] = {
                 ...last,
                 text: fullText,
                 choices,
                 matched: matched.length > 0 ? matched : undefined,
                 showReportButton: matched.length > 0,
+                rag_sources: ragSources.length > 0 ? ragSources : undefined,
               };
             }
             return updated;
@@ -760,6 +763,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
+                          {/* RAG 출처 카드 — AI가 답변에 참고한 공고 섹션 */}
+                          {msg.role === "assistant" && msg.rag_sources && msg.rag_sources.length > 0 && (
+                            <div className={`mt-2 p-2 rounded-xl border ${dark ? "bg-amber-500/5 border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
+                              <div className={`text-[10px] font-bold mb-1.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
+                                📚 답변 근거 ({msg.rag_sources.length}건)
+                              </div>
+                              <div className="space-y-1">
+                                {msg.rag_sources.slice(0, 5).map((src: any, si: number) => (
+                                  <div key={si} className={`text-[11px] ${dark ? "text-slate-300" : "text-slate-700"}`}>
+                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold mr-1 ${dark ? "bg-amber-500/20 text-amber-300" : "bg-amber-100 text-amber-800"}`}>
+                                      {Math.round((src.similarity || 0) * 100)}%
+                                    </span>
+                                    <span className="font-semibold">『{(src.ann_title || "").slice(0, 50)}』</span>
+                                    {src.department && <span className={dark ? "text-slate-500" : "text-slate-500"}> · {src.department.slice(0, 25)}</span>}
+                                    {src.section_title && <span className={dark ? "text-amber-400" : "text-amber-700"}> [{src.section_title}]</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">

@@ -2628,6 +2628,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 
     # 매 턴 RAG — 섹션 단위 우선 + 공고/지식 보조
     rag_hint = ""
+    _rag_sources_for_response = []  # E: 답변에 함께 반환할 출처 카드 데이터
     try:
         last_user_msg = ""
         for m in reversed(messages):
@@ -2656,6 +2657,8 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             )
             if sec_rag.get("text_block"):
                 rag_hint += sec_rag["text_block"]
+            # 결과를 함수 외부에서 접근할 수 있게 closure 변수에 저장
+            _rag_sources_for_response = sec_rag.get("sections", [])
 
             # 2) 보조: 공고/지식 단위 RAG (섹션이 부족할 때만)
             if not sec_rag.get("sections") or len(sec_rag.get("sections", [])) < 3:
@@ -2873,6 +2876,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             "profile": profile,
             "collected": collected,
             "current_step": result.get("current_step"),
+            "rag_sources": _rag_sources_for_response,  # E: 출처 카드 (UI 표시용)
         }
     except json.JSONDecodeError:
         # JSON 파싱 실패 — raw text에서 message/choices를 구제 추출 시도

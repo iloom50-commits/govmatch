@@ -3972,8 +3972,8 @@ def api_analyze_batch_broad(req: AdminAuthRequest):
     import time as _time
     from app.services.doc_analysis_service import analyze_and_store
 
-    DEADLINE = 250
-    MAX_ITEMS = 50
+    DEADLINE = 200  # Railway 300s gateway timeout 대응
+    MAX_ITEMS = 15  # 호출당 적게 처리해 안정성 우선
     start = _time.time()
 
     conn = get_db_connection()

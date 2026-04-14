@@ -755,7 +755,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                       return (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                         <div className="max-w-[80%] overflow-hidden">
-                          <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed break-words overflow-wrap-anywhere ${
+                          <div className={`px-4 py-3 rounded-2xl text-[14px] leading-relaxed break-words overflow-wrap-anywhere ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`

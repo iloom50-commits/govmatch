@@ -8625,6 +8625,274 @@ def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_
     return _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
 
 
+class BusinessPlanReviewRequest(BaseModel):
+    file_text: str  # 사업계획서 추출 텍스트
+    file_name: Optional[str] = ""
+    target_announcement_id: Optional[int] = None  # 신청 대상 공고
+    client_id: Optional[int] = None  # 고객 컨텍스트
+
+
+@app.get("/api/pro/stats/announcement")
+def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depends(_get_current_user)):
+    """H: 공고 통계 — 같은 부처/카테고리의 평균 지원금, 유사 공고 수, 마감일까지 D-day."""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT a.title, a.department, a.category, a.support_amount, a.deadline_date,
+                   a.region, a.target_type
+            FROM announcements a
+            WHERE a.announcement_id = %s
+        """, (announcement_id,))
+        ann = cur.fetchone()
+        if not ann:
+            conn.close()
+            raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+        a = dict(ann)
+
+        # 같은 부처/카테고리의 활성 공고 수
+        cur.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM announcements
+            WHERE department = %s
+              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+        """, (a.get("department") or "",))
+        same_dept_count = cur.fetchone()["cnt"]
+
+        cur.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM announcements
+            WHERE category = %s
+              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+        """, (a.get("category") or "",))
+        same_cat_count = cur.fetchone()["cnt"]
+
+        # 평균 지원금 (텍스트 추출 — 정확하지 않지만 추정용)
+        cur.execute("""
+            SELECT support_amount FROM announcements
+            WHERE department = %s AND support_amount IS NOT NULL AND support_amount != ''
+            LIMIT 50
+        """, (a.get("department") or "",))
+        amounts = [r["support_amount"] for r in cur.fetchall()]
+
+        # D-day
+        d_day = None
+        if a.get("deadline_date"):
+            try:
+                from datetime import date
+                deadline = a["deadline_date"]
+                today = date.today()
+                d_day = (deadline - today).days if hasattr(deadline, "year") else None
+            except Exception:
+                pass
+
+        # 분석된 유사 공고 (같은 부처)
+        cur.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM announcement_analysis aa
+            JOIN announcements a ON aa.announcement_id = a.announcement_id
+            WHERE a.department = %s
+        """, (a.get("department") or "",))
+        analyzed_count = cur.fetchone()["cnt"]
+
+        conn.close()
+        return {
+            "status": "SUCCESS",
+            "announcement": {
+                "id": announcement_id,
+                "title": a.get("title"),
+                "department": a.get("department"),
+                "category": a.get("category"),
+                "support_amount": a.get("support_amount"),
+                "deadline_date": str(a.get("deadline_date") or ""),
+                "d_day": d_day,
+            },
+            "stats": {
+                "same_department_count": same_dept_count,
+                "same_category_count": same_cat_count,
+                "amount_samples": amounts[:10],
+                "analyzed_in_department": analyzed_count,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"통계 조회 실패: {str(e)[:200]}")
+
+
+@app.post("/api/pro/clients/batch-match")
+def api_pro_clients_batch_match(current_user: dict = Depends(_get_current_user)):
+    """G: PRO 컨설턴트의 모든 활성 고객에 대해 일괄 매칭 → 고객별 Top 5 공고 반환.
+    매일 알림용 또는 대시보드 일괄 갱신용.
+    """
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, client_name, client_type, industry_code, address_city,
+                  revenue_bracket, employee_count_bracket, interests, establishment_date,
+                  age_range, income_level, family_type, employment_status, housing_status, special_conditions
+           FROM client_profiles
+           WHERE owner_business_number = %s AND is_active = TRUE
+           ORDER BY updated_at DESC
+           LIMIT 50""",
+        (current_user["bn"],)
+    )
+    clients = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    out = []
+    for c in clients:
+        is_indiv = (c.get("client_type") or "business") == "individual"
+        profile = {
+            "company_name": c.get("client_name") or "",
+            "establishment_date": str(c.get("establishment_date") or "1990-01-01")[:10],
+            "industry_code": c.get("industry_code") or "",
+            "revenue_bracket": c.get("revenue_bracket") or ("1억 미만" if is_indiv else ""),
+            "employee_count_bracket": c.get("employee_count_bracket") or ("5인 미만" if is_indiv else ""),
+            "address_city": c.get("address_city") or "",
+            "interests": c.get("interests") or "",
+            "age_range": c.get("age_range") or "",
+            "income_level": c.get("income_level") or "",
+            "family_type": c.get("family_type") or "",
+            "employment_status": c.get("employment_status") or "",
+            "housing_status": c.get("housing_status") or "",
+            "special_conditions": c.get("special_conditions") or "",
+        }
+        try:
+            matches = get_matches_hybrid(profile, is_individual=is_indiv) or []
+        except Exception as e:
+            print(f"[batch-match] client {c['id']}: {e}")
+            matches = []
+        top5 = []
+        for m in matches[:5]:
+            top5.append({
+                "announcement_id": m.get("announcement_id"),
+                "title": (m.get("title") or "")[:120],
+                "department": (m.get("department") or "")[:60],
+                "support_amount": (m.get("support_amount") or "")[:60],
+                "deadline_date": str(m.get("deadline_date") or "")[:10],
+                "match_score": m.get("match_score", 0),
+            })
+        out.append({
+            "client_id": c["id"],
+            "client_name": c["client_name"],
+            "client_type": c.get("client_type"),
+            "match_count": len(matches),
+            "top5": top5,
+        })
+
+    return {"status": "SUCCESS", "clients_processed": len(out), "data": out}
+
+
+@app.post("/api/pro/business-plan/review")
+def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: dict = Depends(_get_current_user)):
+    """F: 사업계획서 텍스트 → AI 전문가 피드백 (강화 포인트, 가점 항목, 보완 사항).
+    공고가 지정되면 해당 공고 자격요건과 매칭 분석.
+    """
+    _require_pro(current_user)
+    if not req.file_text or len(req.file_text.strip()) < 100:
+        raise HTTPException(status_code=400, detail="사업계획서 본문이 너무 짧습니다 (최소 100자).")
+
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AI 서비스를 사용할 수 없습니다.")
+
+    # 공고 컨텍스트 조회
+    ann_context = ""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if req.target_announcement_id:
+        try:
+            cur.execute("""
+                SELECT a.title, a.department, a.support_amount,
+                       aa.parsed_sections, aa.deep_analysis
+                FROM announcements a
+                LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+                WHERE a.announcement_id = %s
+            """, (req.target_announcement_id,))
+            row = cur.fetchone()
+            if row:
+                d = dict(row)
+                ann_context = f"\n\n[신청 대상 공고]\n공고명: {d.get('title','')}\n부처: {d.get('department','')}\n지원금: {d.get('support_amount','')}\n"
+                ps = d.get("parsed_sections")
+                if isinstance(ps, str):
+                    try: ps = json.loads(ps)
+                    except: ps = None
+                if isinstance(ps, dict):
+                    if ps.get("eligibility"): ann_context += f"\n자격요건: {str(ps.get('eligibility'))[:500]}"
+                    if ps.get("evaluation_criteria"): ann_context += f"\n평가기준: {str(ps.get('evaluation_criteria'))[:500]}"
+                    if ps.get("required_documents"): ann_context += f"\n제출서류: {str(ps.get('required_documents'))[:300]}"
+        except Exception:
+            pass
+
+    # 고객 프로필
+    client_context = ""
+    if req.client_id:
+        try:
+            cur.execute("""
+                SELECT client_name, client_type, industry_code, address_city,
+                       revenue_bracket, employee_count_bracket, interests
+                FROM client_profiles
+                WHERE id = %s AND owner_business_number = %s AND is_active = TRUE
+            """, (req.client_id, current_user["bn"]))
+            row = cur.fetchone()
+            if row:
+                d = dict(row)
+                client_context = f"\n\n[고객 프로파일]\n{json.dumps(d, ensure_ascii=False, default=str)[:500]}"
+        except Exception:
+            pass
+    conn.close()
+
+    prompt = f"""당신은 15년차 정부지원사업 전문 컨설턴트입니다.
+컨설턴트가 고객의 사업계획서 초안을 검토 요청했습니다. 베테랑 관점에서 강화 포인트, 가점 항목, 보완 필요 사항을 분석하세요.
+
+[사업계획서 본문]
+{req.file_text[:6000]}
+{ann_context}{client_context}
+
+[분석 항목]
+1. **강화 포인트** (현재 잘 쓰여진 부분, 더 강조해야 할 부분 3~5개)
+2. **가점 항목** (놓치고 있는 가점 — 여성/청년/사회적기업/특허/수상 등 명시할 만한 것)
+3. **보완 필요** (자격요건/평가기준 대비 부족하거나 누락된 부분 3~5개)
+4. **위험 신호** (탈락 가능성을 높이는 표현/내용 — 모호한 수치, 근거 부족 등)
+5. **컨설턴트 액션** (구체적으로 무엇을 추가/수정해야 하는지)
+
+[응답 형식 — 순수 JSON]
+{{
+  "summary": "한 줄 종합 평가",
+  "score": 75,  // 100점 만점 추정
+  "strengths": ["강화 포인트 1", "강화 포인트 2"],
+  "bonus_points": ["가점 항목 1", "가점 항목 2"],
+  "improvements": ["보완 1", "보완 2"],
+  "risks": ["위험 1"],
+  "actions": ["액션 1", "액션 2"]
+}}
+
+마크다운 코드블록 금지. 순수 JSON만."""
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "models/gemini-2.0-flash",
+            generation_config={
+                "max_output_tokens": 4096,
+                "response_mime_type": "application/json",
+                "temperature": 0.3,
+            },
+        )
+        resp = model.generate_content(prompt)
+        result = json.loads(resp.text)
+    except Exception as e:
+        print(f"[business-plan review] {e}")
+        raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)[:200]}")
+
+    return {"status": "SUCCESS", "data": result}
+
+
 @app.post("/api/pro/files/upload-analyze")
 async def api_pro_file_upload_analyze(
     file: UploadFile = File(...),

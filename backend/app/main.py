@@ -3985,6 +3985,54 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/embeddings/debug-match")
+def api_embeddings_debug_match(req: AdminAuthRequest):
+    """임베딩 매칭 디버그 — 샘플 프로필로 검색 + 환경변수 확인."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    from app.core.matcher import get_matches_by_embedding, get_matches_hybrid
+    flag = os.environ.get("USE_EMBEDDING_MATCHING", "(미설정)")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS c FROM announcement_embeddings")
+    emb_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM announcements WHERE deadline_date IS NULL OR deadline_date >= CURRENT_DATE")
+    active_ann = cur.fetchone()["c"]
+    cur.execute("SELECT target_type, COUNT(*) AS c FROM announcements GROUP BY target_type")
+    tt_breakdown = [{"target_type": r["target_type"], "count": r["c"]} for r in cur.fetchall()]
+    conn.close()
+
+    sample_profile = {
+        "company_name": "테스트",
+        "industry_code": "26003",
+        "address_city": "서울특별시",
+        "revenue_bracket": "10억~30억",
+        "employee_count_bracket": "10인~30인",
+        "interests": "스마트공장,정책자금",
+        "establishment_date": "2019-01-01",
+    }
+    emb_results = get_matches_by_embedding(sample_profile, top_k=5, target_type_filter="business")
+    hybrid_results = get_matches_hybrid(sample_profile, is_individual=False)
+
+    return {
+        "env_flag": flag,
+        "embeddings_count": emb_count,
+        "active_announcements": active_ann,
+        "target_type_breakdown": tt_breakdown,
+        "direct_embedding_results": len(emb_results),
+        "direct_embedding_sample": [
+            {"id": r.get("announcement_id"), "title": (r.get("title") or "")[:60], "sim": round(r.get("similarity", 0) or 0, 4)}
+            for r in emb_results[:5]
+        ],
+        "hybrid_results": len(hybrid_results),
+        "hybrid_sample": [
+            {"id": r.get("announcement_id"), "title": (r.get("title") or "")[:60], "score": r.get("match_score")}
+            for r in hybrid_results[:5]
+        ],
+    }
+
+
 @app.post("/api/admin/embeddings/list-models")
 def api_embeddings_list_models(req: AdminAuthRequest):
     """사용 가능한 Gemini 모델 리스트 조회 (임베딩 지원 모델만)."""

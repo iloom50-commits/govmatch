@@ -3988,6 +3988,50 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/db-audit")
+def api_db_audit(req: AdminAuthRequest):
+    """전체 DB 테이블 감사 — public 스키마의 모든 테이블 + 행수."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+    """)
+    tables = [r["table_name"] for r in cur.fetchall()]
+    results = []
+    for t in tables:
+        try:
+            cur.execute(f'SELECT COUNT(*) AS c FROM "{t}"')
+            count = cur.fetchone()["c"]
+            # 최신 created_at/updated_at이 있으면 최근 활동 시각 조회
+            cur.execute(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                  AND column_name IN ('created_at','updated_at')
+                ORDER BY column_name
+            """, (t,))
+            time_cols = [r["column_name"] for r in cur.fetchall()]
+            last_ts = None
+            if time_cols:
+                col = "updated_at" if "updated_at" in time_cols else "created_at"
+                try:
+                    cur.execute(f'SELECT MAX("{col}") AS t FROM "{t}"')
+                    last_ts = str(cur.fetchone()["t"])
+                except Exception:
+                    conn.rollback()
+            results.append({"table": t, "count": count, "last_activity": last_ts})
+        except Exception as e:
+            results.append({"table": t, "error": str(e)[:150]})
+            try: conn.rollback()
+            except: pass
+    conn.close()
+    return {"total_tables": len(tables), "tables": results}
+
+
 @app.post("/api/admin/debug-persistence")
 def api_debug_persistence(req: AdminAuthRequest):
     """상담/세션/고객 데이터 저장 상태 확인."""

@@ -1079,6 +1079,99 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             </div>
           )}
 
+          {/* 수집된 정보 — 실시간 */}
+          {Object.keys(collectedProfile).filter(k => collectedProfile[k]).length > 0 && (
+            <div className={`p-4 border-b ${t.border}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>수집된 정보</p>
+              <div className={`space-y-1 text-[11px]`}>
+                {Object.entries({
+                  company_name: "고객명",
+                  industry_code: "업종",
+                  address_city: "지역",
+                  revenue_bracket: "매출",
+                  employee_count_bracket: "직원",
+                  age_range: "연령",
+                  income_level: "소득",
+                  family_type: "가구",
+                  employment_status: "고용",
+                  housing_status: "주거",
+                  interests: "관심",
+                  special_conditions: "특수자격",
+                }).map(([k, label]) => {
+                  const v = collectedProfile[k];
+                  if (!v) return null;
+                  return (
+                    <div key={k} className="flex gap-1.5">
+                      <span className={`flex-shrink-0 ${t.muted}`}>{label}</span>
+                      <span className={`truncate ${dark ? "text-slate-300" : "text-slate-700"}`}>{String(v)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 마지막 답변 출처 요약 */}
+          {(() => {
+            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.rag_sources && m.rag_sources.length > 0);
+            if (!lastMsg || !lastMsg.rag_sources) return null;
+            return (
+              <div className={`p-4 border-b ${t.border}`}>
+                <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${dark ? "text-amber-400" : "text-amber-700"}`}>📚 답변 근거</p>
+                <div className="space-y-1.5">
+                  {lastMsg.rag_sources.slice(0, 3).map((src: any, i: number) => (
+                    <div key={i} className={`text-[11px] p-2 rounded-lg border ${dark ? "bg-amber-500/5 border-amber-500/15" : "bg-amber-50 border-amber-200"}`}>
+                      <div className="flex items-start gap-1">
+                        <span className={`text-[9px] font-bold flex-shrink-0 mt-0.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
+                          {Math.round((src.similarity || 0) * 100)}%
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`font-semibold truncate ${dark ? "text-slate-200" : "text-slate-800"}`}>
+                            {(src.ann_title || "").slice(0, 40)}
+                          </p>
+                          <p className={`text-[10px] ${t.muted}`}>{src.section_title}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 빠른 액션 — 상담 진행 중일 때 */}
+          {messages.length > 1 && (
+            <div className={`p-4 border-b ${t.border}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>빠른 액션</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => handleSend("이 조건으로 매칭 진행해주세요")}
+                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-violet-500/10 border border-violet-500/30 text-violet-300 hover:bg-violet-500/20" : "bg-violet-50 border border-violet-200 text-violet-700 hover:bg-violet-100"}`}
+                >
+                  🎯 매칭
+                </button>
+                <button
+                  onClick={() => handleSend("지금까지 정리해줘")}
+                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"}`}
+                >
+                  📋 정리
+                </button>
+                <button
+                  onClick={() => handleSend("자격요건을 자세히 설명해주세요")}
+                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20" : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"}`}
+                >
+                  ✅ 자격
+                </button>
+                <button
+                  onClick={() => handleSend("필요한 서류 알려주세요")}
+                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20" : "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"}`}
+                >
+                  📄 서류
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 자료 첨부 */}
           <div className={`p-4 border-b ${t.border}`}>
             <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>자료 첨부</p>

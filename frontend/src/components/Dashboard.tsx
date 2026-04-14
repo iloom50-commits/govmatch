@@ -655,9 +655,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
     setSaving(true);
     try {
+      const token = localStorage.getItem("auth_token") || "";
       const res = await fetch(`${API}/api/saved/bulk`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ business_number: bn, announcement_ids: Array.from(selectedIds) }),
       });
       const data = await res.json();

@@ -311,6 +311,55 @@ def init_database():
             conn.commit()
         except Exception:
             conn.rollback()
+        # P1.1: client_files.client_id NOT NULL 제약 완화 (client 미선택 업로드 허용)
+        try:
+            cursor.execute("ALTER TABLE client_files ALTER COLUMN client_id DROP NOT NULL")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        # P1.1: ai_summary 컬럼 추가 (업로드 시 AI 요약 저장)
+        try:
+            cursor.execute("ALTER TABLE client_files ADD COLUMN IF NOT EXISTS ai_summary TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        # P1.2: email_logs 테이블 (PRO 이메일 발송 이력)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS email_logs (
+                    id SERIAL PRIMARY KEY,
+                    owner_business_number VARCHAR(20) NOT NULL,
+                    client_id INTEGER,
+                    recipient_email VARCHAR(255),
+                    recipient_name VARCHAR(100),
+                    subject TEXT,
+                    body TEXT,
+                    status VARCHAR(20),
+                    error_detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_logs_owner ON email_logs(owner_business_number, created_at DESC)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        # P1.3: match_history 테이블 (매칭 실행 이력)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS match_history (
+                    id SERIAL PRIMARY KEY,
+                    business_number VARCHAR(20) NOT NULL,
+                    user_type VARCHAR(20),
+                    profile_snapshot JSONB,
+                    total_matches INTEGER DEFAULT 0,
+                    top_matches JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_history_bn ON match_history(business_number, created_at DESC)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
@@ -6224,6 +6273,33 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
                 pass
 
     _log_event("matching", request.business_number, f"type={user_type},count={len(matches)},top_score={matches[0].get('match_score',0) if matches else 0}")
+
+    # P1.3: match_history 저장
+    try:
+        mh_conn = get_db_connection()
+        mh_cur = mh_conn.cursor()
+        snap_keys = ["company_name","industry_code","address_city","revenue_bracket",
+                     "employee_count_bracket","interests","user_type","age_range",
+                     "income_level","family_type","employment_status","housing_status"]
+        snapshot = {k: user_dict.get(k) for k in snap_keys if user_dict.get(k) is not None}
+        top10 = [
+            {"id": m.get("announcement_id"), "title": m.get("title", "")[:100],
+             "score": m.get("match_score", 0)}
+            for m in matches[:10]
+        ]
+        mh_cur.execute(
+            """INSERT INTO match_history (business_number, user_type, profile_snapshot, total_matches, top_matches)
+               VALUES (%s, %s, %s::jsonb, %s, %s::jsonb)""",
+            (request.business_number, user_type,
+             json.dumps(snapshot, ensure_ascii=False),
+             len(matches),
+             json.dumps(top10, ensure_ascii=False))
+        )
+        mh_conn.commit()
+        mh_conn.close()
+    except Exception as mh_err:
+        print(f"[match_history] {mh_err}")
+
     return {"status": "SUCCESS", "data": matches}
 
 @app.post("/api/notification-settings")
@@ -7749,6 +7825,28 @@ async def api_pro_file_upload_analyze(
 
     result = _analyze_text_with_ai(text[:8000], file_name, ext)
     result["extracted_text"] = text[:5000]
+
+    # P1.1: client_files에 저장 (client_id=NULL, 나중에 고객 연결 가능)
+    try:
+        save_conn = get_db_connection()
+        save_cur = save_conn.cursor()
+        save_cur.execute(
+            """INSERT INTO client_files
+               (client_id, owner_business_number, file_name, file_type, file_size,
+                file_data, extracted_text, ai_summary, memo)
+               VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (current_user["bn"], file_name, ext, len(content),
+             content[:5*1024*1024],  # 5MB 상한 (BYTEA 안전)
+             text[:10000],
+             json.dumps(result, ensure_ascii=False)[:10000],
+             "ProSecretary 업로드"),
+        )
+        row = save_cur.fetchone()
+        result["file_id"] = row["id"] if row else None
+        save_conn.commit()
+        save_conn.close()
+    except Exception as save_err:
+        print(f"[upload-analyze save] {save_err}")
     return result
 
 
@@ -7991,10 +8089,24 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
                 pro_name = _u.get("company_name") or ""
         except Exception:
             pass
-        if _send_html_email(email, req.subject, full_html, reply_to=pro_email, sender_name=pro_name):
+        send_ok = _send_html_email(email, req.subject, full_html, reply_to=pro_email, sender_name=pro_name)
+        if send_ok:
             sent += 1
         else:
             failed += 1
+        # P1.2: email_logs 저장
+        try:
+            cur.execute(
+                """INSERT INTO email_logs (owner_business_number, client_id, recipient_email, recipient_name, subject, body, status)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (current_user["bn"], c.get("id"), email, c.get("contact_name") or c.get("client_name"),
+                 req.subject, req.body, "sent" if send_ok else "failed"),
+            )
+            conn.commit()
+        except Exception as log_err:
+            print(f"[email_logs] {log_err}")
+            try: conn.rollback()
+            except: pass
 
     conn.close()
     _log_event("pro_email", current_user["bn"], f"sent={sent},failed={failed},skipped={skipped}")

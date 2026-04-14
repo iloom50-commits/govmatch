@@ -3999,10 +3999,10 @@ def api_debug_persistence(req: AdminAuthRequest):
     tables = [
         "pro_consult_sessions",
         "consult_sessions",
-        "pro_clients",
-        "consultation_history",
-        "consult_history",
-        "pro_consult_saves",
+        "client_profiles",
+        "ai_consult_logs",
+        "client_profile_files",
+        "pro_reports",
     ]
     for t in tables:
         try:
@@ -4040,21 +4040,47 @@ def api_debug_persistence(req: AdminAuthRequest):
         try: conn.rollback()
         except: pass
 
-    # pro_clients 최근 5건
+    # client_profiles 최근 5건
     try:
         cur.execute("""
-            SELECT id, business_number, client_name, client_type, industry_code, address_city, created_at
-            FROM pro_clients
+            SELECT id, owner_business_number, business_number, client_name, client_type,
+                   industry_code, address_city, is_active, created_at, updated_at
+            FROM client_profiles
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT 5
+        """)
+        rows = cur.fetchall()
+        out["client_profiles_sample"] = []
+        for r in rows:
+            d = dict(r)
+            d["created_at"] = str(d.get("created_at"))
+            d["updated_at"] = str(d.get("updated_at"))
+            out["client_profiles_sample"].append(d)
+    except Exception as e:
+        out["client_profiles_sample_error"] = str(e)[:200]
+        try: conn.rollback()
+        except: pass
+
+    # ai_consult_logs 최근 5건
+    try:
+        cur.execute("""
+            SELECT id, business_number, announcement_id, conclusion, feedback,
+                   created_at,
+                   CASE WHEN messages IS NULL THEN 0
+                        WHEN jsonb_typeof(messages) = 'array' THEN jsonb_array_length(messages)
+                        ELSE 0 END AS msg_count
+            FROM ai_consult_logs
             ORDER BY created_at DESC NULLS LAST
             LIMIT 5
         """)
         rows = cur.fetchall()
-        out["pro_clients_sample"] = [dict(r) for r in rows]
-        for r in out["pro_clients_sample"]:
-            if r.get("created_at"):
-                r["created_at"] = str(r["created_at"])
+        out["ai_consult_logs_sample"] = []
+        for r in rows:
+            d = dict(r)
+            d["created_at"] = str(d.get("created_at"))
+            out["ai_consult_logs_sample"].append(d)
     except Exception as e:
-        out["pro_clients_sample_error"] = str(e)[:200]
+        out["ai_consult_logs_sample_error"] = str(e)[:200]
         try: conn.rollback()
         except: pass
 

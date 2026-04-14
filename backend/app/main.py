@@ -4462,6 +4462,198 @@ def api_ksic_embed_batch(req: AdminAuthRequest):
     }
 
 
+class SectionFeedbackRequest(BaseModel):
+    section_id: int
+    rating: int  # 1 (👎) | 5 (👍)
+    comment: Optional[str] = ""
+
+
+@app.post("/api/pro/sections/feedback")
+def api_pro_section_feedback(req: SectionFeedbackRequest, current_user: dict = Depends(_get_current_user)):
+    """M: 컨설턴트가 RAG 답변 출처 섹션에 평가를 남김. 검색 가중치에 자동 반영."""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO section_feedback (section_id, business_number, rating, comment)
+               VALUES (%s, %s, %s, %s)""",
+            (req.section_id, current_user["bn"], max(1, min(5, req.rating)), req.comment or ""),
+        )
+        conn.commit()
+        # 누적 평점 평균 → 점수 가중치 (선택)
+        cur.execute(
+            "SELECT AVG(rating)::FLOAT AS avg_rating, COUNT(*) AS cnt FROM section_feedback WHERE section_id = %s",
+            (req.section_id,)
+        )
+        row = cur.fetchone()
+        conn.close()
+        return {
+            "status": "SUCCESS",
+            "section_id": req.section_id,
+            "avg_rating": round(row["avg_rating"], 2) if row else None,
+            "feedback_count": row["cnt"] if row else 0,
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"피드백 저장 실패: {str(e)[:200]}")
+
+
+@app.get("/api/pro/insights/recent")
+def api_pro_insights_recent(current_user: dict = Depends(_get_current_user)):
+    """L: 최근 학습된 인사이트 (knowledge_base 신규 항목) — 컨설턴트가 체감할 수 있도록."""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, source, knowledge_type, category, content, confidence, use_count, created_at
+            FROM knowledge_base
+            WHERE source IN ('pro_consult', 'consult', 'free_chat')
+            ORDER BY created_at DESC NULLS LAST
+            LIMIT 30
+        """)
+        rows = cur.fetchall()
+        items = []
+        for r in rows:
+            d = dict(r)
+            d["created_at"] = str(d.get("created_at"))
+            content = d.get("content")
+            if isinstance(content, str):
+                try: content = json.loads(content)
+                except: content = {"raw": content}
+            d["content"] = content
+            items.append(d)
+        # 통계
+        cur.execute("SELECT COUNT(*) AS c FROM knowledge_base WHERE source IN ('pro_consult', 'consult')")
+        total = cur.fetchone()["c"]
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM knowledge_base
+            WHERE source IN ('pro_consult', 'consult')
+              AND created_at >= NOW() - INTERVAL '7 days'
+        """)
+        last_7 = cur.fetchone()["c"]
+        conn.close()
+        return {
+            "status": "SUCCESS",
+            "total_insights": total,
+            "last_7_days": last_7,
+            "recent": items,
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"인사이트 조회 실패: {str(e)[:200]}")
+
+
+class EvalRunRequest(BaseModel):
+    password: str
+    test_set_name: Optional[str] = "default"
+
+
+@app.post("/api/admin/eval/run")
+def api_eval_run(req: EvalRunRequest):
+    """K: PRO 상담 품질 자동 측정. 사전 정의된 Eval Set으로 RAG 검색 + 답변 정확도 측정.
+    매 배포마다 호출하여 회귀 감지.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    # 내장 Eval Set — 정부 지원사업 도메인 핵심 질문 100개 중 대표 20개
+    EVAL_SET = [
+        # 자격 관련
+        {"q": "여성기업 대표가 받을 수 있는 정책자금이 뭐가 있나요?", "expected_keywords": ["여성", "정책자금", "지원"]},
+        {"q": "예비창업자에게 적합한 창업지원사업은?", "expected_keywords": ["예비창업", "창업"]},
+        {"q": "스마트공장 구축 지원금 자격 요건이 어떻게 되나요?", "expected_keywords": ["스마트공장", "자격", "제조"]},
+        {"q": "청년창업 가점이 있는 R&D 사업이 있나요?", "expected_keywords": ["청년", "R&D"]},
+        {"q": "사회적기업 인증 받은 곳이 받을 수 있는 사업?", "expected_keywords": ["사회적기업", "지원"]},
+        # 신청 절차
+        {"q": "정부지원사업 신청 시 필요한 서류는 일반적으로 무엇인가요?", "expected_keywords": ["서류", "신청"]},
+        {"q": "사업계획서 작성할 때 가점받는 항목이 있나요?", "expected_keywords": ["사업계획서", "가점"]},
+        # 개인 복지
+        {"q": "1인가구 청년 주거 지원 사업이 있나요?", "expected_keywords": ["청년", "주거", "1인가구"]},
+        {"q": "기초생활수급자가 받을 수 있는 의료 지원은?", "expected_keywords": ["기초생활", "의료"]},
+        {"q": "다자녀 가구 출산 지원금 알려주세요", "expected_keywords": ["다자녀", "출산"]},
+        # 지역
+        {"q": "서울시 소상공인 지원 사업이 뭐가 있나요?", "expected_keywords": ["서울", "소상공인"]},
+        {"q": "경기도 청년 일자리 사업?", "expected_keywords": ["경기", "청년", "일자리"]},
+        # 분야
+        {"q": "수출 마케팅 지원사업 추천", "expected_keywords": ["수출", "마케팅"]},
+        {"q": "에너지 효율 개선 보조금이 있나요?", "expected_keywords": ["에너지", "효율"]},
+        {"q": "디지털 전환 지원 사업?", "expected_keywords": ["디지털", "전환"]},
+        # 금액
+        {"q": "1억 이상 받을 수 있는 정책자금은?", "expected_keywords": ["정책자금", "억"]},
+        # 일정
+        {"q": "이번 달 마감 임박 공고가 있나요?", "expected_keywords": ["마감"]},
+        # 특수조건
+        {"q": "장애인 기업 우대 사업이 뭐가 있나요?", "expected_keywords": ["장애인"]},
+        {"q": "북한이탈주민 창업 지원?", "expected_keywords": ["북한이탈", "창업"]},
+        # 신청 전략
+        {"q": "심사위원이 좋아하는 사업계획서 작성법", "expected_keywords": ["사업계획", "심사"]},
+    ]
+
+    from app.services.ai_consultant import search_sections_for_rag, search_knowledge_for_rag
+
+    conn = get_db_connection()
+    results = []
+    total_recall = 0
+    total_keyword_hits = 0
+    total_keyword_count = 0
+
+    for case in EVAL_SET:
+        q = case["q"]
+        expected = case["expected_keywords"]
+        # 1) 섹션 RAG
+        sec_rag = search_sections_for_rag(q, conn, top_k=5)
+        sections = sec_rag.get("sections", [])
+        # 2) 공고/지식 RAG (보조)
+        doc_rag = search_knowledge_for_rag(q, conn, top_k_ann=5, top_k_kb=2)
+        announcements = doc_rag.get("announcements", [])
+
+        # 키워드 적중률 — 검색된 텍스트에 expected 키워드가 몇 개 포함되는지
+        all_text = " ".join([
+            (s.get("ann_title", "") + " " + s.get("section_text", "")) for s in sections
+        ] + [
+            (a.get("title", "") + " " + a.get("summary", "")) for a in announcements
+        ])
+        hits = sum(1 for k in expected if k in all_text)
+        keyword_hit_rate = hits / max(1, len(expected))
+        total_keyword_hits += hits
+        total_keyword_count += len(expected)
+
+        # Recall — 결과가 1개 이상이면 1
+        has_results = bool(sections) or bool(announcements)
+        if has_results:
+            total_recall += 1
+
+        results.append({
+            "question": q,
+            "expected": expected,
+            "section_count": len(sections),
+            "ann_count": len(announcements),
+            "keyword_hit_rate": round(keyword_hit_rate, 2),
+            "top_section": (sections[0].get("ann_title", "") if sections else None),
+            "top_section_score": (sections[0].get("similarity") if sections else None),
+        })
+
+    conn.close()
+
+    overall_recall = round(total_recall / len(EVAL_SET), 3)
+    overall_keyword = round(total_keyword_hits / max(1, total_keyword_count), 3)
+    quality_score = round((overall_recall * 0.4 + overall_keyword * 0.6) * 100, 1)
+
+    return {
+        "status": "SUCCESS",
+        "test_set": req.test_set_name,
+        "total_cases": len(EVAL_SET),
+        "metrics": {
+            "recall": overall_recall,  # 결과를 반환한 비율
+            "keyword_hit_rate": overall_keyword,  # 기대 키워드 적중률
+            "quality_score": quality_score,  # 종합 점수 (0~100)
+        },
+        "details": results,
+    }
+
+
 @app.post("/api/admin/run-migrations")
 def api_run_migrations(req: AdminAuthRequest):
     """P1: email_logs, match_history 등 누락 테이블 강제 생성."""

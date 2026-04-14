@@ -112,17 +112,19 @@ def search_sections_for_rag(
         where_parts.append("(a.region IS NULL OR a.region ILIKE %s OR a.region ILIKE '%%전국%%')")
         params.append(f"%{city}%")
     where_sql = " AND ".join(where_parts)
-    params.append(vec_str)
     params.append(top_k)
 
+    # M: section_feedback 평균 평점을 가중치로 사용 (3.0이 중립, >3.0 boost, <3.0 demote)
     sql = f"""
         SELECT s.id, s.announcement_id, s.section_type, s.section_title, s.section_text,
                a.title AS ann_title, a.department, a.support_amount, a.deadline_date,
-               1 - (s.embedding <=> %s::vector) AS similarity
+               (1 - (s.embedding <=> %s::vector)) *
+               COALESCE((SELECT 1.0 + ((AVG(rating) - 3.0) / 10.0) FROM section_feedback sf WHERE sf.section_id = s.id), 1.0)
+               AS similarity
         FROM announcement_sections s
         LEFT JOIN announcements a ON s.announcement_id = a.announcement_id
         WHERE {where_sql}
-        ORDER BY s.embedding <=> %s::vector
+        ORDER BY similarity DESC
         LIMIT %s
     """
     try:
@@ -334,14 +336,16 @@ def search_knowledge_for_rag(query: str, db_conn, top_k_ann: int = 5, top_k_kb: 
         cur = db_conn.cursor()
         # knowledge_base에 embedding 컬럼이 있으면 사용, 없으면 키워드 매칭
         try:
+            # N: PRO 출처(source='pro_consult')는 가중치 boost (similarity * 1.15)
             cur.execute("""
-                SELECT id, knowledge_type, category, content, confidence,
-                       1 - (embedding <=> %s::vector) AS similarity
+                SELECT id, knowledge_type, category, content, confidence, source,
+                       (1 - (embedding <=> %s::vector)) *
+                       CASE WHEN source = 'pro_consult' THEN 1.15 ELSE 1.0 END AS similarity
                 FROM knowledge_base
                 WHERE embedding IS NOT NULL AND confidence >= 0.4
-                ORDER BY embedding <=> %s::vector
+                ORDER BY similarity DESC
                 LIMIT %s
-            """, (vec_str, vec_str, top_k_kb))
+            """, (vec_str, top_k_kb))
             rows = cur.fetchall()
         except Exception:
             # embedding 컬럼 없으면 키워드 기반 LIKE

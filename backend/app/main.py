@@ -4649,6 +4649,126 @@ def api_embeddings_debug_match(req: AdminAuthRequest):
     }
 
 
+@app.post("/api/admin/embeddings/reembed-analyzed")
+def api_embeddings_reembed_analyzed(req: AdminAuthRequest):
+    """정밀분석 있는 공고를 풍부한 텍스트로 재임베딩 (한 번 호출 당 최대 200건).
+    기존 임베딩이 있어도 ON CONFLICT UPDATE로 덮어씀.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    import time as _time
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    DEADLINE_SEC = 250
+    MAX_ITEMS = 200
+    start = _time.time()
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 정밀분석이 있고, 기존 임베딩 source_text에 "자격요건" 문자열이 없는 것 (= 아직 풍부화 안 된 것)
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.department, a.category,
+               a.support_amount, a.region, a.summary_text,
+               aa.parsed_sections, aa.deep_analysis
+        FROM announcement_analysis aa
+        JOIN announcements a ON a.announcement_id = aa.announcement_id
+        LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
+        WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+        ORDER BY a.announcement_id
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+    if not rows:
+        conn.close()
+        return {"status": "SUCCESS", "done": True, "processed": 0, "remaining": 0}
+
+    ok = 0
+    fail = 0
+    for row in rows:
+        if _time.time() - start > DEADLINE_SEC:
+            break
+        try:
+            title = (row.get("title") or "")[:200]
+            dept = (row.get("department") or "")[:100]
+            cat = (row.get("category") or "")[:50]
+            amount = (row.get("support_amount") or "")[:50]
+            region = (row.get("region") or "")[:50]
+            summary = (row.get("summary_text") or "")[:2000]
+            source_text = f"제목: {title}\n부처: {dept}\n카테고리: {cat}\n지원금액: {amount}\n지역: {region}\n내용: {summary}"
+            ps = row.get("parsed_sections")
+            da = row.get("deep_analysis")
+            if isinstance(ps, str):
+                try: ps = json.loads(ps)
+                except: ps = None
+            if isinstance(da, str):
+                try: da = json.loads(da)
+                except: da = None
+            extras = []
+            if isinstance(ps, dict):
+                for key, label in [("eligibility", "자격요건"), ("required_documents", "제출서류"),
+                                   ("application_method", "신청방법"), ("target", "지원대상")]:
+                    v = ps.get(key)
+                    if isinstance(v, str) and v.strip():
+                        extras.append(f"{label}: {v[:400]}")
+            if isinstance(da, dict):
+                kp = da.get("key_points") or da.get("summary")
+                if isinstance(kp, str) and kp.strip():
+                    extras.append(f"핵심포인트: {kp[:400]}")
+            if extras:
+                source_text += "\n" + "\n".join(extras)
+
+            res = genai.embed_content(
+                model="models/gemini-embedding-001",
+                content=source_text,
+                task_type="retrieval_document",
+                output_dimensionality=768,
+            )
+            vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+            if not vec or len(vec) < 100:
+                fail += 1
+                continue
+            vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+            cur.execute("""
+                INSERT INTO announcement_embeddings (announcement_id, embedding, source_text, model_name, updated_at)
+                VALUES (%s, %s::vector, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (announcement_id) DO UPDATE SET
+                    embedding = EXCLUDED.embedding,
+                    source_text = EXCLUDED.source_text,
+                    model_name = EXCLUDED.model_name,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (row["announcement_id"], vec_str, source_text[:5000], "gemini-embedding-001-enriched"))
+            conn.commit()
+            ok += 1
+        except Exception as e:
+            conn.rollback()
+            fail += 1
+            print(f"[ReEmbBatch] #{row.get('announcement_id')}: {str(e)[:150]}")
+
+    cur.execute("""
+        SELECT COUNT(*) AS c
+        FROM announcement_analysis aa
+        JOIN announcements a ON a.announcement_id = aa.announcement_id
+        LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
+        WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+    """)
+    remaining = cur.fetchone()["c"]
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "success": ok,
+        "failed": fail,
+        "remaining": remaining,
+        "done": remaining == 0,
+        "elapsed": round(_time.time() - start, 1),
+    }
+
+
 @app.post("/api/admin/embeddings/list-models")
 def api_embeddings_list_models(req: AdminAuthRequest):
     """사용 가능한 Gemini 모델 리스트 조회 (임베딩 지원 모델만)."""
@@ -4700,11 +4820,14 @@ def api_embeddings_batch(req: AdminAuthRequest):
     cur = conn.cursor()
 
     # 미임베딩 공고 선별 (마감 안 된 것 우선, 지원금액 있는 것 우선)
+    # announcement_analysis를 LEFT JOIN → parsed_sections / deep_analysis 병합 (있으면 풍부화)
     cur.execute("""
         SELECT a.announcement_id, a.title, a.department, a.category,
-               a.support_amount, a.region, a.summary_text
+               a.support_amount, a.region, a.summary_text,
+               aa.parsed_sections, aa.deep_analysis
         FROM announcements a
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE e.announcement_id IS NULL
           AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
@@ -4739,6 +4862,29 @@ def api_embeddings_batch(req: AdminAuthRequest):
             region = (row.get("region") or "")[:50]
             summary = (row.get("summary_text") or "")[:2000]
             source_text = f"제목: {title}\n부처: {dept}\n카테고리: {cat}\n지원금액: {amount}\n지역: {region}\n내용: {summary}"
+
+            # 정밀분석 데이터가 있으면 임베딩 텍스트에 병합 (자격요건/서류/신청방법 → 의미 검색 품질 향상)
+            ps = row.get("parsed_sections")
+            da = row.get("deep_analysis")
+            if isinstance(ps, str):
+                try: ps = json.loads(ps)
+                except: ps = None
+            if isinstance(da, str):
+                try: da = json.loads(da)
+                except: da = None
+            extras = []
+            if isinstance(ps, dict):
+                for key, label in [("eligibility", "자격요건"), ("required_documents", "제출서류"),
+                                   ("application_method", "신청방법"), ("target", "지원대상")]:
+                    v = ps.get(key)
+                    if isinstance(v, str) and v.strip():
+                        extras.append(f"{label}: {v[:400]}")
+            if isinstance(da, dict):
+                kp = da.get("key_points") or da.get("summary")
+                if isinstance(kp, str) and kp.strip():
+                    extras.append(f"핵심포인트: {kp[:400]}")
+            if extras:
+                source_text += "\n" + "\n".join(extras)
 
             # Gemini 임베딩 호출
             res = genai.embed_content(

@@ -22,6 +22,127 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 
+def _extract_and_embed_sections_inline(db_conn, announcement_id: int, parsed_sections: dict, deep_analysis: dict) -> int:
+    """단일 공고의 parsed_sections + deep_analysis → announcement_sections 테이블에 적재 + 임베딩 발행.
+    실패는 silent, 반환: 적재된 섹션 개수.
+    """
+    try:
+        import google.generativeai as _genai
+    except ImportError:
+        return 0
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return 0
+
+    SECTION_KEYS = [
+        ("eligibility", "자격요건"),
+        ("target", "지원대상"),
+        ("required_documents", "제출서류"),
+        ("application_method", "신청방법"),
+        ("support_amount", "지원금액"),
+        ("support_content", "지원내용"),
+        ("schedule", "일정"),
+        ("contact", "문의처"),
+        ("notes", "유의사항"),
+    ]
+
+    rows_to_embed = []
+    try:
+        cur = db_conn.cursor()
+        # 기존 섹션 삭제 (재분석 시 갱신)
+        cur.execute("DELETE FROM announcement_sections WHERE announcement_id = %s", (announcement_id,))
+        order = 0
+        # parsed_sections
+        if isinstance(parsed_sections, dict):
+            for key, label in SECTION_KEYS:
+                v = parsed_sections.get(key)
+                if not v:
+                    continue
+                text = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+                text = text.strip()
+                if len(text) < 10:
+                    continue
+                cur.execute(
+                    """INSERT INTO announcement_sections
+                       (announcement_id, section_type, section_title, section_text, section_order)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                    (announcement_id, key, label, text[:5000], order),
+                )
+                row = cur.fetchone()
+                if row:
+                    rows_to_embed.append((row["id"], key, label, text[:3500]))
+                order += 1
+        # deep_analysis 핵심포인트
+        if isinstance(deep_analysis, dict):
+            for k in ("key_points", "summary", "strategy"):
+                v = deep_analysis.get(k)
+                if isinstance(v, str) and len(v.strip()) >= 20:
+                    cur.execute(
+                        """INSERT INTO announcement_sections
+                           (announcement_id, section_type, section_title, section_text, section_order)
+                           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                        (announcement_id, f"insight_{k}", k, v.strip()[:5000], order),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        rows_to_embed.append((row["id"], f"insight_{k}", k, v.strip()[:3500]))
+                    order += 1
+        db_conn.commit()
+    except Exception as e:
+        try: db_conn.rollback()
+        except: pass
+        print(f"[sec inline insert] #{announcement_id}: {str(e)[:150]}")
+        return 0
+
+    if not rows_to_embed:
+        return 0
+
+    # 공고 메타 조회 (임베딩 텍스트에 포함)
+    try:
+        cur = db_conn.cursor()
+        cur.execute("SELECT title, department FROM announcements WHERE announcement_id = %s", (announcement_id,))
+        meta = cur.fetchone() or {}
+        ann_title = (meta.get("title") if meta else "")[:150] if meta else ""
+        dept = (meta.get("department") if meta else "")[:80] if meta else ""
+    except Exception:
+        ann_title = ""
+        dept = ""
+
+    embedded = 0
+    try:
+        _genai.configure(api_key=api_key)
+        for sid, stype, stitle, stext in rows_to_embed:
+            try:
+                text = f"공고: {ann_title}\n부처: {dept}\n섹션: {stitle} ({stype})\n내용: {stext}"
+                res = _genai.embed_content(
+                    model="models/gemini-embedding-001",
+                    content=text,
+                    task_type="retrieval_document",
+                    output_dimensionality=768,
+                )
+                vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+                if not vec or len(vec) < 100:
+                    continue
+                vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+                cur = db_conn.cursor()
+                cur.execute(
+                    "UPDATE announcement_sections SET embedding = %s::vector, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (vec_str, sid),
+                )
+                db_conn.commit()
+                embedded += 1
+            except Exception as e:
+                try: db_conn.rollback()
+                except: pass
+                print(f"[sec inline embed] #{sid}: {str(e)[:120]}")
+    except Exception as e:
+        print(f"[sec inline outer] {e}")
+
+    if embedded:
+        print(f"[DocAnalysis] ★ #{announcement_id} sections embedded inline: {embedded} sections")
+    return embedded
+
+
 def _embed_single_announcement_inline(db_conn, announcement_id: int) -> bool:
     """단일 공고를 즉시 임베딩하여 announcement_embeddings에 저장.
     실패는 silent (분석 자체는 이미 완료된 상태).
@@ -1068,11 +1189,17 @@ def analyze_and_store(
         except Exception as amt_err:
             print(f"[DocAnalysis] support_amount update error: {amt_err}")
 
-        # ★ 분석 완료 직후 임베딩 즉시 발행 (RAG에 자동 편입)
+        # ★ 분석 완료 직후 임베딩 즉시 발행 (공고 단위 RAG 자동 편입)
         try:
             _embed_single_announcement_inline(db_conn, announcement_id)
         except Exception as emb_err:
             print(f"[DocAnalysis] inline embedding error: {emb_err}")
+
+        # ★★ 분석 완료 직후 섹션 추출 + 섹션 임베딩 즉시 발행 (섹션 단위 RAG 자동 편입)
+        try:
+            _extract_and_embed_sections_inline(db_conn, announcement_id, parsed_sections, deep_analysis)
+        except Exception as sec_err:
+            print(f"[DocAnalysis] inline section extraction error: {sec_err}")
 
         return result_info
     except Exception as e:

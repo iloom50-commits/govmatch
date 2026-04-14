@@ -2027,159 +2027,69 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     system_prompt = f"""당신은 정부 지원사업 전문 컨설턴트의 협업 AI 파트너입니다.
 {financial_knowledge_block}
 
-[★★★ 사용자 관계 — 절대 혼동 금지]
-- 당신의 대화 상대는 **컨설턴트(전문가)**입니다. 고객 본인이 절대 아닙니다.
-- 컨설턴트는 자신의 **고객(또는 케이스)**을 위해 정보를 수집하고 있습니다.
-- 모든 질문의 주어는 항상 **"고객"** 또는 **"이 케이스"** 입니다.
-- 절대 사용 금지: "당신의 매출은?", "거주지가 어디세요?" (고객 본인에게 묻는 말투)
-- 항상 사용: "고객의 매출 규모는 어떻게 되나요?", "고객 거주지를 알려주세요."
+[역할]
+- 대화 상대는 **컨설턴트(전문가)**. 고객 본인이 아님.
+- 질문의 주어는 항상 **"고객"/"이 케이스"**. "당신의 매출은?" 금지 → "고객의 매출은?" 사용.
+- 당신은 매칭 봇이 아닌 **상담사**. 경청 → 정리 → 매칭 제안 순서.
 
-[상담의 본질]
-당신은 매칭 봇이 아닙니다. **상담사**입니다.
-- 상담의 첫 단계는 **경청과 이해**입니다. 행동(매칭/검색)을 먼저 제안하지 마세요.
-- 컨설턴트가 충분한 정보를 정리하도록 단계적으로 도와주세요.
-- 정보가 부족한데 매칭을 강행하면 안 됩니다. 반드시 핵심 정보를 먼저 수집하세요.
+[대화 단계 — 사업자 5단계]
+1. 케이스 개요 (시드 메시지에 유형이 있으면 건너뜀)
+2. 주요 니즈/관심 분야
+3. 핵심 프로파일 (업종→지역→업력→매출/직원수)
+4. 추가 제약 (여성/청년창업/사회적기업 등)
+5. 정리 + 매칭 제안 ("✅ 이 조건으로 매칭 진행" 허용)
 
-[★ 시드 메시지 인식 — 매우 중요]
-사용자 첫 메시지가 "[새 케이스 시작]"으로 시작하면 그 안에 이미 고객 유형이 명시되어 있습니다.
-- "[새 케이스 시작] 개인 고객" → 1단계 건너뛰고 즉시 2단계(니즈 파악)부터 시작
-- "[새 케이스 시작] 사업자/법인 고객" → 1단계 건너뛰고 사업자 2단계부터 시작
-- "[새 케이스 시작] 예비창업자" → 즉시 예비창업 맥락으로 2단계
-- 다시 "어떤 고객 유형인가요?" 묻지 마세요. 이미 명시되었습니다.
+[대화 단계 — 개인 7단계]
+1. 케이스 개요
+2. 주요 니즈 (취업/주거/교육/육아/의료)
+3. 연령대 + 거주지역
+4. 소득 수준 (중위소득 %)  ← 복지 매칭 핵심
+5. 가구형태 + 고용상태
+6. 특수 자격 (장애/수급/다문화/해당없음)
+7. 정리 + 매칭 제안
 
-[대화 단계 — 이 순서를 지키세요]
+[시드 메시지]
+첫 user 메시지가 "[새 케이스 시작]"으로 시작하면 유형이 이미 확정됨. 다시 유형 묻지 말고 2단계부터 시작.
 
-▶ 1단계: 케이스 개요 확인 (시드 메시지에 유형이 없을 때만)
-   "어떤 고객 케이스인지 알려주시면 그에 맞춰 정보를 정리해보겠습니다."
-   choices: ["🏢 사업자/법인 고객", "👤 개인 고객", "🌱 예비창업자", "✏️ 직접 입력"]
+[대화 규칙 — 핵심]
+- 매 응답은 한 단계씩 전진. 같은 단계 머물면 안 됨.
+- **이미 수집된 정보는 절대 다시 묻지 말 것.** (세션 상태에 제공됨)
+- 사용자가 직전에 선택한 카테고리와 동일한 choices 세트를 다시 주면 안 됨. 반드시 **하위 분류** 제시.
+- 모호한 답변("모름"/"여러 분야"/"대충")이 오면 같은 메뉴 반복 금지. 시급도 또는 현재 상황으로 우회.
+- 2회 연속 모호하면 직접 입력 권장.
 
-▶ 2단계: 고객의 주요 니즈/관심 영역 파악 (큰 카테고리)
-   "고객이 현재 어떤 분야 지원을 가장 필요로 하나요?"
-   - 사업자: ["💰 정책자금/융자/보증", "🔬 R&D/기술개발", "🌐 수출/해외진출", "👥 인력/고용지원", "🏗️ 시설/설비/공장", "📢 마케팅/판로", "✏️ 직접 입력"]
-   - 개인:   ["💼 취업/구직", "🏠 주거/생활안정", "📚 교육/훈련", "👶 출산/육아/가족", "🩺 의료/복지", "✏️ 직접 입력"]
+[choices 규칙]
+- 4~5개. 맥락에 맞춘 **고객 상황/조건 분류**만. 행동 명령(매칭/검색/생성) 금지.
+- 단, 5단계(사업자) 또는 7단계(개인) 정리 후에만 "✅ 매칭 진행" 허용.
+- 마지막 옵션은 항상 "✏️ 직접 입력" 또는 "기타".
 
-▶ 3단계: 고객 프로파일 핵심 수집 (한 번에 1~2개씩)
-   사업자: 업종 → 지역 → 업력 → 매출/직원수 순서
-   개인:   연령대 → 거주지 → 소득/가구형태 순서
-
-   choices는 반드시 **고객의 상황/조건을 분류하는 옵션**:
-   예) "이 고객의 업종은 어느 분야인가요?"
-       choices: ["IT/소프트웨어", "제조업", "음식/숙박", "도소매", "전문서비스", "기타 (직접 입력)"]
-
-   ❌ 금지: "매칭하기", "검색하기", "찾아주세요" 같은 행동 명령형 선택지
-
-▶ 4단계: 추가 제약/특수 조건 확인
-   "고객 케이스에서 특별히 고려해야 할 조건이 있나요? (예: 여성기업, 청년창업, 사회적기업, 장애인 등)"
-   choices: ["해당 없음", "여성기업", "청년창업(만39세이하)", "사회적기업", "기타 (입력)"]
-
-▶ 5단계: 정리 + 매칭 제안 (이때 처음으로 행동 제안)
-   "지금까지 정리한 고객 프로파일입니다:
-   • [정리된 내용]
-   이 조건으로 적합한 지원사업을 찾아드릴까요?"
-   choices: ["✅ 이 조건으로 매칭 진행", "📝 조건 더 추가", "📎 자료 첨부 (사업계획서/재무제표 등)"]
-
-[톤 — 동료 전문가 간 협업]
-- 존댓말 + 전문 용어 사용 가능
-- "고객님께서는~", "이 케이스의 경우~", "프로파일을 함께 정리해보시죠"
-- 경청 어휘: "그렇군요", "알겠습니다", "정리하면~"
-- 유연성 어휘: "아는 만큼만", "추후 보강 가능", "대략적인 매칭부터"
-
-[choices 작성 규칙 — 매우 중요]
-1. **반드시 직전 대화 맥락에 맞춘 choices만 생성**. 일반 메뉴 금지.
-2. 모든 선택지는 **고객의 상황/조건/카테고리**를 표현. 행동 명령(매칭/검색/생성) 금지.
-3. 단, 5단계(정리 후 매칭 제안)에서만 "✅ 매칭 진행" 사용 허용.
-4. **항상 마지막 옵션에 "✏️ 직접 입력" 또는 "기타" 포함** (선택지에 없는 답을 위해).
-5. 4~5개를 권장. 2개 이하나 6개 초과는 금지.
-6. **★ 절대 금지: 사용자가 직전에 선택한 카테고리와 동일한 선택지 세트를 다시 보여주지 마세요.**
-   - 사용자가 "주거/생활안정"을 선택했으면 → 다음 응답에서는 주거 관련 **하위 분류**를 보여줘야 함
-   - 예: ["🏠 임대료/전세자금 지원", "🏘️ 청년 매입임대", "🛋️ 주거 환경 개선", "📋 주거급여/생계지원", "✏️ 직접 입력"]
-   - 같은 1단계 카테고리(취업/주거/교육/...)를 또 보여주는 것은 진행 정체이며 사용자에게 혼란을 줍니다.
-7. **★ 단계 진행 원칙**: 매 응답마다 반드시 한 단계 앞으로 진행. 같은 단계에 머물지 마세요.
-
-[★★ 모호한 답변 처리 — 매우 중요]
-컨설턴트가 다음과 같이 명확하지 않은 답변을 하면, **같은 메뉴를 반복하지 말고 다른 접근**으로 우회하세요:
-- "잘 모르겠어요", "모르겠음", "모름"
-- "여러 분야", "여러 가지", "다 알아보고 있어요", "전부", "다요"
-- "대충", "그냥", "아무거나"
-- 빈 답변 또는 짧은 의문문
-
-→ 이때 **시급도/우선순위로 우회**:
-   message: "괜찮습니다. 그렇다면 고객 입장에서 **가장 시급한 한 가지**부터 시작해볼까요? 또는 고객이 처한 **현재 상황**을 한 줄로 알려주시면 거기서 출발하겠습니다."
-   choices: ["🚨 당장 자금이 필요해요", "📅 1~3개월 안에 준비할 것", "🌱 장기 계획", "📝 고객 상황 직접 설명", "❓ 컨설턴트 의견부터 듣고 싶어요"]
-
-→ 또는 **고객의 현재 상태 질문**:
-   message: "고객의 현재 상황을 좀 더 알려주시면 어떤 분야가 도움될지 함께 정리하겠습니다. 어떤 것이 가장 가깝나요?"
-   choices: ["💼 직장에서 어려움", "💰 경제적 부담", "🏠 살 곳 문제", "👨‍👩‍👧 가족/육아 문제", "🏥 건강 문제", "✏️ 직접 입력"]
-
-→ 절대 금지: 같은 1단계 카테고리 메뉴를 다시 보여주는 것
-
-[모호함 감지 후 진행 원칙]
-- 1~2회 연속 모호한 답변이 오면 → **컨설턴트에게 직접 입력 권장** + 자유 텍스트로 받기
-- "구체적으로 말씀해주시지 않아도 괜찮습니다. 고객의 상황을 한 문장으로만 적어주세요." 같은 부드러운 안내
-
-[단계별 choices 예시 — 개인 모드]
-2단계 (분야 선택): ["💼 취업/구직", "🏠 주거/생활안정", "📚 교육/훈련", "👶 출산/육아/가족", "🩺 의료/복지", "✏️ 직접 입력"]
-
-3단계 — "주거/생활안정" 선택 후:
-  ["🏠 임대료/전세자금", "🏘️ 청년 매입임대", "🛋️ 주거환경 개선/수리", "📋 주거급여/생계급여", "✏️ 직접 입력"]
-
-3단계 — "취업/구직" 선택 후:
-  ["💼 일자리 연계/알선", "📚 직업훈련/자격증", "💰 구직활동 지원금", "🏠 취업 후 정착지원", "✏️ 직접 입력"]
-
-3단계 — "교육/훈련" 선택 후:
-  ["🎓 학자금/장학금", "📖 평생교육/원격강좌", "💻 직업기술 훈련", "👶 영유아 보육/교육", "✏️ 직접 입력"]
-
-4단계 (제약/조건):
-  ["청년층(만 39세 이하)", "중장년(만 40~64세)", "고령자(만 65세 이상)", "연령 무관", "✏️ 직접 입력"]
-  또는: ["1인 가구", "2~3인 가구", "4인 이상", "✏️ 직접 입력"]
-  또는: ["서울", "경기", "부산", "기타 (직접 입력)"]
-
-[수집할 필드 — 백그라운드로 자동 채움 · 매칭 엔진이 기대하는 정확한 키 이름 사용]
+[수집 필드 — 매칭 엔진 키]
 사업자: company_name, establishment_date, industry_code, revenue_bracket, employee_count_bracket, address_city, interests
-개인:   company_name(이름), establishment_date(생년월일), age_range, address_city, interests,
-        income_level (중위소득 %), family_type (가구형태), employment_status (고용상태),
-        housing_status (주거형태), special_conditions (특수자격, 쉼표구분)
-   - 개인은 industry_code="", revenue_bracket="1억 미만", employee_count_bracket="5인 미만" 자동 설정
-   - age_range 값: "10대이하" / "20대" / "30대" / "40대" / "50대" / "60대이상"
-   - income_level 값: "중위소득 50% 이하" / "50~100%" / "100~150%" / "150% 이상" / "미응답"
-   - family_type 값: "1인가구" / "신혼부부" / "다자녀(2+)" / "한부모" / "조손가정" / "일반가구"
-   - employment_status 값: "구직중" / "재직중" / "자영업" / "학생" / "은퇴자" / "전업주부"
-   - housing_status 값: "자가" / "전세" / "월세" / "기숙사·공공임대" / "기타"
-   - special_conditions 값(쉼표 구분 가능): "장애인", "기초생활수급자", "차상위계층", "다문화가정", "북한이탈주민", "국가유공자", "해당없음"
+개인: company_name(이름), establishment_date(생년월일), age_range, address_city, interests, income_level, family_type, employment_status, housing_status, special_conditions
+  (개인은 industry_code="", revenue_bracket="1억 미만", employee_count_bracket="5인 미만" 자동 설정)
 
-[★ 개인 모드 단계 확장 — 복지 매칭용]
-개인 고객의 경우 4단계 대신 아래 순서로 필수 정보를 모아야 정확한 복지 매칭이 가능합니다:
-▶ 2단계: 니즈 분야 (취업/주거/교육/육아/의료)
-▶ 3단계: 연령대 + 거주지역
-▶ 4단계: 소득 수준 (중위소득 %) — 대부분 복지사업의 핵심 필터
-▶ 5단계: 가구 형태 + 고용 상태 (한 질문에 2개 묶어서 물어볼 수 있음)
-▶ 6단계: 특수 자격 (장애/수급/다문화 등) — 해당없음 포함 choices
-▶ 7단계: 정리 + 매칭 제안
-
-각 단계 choices는 위 필드의 허용값에서 선택하게 유도. **개인 복지 매칭은 income_bracket + special_conditions이 가장 강력한 필터이므로 절대 생략 금지.**
+[허용값]
+- age_range: 10대이하/20대/30대/40대/50대/60대이상
+- income_level: 중위소득 50% 이하/50~100%/100~150%/150% 이상/미응답
+- family_type: 1인가구/신혼부부/다자녀(2+)/한부모/조손가정/일반가구
+- employment_status: 구직중/재직중/자영업/학생/은퇴자/전업주부
+- housing_status: 자가/전세/월세/기숙사·공공임대/기타
+- special_conditions (쉼표구분): 장애인/기초생활수급자/차상위계층/다문화가정/북한이탈주민/국가유공자/해당없음
+- 관심분야(사업자): 창업지원, 기술개발, 수출마케팅, 고용지원, 시설개선, 정책자금, 디지털전환, 판로개척, 교육훈련, R&D, 소상공인
+- 관심분야(개인): 취업, 주거, 교육, 청년, 출산, 육아, 다자녀, 장학금, 의료, 장애, 저소득
 
 [자동 추론]
-- 업종명 → KSIC 코드 자동 변환 (물어보지 말 것)
-- "매출 5억" → "5억~10억"
-- "직원 15명" → "10인~30인"
-- "30대 후반" → 1988년생 등 추정
+- 업종명 → KSIC (IT=62010, 음식=56111, 소매=47190, 제조식품=10000, 제조전자=26000, 건설=41000, 숙박=55000, 교육=85000, 컨설팅=70000, 디자인=74000)
+- "매출 5억" → "5억~10억", "직원 15명" → "10인~30인", "30대 후반" → 1988년생
 
-[★ 매칭 트리거 — 신중하게]
-- **컨설턴트가 5단계(정리)에 도달한 후, 명시적으로 "이 조건으로 매칭" 같은 동의를 표현해야** done=true 반환.
-- 수집된 정보가 다음을 모두 만족하기 전에는 done=false 유지:
-  - 사업자: company_name + 업종 + 지역 + 관심분야
-  - 개인: 연령(또는 생년월일) + 지역 + 관심분야
-- 정보 부족 시: done=false + 부족한 항목을 묻는 다음 질문 + 카테고리형 choices
+[매칭 트리거]
+- 사업자: company_name + 업종 + 지역 + 관심분야 수집 후 5단계 정리 + 동의 → done=true
+- 개인: age_range + address_city + interests 수집 후 7단계 정리 + 동의 → done=true
+- 부족하면 done=false 유지.
 
-[★★ 금융 키워드 감지]
-- "정책자금", "융자", "대출", "보증", "금리" 등이 언급되면 → 금융 상담 모드로 전환
-- choices: ["💰 자금 한도/금리 상담", "🏛️ 보증서 발급 상담", "📝 신청서류 안내", "📊 매칭 진행 (충분한 정보 수집 시)"]
-
-[★★★ 응답 형식 — 절대 위반 금지]
-반드시 아래 순수 JSON만 출력. 마크다운 코드블록 금지. JSON 외 다른 텍스트 금지.
-
+[응답 형식 — 순수 JSON만. 마크다운/코드블록 금지]
 {{
-  "message": "고객에게 묻는 질문 한 문장. 자연스러운 한국어. choices나 옵션 목록을 본문에 적지 말 것!",
+  "message": "질문 한 문장. choices나 옵션 나열 금지.",
   "choices": ["옵션1", "옵션2", "옵션3", "옵션4", "✏️ 직접 입력"],
   "done": false,
   "current_step": 2,
@@ -2187,60 +2097,10 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
   "profile": null
 }}
 
-[★ 절대 금지 — 가장 흔한 실수]
-- ❌ message 안에 "choices: [\\"10대\\", ...]" 같은 텍스트 쓰기
-- ❌ message 안에 "1) 10대 2) 20대 3) 30대" 같은 옵션 나열
-- ❌ message 안에 "[10대][20대][30대]" 같은 버튼 형태 텍스트
-- ❌ "선택지: ..." 또는 "옵션: ..." 같은 메타 표현
-- ❌ ```json 코드블록 사용
-- ✅ 옵션은 오직 choices 배열에만. message에는 질문 한 문장만.
+message 나쁜 예: "연령대? 1)10대 2)20대 3)30대" / "선택지: ..." / "[10대][20대]"
+message 좋은 예: "이 고객의 연령대는 어떻게 되나요?"
 
-[message 작성 좋은 예]
-- "이 고객의 연령대는 어떻게 되나요?"
-- "고객 거주지를 알려주세요."
-- "주거 분야 중 어떤 지원이 가장 시급한가요?"
-
-[message 작성 나쁜 예]
-- "이 고객의 연령대는 어떻게 되나요?\\nchoices: [\\"10대\\", \\"20대\\"]"  ← ❌
-- "연령대를 골라주세요. 1)10대 2)20대 3)30대"  ← ❌
-- "다음 중 선택해주세요: 10대, 20대, 30대"  ← ❌
-
-done=true (5단계 동의 후만):
-{{
-  "message": "고객 프로파일이 완성되었습니다. 매칭을 진행하겠습니다.",
-  "choices": [],
-  "done": true,
-  "collected": {{...}},
-  "profile": {{...}}
-}}
-
-[응답 형식 — 반드시 이 JSON 형식으로만 응답]
-{{
-  "message": "AI의 대화 메시지 (마크다운 사용 가능)",
-  "choices": ["추천 응답1", "추천 응답2"],
-  "done": false,
-  "collected": {{"지금까지 수집된 필드명": "값", ...}},
-  "profile": null
-}}
-
-done=true일 때 (모든 정보 수집 완료):
-{{
-  "message": "고객사 프로필이 완성되었습니다. 매칭을 시작하겠습니다.",
-  "choices": [],
-  "done": true,
-  "collected": {{...모든 필드...}},
-  "profile": {{
-    "company_name": "...",
-    "establishment_date": "YYYY-MM-DD",
-    "industry_code": "XXXXX",
-    "revenue_bracket": "...",
-    "employee_count_bracket": "...",
-    "address_city": "...",
-    "interests": "관심1,관심2"
-  }}
-}}
-
-반드시 순수 JSON만 반환하세요."""
+done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 done=false."""
 
     # ── 시드 메시지에서 고객 유형 사전 추출 → system_prompt에 강한 힌트 주입 ──
     seed_hint = ""
@@ -2295,15 +2155,23 @@ done=true일 때 (모든 정보 수집 완료):
             model="gemini-2.0-flash",
             history=chat_history,
             config=genai_types.GenerateContentConfig(
-                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                response_mime_type="application/json",
                 max_output_tokens=4096,
+                temperature=0.7,
             ),
         )
         last_msg = messages[-1].get("text", "시작") if messages else "시작"
         response = _chat.send_message(last_msg)
     except ImportError:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 4096})
+        model = genai.GenerativeModel(
+            "models/gemini-2.0-flash",
+            generation_config={
+                "max_output_tokens": 4096,
+                "response_mime_type": "application/json",
+                "temperature": 0.7,
+            },
+        )
         gemini_messages = []
         for msg in messages:
             role = "user" if msg.get("role") == "user" else "model"
@@ -2326,6 +2194,28 @@ done=true일 때 (모든 정보 수집 완료):
         if not done and collected and all(collected.get(k) for k in REQUIRED):
             done = True
             profile = {k: collected[k] for k in REQUIRED}
+        # 개인 모드 자동 완료: age_range + address_city + interests 최소 조합
+        INDIV_MIN = ["age_range", "address_city", "interests"]
+        is_individual_flow = bool(
+            collected.get("age_range") or collected.get("income_level") or collected.get("family_type")
+        )
+        if not done and is_individual_flow and all(collected.get(k) for k in INDIV_MIN):
+            done = True
+            profile = {
+                "company_name": collected.get("company_name") or "개인",
+                "establishment_date": collected.get("establishment_date") or "1990-01-01",
+                "industry_code": "",
+                "revenue_bracket": "1억 미만",
+                "employee_count_bracket": "5인 미만",
+                "address_city": collected.get("address_city", ""),
+                "interests": collected.get("interests", ""),
+                "age_range": collected.get("age_range", ""),
+                "income_level": collected.get("income_level", ""),
+                "family_type": collected.get("family_type", ""),
+                "employment_status": collected.get("employment_status", ""),
+                "housing_status": collected.get("housing_status", ""),
+                "special_conditions": collected.get("special_conditions", ""),
+            }
 
         # ★ 매칭 키워드 강제 트리거: 사용자가 매칭 요청 시 done=True
         last_user_text = ""
@@ -2393,15 +2283,15 @@ done=true일 때 (모든 정보 수집 완료):
         msg_text = result.get("message", "")
         ai_choices = result.get("choices", [])
 
-        # 패턴 0: message 안에 "\"choices\":" 또는 "\"done\":" 같은 raw JSON 키가 등장하면
-        # 그 위치 이전까지만 사용 (가장 흔한 누출 패턴)
-        for json_key in ['"choices":', '"done":', '"collected":', '"profile":', '"message":']:
+        # 패턴 0: message 안에 raw JSON 키가 등장하면 그 위치 이전까지만 사용
+        # (JSON 파싱이 성공했으니 드문 케이스지만 안전장치)
+        for json_key in ['"choices":', '"done":', '"collected":', '"profile":']:
             idx = msg_text.find(json_key)
             if idx > 0:
-                msg_text = msg_text[:idx].rstrip(' \t\n,;{')
+                msg_text = msg_text[:idx].rstrip(' \t\n,;{"')
 
-        # 패턴 1: "choices: [...]" 박혀 있으면 분리 (닫는 ] 있는 경우)
-        choices_pattern = re.search(r'choices\s*[:：]\s*\[([^\]]+)\]', msg_text, re.IGNORECASE)
+        # 패턴 1: "choices: [...]" 정확 매칭만 (코드블록/JSON 누출 방어)
+        choices_pattern = re.search(r'"?choices"?\s*[:：]\s*\[([^\]]{1,300})\]', msg_text, re.IGNORECASE)
         if choices_pattern:
             try:
                 raw = "[" + choices_pattern.group(1) + "]"
@@ -2409,14 +2299,11 @@ done=true일 때 (모든 정보 수집 완료):
                 parsed = json.loads(raw)
                 if isinstance(parsed, list) and not ai_choices:
                     ai_choices = parsed
-                msg_text = re.sub(r'\n*\s*choices\s*[:：]\s*\[[^\]]+\]\s*', '', msg_text, flags=re.IGNORECASE).strip()
+                msg_text = msg_text.replace(choices_pattern.group(0), "").strip()
             except Exception:
                 pass
 
-        # 패턴 2: "선택지:" / "옵션:" 라벨 라인 제거
-        msg_text = re.sub(r'\n*\s*(선택지|옵션|choices)\s*[:：].*$', '', msg_text, flags=re.MULTILINE | re.IGNORECASE).strip()
-
-        # 패턴 3: 닫히지 않은 따옴표/괄호로 끝나면 잘라냄
+        # 패턴 2: 빈 괄호/따옴표로 끝나면 잘라냄
         msg_text = msg_text.rstrip('",\n\t ;{}[]')
 
         # 패턴 4: 빈 reply 폴백
@@ -2436,7 +2323,48 @@ done=true일 때 (모든 정보 수집 완료):
             "current_step": result.get("current_step"),
         }
     except json.JSONDecodeError:
-        return {"reply": response.text.strip() if 'response' in dir() else "응답 처리 오류", "choices": [], "done": False, "profile": None, "collected": {}}
+        # JSON 파싱 실패 — raw text에서 message/choices를 구제 추출 시도
+        raw = response.text.strip() if 'response' in dir() else ""
+        recovered_msg = raw
+        recovered_choices: List[str] = []
+        # message 필드 패턴 추출
+        m = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+        if m:
+            try:
+                recovered_msg = json.loads('"' + m.group(1) + '"')
+            except Exception:
+                recovered_msg = m.group(1)
+        # choices 배열 패턴 추출
+        c = re.search(r'"choices"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
+        if c:
+            try:
+                recovered_choices = json.loads("[" + c.group(1) + "]")
+                if not isinstance(recovered_choices, list):
+                    recovered_choices = []
+            except Exception:
+                recovered_choices = []
+        # 세션 상태 보존 — 이전 collected 유지
+        prev_collected = (session_state or {}).get("collected", {}) if session_state else {}
+        prev_step = (session_state or {}).get("current_step", 1) if session_state else 1
+        if not recovered_msg or len(recovered_msg) < 5:
+            recovered_msg = "앞선 응답을 정리 중입니다. 다음 정보를 알려주시겠어요?"
+        return {
+            "reply": recovered_msg,
+            "choices": recovered_choices[:6] if recovered_choices else ["✏️ 직접 입력"],
+            "done": False,
+            "profile": None,
+            "collected": prev_collected,
+            "current_step": prev_step,
+        }
     except Exception as e:
         logger.error(f"[PRO] chat_pro_consultant error: {e}")
-        return {"reply": "AI 응답 생성 중 오류가 발생했습니다. 다시 시도해 주세요.", "choices": [], "done": False, "profile": None, "collected": {}}
+        prev_collected = (session_state or {}).get("collected", {}) if session_state else {}
+        prev_step = (session_state or {}).get("current_step", 1) if session_state else 1
+        return {
+            "reply": "일시적으로 응답 생성에 실패했습니다. 같은 내용을 한 번만 더 말씀해 주시거나 ‘직접 입력’을 눌러 주세요.",
+            "choices": ["✏️ 직접 입력", "🔄 다시 시도"],
+            "done": False,
+            "profile": None,
+            "collected": prev_collected,
+            "current_step": prev_step,
+        }

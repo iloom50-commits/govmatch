@@ -3444,6 +3444,17 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 result["reply"] = (result.get("reply", "") + "\n\n" + "\n".join(lines)).strip()
                 result["choices"] = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
 
+            # 학습 사이클: 상담 종료(done=true) 시 AI가 대화에서 지식 추출 → knowledge_base 저장
+            if result.get("done") and req.messages and len(req.messages) >= 4:
+                try:
+                    from app.services.ai_consultant import extract_and_store_insights
+                    all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+                    stored = extract_and_store_insights(all_msgs, db, source="pro_consult")
+                    if stored:
+                        print(f"[KB] extracted {stored} insights from PRO session {session_state.get('session_id') if session_state else '?'}")
+                except Exception as ex_err:
+                    print(f"[KB extract] {ex_err}")
+
             # D+G: 매칭 결과 스냅샷 + 상위 3개 상세분석 주입
             if session_state and matched_announcements:
                 try:

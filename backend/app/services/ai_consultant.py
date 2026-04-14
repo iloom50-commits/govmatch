@@ -33,6 +33,250 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro_consult") -> int:
+    """상담 종료 시 AI에게 재요청 — FAQ/인사이트 추출 후 knowledge_base에 저장.
+
+    반환: 저장된 항목 수
+    """
+    if not HAS_GENAI or not db_conn or not messages or len(messages) < 4:
+        return 0
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return 0
+
+    # 대화를 자연어로 펼치기
+    convo = "\n".join(
+        f"{'컨설턴트' if m.get('role')=='user' else 'AI'}: {m.get('text','')[:500]}"
+        for m in messages if m.get("text")
+    )[:8000]
+
+    prompt = f"""다음은 정부 지원사업 컨설턴트와 AI의 상담 기록입니다.
+이 대화에서 **향후 다른 상담에서도 재사용 가능한 일반화된 지식**을 추출하세요.
+
+[상담 기록]
+{convo}
+
+[추출 규칙]
+1. 최대 3개까지. 대화에 국한된 사적 정보는 제외.
+2. 아래 3가지 타입 중 해당되는 것만 생성:
+   - faq: 다른 사용자가 동일하게 물어볼 법한 질문과 일반화된 답변
+   - insight: 지원사업 신청 전략/팁/주의사항 (공고 이름이나 부처 명시)
+   - error: 흔한 오해나 잘못된 정보 → 올바른 사실
+
+[응답 형식 — 순수 JSON]
+{{
+  "items": [
+    {{"type": "faq", "category": "정책자금", "question": "...", "answer": "...", "confidence": 0.8}},
+    {{"type": "insight", "category": "스마트공장", "relationship": "...", "confidence": 0.75}},
+    {{"type": "error", "category": "창업지원", "wrong_info": "...", "correct_info": "...", "confidence": 0.7}}
+  ]
+}}
+
+추출할 가치가 없으면 items: [] 반환. 마크다운 코드블록 금지."""
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "models/gemini-2.0-flash",
+            generation_config={"max_output_tokens": 2048, "response_mime_type": "application/json", "temperature": 0.3}
+        )
+        resp = model.generate_content(prompt)
+        data = json.loads(resp.text)
+        items = data.get("items") or []
+    except Exception as e:
+        logger.warning(f"[insights extract] {e}")
+        return 0
+
+    if not items:
+        return 0
+
+    stored = 0
+    try:
+        cur = db_conn.cursor()
+        for it in items[:3]:
+            ktype = it.get("type", "insight")
+            cat = (it.get("category") or "")[:60]
+            conf = min(1.0, max(0.0, float(it.get("confidence") or 0.5)))
+            content = {k: v for k, v in it.items() if k not in ("type", "category", "confidence")}
+            try:
+                cur.execute(
+                    """INSERT INTO knowledge_base (source, knowledge_type, category, content, confidence)
+                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
+                    (source, ktype, cat, json.dumps(content, ensure_ascii=False), conf),
+                )
+                stored += 1
+            except Exception as ie:
+                try: db_conn.rollback()
+                except: pass
+                logger.warning(f"[kb insert] {ie}")
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[kb bulk] {e}")
+        try: db_conn.rollback()
+        except: pass
+    return stored
+
+
+def search_knowledge_for_rag(query: str, db_conn, top_k_ann: int = 5, top_k_kb: int = 3) -> Dict[str, Any]:
+    """RAG — 사용자 질문 의미에 맞는 공고 + 지식을 pgvector로 검색.
+
+    Returns: {
+        "announcements": [{code, title, summary, amount, deadline, similarity, ...}],
+        "knowledge": [{type, content, similarity}],
+        "text_block": "프롬프트 주입용 자연어 블록"
+    }
+    """
+    result: Dict[str, Any] = {"announcements": [], "knowledge": [], "text_block": ""}
+    if not query or len(query.strip()) < 2 or not db_conn:
+        return result
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or not HAS_GENAI:
+        return result
+
+    try:
+        genai.configure(api_key=api_key)
+        res = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=query,
+            task_type="retrieval_query",
+            output_dimensionality=768,
+        )
+        vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+        if not vec:
+            return result
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+    except Exception as e:
+        logger.warning(f"[RAG embed] {e}")
+        return result
+
+    # 1) announcement_embeddings에서 Top K 공고 검색 (유사도 >= 0.65만 채택)
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT a.announcement_id, a.title, a.department, a.category,
+                   a.support_amount, a.region, a.summary_text,
+                   a.deadline_date, a.target_type,
+                   1 - (e.embedding <=> %s::vector) AS similarity
+            FROM announcement_embeddings e
+            JOIN announcements a ON e.announcement_id = a.announcement_id
+            WHERE (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+            ORDER BY e.embedding <=> %s::vector
+            LIMIT %s
+        """, (vec_str, vec_str, top_k_ann))
+        rows = cur.fetchall()
+        for r in rows:
+            d = dict(r)
+            sim = float(d.get("similarity") or 0)
+            if sim < 0.55:  # 품질 하한선 — 너무 관련 없으면 제외
+                continue
+            result["announcements"].append({
+                "id": d.get("announcement_id"),
+                "title": (d.get("title") or "")[:150],
+                "dept": (d.get("department") or "")[:60],
+                "category": d.get("category"),
+                "amount": (d.get("support_amount") or "")[:60],
+                "region": (d.get("region") or "")[:30],
+                "summary": (d.get("summary_text") or "")[:400],
+                "deadline": str(d.get("deadline_date") or "")[:10],
+                "target_type": d.get("target_type"),
+                "similarity": round(sim, 3),
+            })
+    except Exception as e:
+        logger.warning(f"[RAG ann search] {e}")
+        try: db_conn.rollback()
+        except: pass
+
+    # 2) knowledge_base에서 관련 지식 검색 (임베딩 없는 경우 텍스트 매칭 폴백)
+    try:
+        cur = db_conn.cursor()
+        # knowledge_base에 embedding 컬럼이 있으면 사용, 없으면 키워드 매칭
+        try:
+            cur.execute("""
+                SELECT id, knowledge_type, category, content, confidence,
+                       1 - (embedding <=> %s::vector) AS similarity
+                FROM knowledge_base
+                WHERE embedding IS NOT NULL AND confidence >= 0.4
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+            """, (vec_str, vec_str, top_k_kb))
+            rows = cur.fetchall()
+        except Exception:
+            # embedding 컬럼 없으면 키워드 기반 LIKE
+            try: db_conn.rollback()
+            except: pass
+            keywords = [w for w in re.split(r'\s+', query) if len(w) >= 2][:3]
+            if keywords:
+                like_patterns = [f"%{k}%" for k in keywords]
+                cur.execute("""
+                    SELECT id, knowledge_type, category, content, confidence
+                    FROM knowledge_base
+                    WHERE confidence >= 0.4
+                      AND (content::text ILIKE ANY(%s))
+                    ORDER BY confidence DESC, use_count DESC
+                    LIMIT %s
+                """, (like_patterns, top_k_kb))
+                rows = cur.fetchall()
+            else:
+                rows = []
+        for r in rows:
+            d = dict(r)
+            content = d.get("content")
+            if isinstance(content, str):
+                try: content = json.loads(content)
+                except: content = {"raw": content}
+            result["knowledge"].append({
+                "id": d.get("id"),
+                "type": d.get("knowledge_type"),
+                "category": d.get("category"),
+                "content": content,
+                "confidence": float(d.get("confidence") or 0),
+                "similarity": round(float(d.get("similarity") or 0), 3) if d.get("similarity") else None,
+            })
+            # use_count 증가
+            try:
+                cur.execute("UPDATE knowledge_base SET use_count = use_count + 1 WHERE id = %s", (d.get("id"),))
+            except Exception:
+                pass
+        try: db_conn.commit()
+        except: pass
+    except Exception as e:
+        logger.warning(f"[RAG kb search] {e}")
+        try: db_conn.rollback()
+        except: pass
+
+    # 3) 프롬프트 주입용 텍스트 블록 생성
+    parts = []
+    if result["announcements"]:
+        parts.append("\n\n[★ RAG 참고 — 사용자 질문과 관련된 공고 (실시간 DB 검색)]")
+        for i, a in enumerate(result["announcements"][:5], 1):
+            line = f"{i}. [{int(a['similarity']*100)}%] {a['title']}"
+            if a.get("dept"): line += f" · {a['dept']}"
+            if a.get("amount"): line += f" · 💰 {a['amount']}"
+            if a.get("deadline") and a['deadline'] != "None": line += f" · 📅 {a['deadline']}"
+            parts.append(line)
+            if a.get("summary"):
+                parts.append(f"   요약: {a['summary'][:200]}")
+    if result["knowledge"]:
+        parts.append("\n[★ RAG 참고 — 관련 지식/FAQ]")
+        for i, k in enumerate(result["knowledge"][:3], 1):
+            c = k.get("content") or {}
+            if isinstance(c, dict):
+                if k.get("type") == "faq":
+                    q = c.get("question", "")[:120]
+                    ans = c.get("answer", "")[:300]
+                    parts.append(f"{i}. Q: {q}")
+                    parts.append(f"   A: {ans}")
+                elif k.get("type") == "insight":
+                    parts.append(f"{i}. 인사이트: {str(c.get('relationship', c))[:300]}")
+                else:
+                    parts.append(f"{i}. {k.get('type')}: {str(c)[:300]}")
+    if parts:
+        parts.append("\n[지시] 위 참고 자료를 근거로 답변에 활용. 실제 공고명/부처/금액/마감일을 인용할 것.")
+    result["text_block"] = "\n".join(parts)
+    return result
+
+
 def _clean_summary_text(text: str) -> str:
     """공고 원문에서 HTML 태그 제거·공백 정리. 프롬프트에 깔끔히 주입하기 위함."""
     if not text:
@@ -2212,7 +2456,33 @@ done=true 시 profile에 모든 REQUIRED 필드를 채워 반환. 그 외에는 
                     if m.get("key_points"):
                         matched_hint += f"   • 핵심포인트: {m['key_points'][:200]}\n"
 
-    system_prompt = system_prompt + client_hint + seed_hint + state_hint + matched_hint
+    # 매 턴 RAG — 사용자 마지막 메시지에 맞춰 관련 공고 + 지식을 실시간 검색하여 주입
+    rag_hint = ""
+    try:
+        last_user_msg = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user_msg = m.get("text", "")
+                break
+        # 시드 메시지는 너무 포괄적이라 RAG 품질이 떨어짐 → 실제 질문이 있는 3턴 이상부터 적용
+        user_turn_count = sum(1 for m in messages if m.get("role") == "user")
+        if last_user_msg and user_turn_count >= 1 and db_conn and "[새 케이스 시작]" not in last_user_msg:
+            # 질문 + 현재까지 수집된 주요 키워드를 합쳐 쿼리 생성
+            query_parts = [last_user_msg[:400]]
+            if session_state and session_state.get("collected"):
+                col = session_state["collected"]
+                for k in ("interests", "industry_code", "address_city", "age_range"):
+                    v = col.get(k)
+                    if v:
+                        query_parts.append(str(v)[:60])
+            rag_query = " ".join(query_parts)
+            rag = search_knowledge_for_rag(rag_query, db_conn, top_k_ann=5, top_k_kb=3)
+            if rag.get("text_block"):
+                rag_hint = rag["text_block"]
+    except Exception as rag_err:
+        logger.warning(f"[RAG inject] {rag_err}")
+
+    system_prompt = system_prompt + client_hint + seed_hint + state_hint + matched_hint + rag_hint
 
     # ── 새 SDK (google.genai) + Google Search Grounding ──
     _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'

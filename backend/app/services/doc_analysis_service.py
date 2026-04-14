@@ -21,6 +21,66 @@ from typing import Optional, Dict, Any, List, Tuple
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
+
+def _embed_single_announcement_inline(db_conn, announcement_id: int) -> bool:
+    """단일 공고를 즉시 임베딩하여 announcement_embeddings에 저장.
+    실패는 silent (분석 자체는 이미 완료된 상태).
+    """
+    try:
+        import google.generativeai as _genai
+    except ImportError:
+        return False
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return False
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT a.title, a.department, a.category, a.support_amount, a.region, a.summary_text
+            FROM announcements a
+            WHERE a.announcement_id = %s
+        """, (announcement_id,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        d = dict(row)
+        title = (d.get("title") or "")[:200]
+        dept = (d.get("department") or "")[:100]
+        cat = (d.get("category") or "")[:50]
+        amount = (d.get("support_amount") or "")[:50]
+        region = (d.get("region") or "")[:50]
+        summary = (d.get("summary_text") or "")[:2000]
+        source_text = f"제목: {title}\n부처: {dept}\n카테고리: {cat}\n지원금액: {amount}\n지역: {region}\n내용: {summary}"
+
+        _genai.configure(api_key=api_key)
+        res = _genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=source_text,
+            task_type="retrieval_document",
+            output_dimensionality=768,
+        )
+        vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+        if not vec or len(vec) < 100:
+            return False
+        vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+        cur.execute("""
+            INSERT INTO announcement_embeddings (announcement_id, embedding, source_text, model_name, updated_at)
+            VALUES (%s, %s::vector, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (announcement_id) DO UPDATE SET
+                embedding = EXCLUDED.embedding,
+                source_text = EXCLUDED.source_text,
+                model_name = EXCLUDED.model_name,
+                updated_at = CURRENT_TIMESTAMP
+        """, (announcement_id, vec_str, source_text[:3000], "gemini-embedding-001"))
+        db_conn.commit()
+        print(f"[DocAnalysis] ★ #{announcement_id} embedded inline (RAG 즉시 편입)")
+        return True
+    except Exception as e:
+        try: db_conn.rollback()
+        except: pass
+        print(f"[embed_single inline] #{announcement_id}: {str(e)[:150]}")
+        return False
+
 # 환경변수 로드 (독립 실행 시에도 작동하도록)
 try:
     from dotenv import load_dotenv
@@ -996,6 +1056,12 @@ def analyze_and_store(
                     print(f"[DocAnalysis] ✓ #{announcement_id} support_amount updated: {amount_text}")
         except Exception as amt_err:
             print(f"[DocAnalysis] support_amount update error: {amt_err}")
+
+        # ★ 분석 완료 직후 임베딩 즉시 발행 (RAG에 자동 편입)
+        try:
+            _embed_single_announcement_inline(db_conn, announcement_id)
+        except Exception as emb_err:
+            print(f"[DocAnalysis] inline embedding error: {emb_err}")
 
         return result_info
     except Exception as e:

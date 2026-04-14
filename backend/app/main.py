@@ -3961,6 +3961,81 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+@app.post("/api/admin/analyze-batch-broad")
+def api_analyze_batch_broad(req: AdminAuthRequest):
+    """광범위 분석 배치 — origin_url + summary 50자만 있으면 처리.
+    한 호출 250초, 최대 50건. 학습 풀 확장용.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    import time as _time
+    from app.services.doc_analysis_service import analyze_and_store
+
+    DEADLINE = 250
+    MAX_ITEMS = 50
+    start = _time.time()
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE aa.id IS NULL
+          AND a.origin_url IS NOT NULL
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+        ORDER BY a.announcement_id DESC
+        LIMIT %s
+    """, (MAX_ITEMS,))
+    rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE aa.id IS NULL AND a.origin_url IS NOT NULL
+          AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+    """)
+    remaining_total = cur.fetchone()["cnt"]
+
+    ok = 0
+    fail = 0
+    skipped = 0
+    for row in rows:
+        if _time.time() - start > DEADLINE:
+            skipped = len(rows) - ok - fail
+            break
+        r = dict(row)
+        try:
+            res = analyze_and_store(
+                announcement_id=r["announcement_id"],
+                origin_url=r.get("origin_url") or "",
+                title=r.get("title") or "",
+                db_conn=conn,
+                summary_text=r.get("summary_text") or "",
+            )
+            if res.get("success"):
+                ok += 1
+            else:
+                fail += 1
+        except Exception as e:
+            fail += 1
+            print(f"[broad] #{r['announcement_id']}: {str(e)[:120]}")
+
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "processed": ok + fail,
+        "success": ok,
+        "failed": fail,
+        "skipped_timeout": skipped,
+        "remaining": remaining_total - ok,
+        "elapsed": round(_time.time() - start, 1),
+        "done": (remaining_total - ok) <= 0,
+    }
+
+
 @app.post("/api/admin/analyze-batch-priority")
 def api_analyze_batch_priority(req: AdminAuthRequest):
     """관리자: 지원금액 있는 미분석 공고를 금액 크기·마감일 순으로 자동 배치 분석.

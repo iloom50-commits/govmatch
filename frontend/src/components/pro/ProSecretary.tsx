@@ -1348,7 +1348,11 @@ function IndustryAutocomplete({ value, onChange, dark, inputCls, sectionTitle, m
       });
       if (r.ok) {
         const d = await r.json();
-        const items = d.data || [];
+        const items: any[] = Array.isArray(d.data?.candidates)
+          ? d.data.candidates
+          : Array.isArray(d.data)
+            ? d.data
+            : [];
         setSuggestions(items.slice(0, 8));
         setShowDropdown(items.length > 0);
       }

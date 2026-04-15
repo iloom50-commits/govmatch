@@ -128,67 +128,146 @@ function getSteps(userType: UserType) {
 
 // ── 관심분야 자동완성 + AI fallback ──
 
+type TagSuggestion = { tag: string; category?: string; similarity: number };
+
 function InterestAutocomplete({ options, selected, onSelect, userType }: { options: string[]; selected: string[]; onSelect: (opt: string) => void; userType?: string }) {
   const [input, setInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const filtered = input ? options.filter(opt => opt.toLowerCase().includes(input.toLowerCase()) && !selected.includes(opt)) : [];
+  const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [showPanel, setShowPanel] = useState(false);
+  const localFiltered = input ? options.filter(opt => opt.toLowerCase().includes(input.toLowerCase()) && !selected.includes(opt)) : [];
 
-  const handleAiFallback = async () => {
-    if (!input.trim() || aiLoading) return;
+  const fetchSuggestions = async () => {
+    const q = input.trim();
+    if (!q || aiLoading) return;
     setAiLoading(true);
     try {
-      const res = await fetch(`${API}/api/ai/parse-interests`, {
+      const res = await fetch(`${API}/api/ai/suggest-tags`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input.trim(), user_type: userType || "business" }),
+        body: JSON.stringify({ text: q, user_type: userType || "business", limit: 10 }),
       });
       if (res.ok) {
         const data = await res.json();
-        const mapped = (data.interests || []) as string[];
-        mapped.forEach((item: string) => { if (!selected.includes(item)) onSelect(item); });
-        if (mapped.length === 0) onSelect(input.trim());
-      } else {
-        onSelect(input.trim());
+        const sugg = (data.suggestions || []) as TagSuggestion[];
+        const filtered = sugg.filter(s => !selected.includes(s.tag));
+        setSuggestions(filtered);
+        // 유사도 0.7 이상은 자동 체크
+        const auto = new Set<string>();
+        filtered.forEach(s => { if (s.similarity >= 0.7) auto.add(s.tag); });
+        setChecked(auto);
+        setShowPanel(true);
       }
     } catch {
-      onSelect(input.trim());
+      // 실패 시 원문만 추가
+      onSelect(q);
+      setInput("");
     } finally {
       setAiLoading(false);
-      setInput("");
     }
+  };
+
+  const toggleCheck = (tag: string) => {
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
+
+  const confirmSelection = () => {
+    checked.forEach(tag => { if (!selected.includes(tag)) onSelect(tag); });
+    // 사용자 원문도 추가 (중복/포함 제외)
+    const raw = input.trim();
+    if (raw && !selected.includes(raw) && !checked.has(raw)) {
+      onSelect(raw);
+    }
+    setInput("");
+    setSuggestions([]);
+    setChecked(new Set());
+    setShowPanel(false);
+  };
+
+  const cancelPanel = () => {
+    setSuggestions([]);
+    setChecked(new Set());
+    setShowPanel(false);
   };
 
   return (
     <div className="relative">
       <input
         type="text" value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => { setInput(e.target.value); if (showPanel) cancelPanel(); }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            if (filtered.length > 0) { onSelect(filtered[0]); setInput(""); }
-            else if (input.trim()) handleAiFallback();
+            if (localFiltered.length > 0) { onSelect(localFiltered[0]); setInput(""); }
+            else if (input.trim()) fetchSuggestions();
           }
         }}
-        placeholder="입력하면 추천이 나타납니다"
+        placeholder="관심분야를 자유롭게 입력하세요 (예: 바이오 의료기기 인허가)"
         className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all"
       />
-      {input && filtered.length > 0 && (
+      {/* 로컬 고정목록 자동완성 */}
+      {input && !showPanel && localFiltered.length > 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-          {filtered.map(opt => (
+          {localFiltered.slice(0, 8).map(opt => (
             <button key={opt} type="button" onClick={() => { onSelect(opt); setInput(""); }}
               className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
             >{opt}</button>
           ))}
+          <button type="button" onClick={fetchSuggestions} disabled={aiLoading}
+            className="w-full px-3 py-2 text-left text-sm text-indigo-600 font-semibold border-t border-slate-100 hover:bg-indigo-50 disabled:opacity-50"
+          >
+            {aiLoading ? "AI 검색 중..." : `"${input}"로 AI가 유사 태그 찾기 →`}
+          </button>
         </div>
       )}
-      {input && input.length >= 2 && filtered.length === 0 && (
+      {/* 로컬 매칭 없고 패널 닫힌 상태 → AI 검색 버튼 */}
+      {input && input.length >= 2 && !showPanel && localFiltered.length === 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-3">
-          <button type="button" onClick={handleAiFallback} disabled={aiLoading}
+          <button type="button" onClick={fetchSuggestions} disabled={aiLoading}
             className="w-full text-left text-sm text-indigo-600 font-semibold hover:text-indigo-800 transition-all disabled:opacity-50"
           >
-            {aiLoading ? "AI가 분석 중..." : `"${input}" → AI가 자동 분류합니다 (Enter)`}
+            {aiLoading ? "AI가 유사 태그 찾는 중..." : `"${input}" → AI가 유사 태그 찾기 (Enter)`}
           </button>
+        </div>
+      )}
+      {/* AI 제안 패널 — 체크박스 선택 */}
+      {showPanel && (
+        <div className="absolute z-30 w-full mt-1 bg-white border border-indigo-300 rounded-xl shadow-xl p-3 max-h-96 overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[12px] font-bold text-indigo-700">AI가 찾은 유사 태그 ({suggestions.length}개)</p>
+            <button onClick={cancelPanel} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
+          </div>
+          {suggestions.length === 0 ? (
+            <p className="text-[12px] text-slate-500 py-3 text-center">유사한 태그를 찾지 못했습니다. 입력한 내용을 그대로 추가하시려면 확정을 누르세요.</p>
+          ) : (
+            <div className="space-y-1">
+              {suggestions.map(s => (
+                <label key={s.tag} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-indigo-50 cursor-pointer">
+                  <input type="checkbox" checked={checked.has(s.tag)} onChange={() => toggleCheck(s.tag)}
+                    className="w-4 h-4 accent-indigo-600" />
+                  <span className="text-sm text-slate-700 flex-1">{s.tag}</span>
+                  {s.category && <span className="text-[10px] text-slate-400">{s.category}</span>}
+                  <span className="text-[10px] text-indigo-500 font-mono">{Math.round(s.similarity * 100)}%</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 mt-3 pt-2 border-t border-slate-100">
+            <button onClick={confirmSelection}
+              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">
+              선택 확정 ({checked.size})
+            </button>
+            <button onClick={cancelPanel}
+              className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200">
+              취소
+            </button>
+          </div>
         </div>
       )}
     </div>

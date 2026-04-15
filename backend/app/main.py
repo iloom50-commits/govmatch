@@ -4356,6 +4356,259 @@ def api_embeddings_init(req: AdminAuthRequest):
         except: pass
 
 
+@app.post("/api/admin/seed-interest-tags")
+def api_seed_interest_tags(req: AdminAuthRequest):
+    """관심 태그 풀 시드 + 공고 기반 자동 추출 + 임베딩 생성."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    inserted = 0
+    skipped = 0
+    embedded = 0
+    errors = []
+
+    # 1) 고정 시드 삽입
+    seed_items = (
+        [(t, c, "business", "seed") for t, c in _INTEREST_TAG_SEED_BIZ]
+        + [(t, c, "individual", "seed") for t, c in _INTEREST_TAG_SEED_INDIV]
+    )
+    for tag, category, utype, source in seed_items:
+        try:
+            cur.execute(
+                """INSERT INTO interest_tag_pool (tag, category, user_type, source, frequency)
+                   VALUES (%s, %s, %s, %s, 0)
+                   ON CONFLICT (tag, user_type) DO NOTHING""",
+                (tag, category, utype, source),
+            )
+            if cur.rowcount > 0:
+                inserted += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            conn.rollback()
+            errors.append(f"seed:{tag}: {str(e)[:100]}")
+    conn.commit()
+
+    # 2) 공고에서 자동 추출 — category 빈도 집계
+    try:
+        cur.execute("""
+            SELECT category, COUNT(*) AS cnt
+            FROM announcements
+            WHERE category IS NOT NULL AND LENGTH(category) >= 2 AND LENGTH(category) <= 30
+            GROUP BY category
+            ORDER BY cnt DESC
+            LIMIT 150
+        """)
+        for row in cur.fetchall():
+            tag = (row["category"] or "").strip()
+            if not tag or len(tag) < 2:
+                continue
+            try:
+                cur.execute(
+                    """INSERT INTO interest_tag_pool (tag, category, user_type, source, frequency)
+                       VALUES (%s, 'auto', 'both', 'announcement_category', %s)
+                       ON CONFLICT (tag, user_type) DO UPDATE SET frequency = EXCLUDED.frequency""",
+                    (tag, int(row["cnt"] or 0)),
+                )
+                if cur.rowcount > 0:
+                    inserted += 1
+            except Exception as e:
+                conn.rollback()
+                errors.append(f"auto:{tag}: {str(e)[:100]}")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        errors.append(f"auto_extract: {str(e)[:150]}")
+
+    # 3) 임베딩 미생성 태그 임베딩 생성 (최대 500개/호출)
+    try:
+        cur.execute(
+            "SELECT id, tag, category FROM interest_tag_pool WHERE embedding IS NULL LIMIT 500"
+        )
+        targets = cur.fetchall()
+        for t in targets:
+            text = f"{t['tag']} {t.get('category') or ''}".strip()
+            try:
+                r = genai.embed_content(
+                    model="models/gemini-embedding-001",
+                    content=text,
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=768,
+                )
+                vec = r.get("embedding") if isinstance(r, dict) else getattr(r, "embedding", None)
+                if not vec:
+                    continue
+                vec_str = "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
+                cur.execute(
+                    "UPDATE interest_tag_pool SET embedding = %s::vector WHERE id = %s",
+                    (vec_str, t["id"]),
+                )
+                embedded += 1
+                if embedded % 50 == 0:
+                    conn.commit()
+            except Exception as e:
+                conn.rollback()
+                errors.append(f"embed:{t['tag']}: {str(e)[:80]}")
+                continue
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        errors.append(f"embed_loop: {str(e)[:150]}")
+
+    cur.execute("SELECT COUNT(*) AS total, COUNT(embedding) AS with_emb FROM interest_tag_pool")
+    stats = cur.fetchone()
+    conn.close()
+    return {
+        "status": "SUCCESS",
+        "inserted_new": inserted,
+        "skipped_existing": skipped,
+        "embedded_this_run": embedded,
+        "total_tags": stats["total"],
+        "total_with_embedding": stats["with_emb"],
+        "errors": errors[:10],
+    }
+
+
+class SuggestTagsRequest(BaseModel):
+    text: str
+    user_type: Optional[str] = "both"
+    limit: Optional[int] = 10
+
+
+@app.post("/api/ai/suggest-tags")
+def api_suggest_tags(req: SuggestTagsRequest):
+    """자연어 입력 → 가장 유사한 태그 TOP N 반환 (임베딩 코사인)."""
+    text = (req.text or "").strip()
+    if not text or len(text) < 2:
+        return {"status": "SUCCESS", "suggestions": []}
+
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {"status": "SUCCESS", "suggestions": [], "error": "embedding unavailable"}
+
+    try:
+        genai.configure(api_key=api_key)
+        r = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=text,
+            task_type="RETRIEVAL_QUERY",
+            output_dimensionality=768,
+        )
+        vec = r.get("embedding") if isinstance(r, dict) else getattr(r, "embedding", None)
+        if not vec:
+            return {"status": "SUCCESS", "suggestions": []}
+        vec_str = "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
+    except Exception as e:
+        return {"status": "ERROR", "suggestions": [], "error": str(e)[:200]}
+
+    utype = (req.user_type or "both").lower()
+    allowed_types = [utype, "both"] if utype in ("business", "individual") else ["business", "individual", "both"]
+    limit = max(1, min(20, req.limit or 10))
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT tag, category, user_type,
+                      1 - (embedding <=> %s::vector) AS similarity
+               FROM interest_tag_pool
+               WHERE embedding IS NOT NULL
+                 AND user_type = ANY(%s)
+               ORDER BY embedding <=> %s::vector
+               LIMIT %s""",
+            (vec_str, allowed_types, vec_str, limit),
+        )
+        rows = cur.fetchall()
+        suggestions = [
+            {
+                "tag": row["tag"],
+                "category": row.get("category"),
+                "user_type": row["user_type"],
+                "similarity": round(float(row["similarity"] or 0), 3),
+            }
+            for row in rows
+            if (row["similarity"] or 0) >= 0.35
+        ]
+    finally:
+        conn.close()
+    return {"status": "SUCCESS", "query": text, "suggestions": suggestions}
+
+
+# ── 관심 태그 풀 시드 & 임베딩 ──
+
+_INTEREST_TAG_SEED_BIZ = [
+    ("창업지원", "창업"), ("예비창업", "창업"), ("초기창업", "창업"), ("재창업", "창업"),
+    ("청년창업", "창업"), ("여성창업", "창업"), ("시니어창업", "창업"), ("사회적기업", "창업"),
+    ("기술개발", "R&D"), ("R&D", "R&D"), ("연구개발", "R&D"), ("혁신제품", "R&D"),
+    ("특허출원", "R&D"), ("기술이전", "R&D"), ("사업화", "R&D"), ("실증사업", "R&D"),
+    ("수출마케팅", "수출"), ("해외진출", "수출"), ("수출바우처", "수출"), ("해외전시회", "수출"),
+    ("글로벌진출", "수출"), ("수출보험", "수출"), ("FTA활용", "수출"),
+    ("정책자금", "금융"), ("융자지원", "금융"), ("저리대출", "금융"), ("운전자금", "금융"),
+    ("시설자금", "금융"), ("신용보증", "금융"), ("기술보증", "금융"), ("지역신보", "금융"),
+    ("긴급경영안정자금", "금융"), ("신성장기반자금", "금융"), ("청년창업자금", "금융"),
+    ("고용지원", "고용"), ("일자리지원", "고용"), ("청년채용", "고용"), ("정규직전환", "고용"),
+    ("직무훈련", "고용"), ("인건비지원", "고용"),
+    ("시설개선", "시설"), ("공장자동화", "시설"), ("스마트공장", "시설"), ("친환경설비", "시설"),
+    ("에너지절감", "시설"),
+    ("디지털전환", "디지털"), ("DX", "디지털"), ("클라우드", "디지털"), ("AI도입", "디지털"),
+    ("빅데이터", "디지털"), ("IoT", "디지털"), ("메타버스", "디지털"),
+    ("판로개척", "판로"), ("온라인판로", "판로"), ("쇼핑몰입점", "판로"), ("라이브커머스", "판로"),
+    ("유통매칭", "판로"),
+    ("교육훈련", "교육"), ("전문가양성", "교육"), ("컨설팅지원", "교육"), ("멘토링", "교육"),
+    ("아카데미", "교육"),
+    ("소상공인", "소상공인"), ("자영업", "소상공인"), ("골목상권", "소상공인"), ("전통시장", "소상공인"),
+    ("희망리턴패키지", "소상공인"),
+    ("바이오", "업종"), ("의료기기", "업종"), ("제약", "업종"), ("헬스케어", "업종"),
+    ("반도체", "업종"), ("디스플레이", "업종"), ("2차전지", "업종"), ("자동차부품", "업종"),
+    ("에너지신산업", "업종"), ("수소산업", "업종"), ("로봇", "업종"), ("드론", "업종"),
+    ("푸드테크", "업종"), ("농식품", "업종"), ("수산업", "업종"), ("관광", "업종"),
+    ("문화콘텐츠", "업종"), ("게임", "업종"), ("웹툰", "업종"), ("K-뷰티", "업종"),
+    ("K-푸드", "업종"), ("패션", "업종"), ("디자인", "업종"),
+    ("탄소중립", "에너지환경"), ("친환경", "에너지환경"), ("ESG", "에너지환경"), ("재생에너지", "에너지환경"),
+    ("폐기물", "에너지환경"),
+    ("벤처기업인증", "인증"), ("이노비즈", "인증"), ("메인비즈", "인증"), ("여성기업", "인증"),
+    ("장애인기업", "인증"), ("사회적기업인증", "인증"), ("가족친화기업", "인증"),
+    # 사용자 관점 키워드
+    ("인건비", "수요"), ("운영비", "수요"), ("장비구매", "수요"), ("사무실임대", "수요"),
+    ("시제품제작", "수요"), ("특허비용", "수요"), ("해외출장", "수요"),
+]
+
+_INTEREST_TAG_SEED_INDIV = [
+    ("취업지원", "취업"), ("취업성공패키지", "취업"), ("내일배움카드", "취업"), ("국민취업지원", "취업"),
+    ("직업훈련", "취업"), ("구직촉진수당", "취업"), ("이직지원", "취업"),
+    ("전세자금", "주거"), ("월세지원", "주거"), ("버팀목전세", "주거"), ("디딤돌주택", "주거"),
+    ("청년주택", "주거"), ("행복주택", "주거"), ("역세권청년주택", "주거"), ("임차보증금", "주거"),
+    ("주거급여", "주거"), ("집수리지원", "주거"),
+    ("국가장학금", "교육"), ("학자금대출", "교육"), ("기숙사비", "교육"), ("평생학습바우처", "교육"),
+    ("학원비지원", "교육"), ("어학연수", "교육"),
+    ("청년수당", "청년"), ("청년도약계좌", "청년"), ("청년내일채움", "청년"), ("청년월세", "청년"),
+    ("청년희망적금", "청년"),
+    ("출산지원금", "출산"), ("산후조리", "출산"), ("난임시술", "출산"), ("첫만남이용권", "출산"),
+    ("보육료", "육아"), ("아동수당", "육아"), ("육아휴직", "육아"), ("어린이집", "육아"),
+    ("아이돌봄", "육아"), ("방과후돌봄", "육아"),
+    ("다자녀", "다자녀"), ("3자녀지원", "다자녀"), ("다둥이", "다자녀"),
+    ("한부모", "한부모"), ("조손가정", "한부모"), ("모자가정", "한부모"),
+    ("의료비지원", "의료"), ("건강검진", "의료"), ("난임부부", "의료"), ("중증질환", "의료"),
+    ("희귀질환", "의료"),
+    ("장애수당", "장애"), ("장애인일자리", "장애"), ("장애인활동지원", "장애"), ("장애인연금", "장애"),
+    ("기초생활수급", "저소득"), ("차상위", "저소득"), ("긴급복지", "저소득"), ("저소득층", "저소득"),
+    ("햇살론", "저소득"), ("미소금융", "저소득"), ("희망키움통장", "저소득"),
+    ("기초연금", "노인"), ("노인일자리", "노인"), ("경로당", "노인"), ("치매안심", "노인"),
+    ("독거노인", "노인"),
+    ("문화바우처", "문화"), ("통합문화이용권", "문화"), ("스포츠강좌이용권", "문화"), ("도서문화", "문화"),
+    ("에너지바우처", "복지"), ("전기요금감면", "복지"), ("생계비지원", "복지"),
+]
+
+
 class KsicBulkRequest(BaseModel):
     password: str
     records: List[dict]  # [{"code": "01110", "name": "...", "ksic11_name": "..."}]
@@ -4834,6 +5087,22 @@ def api_run_migrations(req: AdminAuthRequest):
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )"""),
+        ("interest_tag_pool table",
+         """CREATE TABLE IF NOT EXISTS interest_tag_pool (
+                id SERIAL PRIMARY KEY,
+                tag VARCHAR(100) NOT NULL,
+                category VARCHAR(40),
+                user_type VARCHAR(20) DEFAULT 'both',
+                source VARCHAR(20) DEFAULT 'seed',
+                frequency INTEGER DEFAULT 0,
+                embedding vector(768),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (tag, user_type)
+            )"""),
+        ("idx_interest_tag_pool_emb",
+         "CREATE INDEX IF NOT EXISTS idx_interest_tag_pool_emb ON interest_tag_pool USING hnsw (embedding vector_cosine_ops)"),
+        ("idx_interest_tag_pool_user_type",
+         "CREATE INDEX IF NOT EXISTS idx_interest_tag_pool_user_type ON interest_tag_pool(user_type)"),
         ("pro_consult_sessions.phase",
          "ALTER TABLE pro_consult_sessions ADD COLUMN IF NOT EXISTS phase VARCHAR(20) DEFAULT 'collecting'"),
         ("pro_consult_sessions.matched_snapshot",

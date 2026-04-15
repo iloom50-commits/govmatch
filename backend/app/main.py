@@ -3383,9 +3383,9 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 try: db.rollback()
                 except: pass
     finally:
-        if db:
-            try: db.close()
-            except: pass
+        # 주의: 매칭/matched_snapshot 저장이 아래에서 db를 재사용하므로 여기선 close 안 함.
+        # db.close()는 함수 return 직전에 수행 (matched_snapshot 저장 완료 후).
+        pass
 
     # ── 매칭 트리거: explicit_match=true(매칭 버튼 클릭)일 때만 ──
     matched_announcements = []
@@ -3528,6 +3528,11 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         else:
             # 미완료 상태에서는 빈 배열 — 사용자가 자유롭게 입력하도록
             choices = []
+
+    # db 연결 정리 (matching/matched_snapshot 저장 완료 후)
+    if db:
+        try: db.close()
+        except: pass
 
     return {
         "status": "SUCCESS",

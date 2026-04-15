@@ -4027,6 +4027,97 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+_UMBRELLA_SQL_WHERE = """
+    deadline_date IS NULL
+    AND (
+        title ILIKE '%통합 공고%' OR title ILIKE '%통합공고%'
+        OR title ILIKE '%종합 공고%' OR title ILIKE '%종합공고%'
+        OR title ILIKE '%운용계획 공고%' OR title ILIKE '%운용계획%변경%'
+        OR title ILIKE '%시행계획 공고%' OR title ILIKE '%시행 공고%'
+        OR title ILIKE '%통합안내%' OR title ILIKE '%종합 안내%'
+        OR summary_text ILIKE '%통합 공고%'
+        OR summary_text ILIKE '%지원사업 종합%'
+    )
+"""
+
+
+@app.post("/api/admin/umbrella-scan")
+def api_umbrella_scan(req: AdminAuthRequest):
+    """통합공고 후보 스캔 (dry-run) — 삭제 없이 개수와 샘플만 반환."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        total = cur.fetchone()["cnt"]
+        cur.execute(
+            f"""SELECT announcement_id, title, origin_source,
+                       LEFT(COALESCE(summary_text, ''), 120) AS summary_preview
+                FROM announcements
+                WHERE {_UMBRELLA_SQL_WHERE}
+                ORDER BY announcement_id DESC
+                LIMIT 30"""
+        )
+        samples = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "total_matched": total, "samples": samples}
+    finally:
+        try: conn.close()
+        except: pass
+
+
+@app.post("/api/admin/umbrella-purge")
+def api_umbrella_purge(req: AdminAuthRequest):
+    """통합공고 실제 삭제 — 관련 테이블 전부 정리."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # 대상 ID 수집
+        cur.execute(f"SELECT announcement_id FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        ids = [r["announcement_id"] for r in cur.fetchall()]
+        if not ids:
+            return {"status": "SUCCESS", "deleted": 0, "message": "대상 없음"}
+
+        deleted_by_table = {}
+        # 관련 테이블 순서대로 정리
+        for tbl, col in [
+            ("announcement_sections", "announcement_id"),
+            ("announcement_analysis", "announcement_id"),
+            ("announcement_embeddings", "announcement_id"),
+            ("saved_announcements", "announcement_id"),
+            ("trending_announcements", "announcement_id"),
+            ("match_history", "announcement_id"),
+            ("section_feedback", "section_id"),  # section_feedback은 section_id 기반이라 스킵
+        ]:
+            if tbl == "section_feedback":
+                continue
+            try:
+                cur.execute(f"DELETE FROM {tbl} WHERE {col} = ANY(%s)", (ids,))
+                deleted_by_table[tbl] = cur.rowcount
+            except Exception as e:
+                conn.rollback()
+                deleted_by_table[tbl] = f"error: {str(e)[:120]}"
+                continue
+        # 본 테이블
+        try:
+            cur.execute("DELETE FROM announcements WHERE announcement_id = ANY(%s)", (ids,))
+            deleted_by_table["announcements"] = cur.rowcount
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return {"status": "ERROR", "error": str(e)[:300], "partial": deleted_by_table}
+        return {
+            "status": "SUCCESS",
+            "deleted": len(ids),
+            "deleted_by_table": deleted_by_table,
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 class InspectAnnouncementRequest(BaseModel):
     password: str
     announcement_id: int

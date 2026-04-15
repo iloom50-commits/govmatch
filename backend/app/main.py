@@ -4075,6 +4075,19 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
     """
     if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
         raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    try:
+        return _umbrella_verify_impl(req)
+    except Exception as outer_err:
+        import traceback as _tb
+        return {
+            "status": "ERROR",
+            "error_type": type(outer_err).__name__,
+            "error": str(outer_err)[:400],
+            "traceback_tail": _tb.format_exc()[-800:],
+        }
+
+
+def _umbrella_verify_impl(req: "UmbrellaVerifyRequest") -> Dict[str, Any]:
     import google.generativeai as genai
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:

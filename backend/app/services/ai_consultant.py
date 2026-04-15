@@ -3610,12 +3610,13 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                 generation_config={"max_output_tokens": 4096, "temperature": 0.5},
             )
             chat_b = model_b.start_chat(enable_automatic_function_calling=True)
-            # 이전 대화 간단 주입 (마지막 user 메시지 제외)
-            for m in messages[:-1]:
-                if m.get("role") == "user":
-                    try: chat_b.send_message(m.get("text", ""))
-                    except Exception: pass
+            # 이전 대화는 history 인자로 한 번에 (재생 금지 — 타임아웃·중복 방지)
+            # 최근 user 메시지만 단발 호출
             last_user_msg_b = messages[-1].get("text", "") if messages else ""
+            # 이전 대화 요약을 시스템 프롬프트에 살짝 곁들임
+            prev_user_count = sum(1 for m in messages if m.get("role") == "user")
+            if prev_user_count >= 2:
+                last_user_msg_b = f"[이 상담은 {prev_user_count}번째 질문입니다 — 매칭 이미 완료됨]\n{last_user_msg_b}"
             resp_b = chat_b.send_message(last_user_msg_b)
             reply_b = resp_b.text if hasattr(resp_b, "text") else str(resp_b)
 

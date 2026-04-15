@@ -3559,6 +3559,13 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     ) or bool(
         session_state and session_state.get("matched_snapshot")
     )
+    # 디버그 정보 (응답에 포함되어 테스트에서 확인 가능)
+    _mode_b_debug = {
+        "session_exists": bool(session_state),
+        "phase": session_state.get("phase") if session_state else None,
+        "matched_snap_len": len(session_state.get("matched_snapshot") or []) if session_state else 0,
+        "tool_calling_entered": _is_consulting_phase,
+    }
     if _is_consulting_phase and db_conn and messages:
         try:
             # Mode B 전용 프롬프트 선택 (사업자/개인 분리)
@@ -3629,6 +3636,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                 "current_step": (session_state.get("current_step") if session_state else None),
                 "rag_sources": _rag_sources_for_response,
                 "phase": "consulting",
+                "mode_b_debug": _mode_b_debug,
             }
         except Exception as tool_err:
             logger.warning(f"[PRO Mode B tool calling] {tool_err}")
@@ -3833,6 +3841,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             "collected": collected,
             "current_step": result.get("current_step"),
             "rag_sources": _rag_sources_for_response,  # E: 출처 카드 (UI 표시용)
+            "mode_b_debug": _mode_b_debug,
         }
     except json.JSONDecodeError:
         # JSON 파싱 실패 — raw text에서 message/choices를 구제 추출 시도

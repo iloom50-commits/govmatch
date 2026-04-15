@@ -3541,6 +3541,8 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
         "rag_sources": result.get("rag_sources", []),  # E: 출처 카드
         "session_id": session_state.get("session_id") if session_state else None,
         "current_step": result.get("current_step") or (session_state.get("current_step") if session_state else None),
+        "phase": result.get("phase"),
+        "mode_b_debug": result.get("mode_b_debug"),
     }
 
 

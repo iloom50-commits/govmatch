@@ -3329,6 +3329,20 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
                 explicit_match=req.explicit_match,
                 session_state=session_state,
             )
+        except Exception as ai_err:
+            import traceback as _tb
+            _tb_str = _tb.format_exc()[-600:]
+            print(f"[PRO chat] chat_pro_consultant unhandled: {ai_err}\n{_tb_str}")
+            result = {
+                "reply": "일시적으로 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
+                "choices": ["✏️ 다시 시도"],
+                "done": False,
+                "profile": None,
+                "collected": (session_state or {}).get("collected", {}) if session_state else {},
+                "current_step": (session_state or {}).get("current_step") if session_state else None,
+                "rag_sources": [],
+                "mode_b_debug": {"unhandled_error": f"{type(ai_err).__name__}: {str(ai_err)[:200]}", "tb": _tb_str},
+            }
 
         # 세션 갱신 (실패해도 응답은 정상 반환)
         if not ann_id and session_state:

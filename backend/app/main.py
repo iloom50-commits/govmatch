@@ -2813,6 +2813,7 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
 class AiChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
     mode: Optional[str] = None  # "business_fund" | "individual_fund" | None (자동 판별)
+    session_id: Optional[str] = None  # 동일 상담 그룹핑용 (없으면 hash로 생성)
 
 
 @app.post("/api/ai/chat")
@@ -2873,14 +2874,23 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     from app.services.ai_consultant import chat_lite_fund_expert
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
 
-    # ── 대화 저장 (P0.1): 매 턴마다 ai_consult_logs에 UPSERT ──
-    # announcement_id=NULL 이면 자유상담, session_id(없으므로 연속 세션은 user bn + NULL)
+    # ── 대화 저장 (P0.1+B): UPSERT by session_id ──
+    # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성
     try:
         all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+        sid = req.session_id
+        if not sid:
+            import hashlib
+            first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
+            sid = "free_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
         cur.execute(
-            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
-               VALUES (NULL, %s, %s::jsonb, %s)""",
-            (bn, json.dumps(all_msgs, ensure_ascii=False), "free_chat")
+            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
+               VALUES (NULL, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
+               ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                   messages = EXCLUDED.messages,
+                   conclusion = EXCLUDED.conclusion,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (bn, json.dumps(all_msgs, ensure_ascii=False), "free_chat", sid)
         )
         conn.commit()
     except Exception as save_err:
@@ -3613,13 +3623,22 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
     from app.services.ai_consultant import chat_lite_fund_expert
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
 
-    # ── 대화 저장 (P0.2): ai_consult_logs에 conclusion='lite_consultant'로 기록 ──
+    # ── 대화 저장 (P0.2+B): UPSERT by session_id ──
     try:
         all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+        sid = req.session_id
+        if not sid:
+            import hashlib
+            first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
+            sid = "lite_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
         cur.execute(
-            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion)
-               VALUES (NULL, %s, %s::jsonb, %s)""",
-            (bn, json.dumps(all_msgs, ensure_ascii=False), "lite_consultant")
+            """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
+               VALUES (NULL, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
+               ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                   messages = EXCLUDED.messages,
+                   conclusion = EXCLUDED.conclusion,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (bn, json.dumps(all_msgs, ensure_ascii=False), "lite_consultant", sid)
         )
         conn.commit()
     except Exception as save_err:

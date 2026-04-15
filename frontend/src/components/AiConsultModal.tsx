@@ -344,6 +344,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             announcement_id: announcement.announcement_id,
             messages: messages,
             conclusion: null,
+            session_id: sessionId,
           }),
         });
         if (res.ok) {

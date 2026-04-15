@@ -4027,11 +4027,8 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
-_UMBRELLA_SQL_WHERE = """
-    (
-        title ILIKE '%통합 공고%' OR title ILIKE '%통합공고%'
-    )
-"""
+_UMBRELLA_PATTERNS = ["%통합 공고%", "%통합공고%"]
+_UMBRELLA_WHERE = "(title ILIKE %s OR title ILIKE %s)"
 
 
 @app.post("/api/admin/umbrella-scan")
@@ -4042,15 +4039,16 @@ def api_umbrella_scan(req: AdminAuthRequest):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_WHERE}", _UMBRELLA_PATTERNS)
         total = cur.fetchone()["cnt"]
         cur.execute(
             f"""SELECT announcement_id, title, origin_source,
                        LEFT(COALESCE(summary_text, ''), 120) AS summary_preview
                 FROM announcements
-                WHERE {_UMBRELLA_SQL_WHERE}
+                WHERE {_UMBRELLA_WHERE}
                 ORDER BY announcement_id DESC
-                LIMIT 30"""
+                LIMIT 30""",
+            _UMBRELLA_PATTERNS,
         )
         samples = [dict(r) for r in cur.fetchall()]
         return {"status": "SUCCESS", "total_matched": total, "samples": samples}
@@ -4092,13 +4090,13 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
         cur.execute(
             f"""SELECT announcement_id, title, summary_text
                 FROM announcements
-                WHERE {_UMBRELLA_SQL_WHERE}
+                WHERE {_UMBRELLA_WHERE}
                 ORDER BY announcement_id DESC
                 LIMIT %s OFFSET %s""",
-            (req.limit, req.offset),
+            _UMBRELLA_PATTERNS + [req.limit, req.offset],
         )
         rows = [dict(r) for r in cur.fetchall()]
-        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_WHERE}", _UMBRELLA_PATTERNS)
         remaining_total = cur.fetchone()["cnt"]
         if not rows:
             return {"status": "SUCCESS", "total": 0, "umbrella": 0, "kept": 0, "remaining_total": remaining_total, "results": []}
@@ -4203,7 +4201,7 @@ def api_umbrella_purge(req: AdminAuthRequest):
     try:
         cur = conn.cursor()
         # 대상 ID 수집
-        cur.execute(f"SELECT announcement_id FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        cur.execute(f"SELECT announcement_id FROM announcements WHERE {_UMBRELLA_WHERE}", _UMBRELLA_PATTERNS)
         ids = [r["announcement_id"] for r in cur.fetchall()]
         if not ids:
             return {"status": "SUCCESS", "deleted": 0, "message": "대상 없음"}

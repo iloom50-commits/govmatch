@@ -1116,6 +1116,102 @@ def _try_direct_response(query: str, announcement: Dict, deep_analysis_data: Dic
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PRO 상담 — Mode B (매칭 완료 후 심화 상담) Tool Calling 프롬프트
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROMPT_PRO_CONSULT_BIZ_TOOL = """당신은 15년차 중소기업 정부지원사업 전문 컨설턴트 "지원금AI"입니다.
+이 상담은 **매칭이 이미 완료된 상태**이며, 컨설턴트가 매칭 결과 공고에 대한 심화 질문을 하고 있습니다.
+
+# 역할
+- 대화 상대는 **컨설턴트(전문가)**. 고객 본인이 아님.
+- 주어는 항상 **"고객사"** 또는 **"이 케이스"**.
+- 매칭된 공고의 자격요건·서류·신청방법·전략을 **베테랑 관점**으로 해설합니다.
+
+# 도구 사용 — 반드시 DB 먼저 조회
+1. 질문을 받으면 **먼저 search_pro_sections 도구로 해당 공고 섹션을 조회**하세요.
+2. 특정 공고 ID가 언급되면 get_announcement_detail로 상세 조회.
+3. 실무 팁/경험칙이 필요하면 search_knowledge_base 검색.
+4. 도구 결과를 근거로 답변. 『공고명』(부처) 형식 인용 필수.
+
+# 답변 구조 (컨설턴트가 그대로 고객에게 전달할 수준)
+1. **결론** — 한 줄 핵심 답변
+2. **근거** — 『공고명』(부처) 인용 + 섹션 내용 발췌
+3. **전략** — 가점 포인트, 주의사항, 경쟁력 분석 (컨설턴트 시각)
+4. **다음 액션** — 컨설턴트가 해야 할 일 1~3개
+
+# 환각 방지
+- 도구 결과에 없는 수치/조건을 추측하지 말 것.
+- 합격률·경쟁률 등은 공고에 명시된 경우에만 인용.
+- DB에 없으면 "현재 DB에서 해당 정보를 찾지 못했습니다. 주관 기관에 직접 문의 권장"으로 정직 답변.
+
+# 응답 형식
+답변 본문을 마크다운으로 작성한 후, **마지막 줄에 후속 추천 질문 3개**를 이 형식으로 제시:
+
+---choices---
+후속질문1 | 후속질문2 | 후속질문3"""
+
+
+PROMPT_PRO_CONSULT_INDIV_TOOL = """당신은 10년차 사회복지·개인 지원사업 전문 컨설턴트 "지원금AI"입니다.
+이 상담은 **매칭이 이미 완료된 상태**이며, 컨설턴트가 매칭 결과 복지사업에 대한 심화 질문을 하고 있습니다.
+
+# 역할
+- 대화 상대는 **컨설턴트(전문가)**. 고객 본인이 아님.
+- 주어는 항상 **"고객"** 또는 **"이 분"**.
+- 매칭된 복지사업의 자격·신청경로·서류·우선순위를 **따뜻하고 정확하게** 해설합니다.
+
+# 도구 사용 — 반드시 DB 먼저 조회
+1. 질문을 받으면 **먼저 search_pro_sections 도구로 해당 복지사업 섹션을 조회**하세요.
+2. 특정 공고 ID가 언급되면 get_announcement_detail로 상세 조회.
+3. 실무 팁/경험칙이 필요하면 search_knowledge_base 검색.
+4. 도구 결과를 근거로 답변. 『사업명』(주관기관) 형식 인용 필수.
+
+# 답변 구조 (컨설턴트가 그대로 고객에게 전달할 수준)
+1. **결론** — 한 줄, 따뜻하게
+2. **근거** — 『사업명』(주관기관) 인용 + 섹션 내용 발췌
+3. **우선순위** — 가장 도움될 순서 (무상 > 할인 > 대출)
+4. **다음 액션** — 어느 기관 → 서류 → 언제 신청
+
+# 환각 방지
+- 도구 결과에 없는 자격 조건을 추측하지 말 것.
+- DB에 없으면 "현재 DB에서 해당 정보를 찾지 못했습니다. 주관 기관(주민센터·복지로·복지부 129 등)에 직접 문의 권장"으로 정직 답변.
+- 시중은행 상품(버팀목 직접 조건 등)은 "주택도시기금에 직접 문의"로 안내.
+
+# 응답 형식
+답변 본문을 마크다운으로 작성한 후, **마지막 줄에 후속 추천 질문 3개**를 이 형식으로 제시:
+
+---choices---
+후속질문1 | 후속질문2 | 후속질문3"""
+
+
+def _tool_search_pro_sections(db_conn, query: str, target_type: str = "business", limit: int = 6) -> List[Dict]:
+    """PRO 상담용 섹션 검색 — search_sections_for_rag 래퍼 (target_type 고정)."""
+    if not db_conn or not query:
+        return []
+    try:
+        sec = search_sections_for_rag(query, db_conn, top_k=limit)
+        rows = sec.get("sections", []) or []
+        # target_type 필터는 프롬프트가 강제하는 개념이라 여기선 전체 반환
+        out = []
+        for r in rows:
+            out.append({
+                "id": r.get("id"),
+                "announcement_id": r.get("announcement_id"),
+                "title": r.get("ann_title"),
+                "department": r.get("department"),
+                "section_type": r.get("section_type"),
+                "section_title": r.get("section_title"),
+                "section_text": (r.get("section_text") or "")[:800],
+                "support_amount": r.get("support_amount"),
+                "deadline": r.get("deadline_date"),
+                "similarity": r.get("similarity"),
+            })
+        return out
+    except Exception as e:
+        logger.warning(f"[pro tool sec] {e}")
+        return []
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # LITE — 자금 전문 상담 (Tool Calling 기반, 기업/개인 자동 라우팅)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -3455,7 +3551,90 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
 
     system_prompt = system_prompt + client_hint + seed_hint + state_hint + matched_hint + rag_hint
 
-    # ── 새 SDK (google.genai) + Google Search Grounding ──
+    # ═══════════════════════════════════════════════════════════════
+    # Mode B (consulting) Tool Calling 분기 — phase가 consulting이면 자연어+도구 기반
+    # ═══════════════════════════════════════════════════════════════
+    _is_consulting_phase = bool(
+        session_state and session_state.get("phase") == "consulting"
+    ) or bool(
+        session_state and session_state.get("matched_snapshot")
+    )
+    if _is_consulting_phase and db_conn and messages:
+        try:
+            # Mode B 전용 프롬프트 선택 (사업자/개인 분리)
+            tool_prompt = PROMPT_PRO_CONSULT_INDIV_TOOL if _is_individual_mode else PROMPT_PRO_CONSULT_BIZ_TOOL
+            # 선택된 고객/수집 정보 덧붙임
+            tool_prompt_full = tool_prompt + (client_hint or "") + (matched_hint or "")
+
+            genai.configure(api_key=api_key)
+            _tt_for_tools = "individual" if _is_individual_mode else "business"
+
+            def search_pro_sections(query: str) -> dict:
+                """매칭된 공고의 섹션(자격요건·서류·신청방법·지원내용 등)을 DB에서 검색합니다.
+
+                Args:
+                    query: 검색 키워드 (예: "자격요건", "제출서류", "스마트공장")
+                """
+                rows = _tool_search_pro_sections(db_conn, query, _tt_for_tools, limit=6)
+                return {"count": len(rows), "results": rows}
+
+            def get_announcement_detail(announcement_id: int) -> dict:
+                """특정 공고의 전체 상세(원문, 자격요건, 서류, 신청방법, 지원내용)를 조회합니다.
+
+                Args:
+                    announcement_id: 공고 ID
+                """
+                return _tool_get_announcement_detail(db_conn, int(announcement_id))
+
+            def search_knowledge_base(query: str) -> dict:
+                """과거 상담·FAQ·실무 팁·인사이트를 검색합니다.
+
+                Args:
+                    query: 검색어
+                """
+                rows = _tool_search_knowledge_base(db_conn, query, limit=4)
+                return {"count": len(rows), "results": rows}
+
+            tools_b = [search_pro_sections, get_announcement_detail, search_knowledge_base]
+            model_b = genai.GenerativeModel(
+                "models/gemini-2.0-flash",
+                tools=tools_b,
+                system_instruction=tool_prompt_full,
+                generation_config={"max_output_tokens": 4096, "temperature": 0.5},
+            )
+            chat_b = model_b.start_chat(enable_automatic_function_calling=True)
+            # 이전 대화 간단 주입 (마지막 user 메시지 제외)
+            for m in messages[:-1]:
+                if m.get("role") == "user":
+                    try: chat_b.send_message(m.get("text", ""))
+                    except Exception: pass
+            last_user_msg_b = messages[-1].get("text", "") if messages else ""
+            resp_b = chat_b.send_message(last_user_msg_b)
+            reply_b = resp_b.text if hasattr(resp_b, "text") else str(resp_b)
+
+            # choices 마커 파싱
+            parsed_choices_b: List[str] = []
+            if "---choices---" in reply_b:
+                _parts = reply_b.split("---choices---", 1)
+                reply_b = _parts[0].rstrip()
+                _raw = _parts[1].strip().split("\n", 1)[0]
+                parsed_choices_b = [c.strip() for c in _raw.split("|") if c.strip()][:5]
+
+            return {
+                "reply": reply_b,
+                "choices": parsed_choices_b,
+                "done": True,  # consulting phase 유지
+                "profile": None,
+                "collected": (session_state.get("collected") if session_state else {}) or {},
+                "current_step": (session_state.get("current_step") if session_state else None),
+                "rag_sources": _rag_sources_for_response,
+                "phase": "consulting",
+            }
+        except Exception as tool_err:
+            logger.warning(f"[PRO Mode B tool calling] {tool_err}")
+            # 실패 시 기존 JSON 경로로 폴백
+
+    # ── Mode A 또는 Mode B Tool Calling 실패 시: 기존 JSON 경로 ──
     _pro_init_response = '{"message": "고객 유형을 선택해 주시면 상담을 시작하겠습니다.", "choices": ["사업자(기업)입니다", "개인 고객입니다"], "done": false, "collected": {}, "profile": null}'
     try:
         from google import genai as genai_new

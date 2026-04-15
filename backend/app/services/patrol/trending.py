@@ -116,28 +116,23 @@ def _amount_score(amount_str: str) -> int:
     return 0
 
 
-def select_trending_announcements(db_conn, limit: int = 2) -> List[Dict[str, Any]]:
-    """네이버 데이터랩 순위 → DB 매칭 → 버킷 내부 정렬 → 상위 N건."""
-    ranked = fetch_datalab_ranking()
-    if not ranked:
-        # 폴백: API 키 없거나 실패 → 고정 키워드 사용
-        print("[Trending] DataLab unavailable, using static fallback keywords")
-        ranked = [(kw, 1.0) for kw in _ALL_KEYWORDS]
-
-    cur = db_conn.cursor()
+def _fetch_candidates_for_keywords(
+    cur, keywords: List[str], ranked_map: Dict[str, float], target_filter: str
+) -> List[Dict[str, Any]]:
+    """주어진 키워드 목록으로 공고 후보 수집 (target_type 필터 포함)."""
     candidates: List[Dict[str, Any]] = []
-    seen_ids = set()
-
-    # 상위 키워드 각각에 대해 DB 매칭 (최대 8개 키워드 × 5건 = 40 후보)
-    for kw, ratio in ranked[:10]:
+    seen_ids: set = set()
+    for kw in keywords:
+        ratio = ranked_map.get(kw, 0.0)
         try:
             cur.execute(
-                """
+                f"""
                 SELECT announcement_id, title, department, category, support_amount,
-                       deadline_date, region, origin_url
+                       deadline_date, region, origin_url, target_type
                 FROM announcements
                 WHERE (title ILIKE %s OR category ILIKE %s)
                   AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                  AND COALESCE(target_type, 'business') IN ({target_filter})
                 ORDER BY created_at DESC
                 LIMIT 5
                 """,
@@ -155,34 +150,78 @@ def select_trending_announcements(db_conn, limit: int = 2) -> List[Dict[str, Any
                 candidates.append(d)
         except Exception as e:
             print(f"[Trending] Query error for '{kw}': {e}")
-            try: db_conn.rollback()
+            try: cur.connection.rollback()
             except: pass
             continue
+    return candidates
 
-    # 버킷 내부 정렬: 자금관련 우선 → 마감 유효 → 금액 큰 순
-    def _sort_key(c: Dict[str, Any]) -> Tuple[int, int, int, float]:
+
+def _sort_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """자금관련 → 마감 유효 → 금액 큰 순 → 검색지수."""
+    def _key(c: Dict[str, Any]) -> Tuple[int, int, int, float]:
         fund_pri = 0 if _fund_related(c.get("title", ""), c.get("category", "")) else 1
-        # 마감 유효는 이미 WHERE에서 보장되지만 혹시 모를 NULL 안전성
         has_deadline = 0 if c.get("deadline_date") else 1
         amount = _amount_score(c.get("support_amount", ""))
-        # amount 큰 순 = 음수로 변환
         return (fund_pri, has_deadline, -amount, -(c.get("trending_ratio") or 0))
+    return sorted(candidates, key=_key)
 
-    candidates.sort(key=_sort_key)
 
-    # 카테고리 다양성 (동일 카테고리 연속 방지 — 상위 2건이라 1개만 체크)
-    result: List[Dict[str, Any]] = []
-    seen_cats: set = set()
-    for c in candidates:
-        cat = c.get("category") or "일반"
-        if cat in seen_cats and len(result) >= 1:
-            continue
-        result.append(c)
-        seen_cats.add(cat)
-        if len(result) >= limit:
-            break
+def select_trending_announcements(db_conn, limit_per_type: int = 2) -> List[Dict[str, Any]]:
+    """사업자 키워드 2건 + 개인 키워드 2건 = 총 4건 선정.
 
-    return result[:limit]
+    프론트에서 사용자 user_type에 따라 필터링 후 상위 2건만 표시.
+    """
+    ranked = fetch_datalab_ranking()
+    if not ranked:
+        print("[Trending] DataLab unavailable, using static fallback keywords")
+        ranked = [(kw, 1.0) for kw in _ALL_KEYWORDS]
+    ranked_map = {kw: r for kw, r in ranked}
+
+    # 데이터랩 순위로 키워드 재정렬 (우선순위 보존)
+    biz_sorted = sorted(_BIZ_KEYWORDS, key=lambda k: -ranked_map.get(k, 0))
+    indiv_sorted = sorted(_INDIV_KEYWORDS, key=lambda k: -ranked_map.get(k, 0))
+
+    cur = db_conn.cursor()
+
+    # 사업자 후보: target_type in (business, both)
+    biz_candidates = _fetch_candidates_for_keywords(
+        cur, biz_sorted, ranked_map, "'business', 'both'"
+    )
+    biz_sorted_cand = _sort_candidates(biz_candidates)
+
+    # 개인 후보: target_type in (individual, both)
+    indiv_candidates = _fetch_candidates_for_keywords(
+        cur, indiv_sorted, ranked_map, "'individual', 'both'"
+    )
+    indiv_sorted_cand = _sort_candidates(indiv_candidates)
+
+    # 카테고리 다양성 적용하며 각 유형에서 limit_per_type 건씩 선정
+    def _pick_diverse(cands: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
+        picked: List[Dict[str, Any]] = []
+        seen_cats: set = set()
+        for c in cands:
+            cat = c.get("category") or "일반"
+            if cat in seen_cats and len(picked) >= 1:
+                continue
+            picked.append(c)
+            seen_cats.add(cat)
+            if len(picked) >= n:
+                break
+        # 다양성 필터로 부족하면 나머지로 채움
+        if len(picked) < n:
+            for c in cands:
+                if c in picked:
+                    continue
+                picked.append(c)
+                if len(picked) >= n:
+                    break
+        return picked[:n]
+
+    biz_picked = _pick_diverse(biz_sorted_cand, limit_per_type)
+    indiv_picked = _pick_diverse(indiv_sorted_cand, limit_per_type)
+
+    # 사업자 먼저 / 개인 다음 순서로 합침 (저장 rank는 순번대로)
+    return biz_picked + indiv_picked
 
 
 def save_trending(db_conn, announcements: List[Dict]) -> int:
@@ -234,8 +273,8 @@ def save_trending(db_conn, announcements: List[Dict]) -> int:
 
 
 def run_trending_update(db_conn) -> Dict[str, Any]:
-    """인기 공고 업데이트 전체 실행 (패트롤 호출용)."""
-    announcements = select_trending_announcements(db_conn, limit=2)
+    """인기 공고 업데이트 전체 실행 (패트롤 호출용) — 사업자 2 + 개인 2 = 4건."""
+    announcements = select_trending_announcements(db_conn, limit_per_type=2)
     saved = save_trending(db_conn, announcements)
     titles = [a["title"][:30] for a in announcements]
     keywords = [a.get("trending_keyword", "") for a in announcements]

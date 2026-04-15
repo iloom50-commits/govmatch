@@ -3479,11 +3479,13 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
         if matched_snap:
             matched_hint = "\n\n[매칭 결과 — 상담 근거로 사용]\n"
             for i, m in enumerate(matched_snap[:10], 1):
-                title = m.get("title", "")[:80]
-                dept = m.get("department", "")[:40]
-                amount = m.get("support_amount", "")[:40]
-                deadline = str(m.get("deadline_date", ""))[:10]
-                score = m.get("match_score", 0)
+                if not isinstance(m, dict):
+                    continue
+                title = (m.get("title") or "")[:80]
+                dept = (m.get("department") or "")[:40]
+                amount = (m.get("support_amount") or "")[:40]
+                deadline = str(m.get("deadline_date") or "")[:10]
+                score = m.get("match_score") or 0
                 matched_hint += f"{i}. [{score}점] {title}\n"
                 if dept: matched_hint += f"   • 부처: {dept}\n"
                 if amount: matched_hint += f"   • 지원금: {amount}\n"

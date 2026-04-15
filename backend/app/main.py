@@ -3223,7 +3223,28 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
     """PRO 전문가 전용: 고객사 상담 채팅 (세션 기반 상태 관리)"""
     _require_pro(current_user)
+    try:
+        return _api_pro_consultant_chat_impl(req, current_user)
+    except Exception as outer_err:
+        import traceback as _tb
+        _tb_str = _tb.format_exc()[-800:]
+        print(f"[PRO chat] OUTER ERROR: {outer_err}\n{_tb_str}")
+        return {
+            "status": "ERROR",
+            "reply": "일시적으로 응답 생성에 실패했습니다.",
+            "choices": ["✏️ 다시 시도"],
+            "done": False,
+            "profile": None,
+            "collected": {},
+            "matched_announcements": [],
+            "rag_sources": [],
+            "session_id": req.session_id,
+            "outer_error": f"{type(outer_err).__name__}: {str(outer_err)[:200]}",
+            "outer_tb": _tb_str,
+        }
 
+
+def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: dict):
     from app.services.ai_consultant import chat_pro_consultant
     import uuid as _uuid
 

@@ -4339,6 +4339,63 @@ def api_inspect_announcement(req: InspectAnnouncementRequest):
         except: pass
 
 
+class ConsultDedupeRequest(BaseModel):
+    password: str
+    apply: Optional[bool] = False
+
+
+@app.post("/api/admin/consult-dedupe")
+def api_consult_dedupe(req: ConsultDedupeRequest):
+    """ai_consult_logs 중복 정리 — 같은 (bn, aid) 쌍에서 session_id 있는 행이 존재하면
+    session_id가 NULL인 행 삭제. apply=False면 미리보기만."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # 삭제 대상: session_id NULL이고, 같은 (bn, aid)에 session_id 있는 행이 존재
+        cur.execute(
+            """SELECT l1.id, l1.announcement_id, l1.business_number, l1.created_at
+               FROM ai_consult_logs l1
+               WHERE l1.session_id IS NULL
+                 AND l1.announcement_id IS NOT NULL
+                 AND EXISTS (
+                     SELECT 1 FROM ai_consult_logs l2
+                     WHERE l2.business_number = l1.business_number
+                       AND l2.announcement_id = l1.announcement_id
+                       AND l2.session_id IS NOT NULL
+                       AND l2.id <> l1.id
+                 )
+               ORDER BY l1.id DESC
+               LIMIT 1000"""
+        )
+        targets = [dict(r) for r in cur.fetchall()]
+        count = len(targets)
+        if not req.apply:
+            return {
+                "status": "SUCCESS",
+                "mode": "dry-run",
+                "deletable": count,
+                "samples": targets[:15],
+            }
+        # 실제 삭제
+        ids = [t["id"] for t in targets]
+        deleted = 0
+        if ids:
+            cur.execute("DELETE FROM ai_consult_logs WHERE id = ANY(%s)", (ids,))
+            deleted = cur.rowcount
+            conn.commit()
+        return {
+            "status": "SUCCESS",
+            "mode": "applied",
+            "deleted": deleted,
+            "remaining_dupes_query": "SELECT COUNT(*)...",
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 @app.post("/api/admin/refresh-trending")
 def api_refresh_trending(req: AdminAuthRequest):
     """오늘의 인기 공고를 강제로 재생성 (네이버 데이터랩 호출 포함)."""

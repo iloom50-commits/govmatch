@@ -4073,29 +4073,21 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
     - purge=False (기본): 검증만 하고 결과 반환
     - purge=True: is_umbrella=true 판정된 공고를 즉시 삭제
     """
-    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
-        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
     try:
-        return _umbrella_verify_impl(req)
-    except Exception as outer_err:
+        if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+            return {"status": "ERROR", "error": "pw"}
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            return {"status": "ERROR", "error": "no gemini key"}
+        genai.configure(api_key=api_key)
+    except Exception as init_err:
         import traceback as _tb
-        return {
-            "status": "ERROR",
-            "error_type": type(outer_err).__name__,
-            "error": str(outer_err)[:400],
-            "traceback_tail": _tb.format_exc()[-800:],
-        }
+        return {"status": "INIT_ERROR", "error": f"{type(init_err).__name__}: {str(init_err)[:300]}", "tb": _tb.format_exc()[-600:]}
 
-
-def _umbrella_verify_impl(req: "UmbrellaVerifyRequest") -> Dict[str, Any]:
-    import google.generativeai as genai
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
-    genai.configure(api_key=api_key)
-
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
             f"""SELECT announcement_id, title, summary_text
@@ -4193,8 +4185,12 @@ def _umbrella_verify_impl(req: "UmbrellaVerifyRequest") -> Dict[str, Any]:
             "remaining_after": remaining_total - purged,
             "results": results,
         }
+    except Exception as run_err:
+        import traceback as _tb
+        return {"status": "RUN_ERROR", "error": f"{type(run_err).__name__}: {str(run_err)[:300]}", "tb": _tb.format_exc()[-800:]}
     finally:
-        try: conn.close()
+        try:
+            if conn: conn.close()
         except: pass
 
 

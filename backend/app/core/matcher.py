@@ -1025,29 +1025,225 @@ def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_fi
         except: pass
 
 
+# ───────────────────────────────────────────────────────────
+# 버킷 분류 + 로테이션 + 2차 정렬
+# ───────────────────────────────────────────────────────────
+
+_BUCKET_ORDER_BASE = ["interest", "region", "deadline", "fresh"]
+
+
+def _is_fund_related(title: str, category: str) -> bool:
+    t = f"{title or ''} {category or ''}".lower()
+    return any(k in t for k in ["정책자금", "융자", "보증", "대출", "자금", "r&d", "연구개발", "기술개발", "창업자금"])
+
+
+def _amount_value(amount_str: str) -> int:
+    """지원금액 텍스트 → 대략적 원화 정수 (큰 숫자 먼저 정렬용)."""
+    if not amount_str:
+        return 0
+    try:
+        if "억" in amount_str:
+            m = re.search(r"(\d+(?:\.\d+)?)\s*억", amount_str)
+            if m:
+                return int(float(m.group(1)) * 100_000_000)
+        if "천만" in amount_str:
+            m = re.search(r"(\d+(?:\.\d+)?)\s*천만", amount_str)
+            if m:
+                return int(float(m.group(1)) * 10_000_000)
+        if "만" in amount_str:
+            m = re.search(r"(\d+(?:\.\d+)?)\s*만", amount_str)
+            if m:
+                return int(float(m.group(1)) * 10_000)
+    except Exception:
+        pass
+    return 0
+
+
+def _is_deadline_valid(deadline_date) -> bool:
+    """마감 유효 (미래이거나 상시모집)."""
+    if deadline_date is None:
+        return True
+    try:
+        if isinstance(deadline_date, (datetime.date, datetime.datetime)):
+            d = deadline_date if isinstance(deadline_date, datetime.date) else deadline_date.date()
+        else:
+            d = datetime.datetime.strptime(str(deadline_date)[:10], "%Y-%m-%d").date()
+        return d >= datetime.date.today()
+    except Exception:
+        return True
+
+
+def _days_left(deadline_date) -> int:
+    if deadline_date is None:
+        return 9999
+    try:
+        if isinstance(deadline_date, (datetime.date, datetime.datetime)):
+            d = deadline_date if isinstance(deadline_date, datetime.date) else deadline_date.date()
+        else:
+            d = datetime.datetime.strptime(str(deadline_date)[:10], "%Y-%m-%d").date()
+        return (d - datetime.date.today()).days
+    except Exception:
+        return 9999
+
+
+def _classify_bucket(match_item: dict, user_profile: dict) -> str:
+    """공고를 버킷에 배정 — interest/region/deadline/fresh 중 하나."""
+    title = match_item.get("title") or ""
+    category = match_item.get("category") or ""
+    region = match_item.get("region") or ""
+    search_text = f"{title} {category} {match_item.get('summary_text') or ''}".lower()
+
+    # 1) interest 우선 — 사용자 관심 키워드와 매칭되면 interest 버킷
+    user_interests = (user_profile.get("interests") or "").split(",") if user_profile.get("interests") else []
+    user_kws = (user_profile.get("custom_keywords") or "").split(",") if user_profile.get("custom_keywords") else []
+    for tag in user_interests + user_kws:
+        tag = (tag or "").strip()
+        if not tag:
+            continue
+        if tag.lower() in search_text:
+            return "interest"
+        # INTEREST_KEYWORD_MAP 확장된 키워드도 체크
+        expanded = INTEREST_KEYWORD_MAP.get(tag, [])
+        if any(kw.lower() in search_text for kw in expanded):
+            return "interest"
+
+    # 2) region — 사용자 소재지/관심지역과 매칭
+    addr_raw = (user_profile.get("address_city") or "")
+    user_cities = [c.strip() for c in addr_raw.split(",") if c.strip() and c.strip() != "전국"]
+    if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
+        return "region"
+
+    # 3) deadline — 30일 이내 마감
+    dleft = _days_left(match_item.get("deadline_date"))
+    if 0 <= dleft <= 30:
+        return "deadline"
+
+    # 4) fresh — 최근 등록 (기본 버킷)
+    return "fresh"
+
+
+def _rotate_buckets(user_profile: dict) -> list:
+    """접속일·사용자 해시로 버킷 순서 로테이션."""
+    import hashlib
+    seed_parts = [
+        str(user_profile.get("business_number", "")),
+        str(user_profile.get("email", "")),
+        datetime.date.today().isoformat(),
+    ]
+    seed = "|".join(seed_parts)
+    h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+    # 4개 버킷을 해시로 셔플
+    buckets = list(_BUCKET_ORDER_BASE)
+    result: list = []
+    remaining = buckets[:]
+    for i in range(len(buckets)):
+        if not remaining:
+            break
+        idx = (h + i * 7) % len(remaining)
+        result.append(remaining.pop(idx))
+    return result
+
+
+_BUCKET_LABELS = {
+    "interest": "🎯 내 관심분야",
+    "region": "📍 내 지역 맞춤",
+    "deadline": "⏰ 마감 임박",
+    "fresh": "✨ 최근 등록",
+}
+
+
+def _apply_bucket_layer(results: list, user_profile: dict) -> list:
+    """매칭 결과에 버킷 분류 + 2차 정렬 + 합성 score 부여.
+
+    기존 match_score 정렬과 호환되도록 합성 점수는 버킷 우선순위를 보존.
+    - 1등 버킷: 95~99
+    - 2등: 87~94
+    - 3등: 80~86
+    - 4등: 75~79
+    버킷 내부 정렬: 자금관련(+) → 마감 유효(+) → 금액 큰 순.
+    """
+    if not results:
+        return results
+
+    bucket_order = _rotate_buckets(user_profile)
+    bucket_to_rank = {b: i for i, b in enumerate(bucket_order)}
+
+    # 1) 각 아이템에 버킷 부여
+    for r in results:
+        b = _classify_bucket(r, user_profile)
+        r["bucket"] = b
+        r["bucket_label"] = _BUCKET_LABELS.get(b, b)
+
+    # 2) 버킷 내부 2차 정렬 키 (자금 우선 → 마감 유효 → 금액 큰 순)
+    def _sort_key(r):
+        fund = 0 if _is_fund_related(r.get("title", ""), r.get("category", "")) else 1
+        deadline_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        amount = -_amount_value(r.get("support_amount", ""))
+        return (fund, deadline_ok, amount)
+
+    # 버킷별 그룹
+    grouped: dict = {b: [] for b in bucket_order}
+    for r in results:
+        b = r.get("bucket") or "fresh"
+        grouped.setdefault(b, []).append(r)
+
+    # 3) 버킷별 내부 정렬 + 합성 점수 부여
+    final: list = []
+    ranges = [(95, 99), (87, 94), (80, 86), (75, 79)]
+    for idx, b in enumerate(bucket_order):
+        items = grouped.get(b, [])
+        items.sort(key=_sort_key)
+        lo, hi = ranges[idx] if idx < len(ranges) else (75, 79)
+        span = max(1, len(items))
+        for i, r in enumerate(items):
+            # 합성 점수 — 순위가 높을수록 hi 가까움
+            synth = hi - int((hi - lo) * (i / span))
+            r["match_score"] = synth
+            # reasons 배열 (프론트 뱃지용) — 기존 recommendation_reason 유지하면서 신규 필드 추가
+            reasons_arr = []
+            if r.get("bucket") == "interest":
+                reasons_arr.append({"icon": "🎯", "label": "관심분야"})
+            elif r.get("bucket") == "region":
+                reasons_arr.append({"icon": "📍", "label": "내 지역"})
+            if _is_fund_related(r.get("title", ""), r.get("category", "")):
+                reasons_arr.append({"icon": "💰", "label": "자금"})
+            dl = _days_left(r.get("deadline_date"))
+            if 0 <= dl <= 7:
+                reasons_arr.append({"icon": "⏰", "label": f"D-{dl}"})
+            r["reasons"] = reasons_arr
+            final.append(r)
+
+    return final
+
+
 def get_matches_hybrid(user_profile: dict, is_individual: bool = False) -> list:
     """하이브리드 매칭 — USE_EMBEDDING_MATCHING 환경변수 ON일 때만 임베딩 사용.
     OFF 또는 실패 시 기존 rule-based 함수로 자동 fallback.
+    결과에 버킷 분류·합성 점수·reasons 추가.
     """
     import os as _os
     use_emb = _os.environ.get("USE_EMBEDDING_MATCHING", "false").lower() == "true"
 
     # 기본: rule-based 사용
     if not use_emb:
-        return get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+        results = get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+    else:
+        # 임베딩 검색으로 상위 50개 후보 추출
+        tt = "individual" if is_individual else "business"
+        candidates = get_matches_by_embedding(user_profile, top_k=50, target_type_filter=tt)
+        if not candidates:
+            print("[MatchHybrid] embedding returned empty, fallback to rule-based")
+            results = get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+        else:
+            for c in candidates:
+                sim = c.pop("similarity", 0.0) or 0.0
+                c["match_score"] = round(max(0, min(100, sim * 100)))
+                c["match_reason"] = "의미 유사도 기반 매칭"
+            results = candidates
 
-    # 임베딩 검색으로 상위 50개 후보 추출
-    tt = "individual" if is_individual else "business"
-    candidates = get_matches_by_embedding(user_profile, top_k=50, target_type_filter=tt)
-
-    # 임베딩 실패 → rule-based fallback
-    if not candidates:
-        print("[MatchHybrid] embedding returned empty, fallback to rule-based")
-        return get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
-
-    # 임베딩 결과에 match_score 주입 (similarity를 0~100 스케일로 환산)
-    for c in candidates:
-        sim = c.pop("similarity", 0.0) or 0.0
-        c["match_score"] = round(max(0, min(100, sim * 100)))
-        c["match_reason"] = "의미 유사도 기반 매칭"
-    return candidates
+    # 버킷 분류 + 2차 정렬 + 합성 점수 후처리
+    try:
+        results = _apply_bucket_layer(results, user_profile)
+    except Exception as e:
+        print(f"[MatchHybrid] bucket layer error (fallback raw): {e}")
+    return results

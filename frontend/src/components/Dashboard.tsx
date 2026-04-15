@@ -163,6 +163,9 @@ interface MatchItem {
     deadline_date: string;
     match_score?: number;
     recommendation_reason: string;
+    bucket?: string;
+    bucket_label?: string;
+    reasons?: { icon: string; label: string }[];
     summary_text: string;
     origin_url?: string;
     url?: string;

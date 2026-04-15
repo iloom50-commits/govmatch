@@ -138,6 +138,9 @@ interface Result {
   support_amount: string;
   match_score?: number;
   recommendation_reason: string;
+  bucket?: string;
+  bucket_label?: string;
+  reasons?: { icon: string; label: string }[];
   deadline_date?: string;
   summary_text?: string;
   region?: string;
@@ -285,6 +288,12 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               </svg>
             </button>
           )}
+          {/* 이유 뱃지 (백엔드에서 reasons 제공 시) */}
+          {res.reasons && res.reasons.length > 0 && res.reasons.slice(0, 3).map((r, i) => (
+            <span key={i} className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[12px] font-bold rounded-full border border-amber-100">
+              {r.icon} {r.label}
+            </span>
+          ))}
           {res.department && (
             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[12px] font-bold rounded-full border border-blue-100">
               {res.department}

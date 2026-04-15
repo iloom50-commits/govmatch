@@ -1380,14 +1380,15 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # ── 플랜 v4: 플랜 차별화 강화 (2026-04-05 확정) ──
 # FREE: 공고AI 1회/월, 저장/알림 불가
 # LITE: 공고AI 20회/월, 저장/알림 가능, 가입 시 7일 무료체험
-# PRO (전문가용): 무제한, 전문가 에이전트
+# PRO (전문가용): 무제한, 전방위 전문가 에이전트
+# LITE: 자금 전문 AI (기업/개인 자금·보증 특화) 월 100회
 #
-# 자유AI 상담 (자유Q&A + 컨설턴트) 건수 제한 — PRO 전용
+# /api/ai/chat 건수 제한
 PLAN_LIMITS = {
-    "free": 0,
-    "lite": 0,         # LITE: 자유AI 불가 (PRO 전용)
-    "lite_trial": 0,   # legacy
-    "basic": 0,        # legacy → LITE 취급
+    "free": 3,         # FREE: 체험용 월 3회 (자금 AI)
+    "lite": 100,       # LITE: 자금 전문 AI 월 100회
+    "lite_trial": 100,
+    "basic": 100,      # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }

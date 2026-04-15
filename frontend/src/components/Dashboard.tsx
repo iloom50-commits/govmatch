@@ -1425,77 +1425,27 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           ) : (
             <>
-            {/* 오늘의 인기 공고 */}
+            {/* 오늘의 인기 공고 — 일반 카드와 동일 형태 + 오렌지 테두리 + 2건 */}
             {trendingItems.length > 0 && (
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🔥</span>
                   <h3 className="text-[15px] font-bold text-slate-800">오늘의 인기 공고</h3>
-                  <span className="text-[11px] text-slate-400">AI가 실시간 트렌드를 분석하여 선정</span>
+                  <span className="text-[11px] text-slate-400">네이버 검색 트렌드 기반 선정</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {trendingItems.map((t, i) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6">
+                  {trendingItems.slice(0, 2).map((t) => (
                     <div
                       key={t.announcement_id}
-                      data-aid={t.announcement_id}
-                      className={`relative p-4 rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 hover:border-orange-400 hover:shadow-lg transition-all group ${highlightAid === t.announcement_id ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}
+                      className="rounded-xl ring-2 ring-orange-400/70 ring-offset-1"
                     >
-                      {/* 태그 행: 부처 · 카테고리 · 마감일 */}
-                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                        <span className="text-[11px] font-bold text-orange-500">{i + 1}위</span>
-                        {t.department && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold">{t.department.slice(0, 12)}</span>
-                        )}
-                        {t.category && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">{t.category}</span>
-                        )}
-                        {t.region && t.region !== "All" && t.region !== "전국" && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-semibold">{t.region}</span>
-                        )}
-                        {t.deadline_date && t.deadline_date !== "None" && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-semibold ml-auto">~{t.deadline_date.slice(5)}</span>
-                        )}
-                        {(!t.deadline_date || t.deadline_date === "None") && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 font-semibold ml-auto">상시모집</span>
-                        )}
-                      </div>
-                      {/* 금액 배지 */}
-                      {t.support_amount && (
-                        <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-red-500 text-white font-bold mb-1.5">{t.support_amount.slice(0, 20)}</span>
-                      )}
-                      {/* 제목 — 클릭 시 원문 이동 */}
-                      <a
-                        href={t.origin_url || "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-[13px] font-bold text-slate-800 line-clamp-2 mb-3 hover:text-orange-700 hover:underline underline-offset-2 transition-colors cursor-pointer"
-                        onClick={(e) => e.stopPropagation()}
-                      >{t.title}</a>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: t } }))}
-                          className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-[11px] font-bold hover:bg-violet-500 transition-all active:scale-95"
-                        >
-                          나도 받을 수 있나?
-                        </button>
-                        <button
-                          onClick={() => {
-                            const url = `https://govmatch.kr?aid=${t.announcement_id}`;
-                            const text = `이 지원사업 확인해보세요! "${t.title.slice(0, 30)}"`;
-                            if (navigator.share) {
-                              navigator.share({ title: t.title, text, url });
-                            } else {
-                              navigator.clipboard.writeText(`${text} ${url}`).then(() => {
-                                const toast = document.querySelector("[data-toast]");
-                                if (toast) toast.textContent = "링크가 복사되었습니다!";
-                              });
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg border border-orange-300 text-orange-600 text-[11px] font-bold hover:bg-orange-50 transition-all active:scale-95"
-                        >
-                          추천하기
-                        </button>
-                      </div>
+                      <ResultCard
+                        res={t}
+                        planStatus={isPublic && !profile ? null : planStatus}
+                        onUpgrade={isPublic && !profile ? undefined : onUpgrade}
+                        onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
+                        highlight={highlightAid === t.announcement_id}
+                      />
                     </div>
                   ))}
                 </div>

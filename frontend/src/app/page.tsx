@@ -452,6 +452,18 @@ export default function Home() {
     }
   };
 
+  const refreshProfile = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (!token) return;
+      const res = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setProfileData(data.user);
+      }
+    } catch {}
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("auth_token");
     setBusinessNumber("");
@@ -636,6 +648,7 @@ export default function Home() {
             autoOpenNotify={openNotifyOnReturn}
             onNotifyOpened={() => setOpenNotifyOnReturn(false)}
             onPlanUpdate={(updated: any) => setPlanStatus((prev: any) => ({ ...prev, ...updated }))}
+            onProfileRefresh={refreshProfile}
           />
         </div>
       )}

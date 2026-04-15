@@ -308,7 +308,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate, onProfileRefresh }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void, onProfileRefresh?: () => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "both";
@@ -1565,7 +1565,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         isOpen={isNotifyOpen}
         onClose={() => setIsNotifyOpen(false)}
         businessNumber={profile?.business_number}
-        onSave={() => {}}
+        onSave={() => { onProfileRefresh?.(); onRefresh?.(); }}
         profile={profile}
       />
       <SmartDocModal />

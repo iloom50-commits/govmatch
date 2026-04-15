@@ -3400,7 +3400,7 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 else:
                     new_step = cur_step
                 # 개인 모드 7단계 / 사업자 5단계 상한
-                max_step = 7 if (session_state.get("client_category") or "").startswith("개인") else 5
+                max_step = 7 if (session_state.get("client_category") or "") == "individual" else 5
                 new_step = min(new_step, max_step)
                 cur = db.cursor()
                 # P0.3: messages 전체도 저장 (assistant 응답 포함)

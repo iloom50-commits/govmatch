@@ -3455,7 +3455,8 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
         _first = (messages[0].get("text") or "") if messages[0].get("role") == "user" else ""
         if "개인" in _first and ("사업자" not in _first and "법인" not in _first):
             _cat = "individual"
-    _is_individual_mode = _cat.startswith("individual")
+    # "individual"만 개인(복지) 모드. "individual_biz"(개인사업자) / "corporate"(법인) / "unknown" → 사업자 모드
+    _is_individual_mode = (_cat == "individual")
 
     # ━━━ 선택된 고객의 유형에 맞지 않는 필드 필터링 (혼선 방지) ━━━
     if selected_client:
@@ -3643,7 +3644,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
         cat = session_state.get("client_category", "")
         phase = session_state.get("phase", "collecting")
         matched_snap = session_state.get("matched_snapshot") or []
-        max_step = 7 if cat.startswith("개인") else 5
+        max_step = 7 if cat == "individual" else 5
 
         state_hint = f"\n\n[★★★ 세션 상태 — 매우 중요]\n"
         state_hint += f"- 상담 페이즈: {phase}  (collecting=정보수집 / consulting=매칭 후 상담 심화)\n"

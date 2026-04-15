@@ -937,6 +937,8 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 
 [분석 요구사항 — 반드시 이 JSON 구조를 따르세요]
 {{
+  "is_umbrella": false,
+  "is_umbrella_reason": "",
   "parsed_sections": {{
     "eligibility": "신청자격 관련 원문 그대로 발췌 (있는 그대로, 축약하지 말 것)",
     "exclusions": "제외대상/지원제외 관련 원문 발췌",
@@ -1007,7 +1009,11 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 4. 금액은 원(KRW) 단위 숫자로 변환하세요 (예: 5억 = 500000000).
 5. form_templates: 신청서/사업계획서 양식이 있으면 목차와 작성항목을 추출하세요. 양식이 없으면 빈 배열 []로.
    각 섹션의 fields는 실제로 신청자가 작성해야 하는 항목(빈칸, 기입란)을 추출하세요.
-6. 반드시 순수 JSON만 반환하세요. 설명 텍스트 없이."""
+6. **is_umbrella 판정**: 이 공고가 "여러 하위 사업을 종합적으로 안내하는 통합/상위 문서"인지 판단.
+   - true: 하위 사업이 복수로 존재하고 각각 별도 마감/별도 신청방법을 가지며, 이 문서는 그것들을 모아 소개만 하는 경우
+   - false: 단일 사업·단일 모집 공고로서 구체적인 신청 대상·기간·방법이 명시된 경우
+   - 판정 근거를 is_umbrella_reason에 한 줄로 기술
+7. 반드시 순수 JSON만 반환하세요. 설명 텍스트 없이."""
 
     try:
         response = model.generate_content(prompt)
@@ -1143,6 +1149,34 @@ def analyze_and_store(
         result_info["error"] = msg
         _record_failure(db_conn, announcement_id, "gemini_empty", msg)
         return result_info
+
+    # 2-B) is_umbrella 판정 — 통합공고면 공고 자체를 삭제
+    if analysis.get("is_umbrella") is True:
+        reason = analysis.get("is_umbrella_reason", "")[:200]
+        print(f"[DocAnalysis] 🚫 #{announcement_id} is_umbrella=true — 삭제. 이유: {reason}")
+        try:
+            cur = db_conn.cursor()
+            for tbl in (
+                "announcement_sections",
+                "announcement_analysis",
+                "announcement_embeddings",
+                "saved_announcements",
+                "trending_announcements",
+                "match_history",
+            ):
+                try:
+                    cur.execute(f"DELETE FROM {tbl} WHERE announcement_id = %s", (announcement_id,))
+                except Exception:
+                    db_conn.rollback()
+            cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (announcement_id,))
+            db_conn.commit()
+            result_info["deleted_umbrella"] = True
+            result_info["umbrella_reason"] = reason
+            result_info["success"] = False
+            return result_info
+        except Exception as e:
+            db_conn.rollback()
+            print(f"[DocAnalysis] umbrella delete failed: {e}")
 
     # 3) DB 저장
     try:

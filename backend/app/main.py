@@ -4062,7 +4062,8 @@ def api_umbrella_scan(req: AdminAuthRequest):
 class UmbrellaVerifyRequest(BaseModel):
     password: str
     purge: Optional[bool] = False
-    limit: Optional[int] = 200
+    limit: Optional[int] = 30
+    offset: Optional[int] = 0
 
 
 @app.post("/api/admin/umbrella-verify")
@@ -4088,12 +4089,14 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
                 FROM announcements
                 WHERE {_UMBRELLA_SQL_WHERE}
                 ORDER BY announcement_id DESC
-                LIMIT %s""",
-            (req.limit,),
+                LIMIT %s OFFSET %s""",
+            (req.limit, req.offset),
         )
         rows = [dict(r) for r in cur.fetchall()]
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_UMBRELLA_SQL_WHERE}")
+        remaining_total = cur.fetchone()["cnt"]
         if not rows:
-            return {"status": "SUCCESS", "total": 0, "umbrella": 0, "kept": 0, "results": []}
+            return {"status": "SUCCESS", "total": 0, "umbrella": 0, "kept": 0, "remaining_total": remaining_total, "results": []}
 
         model = genai.GenerativeModel(
             "models/gemini-2.0-flash",
@@ -4174,6 +4177,7 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
             "kept": len(rows) - len(umbrella_ids),
             "purged": purged,
             "purge_by_table": purge_by_table if req.purge else None,
+            "remaining_after": remaining_total - purged,
             "results": results,
         }
     finally:

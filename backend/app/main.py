@@ -2867,8 +2867,9 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         usage += 1
 
     # 통합 AI 엔진으로 자유 상담
-    from app.services.ai_consultant import chat_free
-    result = chat_free(req.messages, conn, user_profile=u)
+    # LITE 자금 전문 상담 (자유상담 대체) — user_type에 따라 기업/개인 자동 분리
+    from app.services.ai_consultant import chat_lite_fund_expert
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u)
 
     # ── 대화 저장 (P0.1): 매 턴마다 ai_consult_logs에 UPSERT ──
     # announcement_id=NULL 이면 자유상담, session_id(없으므로 연속 세션은 user bn + NULL)
@@ -3563,9 +3564,9 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
         conn.close()
         raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
 
-    # 조건 수집 대화는 건수 차감 없음 (매칭 실행 시 차감)
-    from app.services.ai_consultant import chat_consultant
-    result = chat_consultant(req.messages)
+    # LITE 자금 전문 상담으로 통합 (chat_consultant 대체)
+    from app.services.ai_consultant import chat_lite_fund_expert
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u)
 
     # ── 대화 저장 (P0.2): ai_consult_logs에 conclusion='lite_consultant'로 기록 ──
     try:

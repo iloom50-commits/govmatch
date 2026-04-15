@@ -165,6 +165,10 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
   const [open, setOpen] = useState(false);
   useModalBack(open, () => setOpen(false));
   const [mode, setMode] = useState<ChatMode>("select");
+  // LITE 자금 전문 모드 (기업/개인) — 초기값은 user_type 기반
+  const [fundMode, setFundMode] = useState<"business_fund" | "individual_fund">(
+    typeof window !== "undefined" && isIndividual ? "individual_fund" : "business_fund"
+  );
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
   const [clientCategory, setClientCategory] = useState<"" | "individual_biz" | "corporate" | "individual" | "unknown">("");
   const [selectedExistingClient, setSelectedExistingClient] = useState<number | null>(null);
@@ -289,12 +293,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
     if (selectedMode === "free") {
       setMessages([{
         role: "assistant",
-        text: isIndividual
-          ? "안녕하세요! 정부 지원사업 AI 상담사입니다.\n\n개인 복지·지원금, 청년 정책, 주거·취업 지원 등 궁금한 점을 자유롭게 질문해 주세요."
-          : "안녕하세요! 중소기업 지원사업 전문 AI 상담사입니다.\n\n지원사업 종류, 신청 자격, 절차, 지원 규모 등 궁금한 점을 자유롭게 질문해 주세요.",
-        choices: isIndividual
-          ? ["청년 지원금 종류 알려줘", "주거 지원 뭐가 있어?", "취업 지원 프로그램 추천해줘", "출산·육아 혜택 알려줘"]
-          : ["R&D 지원사업 종류 알려줘", "소상공인 지원사업 뭐가 있어?", "창업 지원금 신청 방법은?", "정책자금 대출 조건이 궁금해"],
+        text: fundMode === "individual_fund"
+          ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요. (무상 지원금은 PRO 종합 상담에서 확인 가능합니다)"
+          : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요. (무상 지원금/R&D/수출 바우처는 PRO 종합 상담에서 확인 가능합니다)",
+        choices: fundMode === "individual_fund"
+          ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
+          : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
       }]);
     } else {
       // consultant: 고객 유형 선택 화면 먼저 표시
@@ -357,6 +361,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBot
         },
         body: JSON.stringify({
           messages: chatHistory.map((m) => ({ role: m.role, text: m.text })),
+          mode: fundMode,  // 🏢 business_fund | 👤 individual_fund
         }),
       });
 
@@ -1096,8 +1101,8 @@ ${convHtml}
     ? "from-violet-600 to-purple-600"
     : "from-indigo-600 to-violet-600";
 
-  const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "지원사업 상담 AI에이전트" : "AI 서비스";
-  const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? "지원사업 종류·자격·절차 상담" : "모드를 선택하세요";
+  const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "자금 상담 AI" : "AI 서비스";
+  const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? (fundMode === "individual_fund" ? "👤 개인 자금 (주거·서민금융·학자금)" : "🏢 기업 자금 (정책자금·보증·대출)") : "모드를 선택하세요";
 
   // PRO 사용자는 전문가 대시보드로 전환
   if (open && isPro) {
@@ -1659,6 +1664,39 @@ ${convHtml}
                   <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt"
                     onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
                 </label>
+              </div>
+            )}
+
+            {/* 자금 모드 토글 — free 모드에서만 (LITE 자금 전문 상담) */}
+            {mode === "free" && (
+              <div className="px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/50 flex-shrink-0 order-0">
+                <div className="flex gap-1.5 bg-white rounded-full p-1 border border-slate-200 max-w-[280px]">
+                  <button
+                    type="button"
+                    onClick={() => setFundMode("business_fund")}
+                    className={`flex-1 py-1.5 px-3 rounded-full text-[12px] font-bold transition-all ${
+                      fundMode === "business_fund"
+                        ? "bg-indigo-600 text-white shadow"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    🏢 기업 자금
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFundMode("individual_fund")}
+                    className={`flex-1 py-1.5 px-3 rounded-full text-[12px] font-bold transition-all ${
+                      fundMode === "individual_fund"
+                        ? "bg-indigo-600 text-white shadow"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    👤 개인 자금
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 ml-1">
+                  {fundMode === "business_fund" ? "정책자금·보증·창업자금·시설/운전자금" : "버팀목·디딤돌·햇살론·학자금·긴급생계"}
+                </p>
               </div>
             )}
 

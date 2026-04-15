@@ -1123,9 +1123,10 @@ def chat_lite_fund_expert(
     messages: List[Dict],
     db_conn=None,
     user_profile: dict = None,
+    mode: str = None,  # "business_fund" | "individual_fund" | None (자동 판별)
 ) -> Dict[str, Any]:
-    """LITE 자금 전문 상담. user_profile.user_type에 따라 기업/개인 프롬프트 자동 선택.
-    financial knowledge_base를 자동 주입하고 RAG 검색도 금융/보증 카테고리 가중치 적용.
+    """LITE 자금 전문 상담. mode 명시 → 사용자 선택 우선.
+    mode=None이면 user_profile.user_type + 시드 메시지로 자동 판별.
     """
     if not HAS_GENAI:
         return {"reply": "AI 서비스를 사용할 수 없습니다.", "choices": []}
@@ -1133,22 +1134,26 @@ def chat_lite_fund_expert(
     if not api_key:
         return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": []}
 
-    # 모드 판별
-    user_type = (user_profile or {}).get("user_type", "both").lower()
-    # 시드 메시지 힌트로 보강
-    first_user_text = ""
-    if messages:
-        for m in messages:
-            if m.get("role") == "user":
-                first_user_text = m.get("text", "")
-                break
-    if user_type == "both":
-        # 개인/법인 힌트
-        if any(k in first_user_text for k in ["기업", "법인", "사업자", "중소기업", "창업", "회사"]):
-            user_type = "business"
-        elif any(k in first_user_text for k in ["개인", "주거", "전세", "월세", "학자금", "생계"]):
-            user_type = "individual"
-    is_individual = user_type == "individual"
+    # 모드 판별 — 명시적 mode 파라미터가 최우선
+    if mode == "individual_fund":
+        is_individual = True
+    elif mode == "business_fund":
+        is_individual = False
+    else:
+        # mode 미지정 → user_type + 시드 메시지 자동 판별
+        user_type = (user_profile or {}).get("user_type", "both").lower()
+        first_user_text = ""
+        if messages:
+            for m in messages:
+                if m.get("role") == "user":
+                    first_user_text = m.get("text", "")
+                    break
+        if user_type == "both":
+            if any(k in first_user_text for k in ["기업", "법인", "사업자", "중소기업", "창업", "회사"]):
+                user_type = "business"
+            elif any(k in first_user_text for k in ["개인", "주거", "전세", "월세", "학자금", "생계"]):
+                user_type = "individual"
+        is_individual = user_type == "individual"
 
     # 금융 지식 자동 주입 (knowledge_base category 금융/보증)
     financial_block = ""

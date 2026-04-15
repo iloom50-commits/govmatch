@@ -2811,6 +2811,7 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
 
 class AiChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
+    mode: Optional[str] = None  # "business_fund" | "individual_fund" | None (자동 판별)
 
 
 @app.post("/api/ai/chat")
@@ -2869,7 +2870,7 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     # 통합 AI 엔진으로 자유 상담
     # LITE 자금 전문 상담 (자유상담 대체) — user_type에 따라 기업/개인 자동 분리
     from app.services.ai_consultant import chat_lite_fund_expert
-    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u)
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
 
     # ── 대화 저장 (P0.1): 매 턴마다 ai_consult_logs에 UPSERT ──
     # announcement_id=NULL 이면 자유상담, session_id(없으므로 연속 세션은 user bn + NULL)
@@ -3141,6 +3142,7 @@ class AiConsultantChatRequest(BaseModel):
     session_id: Optional[str] = None  # PRO 세션 ID (서버 측 상태 저장)
     client_category: Optional[str] = None  # 첫 호출 시 고객 유형 힌트
     client_id: Optional[int] = None  # I: 선택된 고객 프로필 ID (있으면 프롬프트에 주입)
+    mode: Optional[str] = None  # LITE 자금 모드: "business_fund" | "individual_fund"
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3566,7 +3568,7 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
 
     # LITE 자금 전문 상담으로 통합 (chat_consultant 대체)
     from app.services.ai_consultant import chat_lite_fund_expert
-    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u)
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
 
     # ── 대화 저장 (P0.2): ai_consult_logs에 conclusion='lite_consultant'로 기록 ──
     try:

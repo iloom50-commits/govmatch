@@ -1116,8 +1116,247 @@ def _try_direct_response(query: str, announcement: Dict, deep_analysis_data: Dic
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# LITE — 자금 전문 상담 (기업/개인 자동 라우팅)
+# LITE — 자금 전문 상담 (Tool Calling 기반, 기업/개인 자동 라우팅)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Tool Calling용 간결한 페르소나 프롬프트 (금지 규칙 없음, 도구로 범위 자동 제어)
+PROMPT_LITE_FUND_BIZ_TOOL = """당신은 20년차 중소기업 정책자금·보증 전문 상담사 "지원금AI 자금전문"입니다.
+
+# 전문 영역
+정책자금(중진공/소진공), 신용보증(KODIT/KIBO/지역신보), 창업자금, 시설·운전자금, 재창업자금.
+
+# 상담 방식
+1. 사용자 질문을 듣고 **반드시 search_fund_announcements 도구를 먼저 호출**하여 관련 공고를 검색하세요.
+2. 구체적 공고가 필요하면 get_announcement_detail로 원문 섹션을 조회하세요.
+3. FAQ/실무 팁이 필요하면 search_knowledge_base로 검색하세요.
+4. 도구 결과를 근거로 답변하세요. 『공고명』(부처) 형식으로 인용하세요.
+5. 도구 결과에 자금/대출 관련 공고가 없으면 자연스럽게 "자금 DB에는 관련 공고가 없고, 무상 지원금/바우처는 PRO 종합 상담에서 확인하실 수 있습니다"라고 안내하세요.
+
+# 답변 스타일
+- 자신감 있는 전문가. "이 케이스에서는", "제 경험상", "핵심은"
+- 한도·금리·기간·대상을 구체적 수치로 제시 (근거는 도구 결과)
+- 도구 결과에 수치가 없으면 "공식 홈페이지에서 최종 확인 필요" 덧붙임
+
+응답은 자연스러운 한국어 마크다운. JSON 형식 아님."""
+
+
+PROMPT_LITE_FUND_INDIV_TOOL = """당신은 15년차 서민금융·개인 대출 전문 상담사 "지원금AI 자금전문"입니다.
+
+# 전문 영역
+주거 대출(버팀목/디딤돌/보금자리론), 서민금융(햇살론/새희망홀씨/미소금융), 근로자 생활안정자금, 학자금 대출, 긴급 생계비 대부.
+
+# 상담 방식
+1. 사용자 질문을 듣고 **반드시 search_fund_announcements 도구를 먼저 호출**하여 관련 공고를 검색하세요.
+2. 구체적 공고가 필요하면 get_announcement_detail로 원문 섹션을 조회하세요.
+3. FAQ/실무 팁이 필요하면 search_knowledge_base로 검색하세요.
+4. 도구 결과를 근거로 답변하세요. 『사업명』(주관기관) 형식으로 인용하세요.
+5. 도구 결과에 대출/금융 관련 공고가 없으면 자연스럽게 "자금·대출 DB에는 관련 공고가 없고, 무상 지원금·복지 혜택은 PRO 종합 상담에서 확인하실 수 있습니다"라고 안내하세요.
+
+# 답변 스타일
+- 따뜻하지만 정확. "이런 상황에선", "놓치기 쉬운 건", "우선 이것부터"
+- 한도·금리·기간·대상을 구체적 수치로 제시 (근거는 도구 결과)
+- 고금리 대출보다 공공 대안을 먼저 권유
+- 민감 주제는 "선택사항이에요" 덧붙여 부드럽게
+
+응답은 자연스러운 한국어 마크다운. JSON 형식 아님."""
+
+
+def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5) -> List[Dict]:
+    """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드)."""
+    if not db_conn or not keywords:
+        return []
+    results = []
+    try:
+        # 1) 임베딩 검색 시도
+        try:
+            import google.generativeai as _genai
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if api_key:
+                _genai.configure(api_key=api_key)
+                res = _genai.embed_content(
+                    model="models/gemini-embedding-001",
+                    content=f"자금 대출 {keywords}",
+                    task_type="retrieval_query",
+                    output_dimensionality=768,
+                )
+                vec = res.get("embedding") if isinstance(res, dict) else res["embedding"]
+                if vec:
+                    vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
+                    cur = db_conn.cursor()
+                    # target_type 필터 + 자금·보증 관련 키워드 포함
+                    fund_keywords = "정책자금|융자|대출|보증|자금|금리|한도|보조금"
+                    tt_filter = "business" if target_type == "business" else "individual"
+                    cur.execute("""
+                        SELECT a.announcement_id, a.title, a.department,
+                               a.support_amount, a.deadline_date, a.region,
+                               a.summary_text, a.category,
+                               1 - (e.embedding <=> %s::vector) AS similarity
+                        FROM announcement_embeddings e
+                        JOIN announcements a ON e.announcement_id = a.announcement_id
+                        WHERE COALESCE(a.target_type, 'business') IN (%s, 'both')
+                          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+                          AND (
+                              a.title ~* %s OR a.summary_text ~* %s
+                              OR a.category ~* %s
+                          )
+                        ORDER BY e.embedding <=> %s::vector
+                        LIMIT %s
+                    """, (vec_str, tt_filter, fund_keywords, fund_keywords, fund_keywords, vec_str, limit))
+                    for r in cur.fetchall():
+                        d = dict(r)
+                        results.append({
+                            "id": d.get("announcement_id"),
+                            "title": (d.get("title") or "")[:150],
+                            "department": (d.get("department") or "")[:60],
+                            "support_amount": (d.get("support_amount") or "")[:60],
+                            "deadline": str(d.get("deadline_date") or "")[:10],
+                            "region": (d.get("region") or "")[:30],
+                            "summary": (d.get("summary_text") or "")[:300],
+                            "category": d.get("category"),
+                            "similarity": round(float(d.get("similarity") or 0), 3),
+                        })
+        except Exception as e:
+            logger.warning(f"[tool fund emb] {e}")
+            try: db_conn.rollback()
+            except: pass
+
+        # 2) 임베딩 없거나 결과 없으면 키워드 LIKE 폴백
+        if not results:
+            try:
+                cur = db_conn.cursor()
+                tt_filter = "business" if target_type == "business" else "individual"
+                like_kw = f"%{keywords[:50]}%"
+                cur.execute("""
+                    SELECT announcement_id, title, department, support_amount,
+                           deadline_date, region, summary_text, category
+                    FROM announcements
+                    WHERE COALESCE(target_type, 'business') IN (%s, 'both')
+                      AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                      AND (title ILIKE %s OR summary_text ILIKE %s)
+                      AND (
+                          title ~* '정책자금|융자|대출|보증|자금|금리|한도'
+                          OR category ~* '금융|보증|자금'
+                      )
+                    ORDER BY deadline_date ASC NULLS LAST
+                    LIMIT %s
+                """, (tt_filter, like_kw, like_kw, limit))
+                for r in cur.fetchall():
+                    d = dict(r)
+                    results.append({
+                        "id": d.get("announcement_id"),
+                        "title": (d.get("title") or "")[:150],
+                        "department": (d.get("department") or "")[:60],
+                        "support_amount": (d.get("support_amount") or "")[:60],
+                        "deadline": str(d.get("deadline_date") or "")[:10],
+                        "region": (d.get("region") or "")[:30],
+                        "summary": (d.get("summary_text") or "")[:300],
+                        "category": d.get("category"),
+                    })
+            except Exception as e:
+                logger.warning(f"[tool fund like] {e}")
+                try: db_conn.rollback()
+                except: pass
+    except Exception as e:
+        logger.warning(f"[tool fund] {e}")
+    return results
+
+
+def _tool_get_announcement_detail(db_conn, announcement_id: int) -> Dict:
+    """특정 공고의 상세 정보 (원문, 자격요건, 서류, 신청방법)."""
+    if not db_conn or not announcement_id:
+        return {"error": "invalid id"}
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT a.title, a.department, a.support_amount, a.deadline_date,
+                   a.region, a.summary_text, a.category, a.origin_url,
+                   aa.parsed_sections, aa.deep_analysis
+            FROM announcements a
+            LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+            WHERE a.announcement_id = %s
+        """, (announcement_id,))
+        r = cur.fetchone()
+        if not r:
+            return {"error": "not found"}
+        d = dict(r)
+        ps = d.get("parsed_sections")
+        da = d.get("deep_analysis")
+        if isinstance(ps, str):
+            try: ps = json.loads(ps)
+            except: ps = {}
+        if isinstance(da, str):
+            try: da = json.loads(da)
+            except: da = {}
+        out = {
+            "id": announcement_id,
+            "title": d.get("title"),
+            "department": d.get("department"),
+            "support_amount": d.get("support_amount"),
+            "deadline": str(d.get("deadline_date") or ""),
+            "region": d.get("region"),
+            "summary": (d.get("summary_text") or "")[:800],
+            "origin_url": d.get("origin_url"),
+        }
+        if isinstance(ps, dict):
+            for key in ("eligibility", "target", "required_documents", "application_method", "support_content", "schedule", "contact"):
+                v = ps.get(key)
+                if isinstance(v, str) and v:
+                    out[key] = v[:600]
+        if isinstance(da, dict):
+            for key in ("key_points", "strategy", "summary"):
+                v = da.get(key)
+                if isinstance(v, str) and v:
+                    out[key] = v[:400]
+        return out
+    except Exception as e:
+        logger.warning(f"[tool detail] {e}")
+        try: db_conn.rollback()
+        except: pass
+        return {"error": str(e)[:200]}
+
+
+def _tool_search_knowledge_base(db_conn, query: str, limit: int = 5) -> List[Dict]:
+    """knowledge_base에서 금융/보증 관련 FAQ/인사이트 검색."""
+    if not db_conn or not query:
+        return []
+    results = []
+    try:
+        cur = db_conn.cursor()
+        # category 우선, 키워드 LIKE 병행
+        keywords = [w for w in re.split(r'\s+', query) if len(w) >= 2][:3]
+        patterns = [f"%{k}%" for k in keywords] if keywords else [f"%{query}%"]
+        cur.execute("""
+            SELECT id, knowledge_type, category, content, confidence
+            FROM knowledge_base
+            WHERE (category IN ('금융', '보증') OR knowledge_type IN ('faq', 'insight'))
+              AND confidence >= 0.4
+              AND content::text ILIKE ANY(%s)
+            ORDER BY confidence DESC, use_count DESC
+            LIMIT %s
+        """, (patterns, limit))
+        for r in cur.fetchall():
+            d = dict(r)
+            c = d.get("content")
+            if isinstance(c, str):
+                try: c = json.loads(c)
+                except: c = {"raw": c}
+            results.append({
+                "id": d.get("id"),
+                "type": d.get("knowledge_type"),
+                "category": d.get("category"),
+                "content": c,
+                "confidence": float(d.get("confidence") or 0),
+            })
+            try:
+                cur.execute("UPDATE knowledge_base SET use_count = use_count + 1 WHERE id = %s", (d.get("id"),))
+            except: pass
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[tool kb] {e}")
+        try: db_conn.rollback()
+        except: pass
+    return results
+
 
 def chat_lite_fund_expert(
     messages: List[Dict],
@@ -1155,113 +1394,118 @@ def chat_lite_fund_expert(
                 user_type = "individual"
         is_individual = user_type == "individual"
 
-    # 금융 지식 자동 주입 (knowledge_base category 금융/보증)
-    financial_block = ""
-    if db_conn:
-        try:
-            kb_cur = db_conn.cursor()
-            kb_cur.execute("""
-                SELECT knowledge_type, content, confidence
-                FROM knowledge_base
-                WHERE (category IN ('금융', '보증') OR knowledge_type = 'faq')
-                  AND confidence >= 0.4
-                ORDER BY confidence DESC, use_count DESC
-                LIMIT 10
-            """)
-            kb_rows = kb_cur.fetchall()
-            if kb_rows:
-                parts = ["\n[금융 전문 지식 — 참고용]"]
-                for r in kb_rows:
-                    c = r["content"] if isinstance(r["content"], dict) else json.loads(r["content"])
-                    ktype = r["knowledge_type"]
-                    if ktype == "faq":
-                        parts.append(f"• Q: {c.get('question', '')[:120]} → A: {c.get('answer', '')[:300]}")
-                    elif ktype == "insight":
-                        parts.append(f"• 실무팁: {str(c.get('relationship', c))[:300]}")
-                financial_block = "\n".join(parts)
-        except Exception as kb_err:
-            print(f"[LITE fund kb] {kb_err}")
-
-    # 프로필 컨텍스트
-    profile_context = ""
+    # 프로필 컨텍스트 (짧게 — tool calling이 주축)
+    profile_ctx = ""
     if user_profile:
         u = user_profile
         if is_individual:
-            fields = [
-                ("연령대", u.get("age_range")),
-                ("거주지", u.get("address_city")),
-                ("소득수준", u.get("income_level")),
-                ("가구형태", u.get("family_type")),
-                ("고용상태", u.get("employment_status")),
-                ("주거형태", u.get("housing_status")),
-            ]
+            parts = []
+            for label, k in [("연령대", "age_range"), ("지역", "address_city"), ("소득", "income_level"),
+                             ("가구", "family_type"), ("고용", "employment_status"), ("주거", "housing_status")]:
+                if u.get(k):
+                    parts.append(f"{label} {u[k]}")
+            if parts:
+                profile_ctx = f"\n[사용자] {' · '.join(parts)}"
         else:
-            fields = [
-                ("기업명", u.get("company_name")),
-                ("업종", u.get("industry_code")),
-                ("지역", u.get("address_city")),
-                ("설립일", u.get("establishment_date")),
-                ("매출", u.get("revenue_bracket")),
-                ("직원수", u.get("employee_count_bracket")),
-            ]
-        profile_context = "\n\n[사용자 프로필 — 답변에 반영]\n"
-        for label, val in fields:
-            if val:
-                profile_context += f"- {label}: {val}\n"
-
-    # RAG — 마지막 질문 기반 공고/지식 검색 (금융 카테고리 우선)
-    rag_block = ""
-    last_q = ""
-    for m in reversed(messages):
-        if m.get("role") == "user":
-            last_q = m.get("text", "")
-            break
-    if last_q and db_conn:
-        try:
-            rag = search_knowledge_for_rag(last_q, db_conn, top_k_ann=4, top_k_kb=2)
-            if rag.get("text_block"):
-                rag_block = rag["text_block"]
-        except Exception as e:
-            print(f"[LITE fund rag] {e}")
+            parts = []
+            for label, k in [("업종", "industry_code"), ("지역", "address_city"),
+                             ("매출", "revenue_bracket"), ("직원", "employee_count_bracket"),
+                             ("설립", "establishment_date")]:
+                if u.get(k):
+                    parts.append(f"{label} {u[k]}")
+            if parts:
+                profile_ctx = f"\n[사용자] {' · '.join(parts)}"
 
     # 프롬프트 선택
     if is_individual:
-        system_prompt = PROMPT_LITE_INDIVIDUAL_FUND.replace("{FINANCIAL_BLOCK}", financial_block)
+        base_prompt = PROMPT_LITE_FUND_INDIV_TOOL
+        tt = "individual"
     else:
-        system_prompt = PROMPT_LITE_BUSINESS_FUND.replace("{FINANCIAL_BLOCK}", financial_block)
-    system_prompt += profile_context + rag_block
+        base_prompt = PROMPT_LITE_FUND_BIZ_TOOL
+        tt = "business"
+    system_prompt = base_prompt + profile_ctx
 
-    # Gemini 호출
+    # ── Tool Calling 설정 ──
     try:
         genai.configure(api_key=api_key)
+
+        # 도구 함수 정의 (closure로 db_conn 캡처)
+        def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
+            """자금/대출/보증 관련 공고를 DB에서 검색합니다.
+
+            Args:
+                keywords: 검색 키워드 (예: "청년창업자금", "전세자금 대출")
+                target_type: "business"(기업) 또는 "individual"(개인). 기본값은 사용자 모드.
+            """
+            rows = _tool_search_fund_announcements(db_conn, keywords, target_type, limit=5)
+            return {"count": len(rows), "results": rows}
+
+        def get_announcement_detail(announcement_id: int) -> dict:
+            """특정 공고의 상세 정보(자격요건·서류·신청방법·지원내용)를 조회합니다.
+
+            Args:
+                announcement_id: 공고 ID (search_fund_announcements 결과의 id 필드)
+            """
+            return _tool_get_announcement_detail(db_conn, int(announcement_id))
+
+        def search_knowledge_base(query: str) -> dict:
+            """금융/보증 관련 FAQ·실무 팁·인사이트를 검색합니다.
+
+            Args:
+                query: 검색어 (예: "신용등급", "심사 기준")
+            """
+            rows = _tool_search_knowledge_base(db_conn, query, limit=5)
+            return {"count": len(rows), "results": rows}
+
+        tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base]
+
         model = genai.GenerativeModel(
             "models/gemini-2.0-flash",
+            tools=tools,
+            system_instruction=system_prompt,
             generation_config={
                 "max_output_tokens": 4096,
-                "response_mime_type": "application/json",
                 "temperature": 0.5,
             },
         )
-        chat = model.start_chat(history=[
-            {"role": "user", "parts": [system_prompt]},
-            {"role": "model", "parts": ['{"message": "네, 자금 상담 준비 완료입니다.", "choices": []}']},
-            *[{"role": "user" if m.get("role") == "user" else "model", "parts": [m.get("text", "")]} for m in messages[:-1]]
-        ])
-        response = chat.send_message(messages[-1].get("text", "") if messages else "시작")
-        result = json.loads(response.text)
+        chat = model.start_chat(enable_automatic_function_calling=True)
+
+        # 대화 이력 주입 (마지막 user 메시지 제외)
+        for m in messages[:-1]:
+            if m.get("role") == "user":
+                chat.send_message(m.get("text", ""))
+            # assistant 메시지는 Gemini chat 자체 history로 자동 관리 안 되므로 skip
+
+        # 실제 질문 전송
+        last_msg = messages[-1].get("text", "") if messages else "시작"
+        response = chat.send_message(last_msg)
+        reply_text = response.text if hasattr(response, "text") else str(response)
+
+        # 호출된 도구 추적 (디버그용)
+        tool_calls = []
+        try:
+            for h in chat.history:
+                for part in getattr(h, "parts", []):
+                    fc = getattr(part, "function_call", None)
+                    if fc and fc.name:
+                        tool_calls.append(fc.name)
+        except Exception:
+            pass
+
     except Exception as e:
-        logger.warning(f"[LITE fund] {e}")
+        logger.warning(f"[LITE fund tool] {e}")
         return {
-            "reply": "일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
+            "reply": f"일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
             "choices": ["✏️ 다시 시도"],
         }
 
     return {
-        "reply": result.get("message", ""),
-        "choices": result.get("choices", []),
+        "reply": reply_text,
+        "choices": [],
         "announcements": [],
         "done": False,
         "mode": "individual_fund" if is_individual else "business_fund",
+        "tool_calls": tool_calls,
     }
 
 

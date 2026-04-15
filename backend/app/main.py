@@ -5085,11 +5085,20 @@ def api_sections_extract(req: AdminAuthRequest):
     if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
         raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
 
+    # doc_analysis_service.py 의 parsed_sections 실제 키와 일치시킴
     SECTION_KEYS = [
         ("eligibility", "자격요건"),
+        ("exclusions", "제외대상"),
+        ("exceptions", "예외조항"),
+        ("bonus_points", "가점·우대"),
+        ("required_docs", "제출서류"),
+        ("evaluation_criteria", "심사기준"),
+        ("support_details", "지원내용"),
+        ("timeline", "일정"),
+        ("application_method", "신청방법"),
+        # 레거시 키(혹시 남아있을 경우 호환)
         ("target", "지원대상"),
         ("required_documents", "제출서류"),
-        ("application_method", "신청방법"),
         ("support_amount", "지원금액"),
         ("support_content", "지원내용"),
         ("schedule", "일정"),
@@ -5099,14 +5108,18 @@ def api_sections_extract(req: AdminAuthRequest):
 
     conn = get_db_connection()
     cur = conn.cursor()
+    # 섹션 3개 미만인 공고(=이전 키 미스매치로 누락)를 우선 재추출
     cur.execute("""
         SELECT aa.announcement_id, aa.parsed_sections, aa.deep_analysis
         FROM announcement_analysis aa
+        LEFT JOIN (
+            SELECT announcement_id, COUNT(*) AS cnt
+            FROM announcement_sections
+            GROUP BY announcement_id
+        ) sc ON sc.announcement_id = aa.announcement_id
         WHERE aa.parsed_sections IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM announcement_sections s WHERE s.announcement_id = aa.announcement_id
-          )
-        ORDER BY aa.announcement_id
+          AND COALESCE(sc.cnt, 0) < 3
+        ORDER BY COALESCE(sc.cnt, 0) ASC, aa.announcement_id
         LIMIT 300
     """)
     rows = cur.fetchall()
@@ -5125,8 +5138,21 @@ def api_sections_extract(req: AdminAuthRequest):
         if not isinstance(ps, dict):
             processed += 1
             continue
-        order = 0
+        # 이 공고에 이미 존재하는 섹션 타입 (중복 방지)
+        cur.execute(
+            "SELECT section_type FROM announcement_sections WHERE announcement_id = %s",
+            (ann_id,),
+        )
+        existing_types = {row["section_type"] for row in cur.fetchall()}
+        # 새로 시작할 order
+        cur.execute(
+            "SELECT COALESCE(MAX(section_order), -1) + 1 AS next_order FROM announcement_sections WHERE announcement_id = %s",
+            (ann_id,),
+        )
+        order = cur.fetchone()["next_order"]
         for key, label in SECTION_KEYS:
+            if key in existing_types:
+                continue
             v = ps.get(key)
             if not v:
                 continue
@@ -5141,6 +5167,7 @@ def api_sections_extract(req: AdminAuthRequest):
                        VALUES (%s, %s, %s, %s, %s)""",
                     (ann_id, key, label, text[:5000], order),
                 )
+                existing_types.add(key)
                 inserted_total += 1
                 order += 1
             except Exception as ie:
@@ -5172,10 +5199,13 @@ def api_sections_extract(req: AdminAuthRequest):
     cur.execute("""
         SELECT COUNT(DISTINCT aa.announcement_id) AS c
         FROM announcement_analysis aa
+        LEFT JOIN (
+            SELECT announcement_id, COUNT(*) AS cnt
+            FROM announcement_sections
+            GROUP BY announcement_id
+        ) sc ON sc.announcement_id = aa.announcement_id
         WHERE aa.parsed_sections IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM announcement_sections s WHERE s.announcement_id = aa.announcement_id
-          )
+          AND COALESCE(sc.cnt, 0) < 3
     """)
     remaining = cur.fetchone()["c"]
     conn.close()

@@ -4027,6 +4027,20 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+@app.post("/api/admin/seed-fund-knowledge")
+def api_seed_fund_knowledge(req: AdminAuthRequest):
+    """관리자: 정책자금/보증 시드 지식을 knowledge_base에 적재 (중복 스킵)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    from app.db.fund_knowledge_seed import seed_fund_knowledge
+    conn = get_db_connection()
+    try:
+        result = seed_fund_knowledge(conn)
+        return {"status": "SUCCESS", **result}
+    finally:
+        conn.close()
+
+
 @app.post("/api/admin/analyze-batch-broad")
 def api_analyze_batch_broad(req: AdminAuthRequest):
     """광범위 분석 배치 — origin_url + summary 50자만 있으면 처리.

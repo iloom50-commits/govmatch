@@ -4028,15 +4028,8 @@ def api_analyze_announcements(req: AdminAuthRequest):
 
 
 _UMBRELLA_SQL_WHERE = """
-    deadline_date IS NULL
-    AND (
+    (
         title ILIKE '%통합 공고%' OR title ILIKE '%통합공고%'
-        OR title ILIKE '%종합 공고%' OR title ILIKE '%종합공고%'
-        OR title ILIKE '%운용계획 공고%' OR title ILIKE '%운용계획%변경%'
-        OR title ILIKE '%시행계획 공고%' OR title ILIKE '%시행 공고%'
-        OR title ILIKE '%통합안내%' OR title ILIKE '%종합 안내%'
-        OR summary_text ILIKE '%통합 공고%'
-        OR summary_text ILIKE '%지원사업 종합%'
     )
 """
 

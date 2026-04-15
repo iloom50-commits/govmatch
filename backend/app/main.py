@@ -4027,6 +4027,58 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+class InspectAnnouncementRequest(BaseModel):
+    password: str
+    announcement_id: int
+
+
+@app.post("/api/admin/inspect-announcement")
+def api_inspect_announcement(req: InspectAnnouncementRequest):
+    """특정 공고의 raw 상태 + parsed_sections.timeline 확인."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT a.announcement_id, a.title, a.deadline_date, a.origin_source,
+                      a.origin_url, a.summary_text, a.created_at,
+                      aa.parsed_sections, aa.deep_analysis
+               FROM announcements a
+               LEFT JOIN announcement_analysis aa ON aa.announcement_id = a.announcement_id
+               WHERE a.announcement_id = %s""",
+            (req.announcement_id,),
+        )
+        r = cur.fetchone()
+        if not r:
+            return {"status": "NOT_FOUND"}
+        d = dict(r)
+        ps = d.get("parsed_sections")
+        if isinstance(ps, str):
+            try: ps = json.loads(ps)
+            except: ps = {}
+        da = d.get("deep_analysis")
+        if isinstance(da, str):
+            try: da = json.loads(da)
+            except: da = {}
+        return {
+            "status": "SUCCESS",
+            "announcement_id": d["announcement_id"],
+            "title": d["title"],
+            "deadline_date": str(d.get("deadline_date") or ""),
+            "origin_source": d.get("origin_source"),
+            "origin_url": d.get("origin_url"),
+            "summary_text": (d.get("summary_text") or "")[:500],
+            "timeline_parsed": (ps or {}).get("timeline", "")[:1000] if isinstance(ps, dict) else "",
+            "schedule_parsed": (ps or {}).get("schedule", "")[:1000] if isinstance(ps, dict) else "",
+            "application_method": (ps or {}).get("application_method", "")[:1000] if isinstance(ps, dict) else "",
+            "summary_from_deep": (da or {}).get("support_summary") if isinstance(da, dict) else None,
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 @app.post("/api/admin/refresh-trending")
 def api_refresh_trending(req: AdminAuthRequest):
     """오늘의 인기 공고를 강제로 재생성 (네이버 데이터랩 호출 포함)."""

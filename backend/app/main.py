@@ -4133,6 +4133,10 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
                     prompt_template.format(title=title[:200], summary=summary)
                 )
                 parsed = json.loads(resp.text)
+                if isinstance(parsed, list) and parsed:
+                    parsed = parsed[0] if isinstance(parsed[0], dict) else {}
+                if not isinstance(parsed, dict):
+                    parsed = {}
                 is_um = bool(parsed.get("is_umbrella"))
                 reason = (parsed.get("reason") or "")[:120]
             except Exception as e:
@@ -4150,6 +4154,17 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
         purged = 0
         purge_by_table: Dict[str, Any] = {}
         if req.purge and umbrella_ids:
+            # FK가 걸린 테이블은 먼저 참조 해제 (삭제 또는 NULL)
+            # ai_consult_logs: 과거 상담 기록 유지 위해 announcement_id만 NULL 처리
+            try:
+                cur.execute(
+                    "UPDATE ai_consult_logs SET announcement_id = NULL WHERE announcement_id = ANY(%s)",
+                    (umbrella_ids,),
+                )
+                purge_by_table["ai_consult_logs_detached"] = cur.rowcount
+            except Exception as e:
+                conn.rollback()
+                purge_by_table["ai_consult_logs_detached"] = f"error: {str(e)[:100]}"
             for tbl in (
                 "announcement_sections",
                 "announcement_analysis",

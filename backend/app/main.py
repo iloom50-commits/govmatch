@@ -4059,6 +4059,128 @@ def api_umbrella_scan(req: AdminAuthRequest):
         except: pass
 
 
+class UmbrellaVerifyRequest(BaseModel):
+    password: str
+    purge: Optional[bool] = False
+    limit: Optional[int] = 200
+
+
+@app.post("/api/admin/umbrella-verify")
+def api_umbrella_verify(req: UmbrellaVerifyRequest):
+    """통합공고 후보를 LLM으로 개별 검증.
+
+    - purge=False (기본): 검증만 하고 결과 반환
+    - purge=True: is_umbrella=true 판정된 공고를 즉시 삭제
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    import google.generativeai as genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY 미설정")
+    genai.configure(api_key=api_key)
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT announcement_id, title, summary_text
+                FROM announcements
+                WHERE {_UMBRELLA_SQL_WHERE}
+                ORDER BY announcement_id DESC
+                LIMIT %s""",
+            (req.limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        if not rows:
+            return {"status": "SUCCESS", "total": 0, "umbrella": 0, "kept": 0, "results": []}
+
+        model = genai.GenerativeModel(
+            "models/gemini-2.0-flash",
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0.1,
+                "max_output_tokens": 200,
+            },
+        )
+
+        prompt_template = """다음은 정부지원사업 공고입니다. 이 공고가 "여러 하위 사업을 안내하는 통합/상위 문서"인지 "단일 개별 사업의 구체 모집 공고"인지 판정하세요.
+
+[제목] {title}
+[요약] {summary}
+
+판정 기준:
+- is_umbrella=true: 하위 사업이 복수로 존재하고 각각 별도로 신청해야 하며, 이 문서는 안내·개요·목록 역할에 그침. 실제 신청 대상·기간·금액이 불분명하거나 "상세는 각 사업 참조" 같은 표현.
+- is_umbrella=false: 단일 사업의 신청대상·기간·지원금액·신청방법이 명시된 구체적인 모집/선정 공고. "통합 공고"라는 단어가 제목에 있어도 내용이 구체적이면 false.
+
+반드시 JSON만 반환:
+{{"is_umbrella": true/false, "reason": "한 줄 근거 (40자 이내)"}}"""
+
+        results: List[Dict[str, Any]] = []
+        umbrella_ids: List[int] = []
+        for r in rows:
+            aid = r["announcement_id"]
+            title = (r.get("title") or "").strip()
+            summary = ((r.get("summary_text") or "")[:400]).strip()
+            try:
+                resp = model.generate_content(
+                    prompt_template.format(title=title[:200], summary=summary)
+                )
+                parsed = json.loads(resp.text)
+                is_um = bool(parsed.get("is_umbrella"))
+                reason = (parsed.get("reason") or "")[:120]
+            except Exception as e:
+                is_um = False
+                reason = f"LLM error: {str(e)[:80]}"
+            results.append({
+                "announcement_id": aid,
+                "title": title[:80],
+                "is_umbrella": is_um,
+                "reason": reason,
+            })
+            if is_um:
+                umbrella_ids.append(aid)
+
+        purged = 0
+        purge_by_table: Dict[str, Any] = {}
+        if req.purge and umbrella_ids:
+            for tbl in (
+                "announcement_sections",
+                "announcement_analysis",
+                "announcement_embeddings",
+                "saved_announcements",
+                "trending_announcements",
+                "match_history",
+            ):
+                try:
+                    cur.execute(f"DELETE FROM {tbl} WHERE announcement_id = ANY(%s)", (umbrella_ids,))
+                    purge_by_table[tbl] = cur.rowcount
+                except Exception as e:
+                    conn.rollback()
+                    purge_by_table[tbl] = f"error: {str(e)[:100]}"
+            try:
+                cur.execute("DELETE FROM announcements WHERE announcement_id = ANY(%s)", (umbrella_ids,))
+                purge_by_table["announcements"] = cur.rowcount
+                purged = cur.rowcount
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                return {"status": "ERROR", "error": str(e)[:200], "partial": purge_by_table}
+
+        return {
+            "status": "SUCCESS",
+            "total": len(rows),
+            "umbrella": len(umbrella_ids),
+            "kept": len(rows) - len(umbrella_ids),
+            "purged": purged,
+            "purge_by_table": purge_by_table if req.purge else None,
+            "results": results,
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 @app.post("/api/admin/umbrella-purge")
 def api_umbrella_purge(req: AdminAuthRequest):
     """통합공고 실제 삭제 — 관련 테이블 전부 정리."""

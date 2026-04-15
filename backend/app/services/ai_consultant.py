@@ -3639,7 +3639,11 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                 "mode_b_debug": _mode_b_debug,
             }
         except Exception as tool_err:
-            logger.warning(f"[PRO Mode B tool calling] {tool_err}")
+            import traceback as _tb
+            tb_str = _tb.format_exc()[-500:]
+            logger.warning(f"[PRO Mode B tool calling] {tool_err}\n{tb_str}")
+            _mode_b_debug["tool_error"] = f"{type(tool_err).__name__}: {str(tool_err)[:200]}"
+            _mode_b_debug["tool_tb"] = tb_str
             # 실패 시 기존 JSON 경로로 폴백
 
     # ── Mode A 또는 Mode B Tool Calling 실패 시: 기존 JSON 경로 ──

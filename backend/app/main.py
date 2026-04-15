@@ -4027,6 +4027,32 @@ def api_analyze_announcements(req: AdminAuthRequest):
     return {"status": "SUCCESS", **results}
 
 
+@app.post("/api/admin/refresh-trending")
+def api_refresh_trending(req: AdminAuthRequest):
+    """오늘의 인기 공고를 강제로 재생성 (네이버 데이터랩 호출 포함)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    from app.services.patrol.trending import run_trending_update, fetch_datalab_ranking
+    from datetime import date as _date
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trending_announcements WHERE trending_date = %s", (_date.today().isoformat(),))
+        conn.commit()
+        # 데이터랩 순위 함께 반환 (디버그)
+        ranked = fetch_datalab_ranking()
+        result = run_trending_update(conn)
+        return {
+            "status": "SUCCESS",
+            "datalab_available": bool(ranked),
+            "datalab_top": ranked[:8],
+            **result,
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 @app.post("/api/admin/seed-fund-knowledge")
 def api_seed_fund_knowledge(req: AdminAuthRequest):
     """관리자: 정책자금/보증 시드 지식을 knowledge_base에 적재 (중복 스킵)."""
@@ -10215,7 +10241,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
             JOIN announcements a ON t.announcement_id = a.announcement_id
             WHERE t.trending_date = CURRENT_DATE{tt_filter_sql}
             ORDER BY t.rank
-            LIMIT 3
+            LIMIT 2
         """, tt_params)
         rows = [dict(r) for r in cur.fetchall()]
 

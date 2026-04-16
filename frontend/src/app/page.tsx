@@ -254,17 +254,30 @@ export default function Home() {
   const loadUserAndMatch = useCallback(async () => {
     const token = getToken();
     if (!token) {
-      // No token → show public announcement list
       setStep("BROWSE");
       return;
     }
 
     setStep("LOADING");
     try {
-      const res = await fetch(`${API}/api/auth/me`, {
+      // JWT에서 bn 추출 (auth/me 대기 없이 match 병렬 시작용)
+      let jwtBn = "";
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        jwtBn = payload.bn || "";
+      } catch {}
+
+      // auth/me + match 병렬 호출
+      const mePromise = fetch(`${API}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      const matchPromise = jwtBn ? fetch(`${API}/api/match`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ business_number: jwtBn, target_type: "business" }),
+      }) : null;
 
+      const res = await mePromise;
       if (!res.ok) {
         localStorage.removeItem("auth_token");
         setStep("BROWSE");
@@ -306,13 +319,36 @@ export default function Home() {
         return;
       }
 
+      // match 병렬 결과 수거 (이미 실행 중)
       const firstTab = (user.user_type === "individual") ? "individual" : "business";
+      if (matchPromise && firstTab === "business") {
+        // 이미 business로 요청했으므로 결과만 수거
+        try {
+          const matchRes = await matchPromise;
+          const matchResult = await matchRes.json();
+          if (matchResult.status === "SUCCESS") {
+            setMatches(matchResult.data);
+            setStep("RESULTS");
+            try { sessionStorage.setItem("match_cache_business", JSON.stringify({ data: matchResult.data, bn: user.business_number, ts: Date.now() })); } catch {}
+            // 백그라운드: individual 매칭
+            fetch(`${API}/api/match`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ business_number: user.business_number, target_type: "individual" }) })
+              .then(r => r.json()).then(r2 => {
+                if (r2.status === "SUCCESS") {
+                  try { sessionStorage.setItem("match_cache_individual", JSON.stringify({ data: r2.data, bn: user.business_number, ts: Date.now() })); } catch {}
+                  setMatches(prev => [...prev.filter((m: any) => (m.target_type || "business") !== "individual"), ...r2.data]);
+                }
+              }).catch(() => {});
+            return;
+          }
+        } catch {}
+      }
+      // fallback: 순차 호출
       await performMatching(user.business_number, false, firstTab);
     } catch {
       localStorage.removeItem("auth_token");
       setStep("BROWSE");
     }
-  }, [performMatching]);
+  }, [performMatching, authHeaders]);
 
   useEffect(() => {
     loadUserAndMatch();

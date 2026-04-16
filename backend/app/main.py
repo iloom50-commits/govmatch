@@ -52,7 +52,7 @@ def _get_pool():
         with _db_pool_lock:
             if _db_pool is None or _db_pool.closed:
                 _db_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,
+                    minconn=5,
                     maxconn=15,
                     dsn=DATABASE_URL,
                     cursor_factory=psycopg2.extras.RealDictCursor,

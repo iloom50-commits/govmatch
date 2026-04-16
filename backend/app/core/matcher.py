@@ -359,9 +359,10 @@ def get_matches_for_user(user_profile):
         if biz_skipped:
             continue
 
-        # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개 등 제외
-        _info_page_keywords = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황"]
-        if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집", "공고", "신청", "접수"]):
+        # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개·행사 등 제외
+        _info_page_keywords = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황",
+                               "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약"]
+        if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집", "공고", "신청", "접수", "지원"]):
             continue
 
         # 특정 대상 제한 필터 — 제목/본문의 대상 키워드와 사용자 certifications/업종 대조
@@ -1114,16 +1115,28 @@ def _classify_bucket(match_item: dict, user_profile: dict, bucket_order: list = 
             is_interest = True
             break
 
-    # region 매칭
+    # region 매칭 — DB region 필드 + 제목 [도시명] 패턴 모두 체크
     is_region = False
     addr_raw = (user_profile.get("address_city") or "")
     user_cities = [c.strip() for c in addr_raw.split(",") if c.strip() and c.strip() != "전국"]
-    if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
-        is_region = True
+    if user_cities:
+        if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
+            is_region = True
+        if not is_region:
+            import re as _re
+            _bracket = _re.search(r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]', title)
+            if _bracket and _bracket.group(1) in user_cities:
+                is_region = True
 
-    # national_fund 매칭
+    # national_fund 매칭 — 전국 범위(region 비어있거나 전국)이면서 자금 관련
     is_national_fund = False
-    if (not region or region in ("전국", "All", "")) and _is_fund_related(title, category):
+    effective_region = region
+    if not effective_region or effective_region in ("전국", "All", ""):
+        import re as _re2
+        _br2 = _re2.search(r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]', title)
+        if _br2:
+            effective_region = _br2.group(1)
+    if (not effective_region or effective_region in ("전국", "All", "")) and _is_fund_related(title, category):
         is_national_fund = True
 
     # 로테이션 순서대로 분류 (상위 3버킷)

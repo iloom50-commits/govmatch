@@ -793,6 +793,12 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
                 except (ValueError, TypeError):
                     continue
 
+        # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개·행사 등 제외
+        _info_kws = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황",
+                     "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약"]
+        if any(kw in raw_title for kw in _info_kws) and not any(kw in raw_title for kw in ["모집", "공고", "신청", "접수", "지원"]):
+            continue
+
         # 통합 검색 텍스트
         search_text = f"{title} {target_desc} {clean_summary} {sel_criteria}"
 

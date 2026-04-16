@@ -4005,27 +4005,6 @@ class AdminAuthRequest(BaseModel):
     password: str
 
 
-class AdminSetPlanRequest(BaseModel):
-    password: str
-    business_number: str
-    plan: str = "pro"
-
-@app.post("/api/admin/set-plan")
-def api_admin_set_plan(req: AdminSetPlanRequest):
-    """임시: 테스트용 플랜 변경"""
-    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
-        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
-    conn = get_db_connection()
-    cur = conn.cursor()
-    now = datetime.datetime.utcnow()
-    expires = (now + datetime.timedelta(days=30)).isoformat()
-    cur.execute("UPDATE users SET plan=%s, plan_started_at=%s, plan_expires_at=%s WHERE business_number=%s",
-                (req.plan, now.isoformat(), expires, req.business_number))
-    conn.commit()
-    conn.close()
-    return {"status": "SUCCESS", "plan": req.plan, "expires": expires}
-
-
 @app.post("/api/admin/analyze-announcements")
 def api_analyze_announcements(req: AdminAuthRequest):
     """관리자: 기존 공고들의 원문을 정밀 분석하여 학습 데이터 축적"""

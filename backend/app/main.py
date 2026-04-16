@@ -10667,6 +10667,11 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
     tt = (target_type or "").strip().lower()
     if tt not in ("business", "individual"):
         tt = ""
+    # 인메모리 캐시 (10분 TTL)
+    cache_key = f"trending:{tt}"
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
     # 사용자 소재지 추출 — trending 조회와 같은 커넥션에서 처리
     user_home_city = ""
     conn = get_db_connection()
@@ -10785,7 +10790,9 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
         for r in rows:
             if r.get("deadline_date"):
                 r["deadline_date"] = str(r["deadline_date"])
-        return {"status": "SUCCESS", "data": rows[:3], "date": str(__import__("datetime").date.today())}
+        result = {"status": "SUCCESS", "data": rows[:3], "date": str(__import__("datetime").date.today())}
+        _set_cache(cache_key, result)
+        return result
     except Exception as outer_e:
         print(f"[Trending API] outer error: {outer_e}")
         import traceback; traceback.print_exc()

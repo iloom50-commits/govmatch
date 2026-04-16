@@ -7913,6 +7913,7 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     conn.commit()
     conn.close()
     _response_cache.pop(f"auth_me:{bn}", None)
+    _response_cache.pop(f"match:{bn}", None)
     return {"status": "SUCCESS", "message": f"프로필이 업데이트되었습니다.{price_notice}"}
 
 
@@ -8249,6 +8250,11 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     # 소유권 검증: 자신의 business_number만 매칭 가능
     if request.business_number != current_user["bn"]:
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
+    # 인메모리 캐시 (5분)
+    match_cache_key = f"match:{request.business_number}"
+    cached_match = _get_cached(match_cache_key)
+    if cached_match:
+        return cached_match
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE business_number = %s", (request.business_number,))
@@ -8284,33 +8290,29 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
 
     _log_event("matching", request.business_number, f"type={user_type},count={len(matches)},top_score={matches[0].get('match_score',0) if matches else 0}")
 
-    # P1.3: match_history 저장
+    # P1.3: match_history 저장 (별도 커넥션 대신 간소화)
     try:
         mh_conn = get_db_connection()
         mh_cur = mh_conn.cursor()
         snap_keys = ["company_name","industry_code","address_city","revenue_bracket",
-                     "employee_count_bracket","interests","user_type","age_range",
-                     "income_level","family_type","employment_status","housing_status"]
+                     "employee_count_bracket","interests","user_type"]
         snapshot = {k: user_dict.get(k) for k in snap_keys if user_dict.get(k) is not None}
-        top10 = [
-            {"id": m.get("announcement_id"), "title": m.get("title", "")[:100],
-             "score": m.get("match_score", 0)}
-            for m in matches[:10]
-        ]
+        top5 = [{"id": m.get("announcement_id"), "title": m.get("title", "")[:60]} for m in matches[:5]]
         mh_cur.execute(
             """INSERT INTO match_history (business_number, user_type, profile_snapshot, total_matches, top_matches)
                VALUES (%s, %s, %s::jsonb, %s, %s::jsonb)""",
             (request.business_number, user_type,
-             json.dumps(snapshot, ensure_ascii=False),
-             len(matches),
-             json.dumps(top10, ensure_ascii=False))
+             json.dumps(snapshot, ensure_ascii=False), len(matches),
+             json.dumps(top5, ensure_ascii=False))
         )
         mh_conn.commit()
         mh_conn.close()
     except Exception as mh_err:
         print(f"[match_history] {mh_err}")
 
-    return {"status": "SUCCESS", "data": matches}
+    result = {"status": "SUCCESS", "data": matches}
+    _set_cache(match_cache_key, result)
+    return result
 
 @app.post("/api/notification-settings")
 def api_save_notification_settings(settings: NotificationSettings):

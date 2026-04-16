@@ -1295,6 +1295,7 @@ app.add_middleware(SecurityAgentMiddleware)
 # 보안 상태 API (Admin 전용)
 class BusinessNumberRequest(BaseModel):
     business_number: str
+    target_type: Optional[str] = None  # "business" | "individual" | None(=user_type 따름)
 
 class UserProfile(BaseModel):
     business_number: str
@@ -1481,7 +1482,7 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
 
 # ─── 응답 캐시 (동시접속 대응) ───────────────────────────────────────
 _response_cache: dict = {}
-_CACHE_TTL = 300  # 5분
+_CACHE_TTL = 900  # 15분
 
 def _get_cached(key: str):
     entry = _response_cache.get(key)
@@ -8250,8 +8251,10 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     # 소유권 검증: 자신의 business_number만 매칭 가능
     if request.business_number != current_user["bn"]:
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
-    # 인메모리 캐시 (5분)
-    match_cache_key = f"match:{request.business_number}"
+    # target_type: 프론트에서 현재 탭 전달 → 해당 타입만 우선 매칭
+    req_tt = (request.target_type or "").strip().lower()
+    # 인메모리 캐시 (15분) — target_type별 분리
+    match_cache_key = f"match:{request.business_number}:{req_tt or 'all'}"
     cached_match = _get_cached(match_cache_key)
     if cached_match:
         return cached_match
@@ -8266,15 +8269,28 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
 
     user_dict = dict(user)
 
-    # user_type에 따라 매칭 엔진 분기 (미설정 시 both로 개인+기업 모두)
+    # user_type에 따라 매칭 엔진 분기
     user_type = user_dict.get("user_type") or "both"
-    if user_type == "individual":
+    # target_type 지정 시 해당 타입만 실행 (1회 호출 = ~2초)
+    if req_tt == "individual":
+        matches = get_matches_hybrid(user_dict, is_individual=True)
+    elif req_tt == "business":
+        matches = get_matches_hybrid(user_dict, is_individual=False)
+    elif user_type == "individual":
         matches = get_matches_hybrid(user_dict, is_individual=True)
     elif user_type == "both":
-        # 기업/개인 각각 독립적으로 버킷 정렬 → 단순 연결 (프론트에서 탭별 target_type 필터)
-        biz_matches = get_matches_hybrid(user_dict, is_individual=False)
-        ind_matches = get_matches_hybrid(user_dict, is_individual=True)
-        matches = biz_matches + ind_matches
+        # target_type 미지정 + both → 기업 우선 실행, 개인은 백그라운드
+        matches = get_matches_hybrid(user_dict, is_individual=False)
+        # 개인 매칭 백그라운드 캐시
+        import threading
+        def _bg_individual():
+            try:
+                ind = get_matches_hybrid(user_dict, is_individual=True)
+                ind = ind[:100]
+                _set_cache(f"match:{request.business_number}:individual", {"status": "SUCCESS", "data": ind})
+            except Exception as e:
+                print(f"[match bg] individual error: {e}")
+        threading.Thread(target=_bg_individual, daemon=True).start()
     else:
         matches = get_matches_hybrid(user_dict, is_individual=False)
     # 상위 100건만 반환 (점수순 정렬 후, 프론트에서 20건씩 페이지네이션)

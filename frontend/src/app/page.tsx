@@ -172,15 +172,25 @@ export default function Home() {
 
   const handleEditProfile = () => setStep("PROFILE");
 
-  const performMatching = useCallback(async (bn: string, forceRefresh = false) => {
-    // 캐시 확인 (10분 이내면 재사용)
+  const performMatching = useCallback(async (bn: string, forceRefresh = false, targetType?: string) => {
+    const tt = targetType || "business"; // 기본: 기업탭 우선
+    const cacheKey = `match_cache_${tt}`;
+
+    // 캐시 확인 (15분 이내면 재사용)
     if (!forceRefresh) {
       try {
-        const cached = sessionStorage.getItem("match_cache");
+        const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
           const { data, bn: cachedBn, ts } = JSON.parse(cached);
-          if (cachedBn === bn && Date.now() - ts < 10 * 60 * 1000) {
-            setMatches(data);
+          if (cachedBn === bn && Date.now() - ts < 15 * 60 * 1000) {
+            setMatches(prev => {
+              // 기존 다른 탭 결과와 병합
+              const otherTab = prev.filter((m: any) => {
+                const mtt = m.target_type || "business";
+                return tt === "business" ? mtt !== "business" : mtt === "business";
+              });
+              return [...data, ...otherTab];
+            });
             setStep("RESULTS");
             return;
           }
@@ -192,17 +202,45 @@ export default function Home() {
       const res = await fetch(`${API}/api/match`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ business_number: bn }),
+        body: JSON.stringify({ business_number: bn, target_type: tt }),
       });
       const result = await res.json();
 
       if (result.status === "SUCCESS") {
-        setMatches(result.data);
+        setMatches(prev => {
+          const otherTab = prev.filter((m: any) => {
+            const mtt = m.target_type || "business";
+            return tt === "business" ? mtt !== "business" : mtt === "business";
+          });
+          return [...result.data, ...otherTab];
+        });
         setStep("RESULTS");
-        // 캐시 저장
         try {
-          sessionStorage.setItem("match_cache", JSON.stringify({ data: result.data, bn, ts: Date.now() }));
+          sessionStorage.setItem(cacheKey, JSON.stringify({ data: result.data, bn, ts: Date.now() }));
         } catch {}
+
+        // 백그라운드: 다른 탭 매칭도 미리 요청 (캐시 워밍)
+        const otherTt = tt === "business" ? "individual" : "business";
+        const otherKey = `match_cache_${otherTt}`;
+        try {
+          const otherCached = sessionStorage.getItem(otherKey);
+          if (otherCached) {
+            const { bn: cBn, ts } = JSON.parse(otherCached);
+            if (cBn === bn && Date.now() - ts < 15 * 60 * 1000) return; // 이미 캐시 있음
+          }
+        } catch {}
+        // 백그라운드 fetch (결과만 캐시, UI 업데이트 안 함)
+        fetch(`${API}/api/match`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ business_number: bn, target_type: otherTt }),
+        }).then(r => r.json()).then(r2 => {
+          if (r2.status === "SUCCESS") {
+            try { sessionStorage.setItem(otherKey, JSON.stringify({ data: r2.data, bn, ts: Date.now() })); } catch {}
+            // matches에도 병합
+            setMatches(prev => [...prev.filter((m: any) => (m.target_type || "business") !== (otherTt === "individual" ? "individual" : "business")), ...r2.data]);
+          }
+        }).catch(() => {});
       } else {
         throw new Error(result.detail || "매칭 실패");
       }
@@ -268,7 +306,8 @@ export default function Home() {
         return;
       }
 
-      await performMatching(user.business_number);
+      const firstTab = (user.user_type === "individual") ? "individual" : "business";
+      await performMatching(user.business_number, false, firstTab);
     } catch {
       localStorage.removeItem("auth_token");
       setStep("BROWSE");
@@ -326,7 +365,8 @@ export default function Home() {
         return;
       }
 
-      await performMatching(user.business_number);
+      const firstTab2 = (u2.user_type === "individual") ? "individual" : "business";
+      await performMatching(user.business_number, false, firstTab2);
     } catch {
       toast("프로필 로딩 중 오류가 발생했습니다.", "error");
       setStep("BROWSE");

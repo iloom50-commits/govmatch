@@ -10667,46 +10667,26 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
     tt = (target_type or "").strip().lower()
     if tt not in ("business", "individual"):
         tt = ""
-    # 사용자 소재지 추출 (로그인 시)
+    # 사용자 소재지 추출 — trending 조회와 같은 커넥션에서 처리
     user_home_city = ""
-    if authorization and authorization.startswith("Bearer "):
-        try:
-            _token = authorization.split(" ", 1)[1]
-            _payload = jwt.decode(_token, JWT_SECRET, algorithms=["HS256"])
-            _bn = _payload.get("bn")
-            if _bn:
-                _conn = get_db_connection()
-                _cur = _conn.cursor()
-                _cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_bn,))
-                _row = _cur.fetchone()
-                _conn.close()
-                if _row:
-                    _city = _row.get("address_city", "") or ""
-                    # 첫 번째 실제 지역 추출 (전국 제외)
-                    _cities = [c.strip() for c in _city.split(",") if c.strip() and c.strip() != "전국"]
-                    if _cities:
-                        user_home_city = _cities[0]
-        except Exception:
-            pass
-
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # 테이블 생성 보장
-        try:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS trending_announcements (
-                    id SERIAL PRIMARY KEY, trending_date DATE NOT NULL,
-                    rank INTEGER NOT NULL, announcement_id INTEGER NOT NULL,
-                    trending_keyword TEXT, trending_reason TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-        except Exception:
-            try: conn.rollback()
-            except: pass
-
+        # 사용자 소재지 추출 (로그인 시 — 같은 커넥션 사용)
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                _payload = jwt.decode(authorization.split(" ", 1)[1], JWT_SECRET, algorithms=["HS256"])
+                _bn = _payload.get("bn")
+                if _bn:
+                    cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_bn,))
+                    _row = cur.fetchone()
+                    if _row:
+                        _city = (_row.get("address_city", "") or "")
+                        _cities = [c.strip() for c in _city.split(",") if c.strip() and c.strip() != "전국"]
+                        if _cities:
+                            user_home_city = _cities[0]
+            except Exception:
+                pass
         tt_filter_sql = ""
         tt_params: tuple = ()
         if tt == "business":

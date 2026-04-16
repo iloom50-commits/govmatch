@@ -23,19 +23,69 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
   const daysLeft = planStatus?.days_left;
 
   const userTypeLabel: Record<string, string> = { individual: "개인", business: "사업자", both: "개인+사업자" };
-  const isIndividual = profile?.user_type === "individual";
+  const userType = profile?.user_type || "business";
+  const showIndividual = userType === "individual" || userType === "both";
+  const showBusiness = userType === "business" || userType === "both";
 
-  const profileSummary = {
-    type: userTypeLabel[profile?.user_type] || "미설정",
-    region: profile?.address_city || "미설정",
-    industry: profile?.industry_name || (profile?.industry_code && profile.industry_code !== "00000" ? profile.industry_code : "미설정"),
-    age: profile?.age_range || "미설정",
-    interests: profile?.interests || "미설정",
+  // address_city는 "전국,부산" 형태. 첫 번째 "전국"을 제외한 나머지가 실제 선택 지역.
+  const parseHomeCity = (raw: any): string => {
+    if (!raw) return "";
+    const parts = String(raw).split(",").map(s => s.trim()).filter(Boolean);
+    return parts.filter(p => p !== "전국")[0] || "";
+  };
+  const homeCity = parseHomeCity(profile?.address_city);
+  const interestRegions = profile?.interest_regions
+    ? String(profile.interest_regions).split(",").map((s: string) => s.trim()).filter(Boolean)
+    : [];
+
+  const formatList = (raw: any, limit = 3): string => {
+    if (!raw) return "미설정";
+    const arr = String(raw).split(",").map(s => s.trim()).filter(Boolean);
+    if (arr.length === 0) return "미설정";
+    return arr.slice(0, limit).join(", ") + (arr.length > limit ? ` 외 ${arr.length - limit}` : "");
   };
 
-  const hasProfile = isIndividual
-    ? (profile?.age_range || profile?.address_city)
-    : (profile?.industry_code && profile?.industry_code !== "00000");
+  // 소득 화면표시용 역매핑
+  const INCOME_LABEL: Record<string, string> = {
+    "기초생활": "월 100만원 이하",
+    "차상위": "월 100~200만원",
+    "중위50%이하": "월 200~300만원",
+    "중위75%이하": "월 300~400만원",
+    "중위100%이하": "월 400~500만원",
+    "해당없음": "월 500만원 이상",
+  };
+
+  const profileSummary = {
+    type: userTypeLabel[userType] || "미설정",
+    homeCity: homeCity || "미설정",
+    interestRegions: interestRegions.length > 0 ? interestRegions.join(", ") : "미설정",
+    gender: profile?.gender || "미설정",
+    age: profile?.age_range || "미설정",
+    income: profile?.income_level ? (INCOME_LABEL[profile.income_level] || profile.income_level) : "미설정",
+    family: profile?.family_type || "미설정",
+    employment: profile?.employment_status || "미설정",
+    revenue: profile?.revenue_bracket || "미설정",
+    employees: profile?.employee_count_bracket || "미설정",
+    foundedDate: profile?.is_pre_founder ? "예비창업자" : (profile?.founded_date || "미설정"),
+    certifications: formatList(profile?.certifications),
+    interests: formatList(profile?.interests),
+  };
+
+  // 저장된 프로필 필드가 하나라도 있으면 true
+  const hasProfile = !!(
+    homeCity ||
+    profile?.age_range ||
+    profile?.gender ||
+    profile?.income_level ||
+    profile?.family_type ||
+    profile?.employment_status ||
+    profile?.revenue_bracket ||
+    profile?.employee_count_bracket ||
+    profile?.founded_date ||
+    profile?.is_pre_founder ||
+    (profile?.certifications && String(profile.certifications).length > 0) ||
+    (profile?.interests && String(profile.interests).length > 0)
+  );
 
   const joinDate = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })
@@ -117,23 +167,49 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
           <div className="px-5">
             {hasProfile ? (
               <>
-                <Row label="지역" value={profileSummary.region} onClick={() => { onClose(); onOpenNotify?.(); }} />
-                <Divider />
-                {isIndividual ? (
-                  <>
+                {showIndividual && (
+                  <div className={showBusiness ? "pb-2" : ""}>
+                    {showBusiness && (
+                      <p className="text-[11px] font-bold text-indigo-500 mt-1 mb-0.5">개인</p>
+                    )}
+                    <Row label="거주 지역" value={profileSummary.homeCity} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="관심 지역" value={profileSummary.interestRegions} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="성별" value={profileSummary.gender} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
                     <Row label="연령대" value={profileSummary.age} onClick={() => { onClose(); onOpenNotify?.(); }} />
                     <Divider />
-                    <Row label="관심분야" value={profileSummary.interests === "미설정" ? "미설정" : profileSummary.interests.split(",").slice(0, 3).join(", ")} onClick={() => { onClose(); onOpenNotify?.(); }} />
-                  </>
-                ) : (
-                  <>
-                    <Row label="업종" value={profileSummary.industry} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Row label="소득수준" value={profileSummary.income} onClick={() => { onClose(); onOpenNotify?.(); }} />
                     <Divider />
-                    {profile?.interests && (
-                      <Row label="관심분야" value={profileSummary.interests.split(",").slice(0, 3).join(", ")} onClick={() => { onClose(); onOpenNotify?.(); }} />
-                    )}
-                  </>
+                    <Row label="가구유형" value={profileSummary.family} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="취업상태" value={profileSummary.employment} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                  </div>
                 )}
+                {showIndividual && showBusiness && (
+                  <div className="h-2 bg-slate-50 -mx-5 my-2" />
+                )}
+                {showBusiness && (
+                  <div className={showIndividual ? "pt-1" : ""}>
+                    {showIndividual && (
+                      <p className="text-[11px] font-bold text-indigo-500 mt-1 mb-0.5">기업</p>
+                    )}
+                    <Row label="사업장 소재지" value={profileSummary.homeCity} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="관심 지역" value={profileSummary.interestRegions} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="매출 규모" value={profileSummary.revenue} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="직원 수" value={profileSummary.employees} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="설립일" value={profileSummary.foundedDate} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                    <Divider />
+                    <Row label="보유 인증" value={profileSummary.certifications} onClick={() => { onClose(); onOpenNotify?.(); }} />
+                  </div>
+                )}
+                <Divider />
+                <Row label="관심분야" value={profileSummary.interests} onClick={() => { onClose(); onOpenNotify?.(); }} />
               </>
             ) : (
               <div className="py-4">

@@ -371,6 +371,23 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # user_match_cache — 사전 매칭 결과 캐시
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_match_cache (
+                    id SERIAL PRIMARY KEY,
+                    business_number VARCHAR(20) NOT NULL,
+                    target_type VARCHAR(20) NOT NULL DEFAULT 'business',
+                    match_data JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(business_number, target_type)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_umc_bn ON user_match_cache(business_number)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # keyword_synonyms 테이블 생성 + 초기 데이터
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS keyword_synonyms (
@@ -642,6 +659,64 @@ async def _daily_digest_loop():
             print(f"[Scheduler] Digest complete: {len(results)} users, {sent} emails, {push_sent} pushes sent")
         except Exception as e:
             print(f"[Scheduler] digest error: {e}")
+        # 사전 매칭 캐시 생성 — 활성 사용자 매칭 결과를 DB에 저장
+        try:
+            print("[Scheduler] Running pre-match cache for active users...")
+            _prematch_count = _run_prematch_cache()
+            print(f"[Scheduler] Pre-match complete: {_prematch_count} users cached")
+        except Exception as e:
+            print(f"[Scheduler] pre-match error: {e}")
+
+
+def _run_prematch_cache() -> int:
+    """활성 사용자 매칭 결과를 user_match_cache 테이블에 저장"""
+    from app.core.matcher import get_matches_hybrid
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # 활성 유료 사용자 조회
+    cur.execute("""
+        SELECT business_number, user_type, industry_code, address_city, interests,
+               revenue_bracket, employee_count_bracket, establishment_date,
+               age_range, income_level, family_type, employment_status,
+               custom_keywords, certifications, interest_regions, company_name
+        FROM users
+        WHERE plan IN ('lite', 'lite_trial', 'basic', 'pro', 'biz')
+          AND (plan_expires_at IS NULL OR plan_expires_at > NOW())
+    """)
+    users = [dict(r) for r in cur.fetchall()]
+    count = 0
+    for u in users:
+        bn = u.get("business_number")
+        user_type = u.get("user_type") or "both"
+        try:
+            # 기업 매칭
+            if user_type in ("business", "both"):
+                biz = get_matches_hybrid(u, is_individual=False)
+                biz = biz[:100]
+                cur.execute("""
+                    INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                    VALUES (%s, 'business', %s::jsonb, CURRENT_TIMESTAMP)
+                    ON CONFLICT (business_number, target_type)
+                    DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
+                """, (bn, json.dumps(biz, ensure_ascii=False, default=str)))
+            # 개인 매칭
+            if user_type in ("individual", "both"):
+                ind = get_matches_hybrid(u, is_individual=True)
+                ind = ind[:100]
+                cur.execute("""
+                    INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                    VALUES (%s, 'individual', %s::jsonb, CURRENT_TIMESTAMP)
+                    ON CONFLICT (business_number, target_type)
+                    DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
+                """, (bn, json.dumps(ind, ensure_ascii=False, default=str)))
+            conn.commit()
+            count += 1
+        except Exception as e:
+            print(f"[prematch] {bn}: {e}")
+            try: conn.rollback()
+            except: pass
+    conn.close()
+    return count
 
 
 def _log_expired_announcements():
@@ -898,6 +973,9 @@ async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
     task_sync = asyncio.create_task(_daily_sync_loop())
     task_digest = asyncio.create_task(_daily_digest_loop())
+    # 서버 시작 시 사전매칭 캐시 (백그라운드)
+    import threading
+    threading.Thread(target=lambda: print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached"), daemon=True).start()
 
     # ── 금융 지식 시딩 (최초 1회) ──
     try:
@@ -7914,7 +7992,16 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     conn.commit()
     conn.close()
     _response_cache.pop(f"auth_me:{bn}", None)
-    _response_cache.pop(f"match:{bn}", None)
+    _response_cache.pop(f"match:{bn}:business", None)
+    _response_cache.pop(f"match:{bn}:individual", None)
+    _response_cache.pop(f"match:{bn}:all", None)
+    # DB 사전매칭 캐시도 무효화
+    try:
+        _dc = get_db_connection()
+        _dc.cursor().execute("DELETE FROM user_match_cache WHERE business_number = %s", (bn,))
+        _dc.commit(); _dc.close()
+    except Exception:
+        pass
     return {"status": "SUCCESS", "message": f"프로필이 업데이트되었습니다.{price_notice}"}
 
 
@@ -8253,11 +8340,31 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
     # target_type: 프론트에서 현재 탭 전달 → 해당 타입만 우선 매칭
     req_tt = (request.target_type or "").strip().lower()
-    # 인메모리 캐시 (15분) — target_type별 분리
+    # 1차: 인메모리 캐시 (15분)
     match_cache_key = f"match:{request.business_number}:{req_tt or 'all'}"
     cached_match = _get_cached(match_cache_key)
     if cached_match:
         return cached_match
+    # 2차: DB 사전 매칭 캐시 (daily digest에서 저장)
+    if req_tt in ("business", "individual"):
+        try:
+            _dbc = get_db_connection()
+            _dbc_cur = _dbc.cursor()
+            _dbc_cur.execute(
+                "SELECT match_data FROM user_match_cache WHERE business_number = %s AND target_type = %s AND created_at > CURRENT_DATE - INTERVAL '1 day'",
+                (request.business_number, req_tt))
+            _dbc_row = _dbc_cur.fetchone()
+            _dbc.close()
+            if _dbc_row and _dbc_row.get("match_data"):
+                db_data = _dbc_row["match_data"]
+                if isinstance(db_data, str):
+                    db_data = json.loads(db_data)
+                if db_data and len(db_data) > 0:
+                    result = {"status": "SUCCESS", "data": db_data}
+                    _set_cache(match_cache_key, result)
+                    return result
+        except Exception as dbc_err:
+            print(f"[match] db cache read error: {dbc_err}")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE business_number = %s", (request.business_number,))

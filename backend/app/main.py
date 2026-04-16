@@ -8238,10 +8238,23 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     if user_type == "individual":
         matches = get_matches_hybrid(user_dict, is_individual=True)
     elif user_type == "both":
-        biz_matches = get_matches_hybrid(user_dict, is_individual=False)
-        ind_matches = get_matches_hybrid(user_dict, is_individual=True)
-        matches = biz_matches + ind_matches
-        matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        # 기업+개인 원시 결과를 합산 → 버킷 레이어 1회만 적용 (중복 점수화 방지)
+        from app.core.matcher import _apply_bucket_layer
+        biz_raw = get_matches_hybrid(user_dict, is_individual=False, skip_bucket=True)
+        ind_raw = get_matches_hybrid(user_dict, is_individual=True, skip_bucket=True)
+        # 중복 제거 (같은 announcement_id)
+        seen_ids = set()
+        merged = []
+        for m in biz_raw + ind_raw:
+            aid = m.get("announcement_id")
+            if aid and aid not in seen_ids:
+                seen_ids.add(aid)
+                merged.append(m)
+        try:
+            matches = _apply_bucket_layer(merged, user_dict)
+        except Exception as e:
+            print(f"[Match both] bucket layer error: {e}")
+            matches = merged
     else:
         matches = get_matches_hybrid(user_dict, is_individual=False)
     # 상위 100건만 반환 (점수순 정렬 후, 프론트에서 20건씩 페이지네이션)

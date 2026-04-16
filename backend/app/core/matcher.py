@@ -1217,19 +1217,13 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
         b = r.get("bucket") or "fresh"
         grouped.setdefault(b, []).append(r)
 
-    # 3) 버킷별 내부 정렬 + 합성 점수 부여
+    # 3) 버킷 순서대로 내부 정렬 후 연결 — 순위=순서 (점수화 없음)
     final: list = []
-    ranges = [(95, 99), (88, 94), (82, 87), (76, 81), (70, 75)]
-    for idx, b in enumerate(bucket_order):
+    for b in bucket_order:
         items = grouped.get(b, [])
         items.sort(key=_sort_key)
-        lo, hi = ranges[idx] if idx < len(ranges) else (75, 79)
-        span = max(1, len(items))
-        for i, r in enumerate(items):
-            # 합성 점수 — 순위가 높을수록 hi 가까움
-            synth = hi - int((hi - lo) * (i / span))
-            r["match_score"] = synth
-            # reasons 배열 (프론트 뱃지용) — 기존 recommendation_reason 유지하면서 신규 필드 추가
+        for r in items:
+            # reasons 배열 (프론트 뱃지용)
             reasons_arr = []
             if r.get("bucket") == "interest":
                 reasons_arr.append({"icon": "🎯", "label": "관심분야"})
@@ -1245,13 +1239,17 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
             r["reasons"] = reasons_arr
             final.append(r)
 
+    # match_score는 순서 보존용 (프론트 정렬 호환). 1등=N, 마지막=1
+    for idx, r in enumerate(final):
+        r["match_score"] = len(final) - idx
+
     return final
 
 
-def get_matches_hybrid(user_profile: dict, is_individual: bool = False) -> list:
+def get_matches_hybrid(user_profile: dict, is_individual: bool = False, skip_bucket: bool = False) -> list:
     """하이브리드 매칭 — USE_EMBEDDING_MATCHING 환경변수 ON일 때만 임베딩 사용.
     OFF 또는 실패 시 기존 rule-based 함수로 자동 fallback.
-    결과에 버킷 분류·합성 점수·reasons 추가.
+    skip_bucket=True면 버킷 레이어를 건너뜀 (both 모드에서 합산 후 1회 적용 용도).
     """
     import os as _os
     use_emb = _os.environ.get("USE_EMBEDDING_MATCHING", "false").lower() == "true"
@@ -1273,7 +1271,10 @@ def get_matches_hybrid(user_profile: dict, is_individual: bool = False) -> list:
                 c["match_reason"] = "의미 유사도 기반 매칭"
             results = candidates
 
-    # 버킷 분류 + 2차 정렬 + 합성 점수 후처리
+    if skip_bucket:
+        return results
+
+    # 버킷 분류 + 순서 정렬 후처리
     try:
         results = _apply_bucket_layer(results, user_profile)
     except Exception as e:

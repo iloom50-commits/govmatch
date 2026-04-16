@@ -761,7 +761,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
     if (!searchQuery.trim()) {
       if (sortKey === "recommend") {
-        // 맞춤추천: 매칭 점수순 (기본값 — 이미 서버에서 정렬됨)
+        // 맞춤추천: 서버에서 버킷 순서대로 정렬됨 — match_score는 순서 보존용
         result.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
       } else if (sortKey === "amount") {
         result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));

@@ -1086,14 +1086,20 @@ def _days_left(deadline_date) -> int:
         return 9999
 
 
-def _classify_bucket(match_item: dict, user_profile: dict) -> str:
-    """공고를 버킷에 배정 — interest/region/deadline/fresh 중 하나."""
+def _classify_bucket(match_item: dict, user_profile: dict, bucket_order: list = None) -> str:
+    """공고를 버킷에 배정.
+    bucket_order의 상위 3개(로테이션 결과) 순서대로 분류를 시도.
+    이렇게 하면 오늘 1위 버킷이 분류에서도 우선권을 가져
+    좋은 공고를 독점하지 않고 고르게 분배됨.
+    """
     title = match_item.get("title") or ""
     category = match_item.get("category") or ""
     region = match_item.get("region") or ""
     search_text = f"{title} {category} {match_item.get('summary_text') or ''}".lower()
 
-    # 1) interest 우선 — 사용자 관심 키워드와 매칭되면 interest 버킷
+    # 각 버킷 매칭 여부를 미리 계산
+    # interest 매칭
+    is_interest = False
     user_interests = (user_profile.get("interests") or "").split(",") if user_profile.get("interests") else []
     user_kws = (user_profile.get("custom_keywords") or "").split(",") if user_profile.get("custom_keywords") else []
     for tag in user_interests + user_kws:
@@ -1101,28 +1107,41 @@ def _classify_bucket(match_item: dict, user_profile: dict) -> str:
         if not tag:
             continue
         if tag.lower() in search_text:
-            return "interest"
-        # INTEREST_KEYWORD_MAP 확장된 키워드도 체크
+            is_interest = True
+            break
         expanded = INTEREST_KEYWORD_MAP.get(tag, [])
         if any(kw.lower() in search_text for kw in expanded):
-            return "interest"
+            is_interest = True
+            break
 
-    # 2) region — 사용자 소재지/관심지역과 매칭
+    # region 매칭
+    is_region = False
     addr_raw = (user_profile.get("address_city") or "")
     user_cities = [c.strip() for c in addr_raw.split(",") if c.strip() and c.strip() != "전국"]
     if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
-        return "region"
+        is_region = True
 
-    # 3) national_fund — 전국 범위의 자금 관련 공고 (전국 공고가 region 버킷에서 배제되는 문제 보완)
+    # national_fund 매칭
+    is_national_fund = False
     if (not region or region in ("전국", "All", "")) and _is_fund_related(title, category):
-        return "national_fund"
+        is_national_fund = True
 
-    # 4) deadline — 30일 이내 마감
+    # 로테이션 순서대로 분류 (상위 3버킷)
+    bucket_checks = {
+        "interest": is_interest,
+        "region": is_region,
+        "national_fund": is_national_fund,
+    }
+    top_3 = (bucket_order or _BUCKET_ORDER_BASE)[:3]
+    for b in top_3:
+        if bucket_checks.get(b, False):
+            return b
+
+    # 하위 버킷 (고정 순서)
     dleft = _days_left(match_item.get("deadline_date"))
     if 0 <= dleft <= 30:
         return "deadline"
 
-    # 5) fresh — 최근 등록 (기본 버킷)
     return "fresh"
 
 
@@ -1163,12 +1182,9 @@ _BUCKET_LABELS = {
 def _apply_bucket_layer(results: list, user_profile: dict) -> list:
     """매칭 결과에 버킷 분류 + 2차 정렬 + 합성 score 부여.
 
-    기존 match_score 정렬과 호환되도록 합성 점수는 버킷 우선순위를 보존.
-    - 1등 버킷: 95~99
-    - 2등: 87~94
-    - 3등: 80~86
-    - 4등: 75~79
-    버킷 내부 정렬: 자금관련(+) → 마감 유효(+) → 금액 큰 순.
+    로테이션 순서를 분류 우선순위에도 적용하여 3개 버킷이 진정 동등.
+    점수 범위: 1등 95~99 / 2등 88~94 / 3등 82~87 / 4등 76~81 / 5등 70~75
+    버킷 내부: 실제금액(+) → 자금키워드(+) → 마감유효(+) → 금액 큰 순.
     """
     if not results:
         return results
@@ -1176,9 +1192,9 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
     bucket_order = _rotate_buckets(user_profile)
     bucket_to_rank = {b: i for i, b in enumerate(bucket_order)}
 
-    # 1) 각 아이템에 버킷 부여
+    # 1) 각 아이템에 버킷 부여 (로테이션 순서를 분류 우선순위로도 사용)
     for r in results:
-        b = _classify_bucket(r, user_profile)
+        b = _classify_bucket(r, user_profile, bucket_order)
         r["bucket"] = b
         r["bucket_label"] = _BUCKET_LABELS.get(b, b)
 

@@ -288,6 +288,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           profile_override: options?.profile_override || null,
           session_id: sessionId,
           client_category: clientCategory || null,
+          client_id: selectedClient?.id || null,
         }),
       });
 

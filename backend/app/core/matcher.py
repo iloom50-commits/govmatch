@@ -1127,7 +1127,10 @@ def _classify_bucket(match_item: dict, user_profile: dict) -> str:
 
 
 def _rotate_buckets(user_profile: dict) -> list:
-    """접속일·사용자 해시로 버킷 순서 로테이션."""
+    """접속일·사용자 해시로 상위 3개 버킷만 로테이션. 마감·최신은 항상 뒤쪽 고정.
+    - 상위 슬롯(1·2·3): interest / region / national_fund 로테이션
+    - 하위 슬롯(4·5): deadline → fresh 고정
+    """
     import hashlib
     seed_parts = [
         str(user_profile.get("business_number", "")),
@@ -1136,16 +1139,16 @@ def _rotate_buckets(user_profile: dict) -> list:
     ]
     seed = "|".join(seed_parts)
     h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
-    # 4개 버킷을 해시로 셔플
-    buckets = list(_BUCKET_ORDER_BASE)
-    result: list = []
-    remaining = buckets[:]
-    for i in range(len(buckets)):
+    top_buckets = ["interest", "region", "national_fund"]
+    rotated_top: list = []
+    remaining = top_buckets[:]
+    for i in range(len(top_buckets)):
         if not remaining:
             break
         idx = (h + i * 7) % len(remaining)
-        result.append(remaining.pop(idx))
-    return result
+        rotated_top.append(remaining.pop(idx))
+    # 하위는 고정
+    return rotated_top + ["deadline", "fresh"]
 
 
 _BUCKET_LABELS = {
@@ -1179,12 +1182,18 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
         r["bucket"] = b
         r["bucket_label"] = _BUCKET_LABELS.get(b, b)
 
-    # 2) 버킷 내부 2차 정렬 키 (자금 우선 → 마감 유효 → 금액 큰 순)
+    # 2) 버킷 내부 2차 정렬 키
+    #    1순위: 실제 금액 명시 (support_amount에 숫자+원/억/만 포함 — 프론트 빨간 뱃지 조건과 동일)
+    #    2순위: 자금 키워드 매칭 (fallback)
+    #    3순위: 마감 유효
+    #    4순위: 금액 크기 desc
     def _sort_key(r):
+        amt_str = str(r.get("support_amount") or "")
+        has_real_amount = 0 if (any(c.isdigit() for c in amt_str) and any(k in amt_str for k in ("원", "억", "만"))) else 1
         fund = 0 if _is_fund_related(r.get("title", ""), r.get("category", "")) else 1
         deadline_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
-        amount = -_amount_value(r.get("support_amount", ""))
-        return (fund, deadline_ok, amount)
+        amount = -_amount_value(amt_str)
+        return (has_real_amount, fund, deadline_ok, amount)
 
     # 버킷별 그룹
     grouped: dict = {b: [] for b in bucket_order}

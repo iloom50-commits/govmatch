@@ -13,8 +13,7 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
       {/* 라벨 — 버튼 위에 배치 */}
       <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
-        <span className="text-[11px] font-bold text-violet-700">전문가용 지원사업 상담 도구</span>
-        <span className="px-1.5 py-0.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[9px] font-black rounded-full">PRO</span>
+        <span className="text-[11px] font-bold text-violet-700">AI 지원사업 상담</span>
       </div>
       {/* 버튼 — 하단 */}
       <button
@@ -22,10 +21,9 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
         className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
         style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
         title={label}
-        aria-label="전문가용 지원사업 상담 도구 (PRO)"
+        aria-label="AI 지원사업 상담"
       >
         <span className="text-2xl animate-ai-pulse">✨</span>
-        <span className="sm:hidden absolute -top-1 -right-1 px-1 py-0.5 bg-white text-violet-700 text-[8px] font-black rounded-full border border-violet-200 shadow">PRO</span>
       </button>
     </div>
   );
@@ -1088,7 +1086,7 @@ ${convHtml}
 
         {/* 플로팅 AI 상담 버튼 */}
         <FabWithBubble
-          label={isIndividual ? "전문가용 개인 상담 에이전트" : "전문가용 기업 상담 에이전트"}
+          label="AI 지원사업 상담"
           onClick={() => { setOpen(true); setDragPos(null); }}
           botPhase={botPhase}
         />
@@ -1104,16 +1102,10 @@ ${convHtml}
   const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "자금 상담 AI" : "AI 서비스";
   const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? (fundMode === "individual_fund" ? "👤 개인 자금 (주거·서민금융·학자금)" : "🏢 기업 자금 (정책자금·보증·대출)") : "모드를 선택하세요";
 
-  // PRO 사용자는 전문가 대시보드로 전환
-  if (open && isPro) {
+  // PRO 사용자가 consultant 모드로 진입 시 전문가 대시보드
+  if (open && isPro && mode === "consultant") {
     const ProSecretary = require("@/components/pro/ProSecretary").default;
     return <ProSecretary onClose={handleClose} planStatus={planStatus} onUpgrade={onUpgrade} userType={userType} />;
-  }
-
-  // 비PRO 사용자는 PRO 소개/가입 유도 화면
-  if (open && !isPro) {
-    const ProUpsellScreen = require("@/components/pro/ProUpsellScreen").default;
-    return <ProUpsellScreen onClose={handleClose} onUpgrade={onUpgrade} />;
   }
 
   return (
@@ -1190,8 +1182,8 @@ ${convHtml}
                 <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">전문가 도구</p>
               </div>
               {[
-                { id: "free", icon: "💬", label: "지원사업 상담", desc: "정책·자격·절차 Q&A", needsPro: true },
-                { id: "consultant", icon: "📋", label: "고객사 상담", desc: "맞춤 상담·분석", needsPro: true },
+                { id: "free", icon: "💬", label: "자금 상담 AI", desc: "정책자금·보증·대출 Q&A", needsPro: false, needsLogin: true },
+                { id: "consultant", icon: "📋", label: "전문가 상담", desc: "고객사 맞춤 상담·분석", needsPro: true },
                 { id: "search", icon: "🔍", label: "공고 매칭/검색", desc: "조건별 공고 검색", needsPro: false },
                 { id: "analysis", icon: "📄", label: "공고 상세 분석", desc: "원문 AI 정밀 분석", needsPro: true },
                 { id: "crm", icon: "👥", label: "고객 관리", desc: "CRM·자료·이력", needsPro: true },
@@ -1201,9 +1193,11 @@ ${convHtml}
                 <button
                   key={item.id}
                   onClick={() => {
+                    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
+                    if ((item as any).needsLogin && !hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
                     if (item.needsPro && !isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
                     if (item.id === "free") startMode("free");
-                    else if (item.id === "consultant") startMode("consultant");
+                    else if (item.id === "consultant") { setMode("consultant"); return; }
                     else if (item.id === "crm") {
                       setOpen(false);
                       window.dispatchEvent(new CustomEvent("open-pro-dashboard"));
@@ -1230,28 +1224,34 @@ ${convHtml}
                 <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 rounded-2xl flex items-center justify-center">
                   <span className="text-3xl">✨</span>
                 </div>
-                <h2 className="text-xl font-bold text-slate-800 mb-2">전문가 대시보드</h2>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">AI 서비스</h2>
                 <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
-                  좌측 메뉴에서 원하시는 서비스를 선택하세요.<br/>
-                  AI가 지원사업 상담, 고객 관리, 공고 분석을 도와드립니다.
+                  좌측 메뉴에서 원하시는 서비스를 선택하세요.
                 </p>
                 <div className="grid grid-cols-2 gap-3 text-left">
-                  <button onClick={() => { if (!isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; } startMode("consultant"); }}
-                    className="p-3 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-all">
-                    <p className="text-[12px] font-bold text-violet-700">📋 고객사 상담 시작</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">고객 유형 선택 → AI 대화</p>
-                  </button>
-                  <button onClick={() => { if (!isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; } startMode("free"); }}
+                  <button onClick={() => {
+                    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
+                    if (!hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
+                    startMode("free");
+                  }}
                     className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">
-                    <p className="text-[12px] font-bold text-indigo-700">💬 지원사업 상담</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">정책·자격·절차 질문</p>
+                    <p className="text-[12px] font-bold text-indigo-700">💬 자금 상담 AI</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">정책자금·보증·대출 Q&A</p>
+                  </button>
+                  <button onClick={() => {
+                    if (!isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
+                    setMode("consultant");
+                  }}
+                    className="p-3 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-all">
+                    <p className="text-[12px] font-bold text-violet-700">📋 전문가 상담 <span className="text-[9px] bg-violet-600 text-white px-1 py-0.5 rounded">PRO</span></p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">고객사 맞춤 상담·분석</p>
                   </button>
                 </div>
 
                 {!isPro && (
                   <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     <p className="text-[11px] text-slate-500">
-                      전문가 도구는 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
+                      전문가 상담·공고분석·CRM은 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
                     </p>
                     <button onClick={() => { setOpen(false); onUpgrade?.(); }}
                       className="mt-2 px-4 py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all">

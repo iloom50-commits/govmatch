@@ -10720,33 +10720,11 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                    a.origin_url
             FROM trending_announcements t
             JOIN announcements a ON t.announcement_id = a.announcement_id
-            WHERE t.trending_date = CURRENT_DATE{tt_filter_sql}
-            ORDER BY t.rank
-            LIMIT 2
+            WHERE t.trending_date >= CURRENT_DATE - INTERVAL '7 days'{tt_filter_sql}
+            ORDER BY t.trending_date DESC, t.rank
+            LIMIT 3
         """, tt_params)
         rows = [dict(r) for r in cur.fetchall()]
-
-        # 데이터 없으면 자동 생성
-        if not rows:
-            try:
-                from app.services.patrol.trending import run_trending_update
-                run_trending_update(conn)
-                # 재조회
-                cur.execute(f"""
-                    SELECT t.rank, t.trending_keyword, t.trending_reason,
-                           a.announcement_id, a.title, a.department, a.category,
-                           a.support_amount, a.deadline_date, a.region,
-                           a.origin_url
-                    FROM trending_announcements t
-                    JOIN announcements a ON t.announcement_id = a.announcement_id
-                    WHERE t.trending_date = CURRENT_DATE{tt_filter_sql}
-                    ORDER BY t.rank
-                    LIMIT 3
-                """)
-                rows = [dict(r) for r in cur.fetchall()]
-            except Exception as e:
-                print(f"[Trending] Auto-generate failed: {e}")
-                import traceback; traceback.print_exc()
 
         # 여전히 비어있으면 — 직접 인기 공고 쿼리 폴백
         if not rows:

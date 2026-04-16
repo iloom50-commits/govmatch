@@ -361,8 +361,10 @@ def get_matches_for_user(user_profile):
 
         # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개·행사 등 제외
         _info_page_keywords = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황",
-                               "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약"]
-        if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집", "공고", "신청", "접수", "지원"]):
+                               "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약",
+                               "만족도 조사", "조사 안내", "페스티벌", "페스티발", "축제",
+                               "예약 현황", "원스톱", "상담 현황"]
+        if any(kw in title for kw in _info_page_keywords) and not any(kw in title for kw in ["모집 공고", "참여기업 모집", "참여 기업 모집", "대상자 모집"]):
             continue
 
         # 특정 대상 제한 필터 — 제목/본문의 대상 키워드와 사용자 certifications/업종 대조
@@ -795,8 +797,10 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
 
         # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개·행사 등 제외
         _info_kws = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황",
-                     "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약"]
-        if any(kw in raw_title for kw in _info_kws) and not any(kw in raw_title for kw in ["모집", "공고", "신청", "접수", "지원"]):
+                     "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약",
+                     "만족도 조사", "조사 안내", "페스티벌", "페스티발", "축제",
+                     "예약 현황", "원스톱", "상담 현황"]
+        if any(kw in raw_title for kw in _info_kws) and not any(kw in raw_title for kw in ["모집 공고", "참여기업 모집", "참여 기업 모집", "대상자 모집"]):
             continue
 
         # 통합 검색 텍스트

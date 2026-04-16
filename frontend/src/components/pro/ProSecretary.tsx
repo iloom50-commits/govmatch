@@ -765,8 +765,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
-                          {/* RAG 출처 카드 — 매칭 완료 후 상담 단계에서만 표시 */}
-                          {msg.role === "assistant" && msg.done && msg.rag_sources && msg.rag_sources.length > 0 && (
+                          {/* RAG 출처 카드 — 매칭 결과 없는 상담 심화에서만 표시 */}
+                          {msg.role === "assistant" && msg.done && !msg.matched && msg.rag_sources && msg.rag_sources.length > 0 && (
                             <div className={`mt-2 p-2 rounded-xl border ${dark ? "bg-amber-500/5 border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
                               <div className={`text-[10px] font-bold mb-1.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
                                 📚 답변 근거 ({msg.rag_sources.length}건)
@@ -804,7 +804,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           {msg.role === "assistant" && msg.matched && msg.matched.length > 0 && (
                             <div className="mt-3 space-y-2">
                               {msg.matched.slice(0, 5).map((m: any, mi: number) => (
-                                <div key={mi} className={`p-3 rounded-xl border ${dark ? "bg-white/[0.03] border-white/[0.08]" : "bg-white border-slate-200"}`}>
+                                <button key={mi}
+                                  onClick={() => {
+                                    const aid = m.announcement_id || m.id;
+                                    if (aid) {
+                                      setActiveAnnouncementId(aid);
+                                      handleSend(`공고 ID: ${aid} — 『${m.title || m.program_title || "공고"}』에 대해 자격요건과 신청 방법을 분석해주세요.`);
+                                    }
+                                  }}
+                                  className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
                                       <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
@@ -820,8 +828,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                         )}
                                       </div>
                                     </div>
+                                    <span className={`text-[10px] flex-shrink-0 ${dark ? "text-violet-400" : "text-violet-600"}`}>상담 →</span>
                                   </div>
-                                </div>
+                                </button>
                               ))}
                               {msg.showReportButton && (
                                 <button
@@ -1121,7 +1130,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
           {/* 마지막 답변 출처 요약 */}
           {(() => {
-            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.done && m.rag_sources && m.rag_sources.length > 0);
+            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.done && !m.matched && m.rag_sources && m.rag_sources.length > 0);
             if (!lastMsg || !lastMsg.rag_sources) return null;
             return (
               <div className={`p-4 border-b ${t.border}`}>

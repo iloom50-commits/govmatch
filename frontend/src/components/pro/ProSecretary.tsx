@@ -897,15 +897,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     {!loading && !typing && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (() => {
                       const lastText = messages[messages.length - 1].text.toLowerCase();
 
-                      // AI가 특정 정보를 "요청"하는 경우만 위젯 표시
-                      // [기업 정보] 같은 구조화된 양식 요청은 항상 표시
-                      const hasFormBlock = /\[기업.?정보\]|\[개인.?정보\]|\[고객.?정보\]/.test(lastText) || (lastText.includes("*") && (lastText.includes("업종") || lastText.includes("매출")));
+                      // 확인/요약/완료 메시지는 위젯 표시 안 함
+                      const summaryWords = ["진행할까요", "정리한", "프로파일", "확인해", "매칭을 진행", "조건으로 매칭", "이군요", "이시군요", "군요", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석 중", "매칭 중", "결과를", "선정", "등록되었", "등록되", "정보가 등록", "어떤 작업을 진행"];
+                      if (summaryWords.some(w => lastText.includes(w))) return null;
 
-                      if (!hasFormBlock) {
-                        // 확인/완료/분석 응답은 제외
-                        const confirmWords = ["이군요", "이시군요", "군요", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석 중", "매칭 중", "결과를", "선정", "등록되었", "등록되", "정보가 등록", "어떤 작업을 진행"];
-                        if (confirmWords.some(w => lastText.includes(w))) return null;
-                      }
+                      // [기업 정보] 같은 구조화된 양식 요청은 위젯 표시
+                      const hasFormBlock = /\[기업.?정보\]|\[개인.?정보\]|\[고객.?정보\]/.test(lastText);
 
                       // 질문 패턴이 있어야 위젯 표시
                       const askWords = ["알려주세요", "입력해주세요", "선택해주세요", "어떻게 되나요", "무엇인가요", "어디인가요", "정보를 알려", "정보 알려"];

@@ -7853,7 +7853,7 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     params = []
     allowed_keys = [
         "user_type", "address_city", "interest_regions", "revenue_bracket", "employee_count_bracket",
-        "interests", "custom_needs", "custom_keywords",
+        "interests", "custom_needs", "custom_keywords", "company_name",
         "gender", "age_range", "income_level", "family_type", "employment_status",
         "founded_date", "is_pre_founder", "certifications",
     ]

@@ -938,9 +938,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <div className="h-px bg-slate-100 mb-4" />
             <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
               <span className="text-slate-400">설립</span>
-              <span className="font-semibold text-slate-800">{profile?.establishment_date ? String(profile.establishment_date).slice(0, 10) : "미설정"}</span>
+              <span className="font-semibold text-slate-800">{profile?.founded_date || profile?.establishment_date ? String(profile.founded_date || profile.establishment_date).slice(0, 10) : (profile?.is_pre_founder ? "예비창업자" : "미설정")}</span>
               <span className="text-slate-400">소재지</span>
-              <span className="font-semibold text-slate-800">{profile?.address_city || "미설정"}</span>
+              <span className="font-semibold text-slate-800">{(() => { const c = profile?.address_city; if (!c) return "미설정"; const parts = String(c).split(",").filter((s: string) => s.trim() && s.trim() !== "전국"); return parts[0] || "전국"; })()}</span>
               <span className="text-slate-400">업종</span>
               <span className="font-semibold text-slate-800 break-words">{industryDisplayName || (profile?.industry_code && profile.industry_code !== "00000" ? profile.industry_code : "미설정")}</span>
               <span className="text-slate-400">매출</span>

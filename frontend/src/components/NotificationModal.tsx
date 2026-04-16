@@ -315,6 +315,7 @@ export default function NotificationModal({
   const [employmentStatus, setEmploymentStatus] = useState("");
 
   // 기업 필드
+  const [companyName, setCompanyName] = useState("");
   const [revenueBracket, setRevenueBracket] = useState("");
   const [employeeBracket, setEmployeeBracket] = useState("");
   const [foundedDate, setFoundedDate] = useState("");
@@ -362,6 +363,7 @@ export default function NotificationModal({
       setIncomeLevel(profile.income_level || "");
       setFamilyType(profile.family_type || "");
       setEmploymentStatus(profile.employment_status || "");
+      setCompanyName(profile.company_name || "");
       setRevenueBracket(profile.revenue_bracket || "");
       setEmployeeBracket(profile.employee_count_bracket || "");
       setFoundedDate(profile.founded_date || "");
@@ -434,6 +436,7 @@ export default function NotificationModal({
           family_type: (userType !== "business") ? familyType : undefined,
           employment_status: (userType !== "business") ? employmentStatus : undefined,
           // 기업
+          company_name: (userType !== "individual" && companyName.trim()) ? companyName.trim() : undefined,
           revenue_bracket: (userType !== "individual") ? revenueBracket : undefined,
           employee_count_bracket: (userType !== "individual") ? employeeBracket : undefined,
           founded_date: (userType !== "individual" && !isPreFounder) ? foundedDate : undefined,
@@ -637,6 +640,17 @@ export default function NotificationModal({
                     </div>
                   </>
                 )}
+                {/* 기업명 */}
+                <div>
+                  <p className="text-sm font-bold text-slate-600 mb-2">기업명 (상호명) <span className="font-normal text-slate-400">(선택)</span></p>
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={e => setCompanyName(e.target.value)}
+                    placeholder="예: 지원금AI"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
                 {/* 매출 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">매출 규모</p>

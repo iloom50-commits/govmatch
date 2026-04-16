@@ -1244,11 +1244,15 @@ class SecurityAgentMiddleware(BaseHTTPMiddleware):
         if method == "OPTIONS":
             return await call_next(request)
 
+        # 화이트리스트 경로 — JWT 디코딩보다 먼저 체크 (성능)
+        _wl = security_agent._whitelisted_paths
+        if any(wp in path for wp in _wl):
+            return await call_next(request)
+
         # 봇 토큰 화이트리스트 — 블로그/패트롤 봇 전용
         _bot_token = request.headers.get("x-bot-token", "")
         _expected_bot_token = os.getenv("BOT_TOKEN", "GOVMATCH_BLOG_BOT_2026")
         if _bot_token and _bot_token == _expected_bot_token:
-            # 봇은 차단 목록에서도 제거 + 보안 검사 우회
             security_agent._blocked_ips.discard(ip)
             return await call_next(request)
 
@@ -1260,7 +1264,6 @@ class SecurityAgentMiddleware(BaseHTTPMiddleware):
                 _token = auth_header.split(" ", 1)[1]
                 _payload = jwt.decode(_token, JWT_SECRET, algorithms=["HS256"])
                 if _payload.get("email") in _owner_emails:
-                    # 오너는 차단 목록에서도 제거
                     security_agent._blocked_ips.discard(ip)
                     return await call_next(request)
             except Exception:

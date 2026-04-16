@@ -253,7 +253,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  // 기존 고객 목록 로드
+  // 기존 고객 목록 로드 (마운트 시 1회)
   useEffect(() => {
     (async () => {
       try {
@@ -264,7 +264,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         }
       } catch (e) { console.error("[PRO]", e); }
     })();
-  }, [headers]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 세션 ID 상태
   const [sessionId, setSessionId] = useState<string | null>(null);

@@ -3621,7 +3621,10 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
         for label, val in fields:
             if val:
                 client_hint += f"- {label}: {val}\n"
-        client_hint += "\n이미 알려진 고객 정보는 절대 다시 묻지 말 것. collected에 자동 반영해서 사용.\n"
+        client_hint += "\n[★★★ 절대 규칙] 위 고객 정보는 이미 확보된 것이다. 절대 다시 묻지 말 것.\n"
+        client_hint += "- collected JSON에 자동 반영하라.\n"
+        client_hint += "- 부족한 정보만 한 번에 하나씩 질문하라. 빈 양식을 통째로 보여주지 말 것.\n"
+        client_hint += "- 예: 업종/지역/매출이 이미 있으면 → 관심분야만 질문.\n"
 
     # ── 시드 메시지에서 고객 유형 사전 추출 → system_prompt에 강한 힌트 주입 ──
     seed_hint = ""

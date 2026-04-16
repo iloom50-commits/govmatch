@@ -897,13 +897,18 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                       const lastText = messages[messages.length - 1].text.toLowerCase();
 
                       // AI가 특정 정보를 "요청"하는 경우만 위젯 표시
-                      // 확인/완료/분석 응답은 제외
-                      const confirmWords = ["이군요", "이시군요", "군요", "입니다", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석", "매칭", "추천", "결과", "선정", "지원사업", "등록되었", "등록되", "정보가 등록", "어떤 작업을 진행"];
-                      if (confirmWords.some(w => lastText.includes(w))) return null;
+                      // [기업 정보] 같은 구조화된 양식 요청은 항상 표시
+                      const hasFormBlock = /\[기업.?정보\]|\[개인.?정보\]|\[고객.?정보\]/.test(lastText) || (lastText.includes("*") && (lastText.includes("업종") || lastText.includes("매출")));
+
+                      if (!hasFormBlock) {
+                        // 확인/완료/분석 응답은 제외
+                        const confirmWords = ["이군요", "이시군요", "군요", "입력하셨", "확인했", "접수", "감사합니다", "찾아보", "분석 중", "매칭 중", "결과를", "선정", "등록되었", "등록되", "정보가 등록", "어떤 작업을 진행"];
+                        if (confirmWords.some(w => lastText.includes(w))) return null;
+                      }
 
                       // 질문 패턴이 있어야 위젯 표시
-                      const askWords = ["알려주세요", "입력해주세요", "선택해주세요", "어떻게 되나요", "무엇인가요", "어디인가요"];
-                      const isAsking = lastText.includes("?") || askWords.some(w => lastText.includes(w));
+                      const askWords = ["알려주세요", "입력해주세요", "선택해주세요", "어떻게 되나요", "무엇인가요", "어디인가요", "정보를 알려", "정보 알려"];
+                      const isAsking = hasFormBlock || lastText.includes("?") || askWords.some(w => lastText.includes(w));
                       if (!isAsking) return null;
 
                       // 각 필드를 "요청"하는 패턴만 감지 (확인 언급 제외)
@@ -918,12 +923,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         return true;
                       };
 
-                      if (asking("설립일") || asking("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });
-                      if (asking("직원") || asking("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
-                      if (asking("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
-                      if (asking("업종") || asking("분야") || asking("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
-                      if (asking("지역") || asking("소재지") || asking("거주")) fields.push({ key: "city", label: "지역 (복수 선택)", type: "multiselect", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
-                      if (asking("기업명") || asking("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
+                      // 구조화 블록(* 업종: 등)에서는 빈 항목만 위젯으로 표시
+                      const hasField = (kw: string) => hasFormBlock ? lastText.includes(kw) : asking(kw);
+
+                      if (hasField("설립일") || hasField("업력") || hasField("생년월일")) fields.push({ key: "date", label: "설립일/생년월일", type: "date" });
+                      if (hasField("직원") || hasField("인원")) fields.push({ key: "emp", label: "직원수", type: "select", options: ["5인 미만", "5~10인", "10~30인", "30~50인", "50인 이상"] });
+                      if (hasField("매출")) fields.push({ key: "rev", label: "매출 규모", type: "select", options: ["1억 미만", "1억~5억", "5억~10억", "10억~50억", "50억 이상"] });
+                      if (hasField("업종") || hasField("분야") || hasField("관심")) fields.push({ key: "interest", label: lastText.includes("업종") ? "업종" : "관심분야", type: "text" });
+                      if (hasField("지역") || hasField("소재지") || hasField("거주")) fields.push({ key: "city", label: "지역 (복수 선택)", type: "multiselect", options: ["서울", "경기", "부산", "인천", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"] });
+                      if (hasField("기업명") || hasField("이름")) fields.push({ key: "name", label: lastText.includes("기업명") ? "기업명" : "이름", type: "text" });
+                      if (hasField("인증") || hasField("자격")) fields.push({ key: "cert", label: "보유 인증/자격", type: "text" });
 
                       if (fields.length === 0) return null;
                       return (

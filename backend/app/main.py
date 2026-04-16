@@ -3352,6 +3352,23 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 try: db.rollback()
                 except: pass
 
+        # I-2: selected_client 필드를 session collected에 사전 병합
+        if selected_client and session_state:
+            coll = session_state.setdefault("collected", {})
+            field_map = {
+                "client_name": "company_name",
+                "industry_code": "industry_code",
+                "address_city": "address_city",
+                "establishment_date": "establishment_date",
+                "revenue_bracket": "revenue_bracket",
+                "employee_count_bracket": "employee_count_bracket",
+                "interests": "interests",
+            }
+            for src_key, dst_key in field_map.items():
+                val = selected_client.get(src_key)
+                if val and not coll.get(dst_key):
+                    coll[dst_key] = str(val) if not isinstance(val, str) else val
+
         # AI 호출 — 세션 상태 + 선택 고객 주입
         try:
             result = chat_pro_consultant(

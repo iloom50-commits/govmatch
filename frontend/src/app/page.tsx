@@ -88,26 +88,23 @@ export default function Home() {
   const [openNotifyOnReturn, setOpenNotifyOnReturn] = useState(false);
   const { toast } = useToast();
 
-  // 맞춤 설정 유도: 프로필 미설정 사용자 감지 — user_type별 기준 분리
-  const userType = profileData?.user_type || "both";
-  const isProfileIncomplete = profileData && (() => {
-    if (userType === "individual") {
-      // 개인: 연령대 또는 거주지 + (소득 또는 가구형태 또는 관심분야) 중 1개라도 있으면 OK
-      const hasBasic = !!(profileData.age_range || profileData.address_city);
-      const hasContext = !!(profileData.income_level || profileData.family_type ||
-                            profileData.employment_status || profileData.interests);
-      return !(hasBasic && hasContext);
-    }
-    if (userType === "business") {
-      // 사업자: 업종코드 또는 (지역 + 관심분야) 있으면 OK
-      const hasIndustry = !!(profileData.industry_code && profileData.industry_code !== "00000");
-      const hasRegionInterest = !!(profileData.address_city && profileData.interests);
-      return !(hasIndustry || hasRegionInterest);
-    }
-    // both: 어느 한 쪽이라도 만족하면 OK
-    const bizOk = !!(profileData.industry_code && profileData.industry_code !== "00000");
-    const indOk = !!(profileData.age_range || (profileData.address_city && profileData.interests));
-    return !(bizOk || indOk);
+  // 맞춤 설정 유도: NotificationModal이 실제 저장하는 필드 중 하나라도 있으면 설정 완료
+  const isProfileIncomplete = profileData && !(() => {
+    const city = profileData.address_city ? String(profileData.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
+    return !!(
+      city ||
+      profileData.age_range ||
+      profileData.gender ||
+      profileData.income_level ||
+      profileData.family_type ||
+      profileData.employment_status ||
+      profileData.revenue_bracket ||
+      profileData.employee_count_bracket ||
+      profileData.founded_date ||
+      profileData.is_pre_founder ||
+      (profileData.certifications && String(profileData.certifications).length > 0) ||
+      (profileData.interests && String(profileData.interests).length > 0)
+    );
   })();
 
   // 맞춤 설정 모달: 최초 1회만

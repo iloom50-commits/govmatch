@@ -868,9 +868,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
       {(() => {
         const ut = profile?.user_type || "both";
-        const hasProfile = ut === "individual"
-          ? (profile?.age_range || profile?.address_city)
-          : (profile?.industry_code && profile?.industry_code !== "00000");
+        const _city = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
+        const hasProfile = !!(
+          _city || profile?.age_range || profile?.gender || profile?.income_level ||
+          profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
+          profile?.employee_count_bracket || profile?.founded_date || profile?.is_pre_founder ||
+          (profile?.certifications && String(profile.certifications).length > 0) ||
+          (profile?.interests && String(profile.interests).length > 0)
+        );
         if (!hasProfile) return (
           <div className="relative z-10 p-5 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100/80 shadow-sm">
             <div className="text-center space-y-3">

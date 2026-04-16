@@ -3023,6 +3023,17 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         except Exception:
             pass
         conn.commit()
+    elif not is_existing_session and not session_id:
+        # PRO/무제한: 차감 없이 session_id만 발급 (매 턴 별도 행 생성 방지)
+        session_id = str(_uuid.uuid4())
+        try:
+            cur.execute("""
+                INSERT INTO consult_sessions (session_id, business_number, announcement_id)
+                VALUES (%s, %s, %s)
+            """, (session_id, bn, req.announcement_id))
+            conn.commit()
+        except Exception:
+            pass
         ai_usage += 1
 
     # 1-1) 메시지 수 제한 (사용자 메시지 기준 30회)
@@ -4390,6 +4401,87 @@ def api_consult_dedupe(req: ConsultDedupeRequest):
             "mode": "applied",
             "deleted": deleted,
             "remaining_dupes_query": "SELECT COUNT(*)...",
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
+@app.post("/api/admin/consult-dedupe-v2")
+def api_consult_dedupe_v2(req: ConsultDedupeRequest):
+    """v2: (bn, announcement_id) 기준으로 가장 턴 수 많은 행만 남기고 나머지 삭제.
+    프론트 stale-closure 버그로 매 턴마다 새 session_id가 발급되어 여러 행으로 분리된
+    이력을 정리. apply=False면 미리보기(삭제될 id·유지될 id 샘플)."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # (bn, announcement_id) 별 그룹에서 messages jsonb 배열 길이가 가장 큰 행만 유지
+        cur.execute("""
+            WITH ranked AS (
+                SELECT id, business_number, announcement_id,
+                       jsonb_array_length(COALESCE(messages, '[]'::jsonb)) AS msg_count,
+                       created_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY business_number, announcement_id
+                           ORDER BY jsonb_array_length(COALESCE(messages, '[]'::jsonb)) DESC,
+                                    created_at DESC, id DESC
+                       ) AS rnk
+                FROM ai_consult_logs
+                WHERE announcement_id IS NOT NULL
+            )
+            SELECT id, business_number, announcement_id, msg_count, created_at
+            FROM ranked
+            WHERE rnk > 1
+            ORDER BY id DESC
+            LIMIT 5000
+        """)
+        delete_targets = [dict(r) for r in cur.fetchall()]
+        del_count = len(delete_targets)
+
+        # 유지될 행도 샘플로 보여주기
+        cur.execute("""
+            WITH ranked AS (
+                SELECT id, business_number, announcement_id,
+                       jsonb_array_length(COALESCE(messages, '[]'::jsonb)) AS msg_count,
+                       created_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY business_number, announcement_id
+                           ORDER BY jsonb_array_length(COALESCE(messages, '[]'::jsonb)) DESC,
+                                    created_at DESC, id DESC
+                       ) AS rnk,
+                       COUNT(*) OVER (PARTITION BY business_number, announcement_id) AS group_size
+                FROM ai_consult_logs
+                WHERE announcement_id IS NOT NULL
+            )
+            SELECT id, business_number, announcement_id, msg_count, group_size
+            FROM ranked
+            WHERE rnk = 1 AND group_size > 1
+            ORDER BY group_size DESC, id DESC
+            LIMIT 15
+        """)
+        keep_samples = [dict(r) for r in cur.fetchall()]
+
+        if not req.apply:
+            return {
+                "status": "SUCCESS",
+                "mode": "dry-run",
+                "deletable": del_count,
+                "delete_samples": delete_targets[:15],
+                "keep_samples": keep_samples,
+            }
+        # 실제 삭제
+        ids = [t["id"] for t in delete_targets]
+        deleted = 0
+        if ids:
+            cur.execute("DELETE FROM ai_consult_logs WHERE id = ANY(%s)", (ids,))
+            deleted = cur.rowcount
+            conn.commit()
+        return {
+            "status": "SUCCESS",
+            "mode": "applied",
+            "deleted": deleted,
         }
     finally:
         try: conn.close()

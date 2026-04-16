@@ -104,6 +104,9 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // sendToAI 콜백이 useCallback deps 누락으로 stale closure가 되는 것을 방지하기 위한 ref
+  const sessionIdRef = useRef<string | null>(null);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -152,13 +155,16 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
           try {
             const s = JSON.parse(storedSession);
             if (Date.now() - s.ts < 24 * 60 * 60 * 1000) {
+              sessionIdRef.current = s.id;
               setSessionId(s.id);
             } else {
               localStorage.removeItem(`consult_session_${detail.announcement.announcement_id}`);
+              sessionIdRef.current = null;
               setSessionId(null);
             }
-          } catch { setSessionId(null); }
+          } catch { sessionIdRef.current = null; setSessionId(null); }
         } else {
+          sessionIdRef.current = null;
           setSessionId(null);
         }
         setOpen(true);
@@ -235,7 +241,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         body: JSON.stringify({
           announcement_id: announcement.announcement_id,
           messages: chatHistory.map((m) => ({ role: m.role, text: m.text })),
-          session_id: sessionId,
+          session_id: sessionIdRef.current,
         }),
       });
 
@@ -268,6 +274,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       setMessages([...chatHistory, aiMsg]);
       // 세션ID 저장 (서버에서 발급 또는 기존 반환)
       if (data.session_id && announcement) {
+        sessionIdRef.current = data.session_id;  // 즉시 반영 — 다음 턴 호출 시 최신값 사용
         setSessionId(data.session_id);
         localStorage.setItem(
           `consult_session_${announcement.announcement_id}`,
@@ -344,7 +351,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             announcement_id: announcement.announcement_id,
             messages: messages,
             conclusion: null,
-            session_id: sessionId,
+            session_id: sessionIdRef.current,
           }),
         });
         if (res.ok) {

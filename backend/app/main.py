@@ -1103,7 +1103,7 @@ class SecurityAgent:
                 del counter[key]
 
     # 공개 API + 내부 서비스 경로 — 보안 검사 예외
-    _whitelisted_paths = ("/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health")
+    _whitelisted_paths = ("/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health", "/api/admin/")
 
     def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""

@@ -1429,7 +1429,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   {trendingItems.slice(0, 2).map((t) => (
                     <div
                       key={t.announcement_id}
-                      className="rounded-xl bg-gradient-to-br from-amber-50 via-orange-50/60 to-rose-50/40"
+                      className="rounded-2xl bg-gradient-to-br from-amber-100 via-orange-100 to-rose-100 p-[3px]"
                     >
                       <ResultCard
                         res={t}

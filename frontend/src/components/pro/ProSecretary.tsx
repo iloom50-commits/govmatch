@@ -1121,7 +1121,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
           {/* 마지막 답변 출처 요약 */}
           {(() => {
-            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.rag_sources && m.rag_sources.length > 0);
+            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.done && m.rag_sources && m.rag_sources.length > 0);
             if (!lastMsg || !lastMsg.rag_sources) return null;
             return (
               <div className={`p-4 border-b ${t.border}`}>

@@ -1029,7 +1029,7 @@ def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_fi
 # 버킷 분류 + 로테이션 + 2차 정렬
 # ───────────────────────────────────────────────────────────
 
-_BUCKET_ORDER_BASE = ["interest", "region", "deadline", "fresh"]
+_BUCKET_ORDER_BASE = ["interest", "region", "national_fund", "deadline", "fresh"]
 
 
 def _is_fund_related(title: str, category: str) -> bool:
@@ -1113,12 +1113,16 @@ def _classify_bucket(match_item: dict, user_profile: dict) -> str:
     if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
         return "region"
 
-    # 3) deadline — 30일 이내 마감
+    # 3) national_fund — 전국 범위의 자금 관련 공고 (전국 공고가 region 버킷에서 배제되는 문제 보완)
+    if (not region or region in ("전국", "All", "")) and _is_fund_related(title, category):
+        return "national_fund"
+
+    # 4) deadline — 30일 이내 마감
     dleft = _days_left(match_item.get("deadline_date"))
     if 0 <= dleft <= 30:
         return "deadline"
 
-    # 4) fresh — 최근 등록 (기본 버킷)
+    # 5) fresh — 최근 등록 (기본 버킷)
     return "fresh"
 
 
@@ -1147,6 +1151,7 @@ def _rotate_buckets(user_profile: dict) -> list:
 _BUCKET_LABELS = {
     "interest": "🎯 내 관심분야",
     "region": "📍 내 지역 맞춤",
+    "national_fund": "🌏 전국 자금 공고",
     "deadline": "⏰ 마감 임박",
     "fresh": "✨ 최근 등록",
 }
@@ -1189,7 +1194,7 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
 
     # 3) 버킷별 내부 정렬 + 합성 점수 부여
     final: list = []
-    ranges = [(95, 99), (87, 94), (80, 86), (75, 79)]
+    ranges = [(95, 99), (88, 94), (82, 87), (76, 81), (70, 75)]
     for idx, b in enumerate(bucket_order):
         items = grouped.get(b, [])
         items.sort(key=_sort_key)
@@ -1205,6 +1210,8 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
                 reasons_arr.append({"icon": "🎯", "label": "관심분야"})
             elif r.get("bucket") == "region":
                 reasons_arr.append({"icon": "📍", "label": "내 지역"})
+            elif r.get("bucket") == "national_fund":
+                reasons_arr.append({"icon": "🌏", "label": "전국 자금"})
             if _is_fund_related(r.get("title", ""), r.get("category", "")):
                 reasons_arr.append({"icon": "💰", "label": "자금"})
             dl = _days_left(r.get("deadline_date"))

@@ -246,21 +246,9 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     ? bizTypes.join(" · ")
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
-  // 금액 라벨 폴백: support_amount 비어있으면 카테고리/제목 기반으로 라벨 추출
-  const amountLabel = (() => {
-    if (res.support_amount) return res.support_amount;
-    const title = res.title || "";
-    const cat = res.category || "";
-    if (/정책자금/.test(title) || /정책자금/.test(cat)) return "정책자금";
-    if (/보증|보증료/.test(title) || /보증/.test(cat)) return "보증";
-    if (/융자/.test(title)) return "융자";
-    if (/R&D|연구개발|기술개발/.test(title) || /R&D|연구개발/.test(cat)) return "R&D";
-    if (/창업/.test(title) || /창업/.test(cat)) return "창업지원";
-    if (/수출|마케팅/.test(title)) return "수출지원";
-    if (/고용|채용/.test(title)) return "고용지원";
-    return "";
-  })();
-  const amountIsAmount = amountLabel && /[0-9억만원원]/.test(amountLabel);
+  // 금액 뱃지: support_amount에 실제 금액(숫자+원/억/만)이 있을 때만 표시. 없으면 표시 안 함.
+  const amountLabel = res.support_amount || "";
+  const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
     <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 md:p-5 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
@@ -345,8 +333,8 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             title={res.title}
             onClick={(e) => e.stopPropagation()}
           >
-            {amountLabel && (
-              <span className={`inline-block mr-1.5 px-1.5 py-0.5 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap ${amountIsAmount ? "bg-rose-500" : "bg-violet-500"}`}>
+            {amountIsAmount && (
+              <span className="inline-block mr-1.5 px-1.5 py-0.5 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap bg-rose-500">
                 {amountLabel}
               </span>
             )}
@@ -357,8 +345,8 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight transition-colors line-clamp-2 min-h-[2lh]"
             title={res.title}
           >
-            {amountLabel && (
-              <span className={`inline-block mr-1.5 px-1.5 py-0.5 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap ${amountIsAmount ? "bg-rose-500" : "bg-violet-500"}`}>
+            {amountIsAmount && (
+              <span className="inline-block mr-1.5 px-1.5 py-0.5 text-white text-[11px] font-black rounded align-middle leading-none whitespace-nowrap bg-rose-500">
                 {amountLabel}
               </span>
             )}

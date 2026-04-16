@@ -765,8 +765,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
-                          {/* RAG 출처 카드 — AI가 답변에 참고한 공고 섹션 */}
-                          {msg.role === "assistant" && msg.rag_sources && msg.rag_sources.length > 0 && (
+                          {/* RAG 출처 카드 — 매칭 완료 후 상담 단계에서만 표시 */}
+                          {msg.role === "assistant" && msg.done && msg.rag_sources && msg.rag_sources.length > 0 && (
                             <div className={`mt-2 p-2 rounded-xl border ${dark ? "bg-amber-500/5 border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
                               <div className={`text-[10px] font-bold mb-1.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
                                 📚 답변 근거 ({msg.rag_sources.length}건)

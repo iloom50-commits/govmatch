@@ -2331,6 +2331,10 @@ async def api_social_callback(req: SocialCallbackRequest):
 
 @app.get("/api/auth/me")
 def api_auth_me(current_user: dict = Depends(_get_current_user)):
+    cache_key = f"auth_me:{current_user['bn']}"
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE business_number = %s", (current_user["bn"],))
@@ -2351,7 +2355,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
     if plan_expires is not None:
         plan_expires = str(plan_expires)
     plan_status = _get_plan_status(u.get("plan") or "free", plan_expires, u.get("ai_usage_month") or 0)
-    return {
+    result = {
         "status": "SUCCESS",
         "user": {
             "business_number": u["business_number"],
@@ -2382,6 +2386,8 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
         },
         "plan": plan_status,
     }
+    _set_cache(cache_key, result)
+    return result
 
 
 class UpgradePlanRequest(BaseModel):
@@ -7906,6 +7912,7 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
     cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE business_number = %s", params)
     conn.commit()
     conn.close()
+    _response_cache.pop(f"auth_me:{bn}", None)
     return {"status": "SUCCESS", "message": f"프로필이 업데이트되었습니다.{price_notice}"}
 
 

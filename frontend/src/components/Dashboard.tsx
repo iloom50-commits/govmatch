@@ -594,7 +594,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const usePublicData = isPublic || (!isPublic && matches.length === 0);
 
   useEffect(() => {
-    if (!usePublicData) return;
+    if (!usePublicData && activeTab === "all") return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
     const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
@@ -731,6 +731,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return n;
     };
 
+    // 카테고리 탭이 "전체"가 아닌 경우 → 서버 공고 데이터 사용 (카테고리 필터링은 서버에서)
+    if (activeTab !== "all" && publicData.length > 0) {
+      let result = [...publicData];
+      if (sortKey === "amount") {
+        result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
+      } else if (sortKey === "deadline") {
+        result.sort((a, b) => {
+          if (!a.deadline_date) return 1;
+          if (!b.deadline_date) return -1;
+          return new Date(a.deadline_date).getTime() - new Date(b.deadline_date).getTime();
+        });
+      }
+      return result;
+    }
+
     if (usePublicData && publicData.length > 0) {
       let result = [...publicData];
       if (sortKey === "amount") {
@@ -746,18 +761,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     let result = [...baseMatches];
-
-    if (activeTab !== "all") {
-      const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
-      if (group) {
-        result = result.filter(m => {
-          const cat = (m.category || "").trim();
-          return group.categories.some((gc: string) =>
-            cat.toLowerCase().includes(gc.toLowerCase())
-          );
-        });
-      }
-    }
 
     if (!searchQuery.trim()) {
       if (sortKey === "recommend") {
@@ -1312,26 +1315,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 })}
               </div>
 
-              <div className="flex-shrink-0 h-6 w-px bg-slate-200" />
-
               <div className="flex items-center gap-1 flex-shrink-0">
-                {([
-                  { key: "recommend" as SortKey, label: "맞춤추천" },
-                  { key: "amount" as SortKey, label: "금액순" },
-                  { key: "deadline" as SortKey, label: "마감임박" },
-                ]).map((s) => (
-                  <button
-                    key={s.key}
-                    onClick={() => setSortKey(s.key)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-300 whitespace-nowrap ${
-                      sortKey === s.key
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : "text-slate-400 hover:bg-slate-50"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
                 {onRefresh && (
                   <button
                     onClick={onRefresh}

@@ -111,16 +111,15 @@ async function isPushSubscribed(): Promise<boolean> {
 
 // ── 동적 스텝 계산 ──
 function getSteps(userType: UserType) {
-  // 공통: 유형 → 지역 → ... → 관심분야+키워드+알림
+  // 공통: 유형 → (개인 정보+거주지역) → (기업 정보+사업장소재지) → 관심분야
   const steps: { id: string; title: string; subtitle: string }[] = [
     { id: "type", title: "어떤 지원금을 찾고 계세요?", subtitle: "맞춤 공고를 찾아드릴게요" },
-    { id: "region", title: "우선 지역을 선택해주세요", subtitle: "전국 공고는 기본 포함, 선택한 지역 공고가 먼저 표시돼요" },
   ];
   if (userType === "individual" || userType === "both") {
-    steps.push({ id: "individual", title: "개인 정보를 알려주세요", subtitle: "맞춤 복지 매칭에 활용돼요" });
+    steps.push({ id: "individual", title: "개인 정보를 알려주세요", subtitle: "거주 지역과 개인 조건을 알려주세요" });
   }
   if (userType === "business" || userType === "both") {
-    steps.push({ id: "business", title: "기업 정보를 알려주세요", subtitle: "정확한 지원금 매칭에 활용돼요" });
+    steps.push({ id: "business", title: "기업 정보를 알려주세요", subtitle: "사업장 소재지와 기업 조건을 알려주세요" });
   }
   steps.push({ id: "interests", title: "관심분야를 선택해주세요", subtitle: "키워드를 골라주시면 AI가 매칭해요" });
   return steps;
@@ -407,11 +406,13 @@ export default function NotificationModal({
   const goNext = () => { if (step < totalSteps - 1) setStep(s => s + 1); };
   const goBack = () => { if (step > 0) setStep(s => s - 1); };
 
-  // 유형 변경 시 스텝 리셋
+  // 유형 변경 시 스텝 리셋 + 자동 다음
   const handleTypeChange = (val: UserType) => {
     setUserType(val);
     setInterests([]);
     setCustomKeywords([]);
+    // 선택 즉시 다음 스텝으로 이동 (짧은 딜레이로 애니메이션 느낌)
+    setTimeout(() => setStep(s => s + 1), 150);
   };
 
   // ── 저장 ──
@@ -419,7 +420,7 @@ export default function NotificationModal({
     setLoading(true);
     try {
       const token = localStorage.getItem("auth_token") || "";
-      await fetch(`${API}/api/profile`, {
+      const profileRes = await fetch(`${API}/api/profile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -443,7 +444,13 @@ export default function NotificationModal({
           custom_keywords: customKeywords.join(","),
         }),
       });
-      await fetch(`${API}/api/notification-settings`, {
+      if (!profileRes.ok) {
+        const err = await profileRes.json().catch(() => ({}));
+        toast(err.detail || `프로필 저장 실패 (${profileRes.status})`, "error");
+        setLoading(false);
+        return;
+      }
+      const notifyRes = await fetch(`${API}/api/notification-settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -454,10 +461,15 @@ export default function NotificationModal({
           kakao_enabled: isKakaoUser && kakaoEnabled ? 1 : 0,
         }),
       });
+      if (!notifyRes.ok) {
+        toast(`알림 설정 저장 실패 (${notifyRes.status})`, "error");
+        setLoading(false);
+        return;
+      }
       toast("맞춤 알림이 설정되었습니다! 평일 오전 9시에 맞춤 공고를 알려드려요.", "success");
       onSave({ userType, addressCities, interests, customKeywords });
       onClose();
-    } catch {
+    } catch (e) {
       toast("저장 중 오류가 발생했습니다.", "error");
     } finally { setLoading(false); }
   };
@@ -466,7 +478,6 @@ export default function NotificationModal({
   const canNext = (): boolean => {
     switch (currentStep.id) {
       case "type": return !!userType;
-      case "region": return true;  // 전국이 기본이므로 항상 통과
       case "individual": return true; // 선택사항
       case "business": return true;
       case "interests": return interests.length > 0;
@@ -532,28 +543,25 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 지역 (소재지 + 관심지역) ===== */}
-            {currentStep.id === "region" && (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-5">
-                {/* 소재지 (1개 선택) */}
+            {/* ===== Step: 개인 정보 (+ 거주 지역) ===== */}
+            {currentStep.id === "individual" && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* 거주 지역 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-bold text-slate-600">{isInd ? "거주 지역" : "사업장 소재지"} <span className="font-normal text-slate-400">(1개 선택)</span></p>
+                    <p className="text-sm font-bold text-slate-600">거주 지역 <span className="font-normal text-slate-400">(1개 선택)</span></p>
                     {homeCity && <p className="text-xs text-indigo-500 font-semibold">{homeCity}</p>}
                   </div>
-                  <p className="text-[11px] text-slate-400 mb-2">해당 지역 전용 공고를 받아볼 수 있어요</p>
                   <div className="flex flex-wrap gap-2">
                     {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
                   </div>
                 </div>
-
-                {/* 관심지역 (복수 선택) */}
+                {/* 관심 지역 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수 선택, 선택사항)</span></p>
+                    <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수, 선택사항)</span></p>
                     {interestRegions.length > 0 && <p className="text-xs text-violet-500 font-semibold">{interestRegions.join(", ")}</p>}
                   </div>
-                  <p className="text-[11px] text-slate-400 mb-2">다른 지역 공고도 우선적으로 보고 싶으면 선택하세요</p>
                   <div className="flex flex-wrap gap-2">
                     {CITIES.filter(c => c !== homeCity).map(city => (
                       <ChipRect key={city} label={city} selected={interestRegions.includes(city)}
@@ -561,12 +569,6 @@ export default function NotificationModal({
                     ))}
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* ===== Step: 개인 정보 ===== */}
-            {currentStep.id === "individual" && (
-              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 {/* 성별 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">성별</p>
@@ -606,9 +608,35 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 기업 정보 ===== */}
+            {/* ===== Step: 기업 정보 (+ 사업장 소재지) ===== */}
             {currentStep.id === "business" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* 사업장 소재지 — 개인+기업(both)일 때는 개인 스텝에서 이미 거주지역을 받았으므로 생략 */}
+                {userType === "business" && (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-bold text-slate-600">사업장 소재지 <span className="font-normal text-slate-400">(1개 선택)</span></p>
+                        {homeCity && <p className="text-xs text-indigo-500 font-semibold">{homeCity}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수, 선택사항)</span></p>
+                        {interestRegions.length > 0 && <p className="text-xs text-violet-500 font-semibold">{interestRegions.join(", ")}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {CITIES.filter(c => c !== homeCity).map(city => (
+                          <ChipRect key={city} label={city} selected={interestRegions.includes(city)}
+                            onClick={() => setInterestRegions(prev => prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city])} />
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
                 {/* 매출 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">매출 규모</p>

@@ -1,11 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
 export default function SocialCallbackPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 text-sm font-medium">로그인 처리 중...</p>
+        </div>
+      </main>
+    }>
+      <SocialCallbackInner />
+    </Suspense>
+  );
+}
+
+function SocialCallbackInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "error">("loading");

@@ -1102,10 +1102,45 @@ ${convHtml}
   const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "자금 상담 AI" : "AI 서비스";
   const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? (fundMode === "individual_fund" ? "👤 개인 자금 (주거·서민금융·학자금)" : "🏢 기업 자금 (정책자금·보증·대출)") : "모드를 선택하세요";
 
-  // PRO 사용자가 consultant 모드로 진입 시 전문가 대시보드
-  if (open && isPro && mode === "consultant") {
+  // PRO → ProSecretary 직행
+  if (open && isPro) {
     const ProSecretary = require("@/components/pro/ProSecretary").default;
     return <ProSecretary onClose={handleClose} planStatus={planStatus} onUpgrade={onUpgrade} userType={userType} />;
+  }
+
+  // 비PRO가 열면 자금 상담 모드로 자동 진입
+  if (open && mode === "select") {
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
+    if (!hasToken) {
+      // 비회원: 로그인 유도 화면
+      return (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px]" onClick={handleClose} />
+          <div className="fixed inset-x-0 bottom-0 z-[60] bg-white rounded-t-2xl shadow-2xl p-6 pb-8 animate-in slide-in-from-bottom duration-300 max-w-md mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-slate-800">AI 자금 상담</h3>
+              <button onClick={handleClose} className="p-1 hover:bg-slate-100 rounded-lg">
+                <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="text-[13px] text-slate-500 mb-4">정책자금·보증·대출에 대해 AI가 즉시 답변합니다.</p>
+            <div className="space-y-2 mb-5 text-[12px] text-slate-600">
+              <p className="p-2.5 bg-slate-50 rounded-lg">💬 "IT 스타트업인데 정책자금 뭐가 좋을까?"</p>
+              <p className="p-2.5 bg-slate-50 rounded-lg">💬 "신용보증 받으려면 어떻게 해야 해?"</p>
+              <p className="p-2.5 bg-slate-50 rounded-lg">💬 "전세자금 대출 조건 알려줘"</p>
+            </div>
+            <button onClick={() => { handleClose(); window.dispatchEvent(new CustomEvent("open-login-modal")); }}
+              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold text-[14px] hover:from-indigo-700 hover:to-violet-700 transition-all active:scale-[0.98]">
+              무료 상담 시작하기 (로그인)
+            </button>
+            <p className="text-[11px] text-slate-400 text-center mt-2">가입 시 월 3회 무료 상담</p>
+          </div>
+        </>
+      );
+    }
+    // 로그인 사용자: 자금 상담으로 바로 진입
+    startMode("free");
+    return null;
   }
 
   return (

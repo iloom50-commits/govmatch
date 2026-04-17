@@ -2982,7 +2982,7 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         )
         conn.commit()
     except Exception as save_err:
-        print(f"[chat_free save] {save_err}")
+        print(f"[ai_chat save] {save_err}")
         try: conn.rollback()
         except: pass
 
@@ -3758,7 +3758,7 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
         )
         conn.commit()
     except Exception as save_err:
-        print(f"[chat_consultant save] {save_err}")
+        print(f"[ai_consultant_chat save] {save_err}")
         try: conn.rollback()
         except: pass
     conn.close()

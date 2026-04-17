@@ -52,8 +52,8 @@ def _get_pool():
         with _db_pool_lock:
             if _db_pool is None or _db_pool.closed:
                 _db_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=5,
-                    maxconn=15,
+                    minconn=2,
+                    maxconn=10,
                     dsn=DATABASE_URL,
                     cursor_factory=psycopg2.extras.RealDictCursor,
                 )
@@ -684,38 +684,39 @@ def _run_prematch_cache() -> int:
           AND (plan_expires_at IS NULL OR plan_expires_at > NOW())
     """)
     users = [dict(r) for r in cur.fetchall()]
+    conn.close()  # 사용자 목록 조회 후 즉시 반환
     count = 0
     for u in users:
         bn = u.get("business_number")
         user_type = u.get("user_type") or "both"
         try:
-            # 기업 매칭
+            # 매칭 실행 (내부에서 별도 커넥션 사용)
             if user_type in ("business", "both"):
                 biz = get_matches_hybrid(u, is_individual=False)
                 biz = biz[:100]
-                cur.execute("""
+                _save = get_db_connection()
+                _save.cursor().execute("""
                     INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
                     VALUES (%s, 'business', %s::jsonb, CURRENT_TIMESTAMP)
                     ON CONFLICT (business_number, target_type)
                     DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
                 """, (bn, json.dumps(biz, ensure_ascii=False, default=str)))
-            # 개인 매칭
+                _save.commit(); _save.close()
             if user_type in ("individual", "both"):
                 ind = get_matches_hybrid(u, is_individual=True)
                 ind = ind[:100]
-                cur.execute("""
+                _save = get_db_connection()
+                _save.cursor().execute("""
                     INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
                     VALUES (%s, 'individual', %s::jsonb, CURRENT_TIMESTAMP)
                     ON CONFLICT (business_number, target_type)
                     DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
                 """, (bn, json.dumps(ind, ensure_ascii=False, default=str)))
-            conn.commit()
+                _save.commit(); _save.close()
             count += 1
+            import time; time.sleep(0.5)  # 커넥션 풀 여유
         except Exception as e:
             print(f"[prematch] {bn}: {e}")
-            try: conn.rollback()
-            except: pass
-    conn.close()
     return count
 
 

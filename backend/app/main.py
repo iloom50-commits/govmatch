@@ -2269,8 +2269,7 @@ def api_social_auth_redirect(provider: str):
         url = (f"https://kauth.kakao.com/oauth/authorize"
                f"?client_id={KAKAO_CLIENT_ID}"
                f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
-               f"&response_type=code&state={state}"
-               f"&scope=talk_message")
+               f"&response_type=code&state={state}")
     elif provider == "naver":
         if not NAVER_CLIENT_ID:
             raise HTTPException(status_code=501, detail="네이버 로그인이 아직 설정되지 않았습니다.")

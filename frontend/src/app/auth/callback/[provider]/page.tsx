@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -28,8 +28,12 @@ function SocialCallbackInner() {
 
   const provider = params.provider as string;
   const code = searchParams.get("code");
+  const calledRef = useRef(false);
 
   useEffect(() => {
+    if (calledRef.current) return;
+    calledRef.current = true;
+
     if (!code || !provider) {
       setStatus("error");
       setErrorMsg("인증 정보가 없습니다.");

@@ -132,6 +132,24 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④ 공고 분석", step_4_analyze)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-1. 원문 URL 추적 (경유지 → 원본)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4b_resolve_urls():
+        from app.services.scrapers.url_resolver import batch_resolve_final_urls
+        return batch_resolve_final_urls(db_conn, limit=50)
+
+    _run_step("④-1 원문 URL 추적", step_4b_resolve_urls)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-2. 외부 검색 학습 (Google Search → knowledge_base)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4c_search_learn():
+        from app.services.scrapers.url_resolver import search_and_learn
+        return search_and_learn(db_conn, limit=10)
+
+    _run_step("④-2 외부 검색 학습", step_4c_search_learn)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑤ 학습 전파 정리
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_5_learning():

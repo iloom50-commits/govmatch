@@ -62,6 +62,18 @@
   - URL 헬스체크 + 최종 URL 해석
 - **소요**: 약 10~20분 (Gemini API 속도 의존)
 
+### ④-1. 원문 URL 추적 (경유지 → 원본)
+- **담당**: `url_resolver.batch_resolve_final_urls()`
+- **내용**: bizinfo 경유지 URL에서 "바로가기" 원본 URL 추출 → `final_url` 저장
+- **대상**: bizinfo 4,169건 중 final_url 미확보 건 (매일 50건씩)
+- **소요**: 약 2~3분
+
+### ④-2. 외부 검색 학습
+- **담당**: `url_resolver.search_and_learn()`
+- **내용**: 분석 안 된 주요 공고 제목으로 Google 검색 → 보도자료/정책자료 → knowledge_base 저장
+- **대상**: 자금/정책/R&D/창업 관련 미분석 공고 (매일 10건씩)
+- **소요**: 약 3~5분 (Gemini + Google Search Grounding)
+
 ### ⑤ 학습 전파 정리
 - **담당**: `propagate_learning()` (신규)
 - **내용**:

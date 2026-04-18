@@ -358,7 +358,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (dx < 0 && majorTab === "business") switchMajorTab("individual");
     else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
   };
-  const currentTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
+  const baseTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
+  // 로그인 사용자에게 "맞춤 추천" 탭 추가
+  const currentTabs = (!isPublic && profile)
+    ? [{ label: "⭐ 맞춤", key: "smart", categories: [] }, ...baseTabs]
+    : baseTabs;
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
@@ -378,6 +382,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [saving, setSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+  const [smartMatches, setSmartMatches] = useState<any[]>([]);
+  const [smartLoading, setSmartLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
@@ -592,6 +598,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
   const usePublicData = isPublic || (!isPublic && matches.length === 0);
+
+  // "맞춤 추천" 탭 선택 시 API 호출
+  useEffect(() => {
+    if (activeTab !== "smart" || isPublic || !profile) return;
+    setSmartLoading(true);
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) { setSmartLoading(false); return; }
+    fetch(`${API}/api/smart-matches`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { setSmartMatches(d.data || []); setSmartLoading(false); })
+      .catch(() => setSmartLoading(false));
+  }, [activeTab]);
 
   // 로그인 사용자도 전체 공고 페이지네이션을 위해 서버 데이터 로드
   useEffect(() => {
@@ -1445,7 +1463,38 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden">
+            {/* 맞춤 추천 탭 — AI가 선별한 공고 */}
+            {activeTab === "smart" && (
+              <div className="pb-6">
+                {smartLoading ? (
+                  <div className="text-center py-10 text-slate-400">AI 맞춤 공고를 불러오는 중...</div>
+                ) : smartMatches.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {smartMatches.map((res: any, idx: number) => (
+                      <div key={`smart-${res.announcement_id || idx}`} className="animate-in fade-in slide-in-from-bottom-6 duration-700" style={{ animationDelay: `${idx * 80}ms` }}>
+                        {res.match_reason && (
+                          <div className="mb-1 px-2 py-1 bg-indigo-50 rounded-lg text-[11px] text-indigo-600 font-medium">
+                            ⭐ {res.match_reason}
+                          </div>
+                        )}
+                        <ResultCard
+                          res={res}
+                          planStatus={planStatus}
+                          onUpgrade={onUpgrade}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <p className="text-slate-500 text-sm">아직 맞춤 추천이 준비되지 않았습니다.</p>
+                    <p className="text-slate-400 text-xs mt-1">매일 새벽에 AI가 공고를 분석하여 맞춤 추천을 준비합니다.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden ${activeTab === "smart" ? "hidden" : ""}`}>
               {(() => {
                 // 1페이지: 맞춤 결과 (로그인 사용자) 또는 서버 공고 (비로그인)
                 // 2페이지+: 서버 공고

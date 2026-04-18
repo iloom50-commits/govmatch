@@ -8374,6 +8374,31 @@ def admin_push_test():
     return {"status": "SUCCESS", "message": f"발송 {sent}건, 실패 {failed}건"}
 
 
+@app.get("/api/smart-matches")
+def api_smart_matches(current_user: dict = Depends(_get_current_user)):
+    """AI 맞춤 추천 공고 — 새벽에 미리 계산된 결과 반환."""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT matches, created_at FROM user_smart_matches
+            WHERE business_number = %s
+        """, (bn,))
+        row = cur.fetchone()
+        if row:
+            return {
+                "status": "SUCCESS",
+                "data": row["matches"],
+                "updated_at": str(row["created_at"]),
+            }
+        return {"status": "SUCCESS", "data": [], "updated_at": None}
+    except Exception as e:
+        return {"status": "SUCCESS", "data": [], "error": str(e)[:100]}
+    finally:
+        conn.close()
+
+
 @app.post("/api/match")
 def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depends(_get_current_user)):
     """

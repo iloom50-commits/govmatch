@@ -168,6 +168,15 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("⑥ 사전매칭 캐시", step_6_prematch)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑥-1. AI 맞춤 매칭 (2단계 정밀 매칭)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_6b_smart_match():
+        from app.services.smart_match import batch_smart_match_for_users
+        return batch_smart_match_for_users(db_conn, limit=50)
+
+    _run_step("⑥-1 AI 맞춤 매칭", step_6b_smart_match)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑦ 오케스트레이터 (품질 체크 + 보고서)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_7_orchestrator():

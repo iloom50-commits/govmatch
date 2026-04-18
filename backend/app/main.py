@@ -1006,6 +1006,19 @@ async def lifespan(app):
                 except Exception as e:
                     print(f"[Patrol] Scheduled run error: {e}")
 
+            def _coo_supervisor_job():
+                try:
+                    from app.services.orchestrator import run_daily_supervision
+                    conn = get_db_pool().getconn()
+                    try:
+                        print("[COO] Daily supervision starting...")
+                        result = run_daily_supervision(conn)
+                        print(f"[COO] Done: {result.get('elapsed_seconds')}s, alerts={result.get('alerts_count')}")
+                    finally:
+                        get_db_pool().putconn(conn)
+                except Exception as e:
+                    print(f"[COO] Supervision error: {e}")
+
             patrol_scheduler = AsyncIOScheduler()
             patrol_scheduler.add_job(
                 _patrol_job,
@@ -1014,8 +1027,15 @@ async def lifespan(app):
                 name="AI 데이터 품질 패트롤",
                 replace_existing=True,
             )
+            patrol_scheduler.add_job(
+                _coo_supervisor_job,
+                CronTrigger(hour=0, minute=30),  # UTC 00:30 = KST 09:30
+                id="ai_coo_supervisor",
+                name="AI COO 슈퍼바이저 일일 보고",
+                replace_existing=True,
+            )
             patrol_scheduler.start()
-            print("[Patrol] APScheduler started — daily at 18:00 UTC (03:00 KST)")
+            print("[Patrol] APScheduler started — patrol 03:00 KST, COO 09:30 KST")
         except ImportError as e:
             print(f"[Patrol] APScheduler not installed: {e}")
         except Exception as e:
@@ -2985,6 +3005,19 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         print(f"[ai_chat save] {save_err}")
         try: conn.rollback()
         except: pass
+
+    # ── LITE 상담 학습 트리거: 대화 5턴 이상이면 지식 추출 ──
+    user_turn_count = sum(1 for m in req.messages if m.get("role") == "user")
+    if user_turn_count >= 5:
+        try:
+            from app.services.ai_consultant import extract_and_store_insights
+            all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+            source_tag = f"lite_{req.mode or 'unknown'}"
+            stored = extract_and_store_insights(all_msgs, conn, source=source_tag)
+            if stored > 0:
+                print(f"[LITE learning] Extracted {stored} knowledge items from LITE chat")
+        except Exception as learn_err:
+            print(f"[LITE learning] {learn_err}")
 
     conn.close()
 

@@ -898,8 +898,8 @@ def _tool_search_pro_sections(db_conn, query: str, target_type: str = "business"
 # LITE 프롬프트는 prompts/ 패키지에서 import됨
 
 
-def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5) -> List[Dict]:
-    """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드)."""
+def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None) -> List[Dict]:
+    """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드). user_region 있으면 지역 필터."""
     if not db_conn or not keywords:
         return []
     results = []
@@ -923,7 +923,14 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                     # target_type 필터 + 자금·보증 관련 키워드 포함
                     fund_keywords = "정책자금|융자|대출|보증|자금|금리|한도|보조금"
                     tt_filter = "business" if target_type == "business" else "individual"
-                    cur.execute("""
+                    # 지역 필터: 사용자 지역 + 전국
+                    region_filter = ""
+                    params = [vec_str, tt_filter, fund_keywords, fund_keywords, fund_keywords]
+                    if user_region:
+                        region_filter = "AND (a.region IS NULL OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
+                        params.append(f"%{user_region[:10]}%")
+                    params.extend([vec_str, limit])
+                    cur.execute(f"""
                         SELECT a.announcement_id, a.title, a.department,
                                a.support_amount, a.deadline_date, a.region,
                                a.summary_text, a.category,
@@ -936,9 +943,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                               a.title ~* %s OR a.summary_text ~* %s
                               OR a.category ~* %s
                           )
+                          {region_filter}
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
-                    """, (vec_str, tt_filter, fund_keywords, fund_keywords, fund_keywords, vec_str, limit))
+                    """, params)
                     for r in cur.fetchall():
                         d = dict(r)
                         results.append({
@@ -963,7 +971,13 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 cur = db_conn.cursor()
                 tt_filter = "business" if target_type == "business" else "individual"
                 like_kw = f"%{keywords[:50]}%"
-                cur.execute("""
+                region_filter2 = ""
+                params2 = [tt_filter, like_kw, like_kw]
+                if user_region:
+                    region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
+                    params2.append(f"%{user_region[:10]}%")
+                params2.append(limit)
+                cur.execute(f"""
                     SELECT announcement_id, title, department, support_amount,
                            deadline_date, region, summary_text, category
                     FROM announcements
@@ -974,9 +988,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                           title ~* '정책자금|융자|대출|보증|자금|금리|한도'
                           OR category ~* '금융|보증|자금'
                       )
+                      {region_filter2}
                     ORDER BY deadline_date ASC NULLS LAST
                     LIMIT %s
-                """, (tt_filter, like_kw, like_kw, limit))
+                """, params2)
                 for r in cur.fetchall():
                     d = dict(r)
                     results.append({
@@ -1337,11 +1352,14 @@ def chat_lite_fund_expert(
 
     system_prompt = base_prompt + profile_ctx + knowledge_ctx
 
+    # 사용자 지역 추출 (도구 검색에 자동 적용)
+    _user_region = (user_profile or {}).get("address_city", "")
+
     # ── Tool 정의 (OpenAI / Gemini 공용) ──
     def _exec_tool(name: str, args: dict) -> dict:
         """도구 실행 — 이름으로 라우팅"""
         if name == "search_fund_announcements":
-            rows = _tool_search_fund_announcements(db_conn, args.get("keywords", ""), args.get("target_type", tt), limit=5)
+            rows = _tool_search_fund_announcements(db_conn, args.get("keywords", ""), args.get("target_type", tt), limit=5, user_region=_user_region)
             return {"count": len(rows), "results": rows}
         elif name == "get_announcement_detail":
             return _tool_get_announcement_detail(db_conn, int(args.get("announcement_id", 0)))

@@ -653,7 +653,8 @@ export default function Home() {
       {(step === "LOGIN" || step === "ONBOARDING") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-2 tracking-tighter">
-            <span className="brand-badge brand-badge-lg brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">GO</span></span>
+            <span className="brand-badge brand-badge-lg brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+            <span className="sr-only">지원금AI - AI 정부 지원금 자동 매칭</span>
           </h1>
           <p className="text-slate-500 text-xs md:text-sm max-w-md mx-auto font-medium leading-relaxed px-4 opacity-80">
             AI가 매시간 5,000개 이상의 정부 공고를 분석하여
@@ -802,6 +803,18 @@ export default function Home() {
 
       <AiConsultModal planStatus={planStatus} onUpgrade={() => setShowPayment(true)} onPlanUpdate={(u: any) => setPlanStatus((prev: any) => prev ? { ...prev, ...u } : prev)} />
       <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} currentTab={currentMajorTab} />
+
+      {/* SEO 정적 콘텐츠 — 검색봇이 읽을 수 있는 텍스트 */}
+      <section className="max-w-4xl mx-auto px-4 py-12 text-slate-600 text-sm leading-relaxed">
+        <h2 className="text-lg font-bold text-slate-800 mb-4">지원금AI — AI 정부 지원금 자동 매칭 서비스</h2>
+        <p className="mb-3">지원금AI는 17,000건 이상의 정부 지원금, 보조금, 정책자금 공고를 AI가 실시간 분석하여 내 조건에 딱 맞는 지원사업을 자동으로 매칭해주는 서비스입니다.</p>
+        <h3 className="font-bold text-slate-700 mt-6 mb-2">중소기업·소상공인 지원</h3>
+        <p className="mb-3">정책자금, 융자, 신용보증, 창업자금, R&D 지원, 수출 바우처, 고용장려금, 스마트공장 구축 등 기업 대상 정부 지원사업을 AI가 자격요건까지 대조하여 추천합니다.</p>
+        <h3 className="font-bold text-slate-700 mt-6 mb-2">개인 복지·생활 지원</h3>
+        <p className="mb-3">청년 전세자금, 주거 지원, 취업 훈련, 출산·육아 지원, 학자금, 긴급 생계 지원 등 개인 대상 복지사업도 AI가 맞춤 매칭합니다.</p>
+        <h3 className="font-bold text-slate-700 mt-6 mb-2">AI 자금 상담</h3>
+        <p>정책자금 금리, 신청 자격, 필요 서류, 신청 방법까지 AI 전문 상담사가 실시간으로 답변합니다. 정부 지원금, 보조금, 정책자금이 궁금하면 지원금AI에서 무료로 상담하세요.</p>
+      </section>
 
     </main>
   );

@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     template: "%s | 지원금AI",
   },
   description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭. 기업·개인 모두 무료!",
-  keywords: ["정부지원금", "보조금", "정책자금", "중소기업지원", "소상공인지원", "창업지원", "개인복지", "AI매칭", "지원금찾기"],
+  keywords: ["지원금AI", "정부지원금", "보조금", "정책자금", "중소기업지원", "소상공인지원", "창업지원", "개인복지", "AI매칭", "지원금찾기", "정부보조금", "소상공인정책자금", "청년지원금", "전세자금대출", "R&D지원"],
   manifest: "/manifest.json",
   metadataBase: new URL("https://www.govmatch.kr"),
   alternates: {

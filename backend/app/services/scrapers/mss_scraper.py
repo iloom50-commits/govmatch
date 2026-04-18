@@ -187,17 +187,24 @@ def fetch_announcement_detail(bc_idx: str) -> Dict[str, Any]:
 
 
 def download_file(url: str) -> tuple:
-    """첨부파일 다운로드. Returns: (bytes, detected_type)"""
+    """첨부파일 다운로드. magic bytes로 실제 타입 판별.
+    Returns: (bytes, detected_type)
+    """
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=30, allow_redirects=True)
         if resp.status_code != 200:
             return b"", "unknown"
         content = resp.content
+        # magic bytes 기반 판별 (URL 확장자보다 정확)
         if content[:4] == b"%PDF":
             return content, "pdf"
         elif content[:8] == bytes([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]):
-            return content, "hwp"
+            # OLE2: HWP 또는 DOC
+            if b"HWP Document File" in content[:512]:
+                return content, "hwp"
+            return content, "hwp"  # DOC도 hwp 경로로 처리
         elif content[:4] == bytes([0x50, 0x4B, 0x03, 0x04]):
+            # ZIP: HWPX, DOCX 등 — HWPX 여부는 내부 파일로 판별
             return content, "hwpx"
         return content, "unknown"
     except Exception as e:

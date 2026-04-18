@@ -98,7 +98,19 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
-    # ── 4. 분석 실패 재시도 (실제 분석 실행) ──
+    # ── 4-1. 중기부 사업공고 크롤링 (mss.go.kr) ──
+    try:
+        logger.info("[Patrol] Crawling MSS announcements...")
+        from app.services.scrapers.mss_scraper import crawl_and_store as mss_crawl
+        result = mss_crawl(conn, max_pages=3, max_items=20)
+        summary["mss_crawl"] = result
+        logger.info(f"[Patrol] MSS: new={result['new']}, analyzed={result['analyzed']}")
+    except Exception as e:
+        msg = f"mss_crawl failed: {e}"
+        logger.error(f"[Patrol] {msg}")
+        summary["errors"].append(msg)
+
+    # ── 5. 분석 실패 재시도 (실제 분석 실행) ──
     try:
         logger.info("[Patrol] Recovering failed analyses...")
         result = recover_failed_analyses(conn, max_retries=100)

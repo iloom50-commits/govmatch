@@ -1320,13 +1320,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       }`}
                     >
                       {tab.label}
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
-                        activeTab === tab.key
-                          ? "bg-white/20 text-white/80"
-                          : "bg-slate-100 text-slate-400"
-                      }`}>
-                        {count.toLocaleString()}
-                      </span>
+                      {tab.key === "smart" ? (
+                        smartMatches.length > 0 && (
+                          <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+                            activeTab === tab.key ? "bg-white/20 text-white/80" : "bg-rose-100 text-rose-600"
+                          }`}>{smartMatches.length}</span>
+                        )
+                      ) : (
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+                          activeTab === tab.key
+                            ? "bg-white/20 text-white/80"
+                            : "bg-slate-100 text-slate-400"
+                        }`}>
+                          {count.toLocaleString()}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

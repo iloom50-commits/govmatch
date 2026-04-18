@@ -337,7 +337,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
               const d = new Date(res.deadline_date);
               if (isNaN(d.getTime())) return dDay.text;
               const days = ["일","월","화","수","목","금","토"];
-              return `~${d.getMonth()+1}월 ${d.getDate()}일(${days[d.getDay()]})`;
+              return `~${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
             })() : dDay.text}
           </span>
         </div>

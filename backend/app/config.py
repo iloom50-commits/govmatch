@@ -1,5 +1,11 @@
 import os
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 _raw_url = os.getenv("DATABASE_URL", "")
 if not _raw_url:
     raise RuntimeError("DATABASE_URL environment variable is required")

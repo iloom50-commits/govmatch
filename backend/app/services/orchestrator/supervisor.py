@@ -46,6 +46,8 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
         metrics["pro_sessions_today"] = cur.fetchone()["cnt"]
     except Exception as e:
         logger.warning(f"[Supervisor] agent metrics error: {e}")
+        try: db_conn.rollback()
+        except: pass
         metrics["agents"] = {}
         metrics["total_consults_today"] = 0
 
@@ -64,6 +66,8 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
         metrics["kb_no_embedding"] = cur.fetchone()["cnt"]
     except Exception as e:
         logger.warning(f"[Supervisor] kb metrics error: {e}")
+        try: db_conn.rollback()
+        except: pass
 
     # ── C. 공고 분석 ──
     try:
@@ -84,10 +88,12 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
         metrics["analysis_queue"] = cur.fetchone()["cnt"]
     except Exception as e:
         logger.warning(f"[Supervisor] analysis metrics error: {e}")
+        try: db_conn.rollback()
+        except: pass
 
     # ── D. 비즈니스 지표 ──
     try:
-        cur.execute("SELECT COUNT(*) as cnt FROM users WHERE created_at >= CURRENT_DATE")
+        cur.execute("SELECT COUNT(*) as cnt FROM users WHERE updated_at >= CURRENT_DATE")
         metrics["new_users_today"] = cur.fetchone()["cnt"]
 
         cur.execute("""
@@ -101,6 +107,8 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
         metrics["plan_distribution"] = plan_dist
     except Exception as e:
         logger.warning(f"[Supervisor] business metrics error: {e}")
+        try: db_conn.rollback()
+        except: pass
 
     # ── E. 만료 공고 비율 ──
     try:
@@ -115,6 +123,8 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
         metrics["expired_ratio"] = round(r["expired"] / r["total"] * 100, 1) if r["total"] > 0 else 0
     except Exception as e:
         logger.warning(f"[Supervisor] expiry metrics error: {e}")
+        try: db_conn.rollback()
+        except: pass
 
     return metrics
 

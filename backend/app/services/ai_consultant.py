@@ -2424,8 +2424,9 @@ def save_knowledge(
     category: str = None,
     announcement_id: int = None,
     confidence: float = 0.5,
+    source_agent: str = None,
 ):
-    """공유 지식 저장소에 학습 결과 저장 + 임베딩 자동 생성."""
+    """공유 지식 저장소에 학습 결과 저장 + 임베딩 자동 생성 + source_agent 태그."""
     try:
         # 임베딩 생성
         embedding = _generate_knowledge_embedding(content, category)
@@ -2435,10 +2436,10 @@ def save_knowledge(
 
         cur = db_conn.cursor()
         cur.execute("""
-            INSERT INTO knowledge_base (source, knowledge_type, category, announcement_id, content, confidence, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
+            INSERT INTO knowledge_base (source, knowledge_type, category, announcement_id, content, confidence, embedding, source_agent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::vector, %s)
         """, (source, knowledge_type, category, announcement_id,
-              json.dumps(content, ensure_ascii=False), confidence, embed_str))
+              json.dumps(content, ensure_ascii=False), confidence, embed_str, source_agent))
         db_conn.commit()
     except Exception as e:
         logger.warning(f"[Knowledge] save error: {e}")
@@ -2454,10 +2455,12 @@ def get_relevant_knowledge(
     knowledge_types: list = None,
     limit: int = 5,
     query: str = None,
+    allowed_agents: list = None,
 ) -> List[Dict]:
     """
     상담 시 관련 지식을 조회하여 프롬프트에 주입.
     query가 있으면 임베딩 의미 검색 우선, 없으면 카테고리 매칭 폴백.
+    allowed_agents: 허용 source_agent 목록 (학습 전파 격리용). None이면 전체 허용.
     """
     if not category and not query:
         return []
@@ -2484,11 +2487,16 @@ def get_relevant_knowledge(
                     if vec:
                         vec_str = "[" + ",".join(f"{v:.6f}" for v in vec) + "]"
                         type_filter = ""
+                        agent_filter = ""
                         params = [vec_str]
                         if knowledge_types:
                             placeholders = ",".join(["%s"] * len(knowledge_types))
                             type_filter = f"AND knowledge_type IN ({placeholders})"
                             params.extend(knowledge_types)
+                        if allowed_agents:
+                            placeholders_a = ",".join(["%s"] * len(allowed_agents))
+                            agent_filter = f"AND (source_agent IS NULL OR source_agent IN ({placeholders_a}))"
+                            params.extend(allowed_agents)
                         params.append(limit)
                         cur.execute(f"""
                             SELECT id, source, knowledge_type, content, confidence, use_count,
@@ -2496,6 +2504,7 @@ def get_relevant_knowledge(
                             FROM knowledge_base
                             WHERE embedding IS NOT NULL AND confidence >= 0.4
                             {type_filter}
+                            {agent_filter}
                             ORDER BY similarity DESC
                             LIMIT %s
                         """, params)
@@ -2522,17 +2531,23 @@ def get_relevant_knowledge(
         if len(results) < limit and category:
             existing_ids = set(ids)
             type_filter = ""
+            agent_filter = ""
             params = [category]
             if knowledge_types:
                 placeholders = ",".join(["%s"] * len(knowledge_types))
                 type_filter = f"AND knowledge_type IN ({placeholders})"
                 params.extend(knowledge_types)
+            if allowed_agents:
+                placeholders_a = ",".join(["%s"] * len(allowed_agents))
+                agent_filter = f"AND (source_agent IS NULL OR source_agent IN ({placeholders_a}))"
+                params.extend(allowed_agents)
             params.append(limit - len(results))
             cur.execute(f"""
                 SELECT id, source, knowledge_type, content, confidence, use_count
                 FROM knowledge_base
                 WHERE category = %s AND confidence >= 0.4
                 {type_filter}
+                {agent_filter}
                 ORDER BY confidence DESC, use_count DESC
                 LIMIT %s
             """, params)

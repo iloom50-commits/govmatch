@@ -51,7 +51,17 @@ export default function CalendarPage() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
 
-  const bn = typeof window !== "undefined" ? localStorage.getItem("saved_bn") || "" : "";
+  const bn = typeof window !== "undefined" ? (localStorage.getItem("saved_bn") || localStorage.getItem("business_number") || (() => {
+    // auth_token에서 bn 추출 시도
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (token) {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.bn || "";
+      }
+    } catch {}
+    return "";
+  })()) : "";
 
   const fetchItems = useCallback(async () => {
     if (!bn) { setLoading(false); return; }

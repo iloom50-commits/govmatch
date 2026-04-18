@@ -2961,9 +2961,18 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         usage += 1
 
     # 통합 AI 엔진으로 자유 상담
-    # LITE 자금 전문 상담 (자유상담 대체) — user_type에 따라 기업/개인 자동 분리
+    # 탭(mode)에 따라 프로필 필터링 — 기업탭이면 기업 정보만, 개인탭이면 개인 정보만
     from app.services.ai_consultant import chat_lite_fund_expert
-    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
+    _BIZ_FIELDS = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications", "custom_keywords"}
+    _INDIV_FIELDS = {"age_range", "income_level", "family_type", "employment_status", "housing_status", "gender", "address_city", "interests", "user_type"}
+    _COMMON_FIELDS = {"address_city", "interests", "user_type", "email", "plan"}
+    if req.mode == "individual_fund":
+        filtered_profile = {k: v for k, v in u.items() if k in (_INDIV_FIELDS | _COMMON_FIELDS) and v}
+    elif req.mode == "business_fund":
+        filtered_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
+    else:
+        filtered_profile = u
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=filtered_profile, mode=req.mode)
 
     # ── 대화 저장 (P0.1+B): UPSERT by session_id ──
     # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성
@@ -3180,7 +3189,16 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         except Exception:
             pass
 
-    # 3) 통합 AI 엔진으로 상담 (별도 커넥션 사용)
+    # 3) 공고 target_type에 따라 프로필 필터링
+    _BIZ_FIELDS = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications"}
+    _INDIV_FIELDS = {"age_range", "income_level", "family_type", "employment_status", "housing_status", "gender", "address_city", "interests", "user_type"}
+    _COMMON_FIELDS = {"address_city", "interests", "user_type", "email", "plan"}
+    ann_target = (a.get("target_type") or "business").lower()
+    if ann_target == "individual":
+        consult_profile = {k: v for k, v in u.items() if k in (_INDIV_FIELDS | _COMMON_FIELDS) and v}
+    else:
+        consult_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
+
     consult_conn = None
     try:
         from app.services.ai_consultant import chat_consult
@@ -3190,7 +3208,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             messages=req.messages,
             announcement=a,
             deep_analysis_data=deep,
-            user_profile=u,
+            user_profile=consult_profile,
             db_conn=consult_conn,
         )
     except Exception as e:
@@ -3753,7 +3771,17 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
 
     # LITE 자금 전문 상담으로 통합 (chat_consultant 대체)
     from app.services.ai_consultant import chat_lite_fund_expert
-    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=u, mode=req.mode)
+    # 탭(mode)에 따라 프로필 필터링
+    _BIZ = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications", "custom_keywords"}
+    _IND = {"age_range", "income_level", "family_type", "employment_status", "housing_status", "gender", "address_city", "interests", "user_type"}
+    _COM = {"address_city", "interests", "user_type", "email", "plan"}
+    if req.mode == "individual_fund":
+        _fp = {k: v for k, v in u.items() if k in (_IND | _COM) and v}
+    elif req.mode == "business_fund":
+        _fp = {k: v for k, v in u.items() if k in (_BIZ | _COM) and v}
+    else:
+        _fp = u
+    result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=_fp, mode=req.mode)
 
     # ── 대화 저장 (P0.2+B): UPSERT by session_id ──
     try:

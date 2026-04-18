@@ -275,12 +275,27 @@ def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro
     if not items:
         return 0
 
+    # 저품질 필터 — 회피성 답변은 저장하지 않음
+    _LOW_QUALITY_PATTERNS = [
+        "홈페이지에서 확인", "홈페이지 확인", "직접 문의", "문의하시는 것",
+        "확인이 필요합니다", "확인해야 합니다", "알려주시면 안내",
+        "정보가 필요합니다", "구체적으로 알려주", "다시 시도",
+        "어떤 정책자금에 관심", "종류에 따라 조건",
+    ]
+
     stored = 0
     for it in items[:3]:
         ktype = it.get("type", "insight")
         cat = (it.get("category") or "")[:60]
         conf = min(1.0, max(0.0, float(it.get("confidence") or 0.5)))
         content = {k: v for k, v in it.items() if k not in ("type", "category", "confidence")}
+
+        # 저품질 필터: 답변이 회피성이면 저장 스킵
+        answer_text = str(content.get("answer", content.get("relationship", "")))
+        if any(p in answer_text for p in _LOW_QUALITY_PATTERNS):
+            logger.info(f"[insights] Skipped low-quality: {answer_text[:60]}")
+            continue
+
         try:
             save_knowledge(
                 source=source,

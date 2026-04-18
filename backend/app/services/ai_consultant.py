@@ -1286,7 +1286,41 @@ def chat_lite_fund_expert(
     else:
         base_prompt = PROMPT_LITE_FUND_BIZ_TOOL
         tt = "business"
-    system_prompt = base_prompt + profile_ctx
+
+    # ── 학습된 지식 주입 (knowledge_base → 프롬프트) ──
+    knowledge_ctx = ""
+    if db_conn:
+        try:
+            last_user_text = ""
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    last_user_text = m.get("text", "")
+                    break
+            if last_user_text:
+                kb_items = get_relevant_knowledge(
+                    category=None,  # 카테고리 제한 없이 의미검색 우선
+                    db_conn=db_conn,
+                    query=last_user_text,
+                    limit=5,
+                )
+                if kb_items:
+                    parts = ["\n\n[★★★ 축적된 전문 지식 — 도구 결과에 수치가 없으면 아래 지식의 수치를 반드시 인용하세요]"]
+                    for item in kb_items:
+                        c = item.get("content", {})
+                        ktype = item.get("knowledge_type", "")
+                        if ktype == "faq" and c.get("question"):
+                            parts.append(f"• Q: {c['question'][:100]}\n  A: {c.get('answer', '')[:200]}")
+                        elif ktype == "insight":
+                            parts.append(f"• 실무팁: {c.get('relationship', c.get('tips', str(c)))[:200]}")
+                        elif ktype == "error":
+                            parts.append(f"• 주의: {c.get('wrong_info', '')[:80]} → 올바른 정보: {c.get('correct_info', '')[:150]}")
+                        elif ktype == "pattern":
+                            parts.append(f"• 패턴: {c.get('tips', str(c))[:200]}")
+                    knowledge_ctx = "\n".join(parts)
+        except Exception as kb_err:
+            logger.warning(f"[LITE kb inject] {kb_err}")
+
+    system_prompt = base_prompt + profile_ctx + knowledge_ctx
 
     # ── Tool 정의 (OpenAI / Gemini 공용) ──
     def _exec_tool(name: str, args: dict) -> dict:

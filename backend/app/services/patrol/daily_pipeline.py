@@ -119,8 +119,8 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         from .url_health import scan_and_fix_urls
 
         url_result = scan_and_fix_urls(db_conn)
-        discover_result = discover_unanalyzed(db_conn, limit=100)
-        recovery_result = recover_failed_analyses(db_conn, max_retries=100)
+        discover_result = discover_unanalyzed(db_conn, limit=300)
+        recovery_result = recover_failed_analyses(db_conn, max_retries=500)
 
         return {
             "url_health": url_result,
@@ -136,7 +136,7 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4b_resolve_urls():
         from app.services.scrapers.url_resolver import batch_resolve_final_urls
-        return batch_resolve_final_urls(db_conn, limit=50)
+        return batch_resolve_final_urls(db_conn, limit=500)
 
     _run_step("④-1 원문 URL 추적", step_4b_resolve_urls)
 
@@ -145,7 +145,7 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4c_search_learn():
         from app.services.scrapers.url_resolver import search_and_learn
-        return search_and_learn(db_conn, limit=10)
+        return search_and_learn(db_conn, limit=100)
 
     _run_step("④-2 외부 검색 학습", step_4c_search_learn)
 

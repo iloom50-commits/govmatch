@@ -1417,15 +1417,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           ) : (
             <>
-            {/* 오늘의 인기 공고 — 일반 카드와 동일 형태 + 오렌지 테두리 + 2건 */}
-            {trendingItems.length > 0 && (
+            {/* 오늘의 인기 공고 — 1페이지에서만 표시 */}
+            {trendingItems.length > 0 && currentPage === 1 && (
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🔥</span>
                   <h3 className="text-[15px] font-bold text-slate-800">오늘의 인기 공고</h3>
                   <span className="text-[11px] text-slate-400">네이버 검색 트렌드 기반 선정</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {trendingItems.slice(0, 2).map((t) => (
                     <div
                       key={t.announcement_id}
@@ -1444,7 +1444,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 pb-6 overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden">
               {(usePublicData && publicData.length > 0 ? filteredMatches : filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)).map((res, idx) => (
                 <div
                   key={`${res.announcement_id}-${idx}`}

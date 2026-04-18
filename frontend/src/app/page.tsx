@@ -89,6 +89,13 @@ export default function Home() {
   const [currentMajorTab, setCurrentMajorTab] = useState<"business" | "individual">("business");
   const { toast } = useToast();
 
+  // AI 플로팅 버튼에서 "무료 상담 시작하기(로그인)" 클릭 시 로그인 모달 열기
+  useEffect(() => {
+    const handler = () => setShowLoginModal(true);
+    window.addEventListener("open-login-modal", handler);
+    return () => window.removeEventListener("open-login-modal", handler);
+  }, []);
+
   // 맞춤 설정 유도: NotificationModal이 실제 저장하는 필드 중 하나라도 있으면 설정 완료
   const isProfileIncomplete = profileData && !(() => {
     const city = profileData.address_city ? String(profileData.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";

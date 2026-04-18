@@ -972,8 +972,6 @@ def _deactivate_dead_urls():
 
 async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
-    task_sync = asyncio.create_task(_daily_sync_loop())
-    task_digest = asyncio.create_task(_daily_digest_loop())
     # 서버 시작 시 사전매칭 캐시 (백그라운드)
     import threading
     threading.Thread(target=lambda: print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached"), daemon=True).start()
@@ -989,67 +987,50 @@ async def lifespan(app):
     except Exception as seed_err:
         print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
 
-    # ── AI 패트롤 스케줄러 (매일 18:00 UTC = 03:00 KST) ──
+    # ── 일일 통합 파이프라인 (매일 03:00 KST = 18:00 UTC) ──
+    # docs/daily-pipeline.md 참조
     # PATROL_ENABLED=false 환경변수로 비활성화 가능
-    patrol_scheduler = None
+    pipeline_scheduler = None
     if os.getenv("PATROL_ENABLED", "true").lower() != "false":
         try:
             from apscheduler.schedulers.asyncio import AsyncIOScheduler
             from apscheduler.triggers.cron import CronTrigger
 
-            def _patrol_job():
+            def _daily_pipeline_job():
                 try:
-                    from app.services.patrol import run_patrol
-                    print("[Patrol] Scheduled run starting...")
-                    result = run_patrol(triggered_by="scheduler")
-                    print(f"[Patrol] Scheduled run done: {result.get('elapsed_seconds')}s")
-                except Exception as e:
-                    print(f"[Patrol] Scheduled run error: {e}")
-
-            def _coo_supervisor_job():
-                try:
-                    from app.services.orchestrator import run_daily_supervision
+                    from app.services.patrol.daily_pipeline import run_daily_pipeline
                     conn = get_db_pool().getconn()
                     try:
-                        print("[COO] Daily supervision starting...")
-                        result = run_daily_supervision(conn)
-                        print(f"[COO] Done: {result.get('elapsed_seconds')}s, alerts={result.get('alerts_count')}")
+                        print("[Pipeline] Daily pipeline starting (03:00 KST)...")
+                        result = run_daily_pipeline(conn)
+                        print(f"[Pipeline] Done: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
                     finally:
                         get_db_pool().putconn(conn)
                 except Exception as e:
-                    print(f"[COO] Supervision error: {e}")
+                    print(f"[Pipeline] Error: {e}")
 
-            patrol_scheduler = AsyncIOScheduler()
-            patrol_scheduler.add_job(
-                _patrol_job,
-                CronTrigger(hour=18, minute=0),
-                id="ai_patrol",
-                name="AI 데이터 품질 패트롤",
+            pipeline_scheduler = AsyncIOScheduler()
+            pipeline_scheduler.add_job(
+                _daily_pipeline_job,
+                CronTrigger(hour=18, minute=0),  # UTC 18:00 = KST 03:00
+                id="daily_pipeline",
+                name="일일 통합 파이프라인 (03:00 KST)",
                 replace_existing=True,
             )
-            patrol_scheduler.add_job(
-                _coo_supervisor_job,
-                CronTrigger(hour=0, minute=30),  # UTC 00:30 = KST 09:30
-                id="ai_coo_supervisor",
-                name="AI COO 슈퍼바이저 일일 보고",
-                replace_existing=True,
-            )
-            patrol_scheduler.start()
-            print("[Patrol] APScheduler started — patrol 03:00 KST, COO 09:30 KST")
+            pipeline_scheduler.start()
+            print("[Pipeline] APScheduler started — daily at 03:00 KST (UTC 18:00)")
         except ImportError as e:
-            print(f"[Patrol] APScheduler not installed: {e}")
+            print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
-            print(f"[Patrol] scheduler init failed (서버는 정상): {e}")
+            print(f"[Pipeline] scheduler init failed (서버는 정상): {e}")
     else:
-        print("[Patrol] disabled by PATROL_ENABLED=false")
+        print("[Pipeline] disabled by PATROL_ENABLED=false")
 
     yield
 
-    if patrol_scheduler:
-        try: patrol_scheduler.shutdown(wait=False)
+    if pipeline_scheduler:
+        try: pipeline_scheduler.shutdown(wait=False)
         except: pass
-    task_sync.cancel()
-    task_digest.cancel()
     try:
         await task_digest
     except asyncio.CancelledError:

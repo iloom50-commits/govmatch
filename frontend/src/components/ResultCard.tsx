@@ -246,8 +246,19 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     ? bizTypes.join(" · ")
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
-  // 금액 뱃지: support_amount에 실제 금액(숫자+원/억/만)이 있을 때만 표시. 없으면 표시 안 함.
-  const amountLabel = res.support_amount || "";
+  // 금액 뱃지: support_amount에서 핵심 금액만 추출하여 간결하게 표시
+  const _rawAmount = res.support_amount || "";
+  const _extractShortAmount = (raw: string): string => {
+    if (!raw) return "";
+    // "최대 N억원", "최대 N만원", "N억원", "N천만원" 등 핵심 금액 패턴 추출
+    const m = raw.match(/(최대\s*)?[\d,]+(?:\.\d+)?\s*(?:억|천만|백만|만)\s*원/);
+    if (m) return m[0].replace(/\s+/g, "");
+    // "N원" 패턴
+    const m2 = raw.match(/(최대\s*)?[\d,]+\s*원/);
+    if (m2) return m2[0].replace(/\s+/g, "");
+    return "";
+  };
+  const amountLabel = _extractShortAmount(_rawAmount) || _rawAmount;
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (

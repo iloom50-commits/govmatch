@@ -359,10 +359,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
   };
   const baseTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
-  // 로그인 사용자에게 "맞춤 추천" 탭 추가
-  const currentTabs = (!isPublic && profile)
-    ? [{ label: "⭐ 맞춤", key: "smart", categories: [] }, ...baseTabs]
-    : baseTabs;
+  // "맞춤 추천" 탭 — 항상 표시
+  const currentTabs = [{ label: "⭐ 맞춤", key: "smart", categories: [] }, ...baseTabs];
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
@@ -601,7 +599,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // "맞춤 추천" 탭 선택 시 API 호출
   useEffect(() => {
-    if (activeTab !== "smart" || isPublic || !profile) return;
+    if (activeTab !== "smart") return;
     setSmartLoading(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (!token) { setSmartLoading(false); return; }
@@ -1291,7 +1289,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 >
                   {currentTabs.map((tab) => {
                     const count = tabCounts[tab.key] || 0;
-                    if (tab.key !== "all" && count === 0) return null;
+                    if (tab.key !== "all" && tab.key !== "smart" && count === 0) return null;
                     return (
                       <option key={tab.key} value={tab.key}>
                         {tab.label} ({count.toLocaleString()})
@@ -1308,7 +1306,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <div className="hidden sm:flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {currentTabs.map((tab) => {
                   const count = tabCounts[tab.key] || 0;
-                  if (tab.key !== "all" && count === 0) return null;
+                  if (tab.key !== "all" && tab.key !== "smart" && count === 0) return null;
                   return (
                     <button
                       key={tab.key}

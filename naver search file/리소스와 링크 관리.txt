@@ -1,0 +1,50 @@
+리소스와 링크 관리
+네이버 검색로봇의 원활한 사이트 수집을 위해 몇 가지 최적화 요소를 안내합니다.
+
+접근 제한된 리소스가 있는지 확인해주세요
+현대적인 웹 문서들은 단독 HTML만으로 구성되기 보다는 해당 페이지의 콘텐츠를 표현하고 해석하는데 추가적인 리소스(javascript 등) 로딩을 반드시 요구하는 경우가 있습니다.
+
+그러나 수집 허용된 웹 문서와 달리, 이들 리소스들이 별도의 URL 경로에 존재하는 경우, 별도로 robots.txt 설정되어 있거나 IP 차단으로 접근이 불가한 경우가 있을 수 있는데요.
+이 경우에는 상황에 따라 웹 페이지를 제대로 분석(랜더링)할 수 없어 검색결과에 다르게 노출되거나 미노출될 수 있습니다.
+
+robots.txt에 의해 접근 불가한 경우
+다음 A,B,C URL을 예로 설명드리겠습니다.
+네이버 검색로봇이 A URL을 접근하여 수집합니다. A URL HTML문서에는 리소스로써 B, C URL이 추가되어있으며, A URL 콘텐츠를 구성하는데 B, C URL은 필수 입니다.
+그러나 robots.txt를 보면 /resource 는 disallow되어 있습니다.
+이렇게 된다면 상황에 따라서 로봇은 C URL만 수집하는 경우가 있어, A URL 콘텐츠는 불완전한 상태로 해석되는 경우가 있습니다.
+
+A. https://www.your-site.com/
+B. https://www.your-site.com/resource/1
+C. https://www.your-site.com/temp/c
+
+
+robots.txt)
+
+User-agent: *
+Allow: /
+Disallow: /resource
+
+이러한 동작 혼란은 기본 웹 문서의 설정돠 모순되는 disallow: /resource 설정을 allow로 변경하여 맞추거나, B URL 없이 A URL 콘텐츠를 완전히 구성되도록 페이지를 수정하면 해결할 수 있습니다.
+
+네이버 검색로봇 IP 차단인 경우
+네이버 검색로봇 확인 방법 가이드를 통해 검색로봇 IP를 확인하여 차단 해제합니다.
+
+<a> 요소의 href 속성에 자바스크립트 호출
+콘텐츠에 삽입된 <a>는 중요한 요소입니다.
+네이버 검색로봇은 <a>에 href 속성으로 사이트내 다른 페이지 URL을 발견하고 수집하여 확장해 나갑니다.
+만약 href 속성에 javascript 호출 방식으로 입력한 경우, 정상적인 링크로 구성할 수 없어서 새로운 페이지 URL을 발견할 수 없기에, 사이트 수집량이 감소할 수 있습니다.
+
+나쁜 예 : <a href="createLink(1, news)">클릭</a> 
+좋은 예 : <a href="https://www.your-site.com/news/1">클릭</a> 
+프로토콜이 다른 내부 링크 존재
+보안 인증서가 적용된 HTTPS 사이트에서 동일 HOST이지만 프로토콜이 다른 리소스 링크를 삽입하는 경우가 있습니다.(혹은 반대의 경우가 있습니다.)
+URL 프로토콜과 동일한 리소스 URL로 변경하는 것을 제안합니다.
+
+예)
+A. https://www.your-site.com/
+B. http://www.your-site.com/resource/1 -> https://www.your-site.com/resource/1 변경
+
+이용약관
+ 책임한계와 법적고지
+ 고객센터
+©NAVER Corp.

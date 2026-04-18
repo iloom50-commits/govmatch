@@ -215,9 +215,8 @@ def batch_smart_match_for_users(db_conn, limit: int = 50) -> Dict[str, Any]:
         try:
             # 1단계: 기존 매칭
             from app.core.matcher import get_matches_hybrid
-            target = "individual" if user_type == "individual" else "business"
-            matches_conn = db_conn  # 같은 커넥션 사용
-            candidates = get_matches_hybrid(u, matches_conn, target_type=target, limit=50)
+            is_indiv = user_type == "individual"
+            candidates = get_matches_hybrid(u, is_individual=is_indiv)
 
             if not candidates:
                 continue

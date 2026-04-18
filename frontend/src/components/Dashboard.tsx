@@ -1442,8 +1442,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           ) : (
             <>
-            {/* 오늘의 인기 공고 — 1페이지에서만 표시 */}
-            {trendingItems.length > 0 && currentPage === 1 && (
+            {/* 오늘의 인기 공고 — 1페이지 + 맞춤 탭 아닐 때만 */}
+            {trendingItems.length > 0 && currentPage === 1 && activeTab !== "smart" && (
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg">🔥</span>

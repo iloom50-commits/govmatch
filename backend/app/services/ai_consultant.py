@@ -225,7 +225,7 @@ def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro
     """
     if not HAS_GENAI or not db_conn or not messages or len(messages) < 4:
         return 0
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = _get_batch_api_key()
     if not api_key:
         return 0
 
@@ -262,7 +262,7 @@ def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            BATCH_MODEL,
             generation_config={"max_output_tokens": 2048, "response_mime_type": "application/json", "temperature": 0.3}
         )
         resp = model.generate_content(prompt)
@@ -1288,47 +1288,19 @@ def chat_lite_fund_expert(
         tt = "business"
     system_prompt = base_prompt + profile_ctx
 
-    # ── Tool Calling 설정 ──
-    try:
-        genai.configure(api_key=api_key)
-
-        # 도구 함수 정의 (closure로 db_conn 캡처)
-        def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
-            """자금/대출/보증 관련 공고를 DB에서 검색합니다.
-
-            Args:
-                keywords: 검색 키워드 (예: "청년창업자금", "전세자금 대출")
-                target_type: "business"(기업) 또는 "individual"(개인). 기본값은 사용자 모드.
-            """
-            rows = _tool_search_fund_announcements(db_conn, keywords, target_type, limit=5)
+    # ── Tool 정의 (OpenAI / Gemini 공용) ──
+    def _exec_tool(name: str, args: dict) -> dict:
+        """도구 실행 — 이름으로 라우팅"""
+        if name == "search_fund_announcements":
+            rows = _tool_search_fund_announcements(db_conn, args.get("keywords", ""), args.get("target_type", tt), limit=5)
             return {"count": len(rows), "results": rows}
-
-        def get_announcement_detail(announcement_id: int) -> dict:
-            """특정 공고의 상세 정보(자격요건·서류·신청방법·지원내용)를 조회합니다.
-
-            Args:
-                announcement_id: 공고 ID (search_fund_announcements 결과의 id 필드)
-            """
-            return _tool_get_announcement_detail(db_conn, int(announcement_id))
-
-        def search_knowledge_base(query: str) -> dict:
-            """금융/보증 관련 FAQ·실무 팁·인사이트를 검색합니다.
-
-            Args:
-                query: 검색어 (예: "신용등급", "심사 기준")
-            """
-            rows = _tool_search_knowledge_base(db_conn, query, limit=5)
+        elif name == "get_announcement_detail":
+            return _tool_get_announcement_detail(db_conn, int(args.get("announcement_id", 0)))
+        elif name == "search_knowledge_base":
+            rows = _tool_search_knowledge_base(db_conn, args.get("query", ""), limit=5)
             return {"count": len(rows), "results": rows}
-
-        def check_eligibility(announcement_id: int) -> dict:
-            """사용자 프로필과 특정 공고의 자격 조건을 대조해 자동 판정합니다.
-            사용 시점: 사용자가 "저 되나요?", "제가 대상인가요?" 물을 때 또는 매칭 후 자격 확인할 때.
-
-            Args:
-                announcement_id: 판정 대상 공고 ID
-            """
+        elif name == "check_eligibility":
             _p = dict(user_profile or {})
-            # 업력 계산 (establishment_date → 연수)
             try:
                 from datetime import datetime
                 est = _p.get("establishment_date")
@@ -1336,53 +1308,129 @@ def chat_lite_fund_expert(
                     dt = datetime.strptime(str(est)[:10], "%Y-%m-%d")
                     _p["business_years"] = (datetime.now() - dt).days // 365
             except Exception: pass
-            return _tool_check_eligibility(db_conn, int(announcement_id), _p)
+            return _tool_check_eligibility(db_conn, int(args.get("announcement_id", 0)), _p)
+        return {}
 
-        tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
+    OPENAI_TOOLS = [
+        {"type": "function", "function": {"name": "search_fund_announcements", "description": "자금/대출/보증 관련 공고를 DB에서 검색", "parameters": {"type": "object", "properties": {"keywords": {"type": "string", "description": "검색 키워드"}, "target_type": {"type": "string", "enum": ["business", "individual"], "description": "기업 또는 개인"}}, "required": ["keywords"]}}},
+        {"type": "function", "function": {"name": "get_announcement_detail", "description": "특정 공고의 상세 정보 조회", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer", "description": "공고 ID"}}, "required": ["announcement_id"]}}},
+        {"type": "function", "function": {"name": "search_knowledge_base", "description": "금융/보증 관련 FAQ·실무 팁 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "검색어"}}, "required": ["query"]}}},
+        {"type": "function", "function": {"name": "check_eligibility", "description": "사용자 프로필과 공고 자격 조건 대조 판정", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer", "description": "공고 ID"}}, "required": ["announcement_id"]}}},
+    ]
 
-        model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
-            tools=tools,
-            system_instruction=system_prompt,
-            generation_config={
-                "max_output_tokens": 4096,
-                "temperature": 0.5,
-            },
-        )
-        chat = model.start_chat(enable_automatic_function_calling=True)
+    reply_text = ""
+    parsed_choices: List[str] = []
+    tool_calls = []
+    _engine_used = "none"
 
-        # 대화 이력 주입 (마지막 user 메시지 제외)
-        for m in messages[:-1]:
-            if m.get("role") == "user":
-                chat.send_message(m.get("text", ""))
-            # assistant 메시지는 Gemini chat 자체 history로 자동 관리 안 되므로 skip
-
-        # 실제 질문 전송
-        last_msg = messages[-1].get("text", "") if messages else "시작"
-        response = chat.send_message(last_msg)
-        reply_text = response.text if hasattr(response, "text") else str(response)
-
-        # choices 파싱 + 도구 코드 노출 제거
-        reply_text, parsed_choices = _parse_choices_marker(reply_text)
-        reply_text = _remove_tool_code_leaks(reply_text)
-
-        # 호출된 도구 추적 (디버그용)
-        tool_calls = []
+    # ── 1차: OpenAI (기본) ──
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
         try:
-            for h in chat.history:
-                for part in getattr(h, "parts", []):
-                    fc = getattr(part, "function_call", None)
-                    if fc and fc.name:
-                        tool_calls.append(fc.name)
-        except Exception:
-            pass
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
 
-    except Exception as e:
-        logger.warning(f"[LITE fund tool] {e}")
-        return {
-            "reply": f"일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
-            "choices": ["✏️ 다시 시도"],
-        }
+            oai_messages = [{"role": "system", "content": system_prompt}]
+            for m in messages[:-1]:
+                role = "user" if m.get("role") == "user" else "assistant"
+                oai_messages.append({"role": role, "content": m.get("text", "")})
+            oai_messages.append({"role": "user", "content": messages[-1].get("text", "시작") if messages else "시작"})
+
+            # Tool Calling 루프 (최대 3회 도구 호출)
+            for _ in range(4):
+                # 첫 호출에서 반드시 도구를 사용하도록 강제
+                _tc = {"type": "function", "function": {"name": "search_fund_announcements"}} if _ == 0 else "auto"
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=oai_messages,
+                    tools=OPENAI_TOOLS,
+                    tool_choice=_tc,
+                    max_tokens=4096,
+                    temperature=0.5,
+                )
+                msg = resp.choices[0].message
+
+                if msg.tool_calls:
+                    oai_messages.append(msg)
+                    for tc in msg.tool_calls:
+                        fn_name = tc.function.name
+                        fn_args = json.loads(tc.function.arguments)
+                        tool_calls.append(fn_name)
+                        result = _exec_tool(fn_name, fn_args)
+                        oai_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, ensure_ascii=False)[:3000],
+                        })
+                else:
+                    reply_text = msg.content or ""
+                    break
+
+            reply_text, parsed_choices = _parse_choices_marker(reply_text)
+            reply_text = _remove_tool_code_leaks(reply_text)
+            _engine_used = "openai"
+
+        except Exception as oai_err:
+            logger.warning(f"[LITE OpenAI] {oai_err}")
+            reply_text = ""  # 폴백으로 넘어감
+
+    # ── 2차: Gemini (폴백) ──
+    if not reply_text:
+        try:
+            genai.configure(api_key=api_key)
+
+            def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
+                """자금/대출/보증 관련 공고를 DB에서 검색합니다."""
+                rows = _tool_search_fund_announcements(db_conn, keywords, target_type, limit=5)
+                return {"count": len(rows), "results": rows}
+            def get_announcement_detail(announcement_id: int) -> dict:
+                """특정 공고의 상세 정보를 조회합니다."""
+                return _tool_get_announcement_detail(db_conn, int(announcement_id))
+            def search_knowledge_base(query: str) -> dict:
+                """금융/보증 관련 FAQ·실무 팁을 검색합니다."""
+                rows = _tool_search_knowledge_base(db_conn, query, limit=5)
+                return {"count": len(rows), "results": rows}
+            def check_eligibility(announcement_id: int) -> dict:
+                """사용자 프로필과 공고 자격 조건을 대조합니다."""
+                _p = dict(user_profile or {})
+                try:
+                    from datetime import datetime
+                    est = _p.get("establishment_date")
+                    if est and "business_years" not in _p:
+                        dt = datetime.strptime(str(est)[:10], "%Y-%m-%d")
+                        _p["business_years"] = (datetime.now() - dt).days // 365
+                except Exception: pass
+                return _tool_check_eligibility(db_conn, int(announcement_id), _p)
+
+            tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
+            model = genai.GenerativeModel(
+                "models/gemini-2.0-flash", tools=tools, system_instruction=system_prompt,
+                generation_config={"max_output_tokens": 4096, "temperature": 0.5},
+            )
+            chat = model.start_chat(enable_automatic_function_calling=True)
+            for m in messages[:-1]:
+                if m.get("role") == "user":
+                    chat.send_message(m.get("text", ""))
+            last_msg = messages[-1].get("text", "") if messages else "시작"
+            response = chat.send_message(last_msg)
+            reply_text = response.text if hasattr(response, "text") else str(response)
+            reply_text, parsed_choices = _parse_choices_marker(reply_text)
+            reply_text = _remove_tool_code_leaks(reply_text)
+            _engine_used = "gemini"
+            try:
+                for h in chat.history:
+                    for part in getattr(h, "parts", []):
+                        fc = getattr(part, "function_call", None)
+                        if fc and fc.name:
+                            tool_calls.append(fc.name)
+            except Exception: pass
+
+        except Exception as e:
+            logger.warning(f"[LITE Gemini fallback] {e}")
+            return {
+                "reply": "일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
+                "choices": ["✏️ 다시 시도"],
+            }
 
     return {
         "reply": reply_text,
@@ -1391,6 +1439,7 @@ def chat_lite_fund_expert(
         "done": False,
         "mode": "individual_fund" if is_individual else "business_fund",
         "tool_calls": tool_calls,
+        "engine": _engine_used,
     }
 
 
@@ -2376,11 +2425,19 @@ def mark_golden_inaccurate(consult_log_id: int, db_conn):
         logger.warning(f"[GoldenAnswer] mark_inaccurate error: {e}")
 
 
+def _get_batch_api_key() -> Optional[str]:
+    """배치 작업용 API 키 반환 — 상담용 키와 분리하여 quota 보호."""
+    return os.environ.get("GEMINI_BATCH_API_KEY") or os.environ.get("GEMINI_API_KEY")
+
+
+BATCH_MODEL = os.environ.get("GEMINI_BATCH_MODEL", "gemini-2.5-flash")
+
+
 def _generate_knowledge_embedding(content: dict, category: str = None) -> Optional[list]:
     """지식 콘텐츠에서 임베딩용 텍스트를 추출하고 768차원 벡터 생성."""
     if not HAS_GENAI:
         return None
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = _get_batch_api_key()
     if not api_key:
         return None
 

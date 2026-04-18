@@ -246,19 +246,42 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     ? bizTypes.join(" · ")
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
-  // 금액 뱃지: support_amount에서 핵심 금액만 추출하여 간결하게 표시
+  // 금액 뱃지: support_amount에서 핵심 금액만 추출 + 큰 숫자 한글 변환
   const _rawAmount = res.support_amount || "";
-  const _extractShortAmount = (raw: string): string => {
+  const _formatKoreanAmount = (raw: string): string => {
     if (!raw) return "";
-    // "최대 N억원", "최대 N만원", "N억원", "N천만원" 등 핵심 금액 패턴 추출
+
+    // 1) 이미 "억원", "만원" 등 한글이 포함된 경우 — 핵심 금액 패턴 추출
     const m = raw.match(/(최대\s*)?[\d,]+(?:\.\d+)?\s*(?:억|천만|백만|만)\s*원/);
     if (m) return m[0].replace(/\s+/g, "");
-    // "N원" 패턴
+
+    // 2) 순수 숫자(원 단위)만 있는 경우 — 한글로 변환
+    // "최대450000000원" → 숫자 추출 → "최대4.5억원"
+    const prefix = raw.match(/^(최대|약|평균)/)?.[0] || "";
+    const numMatch = raw.match(/([\d,]+)\s*원?/);
+    if (numMatch) {
+      const num = parseInt(numMatch[1].replace(/,/g, ""), 10);
+      if (!isNaN(num) && num > 0) {
+        if (num >= 100000000) {
+          const eok = num / 100000000;
+          const label = eok % 1 === 0 ? `${eok}억원` : `${eok.toFixed(1)}억원`;
+          return `${prefix}${label}`;
+        } else if (num >= 10000000) {
+          return `${prefix}${Math.round(num / 10000000)}천만원`;
+        } else if (num >= 10000) {
+          return `${prefix}${Math.round(num / 10000)}만원`;
+        }
+        return `${prefix}${num.toLocaleString()}원`;
+      }
+    }
+
+    // 3) "N원" 패턴 폴백
     const m2 = raw.match(/(최대\s*)?[\d,]+\s*원/);
     if (m2) return m2[0].replace(/\s+/g, "");
+
     return "";
   };
-  const amountLabel = _extractShortAmount(_rawAmount) || _rawAmount;
+  const amountLabel = _formatKoreanAmount(_rawAmount) || _rawAmount;
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (

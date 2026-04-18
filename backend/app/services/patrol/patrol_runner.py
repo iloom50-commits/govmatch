@@ -110,6 +110,18 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
+    # ── 4-2. 소진공 공고 지식 동기화 ──
+    try:
+        logger.info("[Patrol] Syncing SEMAS announcements...")
+        from app.services.scrapers.semas_scraper import sync_semas_knowledge
+        result = sync_semas_knowledge(conn, max_pages=2)
+        summary["semas_sync"] = result
+        logger.info(f"[Patrol] SEMAS: new={result['new_knowledge']}")
+    except Exception as e:
+        msg = f"semas_sync failed: {e}"
+        logger.error(f"[Patrol] {msg}")
+        summary["errors"].append(msg)
+
     # ── 5. 분석 실패 재시도 (실제 분석 실행) ──
     try:
         logger.info("[Patrol] Recovering failed analyses...")

@@ -276,29 +276,24 @@ def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro
         return 0
 
     stored = 0
-    try:
-        cur = db_conn.cursor()
-        for it in items[:3]:
-            ktype = it.get("type", "insight")
-            cat = (it.get("category") or "")[:60]
-            conf = min(1.0, max(0.0, float(it.get("confidence") or 0.5)))
-            content = {k: v for k, v in it.items() if k not in ("type", "category", "confidence")}
-            try:
-                cur.execute(
-                    """INSERT INTO knowledge_base (source, knowledge_type, category, content, confidence)
-                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
-                    (source, ktype, cat, json.dumps(content, ensure_ascii=False), conf),
-                )
-                stored += 1
-            except Exception as ie:
-                try: db_conn.rollback()
-                except: pass
-                logger.warning(f"[kb insert] {ie}")
-        db_conn.commit()
-    except Exception as e:
-        logger.warning(f"[kb bulk] {e}")
-        try: db_conn.rollback()
-        except: pass
+    for it in items[:3]:
+        ktype = it.get("type", "insight")
+        cat = (it.get("category") or "")[:60]
+        conf = min(1.0, max(0.0, float(it.get("confidence") or 0.5)))
+        content = {k: v for k, v in it.items() if k not in ("type", "category", "confidence")}
+        try:
+            save_knowledge(
+                source=source,
+                knowledge_type=ktype,
+                content=content,
+                db_conn=db_conn,
+                category=cat,
+                confidence=conf,
+                source_agent=source.split("_")[0] if "_" in source else source,
+            )
+            stored += 1
+        except Exception as ie:
+            logger.warning(f"[kb insert] {ie}")
     return stored
 
 

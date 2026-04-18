@@ -804,8 +804,8 @@ export default function Home() {
       <AiConsultModal planStatus={planStatus} onUpgrade={() => setShowPayment(true)} onPlanUpdate={(u: any) => setPlanStatus((prev: any) => prev ? { ...prev, ...u } : prev)} />
       <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} currentTab={currentMajorTab} />
 
-      {/* SEO 정적 콘텐츠 — 검색봇이 읽을 수 있는 텍스트 */}
-      <section className="max-w-4xl mx-auto px-4 py-12 text-slate-600 text-sm leading-relaxed">
+      {/* SEO 정적 콘텐츠 — 검색봇용 (사용자 화면에서 숨김) */}
+      <section className="sr-only">
         <h2 className="text-lg font-bold text-slate-800 mb-4">지원금AI — AI 정부 지원금 자동 매칭 서비스</h2>
         <p className="mb-3">지원금AI는 17,000건 이상의 정부 지원금, 보조금, 정책자금 공고를 AI가 실시간 분석하여 내 조건에 딱 맞는 지원사업을 자동으로 매칭해주는 서비스입니다.</p>
         <h3 className="font-bold text-slate-700 mt-6 mb-2">중소기업·소상공인 지원</h3>

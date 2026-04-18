@@ -1183,7 +1183,7 @@ class SecurityAgent:
                 del counter[key]
 
     # 공개 API + 내부 서비스 경로 — 보안 검사 예외
-    _whitelisted_paths = ("/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health", "/api/admin/")
+    _whitelisted_paths = ("/api/announcements/", "/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health", "/api/admin/")
 
     def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
@@ -1577,6 +1577,26 @@ def _set_cache(key: str, data):
 
 
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
+@app.get("/api/announcements/{announcement_id}")
+def api_announcement_by_id(announcement_id: int):
+    """공고 상세 — SEO 페이지용 (인증 불필요)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT announcement_id, title, department, category, region, target_type,
+                   support_amount, deadline_date, summary_text, origin_url, final_url,
+                   eligibility_logic, origin_source
+            FROM announcements WHERE announcement_id = %s
+        """, (announcement_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        return {"status": "SUCCESS", "data": dict(row)}
+    finally:
+        conn.close()
+
+
 @app.get("/api/announcements/public")
 def api_announcements_public(
     request: Request,

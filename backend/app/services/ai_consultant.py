@@ -1354,12 +1354,16 @@ def chat_lite_fund_expert(
 
     # 사용자 지역 추출 (도구 검색에 자동 적용)
     _user_region = (user_profile or {}).get("address_city", "")
+    _referenced_announcements: List[Dict] = []  # 도구에서 검색된 공고 수집
 
     # ── Tool 정의 (OpenAI / Gemini 공용) ──
     def _exec_tool(name: str, args: dict) -> dict:
         """도구 실행 — 이름으로 라우팅"""
         if name == "search_fund_announcements":
             rows = _tool_search_fund_announcements(db_conn, args.get("keywords", ""), args.get("target_type", tt), limit=5, user_region=_user_region)
+            for r in rows:
+                if r not in _referenced_announcements:
+                    _referenced_announcements.append(r)
             return {"count": len(rows), "results": rows}
         elif name == "get_announcement_detail":
             return _tool_get_announcement_detail(db_conn, int(args.get("announcement_id", 0)))
@@ -1502,7 +1506,7 @@ def chat_lite_fund_expert(
     return {
         "reply": reply_text,
         "choices": parsed_choices,
-        "announcements": [],
+        "announcements": _referenced_announcements[:5],  # 검색된 공고 미니카드용
         "done": False,
         "mode": "individual_fund" if is_individual else "business_fund",
         "tool_calls": tool_calls,

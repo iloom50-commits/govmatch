@@ -81,13 +81,15 @@ function renderMarkdown(text: string): string {
 }
 
 interface RelatedAnnouncement {
-  announcement_id: number;
+  announcement_id?: number;
+  id?: number;
   title: string;
   support_amount?: string;
   deadline_date?: string;
   department?: string;
   category?: string;
   summary_text?: string;
+  region?: string;
 }
 
 interface ChatMessage {
@@ -1763,41 +1765,38 @@ ${convHtml}
                       )}
                     </div>
 
-                    {/* Related announcements — 공고 카드 + AI 상세 공고분석 버튼 */}
+                    {/* 미니 공고 카드 — 채팅 내 콤팩트 표시 */}
                     {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        <p className="text-[10px] font-semibold text-indigo-500 px-1">관련 공고</p>
-                        {msg.announcements.map((ann) => (
-                          <div key={ann.announcement_id} className="p-3 bg-white rounded-xl border border-slate-200 hover:border-indigo-200 transition-all shadow-sm">
-                            <p className="text-[12px] font-bold text-slate-800 leading-snug mb-1.5">{ann.title}</p>
-                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500 mb-2">
-                              {ann.support_amount && <span>{ann.support_amount}</span>}
-                              {ann.deadline_date && <span>마감 {ann.deadline_date}</span>}
-                              {ann.department && <span>{ann.department}</span>}
+                      <div className="mt-3 space-y-1.5">
+                        {msg.announcements.slice(0, 5).map((ann) => {
+                          const annId = ann.announcement_id || ann.id;
+                          return (
+                          <div key={annId} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 transition-all cursor-pointer group"
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent("open-ai-consult", {
+                                detail: { announcement: {
+                                  announcement_id: annId,
+                                  title: ann.title,
+                                  support_amount: ann.support_amount,
+                                  deadline_date: ann.deadline_date,
+                                  department: ann.department,
+                                  category: ann.category,
+                                }}
+                              }));
+                            }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[9px] text-slate-400">
+                                {ann.department && <span>{String(ann.department).slice(0, 10)}</span>}
+                                {ann.support_amount && <span className="text-rose-500 font-bold">{String(ann.support_amount).slice(0, 15)}</span>}
+                                {ann.deadline_date && <span>~{String(ann.deadline_date).slice(5, 10)}</span>}
+                              </div>
                             </div>
-                            {ann.summary_text && (
-                              <p className="text-[11px] text-slate-600 leading-relaxed mb-2 line-clamp-2">{ann.summary_text}</p>
-                            )}
-                            <button
-                              onClick={() => {
-                                setOpen(false);
-                                window.dispatchEvent(new CustomEvent("open-ai-consult", {
-                                  detail: { announcement: {
-                                    announcement_id: ann.announcement_id,
-                                    title: ann.title,
-                                    support_amount: ann.support_amount,
-                                    deadline_date: ann.deadline_date,
-                                    department: ann.department,
-                                    category: ann.category,
-                                  }}
-                                }));
-                              }}
-                              className="w-full py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-[11px] font-bold hover:bg-indigo-100 transition-all active:scale-[0.98]"
-                            >
-                              AI 상세 공고분석
-                            </button>
+                            <span className="text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">자격 확인 →</span>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 

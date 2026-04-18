@@ -66,7 +66,7 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
     # ── 2. 인기 카테고리 미분석 발굴 (재시도 큐 추가) ──
     try:
         logger.info("[Patrol] Discovering unanalyzed popular announcements...")
-        result = discover_unanalyzed(conn, limit=30)
+        result = discover_unanalyzed(conn, limit=100)
         summary["discovery"] = result
         logger.info(f"[Patrol] Discovery: queued={result['queued_for_analysis']}")
     except Exception as e:
@@ -101,7 +101,7 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
     # ── 4. 분석 실패 재시도 (실제 분석 실행) ──
     try:
         logger.info("[Patrol] Recovering failed analyses...")
-        result = recover_failed_analyses(conn, max_retries=30)
+        result = recover_failed_analyses(conn, max_retries=100)
         summary["recovery"] = result
         logger.info(f"[Patrol] Recovery: attempted={result['attempted']}, recovered={result['recovered']}")
     except Exception as e:

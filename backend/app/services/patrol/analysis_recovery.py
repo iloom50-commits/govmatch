@@ -71,13 +71,13 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
     }
 
 
-def discover_unanalyzed(db_conn, limit: int = 30) -> Dict[str, Any]:
-    """분석되지 않은 인기 카테고리 공고 자동 등록 (정책자금/보증/R&D 등)
-    아직 analysis_failures에도 없고 announcement_analysis에도 없는 항목을 큐에 추가
+def discover_unanalyzed(db_conn, limit: int = 100) -> Dict[str, Any]:
+    """분석되지 않은 공고를 자동 등록.
+    아직 analysis_failures에도 없고 announcement_analysis에도 없는 항목을 큐에 추가.
+    origin_url이 있는 공고를 우선 처리.
     """
     cur = db_conn.cursor()
 
-    # 인기 카테고리 + 분석 없음 + 실패 기록도 없음
     cur.execute("""
         SELECT a.announcement_id, a.title
         FROM announcements a
@@ -85,10 +85,8 @@ def discover_unanalyzed(db_conn, limit: int = 30) -> Dict[str, Any]:
         LEFT JOIN analysis_failures af ON af.announcement_id = a.announcement_id AND af.resolved_at IS NULL
         WHERE aa.announcement_id IS NULL
           AND af.id IS NULL
-          AND (a.title ILIKE '%%정책자금%%' OR a.title ILIKE '%%보증%%'
-               OR a.title ILIKE '%%R&D%%' OR a.title ILIKE '%%기술개발%%'
-               OR a.title ILIKE '%%창업%%' OR a.title ILIKE '%%수출%%')
-          AND a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE
+          AND a.origin_url IS NOT NULL AND a.origin_url != ''
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
         ORDER BY a.created_at DESC
         LIMIT %s
     """, (limit,))

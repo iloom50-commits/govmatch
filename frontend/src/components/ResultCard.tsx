@@ -57,7 +57,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
             setOpen(true);
           }
         }}
-        className="w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
+        className="w-full py-1.5 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
@@ -285,7 +285,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 md:p-5 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 pb-[4px] md:p-5 md:pb-[4px] rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
@@ -405,7 +405,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
             )}
           </div>
           {/* CTA buttons */}
-          <div className="flex flex-col gap-2 mt-2 min-w-0">
+          <div className="flex flex-col gap-1.5 mt-1 min-w-0">
             {/* AI 버튼 */}
             <div className="flex items-center gap-1.5 min-w-0">
               <button

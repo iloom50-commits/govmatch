@@ -30,7 +30,7 @@ def _extract_and_embed_sections_inline(db_conn, announcement_id: int, parsed_sec
         import google.generativeai as _genai
     except ImportError:
         return 0
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_BATCH_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return 0
 
@@ -151,7 +151,7 @@ def _embed_single_announcement_inline(db_conn, announcement_id: int) -> bool:
         import google.generativeai as _genai
     except ImportError:
         return False
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_BATCH_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return False
     try:
@@ -917,7 +917,7 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
     if not HAS_GENAI or not full_text:
         return {"parsed_sections": {}, "deep_analysis": {}}
 
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_BATCH_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return {"parsed_sections": {}, "deep_analysis": {}}
 

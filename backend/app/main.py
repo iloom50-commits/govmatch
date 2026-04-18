@@ -1314,6 +1314,10 @@ security_agent = SecurityAgent()
 # 보안 미들웨어 — 모든 요청을 에이전트가 검사
 class SecurityAgentMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
+        # SECURITY_ENABLED=false로 보안 에이전트 비활성화 (개발 시)
+        if os.getenv("SECURITY_ENABLED", "true").lower() == "false":
+            return await call_next(request)
+
         ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
         path = request.url.path
         method = request.method

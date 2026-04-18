@@ -574,7 +574,7 @@ def search_announcements(query: str, db_conn, user_profile: dict = None, limit: 
     params = []
 
     # 마감되지 않은 공고 우선 (마감일 없는 것도 포함)
-    sql += " AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)"
+    sql += " AND (a.deadline_date >= CURRENT_DATE OR (a.deadline_date IS NULL AND a.created_at >= CURRENT_DATE - INTERVAL '6 months'))"
 
     # 사용자 유형에 따라 target_type 필터 (기업 사용자면 business 우선)
     if user_profile and user_profile.get("business_number"):
@@ -938,7 +938,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                         FROM announcement_embeddings e
                         JOIN announcements a ON e.announcement_id = a.announcement_id
                         WHERE COALESCE(a.target_type, 'business') IN (%s, 'both')
-                          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+                          AND (a.deadline_date >= CURRENT_DATE OR (a.deadline_date IS NULL AND a.created_at >= CURRENT_DATE - INTERVAL '6 months'))
                           AND (
                               a.title ~* %s OR a.summary_text ~* %s
                               OR a.category ~* %s
@@ -982,7 +982,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                            deadline_date, region, summary_text, category
                     FROM announcements
                     WHERE COALESCE(target_type, 'business') IN (%s, 'both')
-                      AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                      AND (deadline_date >= CURRENT_DATE OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '6 months'))
                       AND (title ILIKE %s OR summary_text ILIKE %s)
                       AND (
                           title ~* '정책자금|융자|대출|보증|자금|금리|한도'

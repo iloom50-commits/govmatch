@@ -700,8 +700,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const upcomingSaved = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const thirtyDaysLater = new Date(today);
+    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
     return savedItems
-      .filter(s => s.deadline_date && new Date(s.deadline_date) >= today)
+      .filter(s => s.deadline_date && new Date(s.deadline_date) >= today && new Date(s.deadline_date) <= thirtyDaysLater)
       .slice(0, 3);
   }, [savedItems]);
 

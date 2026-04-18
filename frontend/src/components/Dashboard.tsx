@@ -308,7 +308,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate, onProfileRefresh }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void, onProfileRefresh?: () => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate, onProfileRefresh, onMajorTabChange }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void, onProfileRefresh?: () => void, onMajorTabChange?: (tab: MajorTab) => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "both";
@@ -318,7 +318,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭 전환 — View Transitions API (미지원 브라우저는 즉시 전환)
   const switchMajorTab = (next: MajorTab) => {
     if (next === majorTab) return;
-    const apply = () => { setMajorTab(next); setActiveTab("all"); };
+    const apply = () => { setMajorTab(next); setActiveTab("all"); onMajorTabChange?.(next); };
     // PC(마우스 호버 가능 + 정밀 포인터)에서는 View Transitions API 잔상 이슈로 즉시 전환
     // 모바일(터치)에서만 슬라이드 애니메이션 사용
     const isDesktop = typeof window !== "undefined"

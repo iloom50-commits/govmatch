@@ -86,6 +86,7 @@ export default function Home() {
   const [publicMatches, setPublicMatches] = useState<any[]>([]);
   const [showProfileNudge, setShowProfileNudge] = useState(false);
   const [openNotifyOnReturn, setOpenNotifyOnReturn] = useState(false);
+  const [currentMajorTab, setCurrentMajorTab] = useState<"business" | "individual">("business");
   const { toast } = useToast();
 
   // 맞춤 설정 유도: NotificationModal이 실제 저장하는 필드 중 하나라도 있으면 설정 완료
@@ -722,6 +723,7 @@ export default function Home() {
             onNotifyOpened={() => setOpenNotifyOnReturn(false)}
             onPlanUpdate={(updated: any) => setPlanStatus((prev: any) => ({ ...prev, ...updated }))}
             onProfileRefresh={refreshProfile}
+            onMajorTabChange={setCurrentMajorTab}
           />
         </div>
       )}
@@ -792,7 +794,7 @@ export default function Home() {
       )}
 
       <AiConsultModal planStatus={planStatus} onUpgrade={() => setShowPayment(true)} onPlanUpdate={(u: any) => setPlanStatus((prev: any) => prev ? { ...prev, ...u } : prev)} />
-      <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} />
+      <AiChatBot planStatus={planStatus} onUpgrade={() => setShowPayment(true)} userType={profileData?.user_type} currentTab={currentMajorTab} />
 
     </main>
   );

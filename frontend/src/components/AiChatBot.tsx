@@ -155,18 +155,25 @@ interface AiChatBotProps {
   planStatus?: { plan: string; ai_limit?: number; consult_limit?: number } | null;
   onUpgrade?: () => void;
   userType?: string | null;
+  currentTab?: "business" | "individual";
 }
 
-export default function AiChatBot({ planStatus, onUpgrade, userType }: AiChatBotProps) {
-  const isIndividual = userType === "individual";
+export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab }: AiChatBotProps) {
+  // 현재 탭 기준으로 개인/기업 결정 (both 사용자도 탭에 따라 자동 전환)
+  const isIndividual = currentTab === "individual" || (userType === "individual" && currentTab !== "business");
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   useModalBack(open, () => setOpen(false));
   const [mode, setMode] = useState<ChatMode>("select");
-  // LITE 자금 전문 모드 (기업/개인) — 초기값은 user_type 기반
+  // LITE 자금 전문 모드 (기업/개인) — currentTab 우선, 없으면 user_type 기반
   const [fundMode, setFundMode] = useState<"business_fund" | "individual_fund">(
     typeof window !== "undefined" && isIndividual ? "individual_fund" : "business_fund"
   );
+  // 탭 전환 시 fundMode 자동 동기화 (상담 진행 중이 아닐 때만)
+  useEffect(() => {
+    if (!currentTab || messages.length > 0) return;
+    setFundMode(currentTab === "individual" ? "individual_fund" : "business_fund");
+  }, [currentTab]);
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
   const [clientCategory, setClientCategory] = useState<"" | "individual_biz" | "corporate" | "individual" | "unknown">("");
   const [selectedExistingClient, setSelectedExistingClient] = useState<number | null>(null);

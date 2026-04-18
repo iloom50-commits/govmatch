@@ -1465,23 +1465,21 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # FREE: 공고AI 1회/월, 저장/알림 불가
 # LITE: 공고AI 20회/월, 저장/알림 가능, 가입 시 7일 무료체험
 # PRO (전문가용): 무제한, 전방위 전문가 에이전트
-# LITE: 자금 전문 AI (기업/개인 자금·보증 특화) 월 100회
-#
-# /api/ai/chat 건수 제한
+# 자금상담 + 공고상담 합산 건수 제한
+# FREE: 3회/월, LITE: 50회/월, PRO: 무제한
 PLAN_LIMITS = {
-    "free": 3,         # FREE: 체험용 월 3회 (자금 AI)
-    "lite": 100,       # LITE: 자금 전문 AI 월 100회
-    "lite_trial": 100,
-    "basic": 100,      # legacy → LITE 취급
+    "free": 3,         # FREE: 체험용 월 3회
+    "lite": 50,        # LITE: 자금상담 + 공고상담 합산 50회/월
+    "lite_trial": 50,
+    "basic": 50,       # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
 
-# 공고AI 상담 건수 제한
-# free: 1회/월, lite: 50회/월, pro: 무제한
+# 공고AI 상담도 PLAN_LIMITS와 동일 (합산 차감)
 CONSULT_LIMITS = {
     "free": 3,
-    "lite_trial": 50,  # LITE 체험도 50회
+    "lite_trial": 50,
     "lite": 50,
     "basic": 50,       # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급

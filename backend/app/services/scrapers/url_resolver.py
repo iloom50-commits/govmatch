@@ -172,6 +172,23 @@ JSON 형식으로 응답:
             except json.JSONDecodeError:
                 learned_data = {"raw": result_text[:500]}
 
+            # ── 신뢰도 필터: 구체적 정보가 없으면 저장 안 함 ──
+            _LOW_QUALITY = [
+                "확인이 필요", "확인해야", "홈페이지에서 확인", "직접 문의",
+                "정보가 없습니다", "찾을 수 없습니다", "명시되어 있지 않",
+            ]
+            data_text = json.dumps(learned_data, ensure_ascii=False)
+            # 구체적 수치(금액/기간/퍼센트)가 있는지
+            has_numbers = bool(re.search(r'\d+[억만천원%]|\d{4}[-./]\d{1,2}', data_text))
+            # 회피성 답변인지
+            is_low = any(p in data_text for p in _LOW_QUALITY)
+            # 내용이 너무 짧은지
+            is_empty = len(data_text) < 100
+
+            if is_low or is_empty or not has_numbers:
+                logger.info(f"[SearchLearn] Skipped (low quality): {title[:40]}")
+                continue
+
             # knowledge_base에 저장
             from app.services.ai_consultant import save_knowledge
             save_knowledge(
@@ -185,7 +202,7 @@ JSON 형식으로 응답:
                 db_conn=db_conn,
                 category=r.get("category", ""),
                 announcement_id=r["announcement_id"],
-                confidence=0.7,
+                confidence=0.8,  # 검색 결과 + 수치 있음 → 높은 신뢰도
                 source_agent="crawler",
             )
             stats["learned"] += 1

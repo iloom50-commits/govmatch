@@ -360,7 +360,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   };
   const baseTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
   // "맞춤 추천" 탭 — 항상 표시
-  const currentTabs = [{ label: "⭐ 맞춤", key: "smart", categories: [] }, ...baseTabs];
+  const currentTabs = [...baseTabs, { label: "⭐ 맞춤", key: "smart", categories: [] }];
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;

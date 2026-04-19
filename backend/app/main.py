@@ -2560,6 +2560,10 @@ def api_plan_upgrade(
         if payment.get("amount", {}).get("total") != price:
             conn.close()
             raise HTTPException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
+    else:
+        # 무료 체험도 아니고 결제도 안 됨 → 플랜 변경 차단
+        conn.close()
+        raise HTTPException(status_code=400, detail="결제가 필요합니다.")
 
     # 빌링키 저장 (정기결제용)
     billing_update = ""

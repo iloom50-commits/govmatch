@@ -3152,94 +3152,115 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
         try:
             # Mode B 전용 프롬프트 선택 (사업자/개인 분리)
             tool_prompt = PROMPT_PRO_CONSULT_INDIV_TOOL if _is_individual_mode else PROMPT_PRO_CONSULT_BIZ_TOOL
-            # 선택된 고객/수집 정보 덧붙임
             tool_prompt_full = tool_prompt + (client_hint or "") + (matched_hint or "")
-
-            genai.configure(api_key=api_key)
             _tt_for_tools = "individual" if _is_individual_mode else "business"
 
-            def search_pro_sections(query: str) -> dict:
-                """매칭된 공고의 섹션(자격요건·서류·신청방법·지원내용 등)을 DB에서 검색합니다.
-
-                Args:
-                    query: 검색 키워드 (예: "자격요건", "제출서류", "스마트공장")
-                """
-                rows = _tool_search_pro_sections(db_conn, query, _tt_for_tools, limit=6)
-                return {"count": len(rows), "results": rows}
-
-            def get_announcement_detail(announcement_id: int) -> dict:
-                """특정 공고의 전체 상세(원문, 자격요건, 서류, 신청방법, 지원내용)를 조회합니다.
-
-                Args:
-                    announcement_id: 공고 ID
-                """
-                return _tool_get_announcement_detail(db_conn, int(announcement_id))
-
-            def search_knowledge_base(query: str) -> dict:
-                """과거 상담·FAQ·실무 팁·인사이트를 검색합니다.
-
-                Args:
-                    query: 검색어
-                """
-                rows = _tool_search_knowledge_base(db_conn, query, limit=4)
-                return {"count": len(rows), "results": rows}
-
-            def check_eligibility(announcement_id: int) -> dict:
-                """선택된 고객 프로필과 특정 공고의 자격 조건을 대조해 자동 판정합니다.
-                사용 시점: "이 공고 저희 고객 되나요?", "자격 대상 여부" 판단이 필요할 때.
-
-                Args:
-                    announcement_id: 판정 대상 공고 ID
-                """
-                _p = {}
-                cp = selected_client or {}
-                if cp:
-                    _p["region"] = cp.get("address_city")
-                    _p["industry"] = cp.get("industry_code")
-                    # 매출/직원 bracket → 중앙값 추정
-                    rb = (cp.get("revenue_bracket") or "").strip()
-                    if "억" in rb:
+            # 도구 실행 함수
+            def _exec_pro_tool(name: str, args: dict) -> dict:
+                if name == "search_pro_sections":
+                    rows = _tool_search_pro_sections(db_conn, args.get("query", ""), _tt_for_tools, limit=6)
+                    return {"count": len(rows), "results": rows}
+                elif name == "get_announcement_detail":
+                    return _tool_get_announcement_detail(db_conn, int(args.get("announcement_id", 0)))
+                elif name == "search_knowledge_base":
+                    rows = _tool_search_knowledge_base(db_conn, args.get("query", ""), limit=4)
+                    return {"count": len(rows), "results": rows}
+                elif name == "check_eligibility":
+                    _p = {}
+                    cp = selected_client or {}
+                    if cp:
+                        _p["region"] = cp.get("address_city")
+                        _p["industry"] = cp.get("industry_code")
+                        rb = (cp.get("revenue_bracket") or "").strip()
+                        if "억" in rb:
+                            try:
+                                nums = [int(x) for x in re.findall(r"\d+", rb)]
+                                if nums: _p["revenue_won"] = int(nums[0]) * 100_000_000
+                            except Exception: pass
+                        eb = (cp.get("employee_count_bracket") or "").strip()
                         try:
-                            import re as _re
-                            nums = [int(x) for x in _re.findall(r"\d+", rb)]
-                            if nums: _p["revenue_won"] = int(nums[0]) * 100_000_000
+                            nums = [int(x) for x in re.findall(r"\d+", eb)]
+                            if nums: _p["employees"] = nums[0]
                         except Exception: pass
-                    eb = (cp.get("employee_count_bracket") or "").strip()
-                    try:
-                        import re as _re
-                        nums = [int(x) for x in _re.findall(r"\d+", eb)]
-                        if nums: _p["employees"] = nums[0]
-                    except Exception: pass
-                    est = cp.get("establishment_date")
-                    if est:
-                        try:
-                            from datetime import datetime as _dt
-                            dt = _dt.strptime(str(est)[:10], "%Y-%m-%d")
-                            _p["business_years"] = (_dt.now() - dt).days // 365
-                        except Exception: pass
-                return _tool_check_eligibility(db_conn, int(announcement_id), _p)
+                        est = cp.get("establishment_date")
+                        if est:
+                            try:
+                                from datetime import datetime as _dt
+                                dt = _dt.strptime(str(est)[:10], "%Y-%m-%d")
+                                _p["business_years"] = (_dt.now() - dt).days // 365
+                            except Exception: pass
+                    return _tool_check_eligibility(db_conn, int(args.get("announcement_id", 0)), _p)
+                return {}
 
-            tools_b = [search_pro_sections, get_announcement_detail, search_knowledge_base, check_eligibility]
-            model_b = genai.GenerativeModel(
-                "models/gemini-2.0-flash",
-                tools=tools_b,
-                system_instruction=tool_prompt_full,
-                generation_config={"max_output_tokens": 4096, "temperature": 0.5},
-            )
-            chat_b = model_b.start_chat(enable_automatic_function_calling=True)
-            # 이전 대화는 history 인자로 한 번에 (재생 금지 — 타임아웃·중복 방지)
-            # 최근 user 메시지만 단발 호출
+            PRO_TOOLS = [
+                {"type": "function", "function": {"name": "search_pro_sections", "description": "매칭된 공고의 섹션(자격요건·서류·신청방법) DB 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+                {"type": "function", "function": {"name": "get_announcement_detail", "description": "특정 공고 상세 조회", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer"}}, "required": ["announcement_id"]}}},
+                {"type": "function", "function": {"name": "search_knowledge_base", "description": "FAQ·실무 팁 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+                {"type": "function", "function": {"name": "check_eligibility", "description": "고객 프로필과 공고 자격 대조 판정", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer"}}, "required": ["announcement_id"]}}},
+            ]
+
             last_user_msg_b = messages[-1].get("text", "") if messages else ""
-            # 이전 대화 요약을 시스템 프롬프트에 살짝 곁들임
             prev_user_count = sum(1 for m in messages if m.get("role") == "user")
             if prev_user_count >= 2:
                 last_user_msg_b = f"[이 상담은 {prev_user_count}번째 질문입니다 — 매칭 이미 완료됨]\n{last_user_msg_b}"
-            resp_b = chat_b.send_message(last_user_msg_b)
-            reply_b = resp_b.text if hasattr(resp_b, "text") else str(resp_b)
 
-            # choices 파싱 + 도구 코드 노출 제거
-            reply_b, parsed_choices_b = _parse_choices_marker(reply_b)
-            reply_b = _remove_tool_code_leaks(reply_b)
+            reply_b = ""
+            parsed_choices_b: List[str] = []
+
+            # ── 1차: OpenAI ──
+            openai_key = os.environ.get("OPENAI_API_KEY")
+            if openai_key:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=openai_key)
+                    oai_msgs = [{"role": "system", "content": tool_prompt_full}]
+                    for m in messages[:-1]:
+                        role = "user" if m.get("role") == "user" else "assistant"
+                        oai_msgs.append({"role": role, "content": m.get("text", "")})
+                    oai_msgs.append({"role": "user", "content": last_user_msg_b})
+
+                    for _ in range(4):
+                        resp = client.chat.completions.create(
+                            model="gpt-4o-mini", messages=oai_msgs, tools=PRO_TOOLS,
+                            tool_choice="auto", max_tokens=4096, temperature=0.5,
+                        )
+                        msg = resp.choices[0].message
+                        if msg.tool_calls:
+                            oai_msgs.append(msg)
+                            for tc in msg.tool_calls:
+                                result = _exec_pro_tool(tc.function.name, json.loads(tc.function.arguments))
+                                oai_msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result, ensure_ascii=False)[:3000]})
+                        else:
+                            reply_b = msg.content or ""
+                            break
+                    reply_b, parsed_choices_b = _parse_choices_marker(reply_b)
+                    reply_b = _remove_tool_code_leaks(reply_b)
+                except Exception as oai_err:
+                    logger.warning(f"[PRO Mode B OpenAI] {oai_err}")
+                    reply_b = ""
+
+            # ── 2차: Gemini 폴백 ──
+            if not reply_b:
+                genai.configure(api_key=api_key)
+                def search_pro_sections(query: str) -> dict:
+                    rows = _tool_search_pro_sections(db_conn, query, _tt_for_tools, limit=6)
+                    return {"count": len(rows), "results": rows}
+                def get_announcement_detail(announcement_id: int) -> dict:
+                    return _tool_get_announcement_detail(db_conn, int(announcement_id))
+                def search_knowledge_base(query: str) -> dict:
+                    rows = _tool_search_knowledge_base(db_conn, query, limit=4)
+                    return {"count": len(rows), "results": rows}
+                def check_eligibility(announcement_id: int) -> dict:
+                    return _exec_pro_tool("check_eligibility", {"announcement_id": announcement_id})
+
+                tools_b = [search_pro_sections, get_announcement_detail, search_knowledge_base, check_eligibility]
+                model_b = genai.GenerativeModel("models/gemini-2.0-flash", tools=tools_b,
+                    system_instruction=tool_prompt_full, generation_config={"max_output_tokens": 4096, "temperature": 0.5})
+                chat_b = model_b.start_chat(enable_automatic_function_calling=True)
+                resp_b = chat_b.send_message(last_user_msg_b)
+                reply_b = resp_b.text if hasattr(resp_b, "text") else str(resp_b)
+                reply_b, parsed_choices_b = _parse_choices_marker(reply_b)
+                reply_b = _remove_tool_code_leaks(reply_b)
 
             return {
                 "reply": reply_b,

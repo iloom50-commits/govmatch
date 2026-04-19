@@ -3419,7 +3419,13 @@ JSON 형식으로 반환:
                 tools_b = [get_matched_summary, search_pro_sections, get_announcement_detail, analyze_announcement, search_knowledge_base, check_eligibility]
                 model_b = genai.GenerativeModel("models/gemini-2.0-flash", tools=tools_b,
                     system_instruction=tool_prompt_full, generation_config={"max_output_tokens": 4096, "temperature": 0.5})
-                chat_b = model_b.start_chat(enable_automatic_function_calling=True)
+                # Gemini에도 대화 히스토리 포함
+                from google.genai import types as _gtypes
+                _gemini_history = []
+                for m in messages[:-1]:
+                    _role = "user" if m.get("role") == "user" else "model"
+                    _gemini_history.append({"role": _role, "parts": [m.get("text", "")]})
+                chat_b = model_b.start_chat(history=_gemini_history, enable_automatic_function_calling=True)
                 resp_b = chat_b.send_message(last_user_msg_b)
                 reply_b = resp_b.text if hasattr(resp_b, "text") else str(resp_b)
                 reply_b, parsed_choices_b = _parse_choices_marker(reply_b)

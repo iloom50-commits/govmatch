@@ -213,6 +213,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setActiveAnnouncementId(null);
     setShowProfileForm(false);
     setActiveView("chat");
+    setSessionId(null);
+    localStorage.removeItem("pro_session_id");
     toast("상담이 종료되었습니다", "info");
   }, [messages.length, clientCategory, toast]);
 
@@ -229,6 +231,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       setFlowState("idle");
       setSelectedClient(null);
       setSystemContext("");
+      setSessionId(null);
+      localStorage.removeItem("pro_session_id");
       window.history.pushState({ proDash: true }, "");
       return;
     }
@@ -267,8 +271,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 세션 ID 상태
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // 세션 ID 상태 — localStorage에 유지하여 새로고침 후에도 대화 맥락 이어짐
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pro_session_id") || null;
+    }
+    return null;
+  });
+  // sessionId 변경 시 localStorage에 동기화
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem("pro_session_id", sessionId);
+    }
+  }, [sessionId]);
 
   // ─── AI 대화 전송 ───
   const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { explicit_match?: boolean; profile_override?: any }) => {

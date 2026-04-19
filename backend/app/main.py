@@ -3417,7 +3417,7 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 if sid:
                     cur.execute(
                         """SELECT session_id, client_category, current_step, collected,
-                                  phase, matched_snapshot
+                                  phase, matched_snapshot, messages
                            FROM pro_consult_sessions
                            WHERE session_id = %s AND business_number = %s""",
                         (sid, current_user["bn"])
@@ -3433,6 +3433,12 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                         if isinstance(matched_snap, str):
                             try: matched_snap = json.loads(matched_snap)
                             except: matched_snap = []
+                        db_msgs = d.get("messages")
+                        if isinstance(db_msgs, str):
+                            try: db_msgs = json.loads(db_msgs)
+                            except: db_msgs = []
+                        if not isinstance(db_msgs, list):
+                            db_msgs = []
                         session_state = {
                             "session_id": d.get("session_id"),
                             "client_category": d.get("client_category") or "",
@@ -3440,6 +3446,7 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                             "collected": coll or {},
                             "phase": d.get("phase") or "collecting",
                             "matched_snapshot": matched_snap or [],
+                            "db_messages": db_msgs,
                         }
                 if not session_state:
                     sid = str(_uuid.uuid4())
@@ -3495,10 +3502,21 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 if val and not coll.get(dst_key):
                     coll[dst_key] = str(val) if not isinstance(val, str) else val
 
+        # 대화 맥락 보강: 프론트 messages가 DB보다 짧으면 DB 히스토리로 보충
+        effective_messages = list(req.messages) if req.messages else []
+        if session_state and session_state.get("db_messages"):
+            db_msgs = session_state["db_messages"]
+            if len(db_msgs) > len(effective_messages) + 1:
+                # DB에 더 많은 히스토리가 있음 → DB 히스토리 + 최신 사용자 메시지로 구성
+                last_user = effective_messages[-1] if effective_messages else None
+                if last_user and last_user.get("role") == "user":
+                    effective_messages = db_msgs + [last_user]
+                    print(f"[PRO chat] messages restored from DB: {len(db_msgs)} + 1 new = {len(effective_messages)}")
+
         # AI 호출 — 세션 상태 + 선택 고객 주입
         try:
             result = chat_pro_consultant(
-                req.messages,
+                effective_messages,
                 announcement_id=ann_id,
                 db_conn=db,
                 explicit_match=req.explicit_match,

@@ -3150,53 +3150,212 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     }
     if _is_consulting_phase and db_conn and messages:
         try:
+            logger.info(f"[PRO Mode B] ENTERING — phase={session_state.get('phase')}, snap_len={len(matched_snap or [])}")
             # Mode B 전용 프롬프트 선택 (사업자/개인 분리)
             tool_prompt = PROMPT_PRO_CONSULT_INDIV_TOOL if _is_individual_mode else PROMPT_PRO_CONSULT_BIZ_TOOL
             tool_prompt_full = tool_prompt + (client_hint or "") + (matched_hint or "")
             _tt_for_tools = "individual" if _is_individual_mode else "business"
 
-            # 도구 실행 함수
+            # 매칭된 공고 ID 목록 (도구에서 우선 검색용)
+            _matched_ids = []
+            if matched_snap:
+                _matched_ids = [m.get("announcement_id") for m in matched_snap if m.get("announcement_id")]
+
+            # ── 고객 프로필 추출 (check_eligibility용) ──
+            def _build_client_profile() -> dict:
+                _p = {}
+                cp = selected_client or {}
+                if cp:
+                    _p["region"] = cp.get("address_city")
+                    _p["industry"] = cp.get("industry_code")
+                    rb = (cp.get("revenue_bracket") or "").strip()
+                    if "억" in rb:
+                        try:
+                            nums = [int(x) for x in re.findall(r"\d+", rb)]
+                            if nums: _p["revenue_won"] = int(nums[0]) * 100_000_000
+                        except Exception: pass
+                    eb = (cp.get("employee_count_bracket") or "").strip()
+                    try:
+                        nums = [int(x) for x in re.findall(r"\d+", eb)]
+                        if nums: _p["employees"] = nums[0]
+                    except Exception: pass
+                    est = cp.get("establishment_date")
+                    if est:
+                        try:
+                            from datetime import datetime as _dt
+                            dt = _dt.strptime(str(est)[:10], "%Y-%m-%d")
+                            _p["business_years"] = (_dt.now() - dt).days // 365
+                        except Exception: pass
+                # collected에서도 보충
+                col = (session_state.get("collected") if session_state else {}) or {}
+                if col.get("address_city") and not _p.get("region"):
+                    _p["region"] = col["address_city"]
+                if col.get("industry_code") and not _p.get("industry"):
+                    _p["industry"] = col["industry_code"]
+                return _p
+
+            # ── 실시간 공고 재분석 (데이터 부족 시) ──
+            def _analyze_announcement_realtime(ann_id: int) -> dict:
+                """announcement_analysis가 없거나 부족할 때 원문으로 실시간 분석."""
+                try:
+                    cur = db_conn.cursor()
+                    cur.execute("""
+                        SELECT a.title, a.summary_text, a.full_text,
+                               aa.parsed_sections, aa.deep_analysis
+                        FROM announcements a
+                        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+                        WHERE a.announcement_id = %s
+                    """, (ann_id,))
+                    r = cur.fetchone()
+                    if not r:
+                        return {"error": "공고를 찾을 수 없습니다"}
+                    d = dict(r)
+                    # 이미 분석 데이터가 충분하면 그대로 반환
+                    ps = d.get("parsed_sections")
+                    if isinstance(ps, str):
+                        try: ps = json.loads(ps)
+                        except: ps = {}
+                    if isinstance(ps, dict) and ps.get("eligibility"):
+                        return {"status": "already_analyzed", "parsed_sections": ps}
+                    # 원문이 있으면 AI로 실시간 분석
+                    source_text = d.get("full_text") or d.get("summary_text") or ""
+                    if not source_text or len(source_text) < 100:
+                        return {"error": "원문 데이터 부족 — 주관기관에 직접 문의 권장"}
+                    openai_key = os.environ.get("OPENAI_API_KEY")
+                    if not openai_key:
+                        return {"error": "분석 엔진 미설정"}
+                    from openai import OpenAI as _OAI
+                    _cl = _OAI(api_key=openai_key)
+                    _resp = _cl.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "정부 지원사업 공고를 분석하여 JSON으로 반환하세요."},
+                            {"role": "user", "content": f"""다음 공고를 분석하세요:
+
+제목: {d.get('title', '')}
+원문 (앞 4000자):
+{source_text[:4000]}
+
+JSON 형식으로 반환:
+{{"eligibility": "자격요건 상세", "required_documents": "필요서류 목록", "application_method": "신청방법/절차", "support_content": "지원내용/금액", "schedule": "일정/마감일", "key_points": "핵심 포인트/꿀팁", "exclusion_rules": "제외 대상"}}"""}
+                        ],
+                        max_tokens=2000, temperature=0.2,
+                        response_format={"type": "json_object"},
+                    )
+                    analysis = json.loads(_resp.choices[0].message.content or "{}")
+                    # DB에도 저장 (다음번엔 재분석 불필요)
+                    try:
+                        cur.execute("""
+                            INSERT INTO announcement_analysis (announcement_id, parsed_sections, analyzed_at)
+                            VALUES (%s, %s::jsonb, CURRENT_TIMESTAMP)
+                            ON CONFLICT (announcement_id) DO UPDATE
+                            SET parsed_sections = COALESCE(announcement_analysis.parsed_sections, '{}'::jsonb) || %s::jsonb,
+                                analyzed_at = CURRENT_TIMESTAMP
+                        """, (ann_id, json.dumps(analysis, ensure_ascii=False), json.dumps(analysis, ensure_ascii=False)))
+                        db_conn.commit()
+                    except Exception:
+                        try: db_conn.rollback()
+                        except: pass
+                    return {"status": "analyzed", "analysis": analysis}
+                except Exception as e:
+                    logger.warning(f"[analyze_realtime] {e}")
+                    return {"error": f"분석 실패: {str(e)[:100]}"}
+
+            # ── 도구 실행 함수 ──
             def _exec_pro_tool(name: str, args: dict) -> dict:
-                if name == "search_pro_sections":
-                    rows = _tool_search_pro_sections(db_conn, args.get("query", ""), _tt_for_tools, limit=6)
+                if name == "get_matched_summary":
+                    # 매칭 스냅샷 전체 요약 반환
+                    if not matched_snap:
+                        return {"error": "매칭된 공고가 없습니다", "count": 0}
+                    items = []
+                    for i, m in enumerate(matched_snap[:10], 1):
+                        if not isinstance(m, dict): continue
+                        item = {
+                            "순위": i,
+                            "id": m.get("announcement_id"),
+                            "title": m.get("title", ""),
+                            "department": m.get("department", ""),
+                            "support_amount": m.get("support_amount", ""),
+                            "deadline": str(m.get("deadline_date", "")),
+                            "score": m.get("match_score", 0),
+                        }
+                        if m.get("eligibility"): item["자격요건"] = m["eligibility"][:300]
+                        if m.get("required_docs"): item["서류"] = m["required_docs"][:200]
+                        if m.get("how_to_apply"): item["신청방법"] = m["how_to_apply"][:200]
+                        if m.get("key_points"): item["핵심포인트"] = m["key_points"][:200]
+                        items.append(item)
+                    return {"count": len(items), "matched_announcements": items}
+
+                elif name == "search_pro_sections":
+                    # 매칭된 공고 우선 검색 + 전체 DB 보조
+                    query = args.get("query", "")
+                    rows = []
+                    # 1) 매칭된 공고에서 먼저 검색
+                    if _matched_ids and query:
+                        try:
+                            cur = db_conn.cursor()
+                            keywords = [w for w in re.split(r'\s+', query) if len(w) >= 2][:4]
+                            if keywords:
+                                patterns = [f"%{k}%" for k in keywords]
+                                cur.execute("""
+                                    SELECT as2.id, as2.announcement_id, a.title as ann_title,
+                                           a.department, as2.section_type, as2.section_title,
+                                           as2.section_text, a.support_amount, a.deadline_date
+                                    FROM announcement_sections as2
+                                    JOIN announcements a ON as2.announcement_id = a.announcement_id
+                                    WHERE as2.announcement_id = ANY(%s)
+                                      AND as2.section_text ILIKE ANY(%s)
+                                    LIMIT 8
+                                """, (_matched_ids, patterns))
+                                for r in cur.fetchall():
+                                    d = dict(r)
+                                    rows.append({
+                                        "id": d.get("id"),
+                                        "announcement_id": d.get("announcement_id"),
+                                        "title": d.get("ann_title"),
+                                        "department": d.get("department"),
+                                        "section_type": d.get("section_type"),
+                                        "section_title": d.get("section_title"),
+                                        "section_text": (d.get("section_text") or "")[:800],
+                                        "support_amount": d.get("support_amount"),
+                                        "deadline": str(d.get("deadline_date") or ""),
+                                        "matched": True,
+                                    })
+                        except Exception as e:
+                            logger.warning(f"[pro tool matched sec] {e}")
+                            try: db_conn.rollback()
+                            except: pass
+                    # 2) 부족하면 전체 DB 보조 검색
+                    if len(rows) < 3:
+                        extra = _tool_search_pro_sections(db_conn, query, _tt_for_tools, limit=6 - len(rows))
+                        for r in extra:
+                            if r.get("announcement_id") not in [x.get("announcement_id") for x in rows]:
+                                rows.append(r)
                     return {"count": len(rows), "results": rows}
+
                 elif name == "get_announcement_detail":
                     return _tool_get_announcement_detail(db_conn, int(args.get("announcement_id", 0)))
+
+                elif name == "analyze_announcement":
+                    return _analyze_announcement_realtime(int(args.get("announcement_id", 0)))
+
                 elif name == "search_knowledge_base":
                     rows = _tool_search_knowledge_base(db_conn, args.get("query", ""), limit=4)
                     return {"count": len(rows), "results": rows}
+
                 elif name == "check_eligibility":
-                    _p = {}
-                    cp = selected_client or {}
-                    if cp:
-                        _p["region"] = cp.get("address_city")
-                        _p["industry"] = cp.get("industry_code")
-                        rb = (cp.get("revenue_bracket") or "").strip()
-                        if "억" in rb:
-                            try:
-                                nums = [int(x) for x in re.findall(r"\d+", rb)]
-                                if nums: _p["revenue_won"] = int(nums[0]) * 100_000_000
-                            except Exception: pass
-                        eb = (cp.get("employee_count_bracket") or "").strip()
-                        try:
-                            nums = [int(x) for x in re.findall(r"\d+", eb)]
-                            if nums: _p["employees"] = nums[0]
-                        except Exception: pass
-                        est = cp.get("establishment_date")
-                        if est:
-                            try:
-                                from datetime import datetime as _dt
-                                dt = _dt.strptime(str(est)[:10], "%Y-%m-%d")
-                                _p["business_years"] = (_dt.now() - dt).days // 365
-                            except Exception: pass
+                    _p = _build_client_profile()
                     return _tool_check_eligibility(db_conn, int(args.get("announcement_id", 0)), _p)
+
                 return {}
 
             PRO_TOOLS = [
-                {"type": "function", "function": {"name": "search_pro_sections", "description": "매칭된 공고의 섹션(자격요건·서류·신청방법) DB 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
-                {"type": "function", "function": {"name": "get_announcement_detail", "description": "특정 공고 상세 조회", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer"}}, "required": ["announcement_id"]}}},
-                {"type": "function", "function": {"name": "search_knowledge_base", "description": "FAQ·실무 팁 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
-                {"type": "function", "function": {"name": "check_eligibility", "description": "고객 프로필과 공고 자격 대조 판정", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer"}}, "required": ["announcement_id"]}}},
+                {"type": "function", "function": {"name": "get_matched_summary", "description": "매칭된 공고 전체 목록과 요약 조회 (첫 질문 시 반드시 호출)", "parameters": {"type": "object", "properties": {}, "required": []}}},
+                {"type": "function", "function": {"name": "get_announcement_detail", "description": "특정 공고 상세 조회 (자격/서류/절차 포함)", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer", "description": "공고 ID"}}, "required": ["announcement_id"]}}},
+                {"type": "function", "function": {"name": "check_eligibility", "description": "고객 프로필과 공고 자격 자동 대조 판정 (해당/미해당/불확실)", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer", "description": "판정할 공고 ID"}}, "required": ["announcement_id"]}}},
+                {"type": "function", "function": {"name": "analyze_announcement", "description": "공고 원문 실시간 재분석 (상세정보 부족 시 호출)", "parameters": {"type": "object", "properties": {"announcement_id": {"type": "integer", "description": "재분석할 공고 ID"}}, "required": ["announcement_id"]}}},
+                {"type": "function", "function": {"name": "search_pro_sections", "description": "공고 섹션(자격요건·서류·신청방법) DB 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "검색 키워드"}}, "required": ["query"]}}},
+                {"type": "function", "function": {"name": "search_knowledge_base", "description": "FAQ·실무 팁 검색", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "검색 키워드"}}, "required": ["query"]}}},
             ]
 
             last_user_msg_b = messages[-1].get("text", "") if messages else ""
@@ -3219,7 +3378,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                         oai_msgs.append({"role": role, "content": m.get("text", "")})
                     oai_msgs.append({"role": "user", "content": last_user_msg_b})
 
-                    for _ in range(4):
+                    for _loop in range(6):  # 도구 6회까지 허용 (재분석 포함)
                         resp = client.chat.completions.create(
                             model="gpt-4o-mini", messages=oai_msgs, tools=PRO_TOOLS,
                             tool_choice="auto", max_tokens=4096, temperature=0.5,
@@ -3228,8 +3387,9 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                         if msg.tool_calls:
                             oai_msgs.append(msg)
                             for tc in msg.tool_calls:
-                                result = _exec_pro_tool(tc.function.name, json.loads(tc.function.arguments))
-                                oai_msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result, ensure_ascii=False)[:3000]})
+                                tool_result = _exec_pro_tool(tc.function.name, json.loads(tc.function.arguments))
+                                oai_msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(tool_result, ensure_ascii=False)[:4000]})
+                                logger.info(f"[PRO Mode B] tool={tc.function.name}, result_len={len(json.dumps(tool_result, ensure_ascii=False))}")
                         else:
                             reply_b = msg.content or ""
                             break
@@ -3242,18 +3402,21 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
             # ── 2차: Gemini 폴백 ──
             if not reply_b:
                 genai.configure(api_key=api_key)
+                def get_matched_summary() -> dict:
+                    return _exec_pro_tool("get_matched_summary", {})
                 def search_pro_sections(query: str) -> dict:
-                    rows = _tool_search_pro_sections(db_conn, query, _tt_for_tools, limit=6)
-                    return {"count": len(rows), "results": rows}
+                    return _exec_pro_tool("search_pro_sections", {"query": query})
                 def get_announcement_detail(announcement_id: int) -> dict:
                     return _tool_get_announcement_detail(db_conn, int(announcement_id))
+                def analyze_announcement(announcement_id: int) -> dict:
+                    return _analyze_announcement_realtime(int(announcement_id))
                 def search_knowledge_base(query: str) -> dict:
                     rows = _tool_search_knowledge_base(db_conn, query, limit=4)
                     return {"count": len(rows), "results": rows}
                 def check_eligibility(announcement_id: int) -> dict:
                     return _exec_pro_tool("check_eligibility", {"announcement_id": announcement_id})
 
-                tools_b = [search_pro_sections, get_announcement_detail, search_knowledge_base, check_eligibility]
+                tools_b = [get_matched_summary, search_pro_sections, get_announcement_detail, analyze_announcement, search_knowledge_base, check_eligibility]
                 model_b = genai.GenerativeModel("models/gemini-2.0-flash", tools=tools_b,
                     system_instruction=tool_prompt_full, generation_config={"max_output_tokens": 4096, "temperature": 0.5})
                 chat_b = model_b.start_chat(enable_automatic_function_calling=True)
@@ -3262,6 +3425,7 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
                 reply_b, parsed_choices_b = _parse_choices_marker(reply_b)
                 reply_b = _remove_tool_code_leaks(reply_b)
 
+            logger.info(f"[PRO Mode B] reply_len={len(reply_b)}, choices={len(parsed_choices_b)}")
             return {
                 "reply": reply_b,
                 "choices": parsed_choices_b,

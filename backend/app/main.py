@@ -3559,10 +3559,13 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 cur = db.cursor()
                 # P0.3: messages 전체도 저장 (assistant 응답 포함)
                 full_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
-                # B/D: phase 계산 (result의 done=true이거나 matching이 실행됐으면 consulting)
+                # B/D: phase 계산 — result에서 반환된 phase 우선, 없으면 done/match 기반 판정
                 new_phase = session_state.get("phase", "collecting")
-                if result.get("done") or (req.explicit_match):
+                if result.get("phase") == "consulting":
                     new_phase = "consulting"
+                elif result.get("done") or (req.explicit_match):
+                    new_phase = "consulting"
+                print(f"[PRO chat] phase update: {session_state.get('phase')} → {new_phase}, done={result.get('done')}, mode_b={result.get('mode_b_debug', {}).get('tool_calling_entered')}")
                 cur.execute(
                     """UPDATE pro_consult_sessions
                        SET current_step = %s,
@@ -3643,9 +3646,9 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                     if m.get('match_score'):
                         lines.append(f"   ⭐ 적합도: {m['match_score']}점")
                     lines.append("")
-                lines.append(f"\n총 {len(matched_announcements)}건이 매칭되었습니다. 보고서를 생성하시겠습니까?")
+                lines.append(f"\n총 **{len(matched_announcements)}건**이 매칭되었습니다. 궁금하신 공고에 대해 자격 여부, 서류, 절차 등을 바로 상담해 드리겠습니다.")
                 result["reply"] = (result.get("reply", "") + "\n\n" + "\n".join(lines)).strip()
-                result["choices"] = ["보고서 생성", "특정 공고 자세히 보기", "조건 변경 후 재매칭"]
+                result["choices"] = ["1순위 공고 자격 확인해줘", "전체 공고 서류 목록 알려줘", "조건 변경 후 재매칭"]
 
             # 학습 사이클: 상담 종료(done=true) 시 AI가 대화에서 지식 추출 → knowledge_base 저장
             if result.get("done") and req.messages and len(req.messages) >= 4:

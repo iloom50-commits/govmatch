@@ -1577,26 +1577,6 @@ def _set_cache(key: str, data):
 
 
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
-@app.get("/api/announcements/{announcement_id}")
-def api_announcement_by_id(announcement_id: int):
-    """공고 상세 — SEO 페이지용 (인증 불필요)"""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT announcement_id, title, department, category, region, target_type,
-                   support_amount, deadline_date, summary_text, origin_url, final_url,
-                   eligibility_logic, origin_source
-            FROM announcements WHERE announcement_id = %s
-        """, (announcement_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Not found")
-        return {"status": "SUCCESS", "data": dict(row)}
-    finally:
-        conn.close()
-
-
 @app.get("/api/announcements/public")
 def api_announcements_public(
     request: Request,
@@ -11123,6 +11103,26 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
             )
         rows = cur.fetchall()
         return {"status": "SUCCESS", "data": [dict(r) for r in rows], "total": len(rows)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/announcements/{announcement_id}")
+def api_announcement_by_id(announcement_id: int):
+    """공고 상세 — SEO 페이지용 (인증 불필요)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT announcement_id, title, department, category, region, target_type,
+                   support_amount, deadline_date, summary_text, origin_url, final_url,
+                   eligibility_logic, origin_source
+            FROM announcements WHERE announcement_id = %s
+        """, (announcement_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        return {"status": "SUCCESS", "data": dict(row)}
     finally:
         conn.close()
 

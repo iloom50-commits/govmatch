@@ -609,9 +609,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .catch(() => setSmartLoading(false));
   }, [activeTab]);
 
-  // 로그인 사용자도 전체 공고 페이지네이션을 위해 서버 데이터 로드
+  // 모든 사용자 서버 데이터 로드 (맞춤 탭 제외)
   useEffect(() => {
-    if (!usePublicData && activeTab === "all" && currentPage === 1) return;
+    if (activeTab === "smart") return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
     const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
@@ -1512,11 +1512,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
             <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden ${activeTab === "smart" ? "hidden" : ""}`}>
               {(() => {
-                // 1페이지: 맞춤 결과 (로그인 사용자) 또는 서버 공고 (비로그인)
-                // 2페이지+: 서버 공고
-                if (!usePublicData && currentPage === 1) {
-                  return filteredMatches.slice(0, ITEMS_PER_PAGE);
-                }
+                // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
                 if (publicData.length > 0) {
                   return publicData;
                 }

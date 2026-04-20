@@ -225,6 +225,40 @@ def auto_improve(db_conn, metrics: Dict, quality: Dict, learning: Dict) -> list:
     if learning.get("extraction_today", 0) == 0 and metrics.get("total_consults_today", 0) > 5:
         actions.append("상담 5건 이상인데 학습 추출 0건 — 학습 파이프라인 점검 필요")
 
+    # 4. 30일+ 미활용 저신뢰 지식 자동 정리
+    #    (daily_pipeline propagate_learning이 DELETE하지만, 여기서도 보조 실행 — 수동 트리거 대비)
+    try:
+        cur.execute("""
+            DELETE FROM knowledge_base
+            WHERE confidence < 0.3
+              AND use_count = 0
+              AND created_at < CURRENT_DATE - INTERVAL '30 days'
+        """)
+        removed = cur.rowcount or 0
+        if removed > 0:
+            db_conn.commit()
+            actions.append(f"미활용 저품질 지식 {removed}건 정리")
+    except Exception as e:
+        logger.warning(f"[Supervisor] KB cleanup error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    # 5. 최근 7일 저품질 상담 샘플 수 집계 → 재검토 요청
+    try:
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM orchestrator_reviews
+            WHERE needs_review = TRUE
+              AND review_date >= CURRENT_DATE - INTERVAL '7 days'
+        """)
+        row = cur.fetchone()
+        low_cnt = row["cnt"] if row else 0
+        if low_cnt >= 5:
+            actions.append(f"7일간 5점 미만 상담 {low_cnt}건 — orchestrator_reviews 재검토 필요")
+    except Exception as e:
+        logger.warning(f"[Supervisor] review count error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
     return actions
 
 

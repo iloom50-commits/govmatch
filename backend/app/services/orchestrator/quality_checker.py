@@ -8,6 +8,35 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 
+def _ensure_reviews_table(db_conn) -> None:
+    """orchestrator_reviews 테이블이 없으면 자동 생성 (init.sql 미적용 환경 대비)."""
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS orchestrator_reviews (
+                id SERIAL PRIMARY KEY,
+                review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                agent VARCHAR(40) NOT NULL,
+                consult_log_id INTEGER,
+                accuracy FLOAT,
+                completeness FLOAT,
+                usefulness FLOAT,
+                avg_score FLOAT,
+                issue TEXT,
+                needs_review BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_date ON orchestrator_reviews(review_date DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_agent ON orchestrator_reviews(agent)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_needs ON orchestrator_reviews(needs_review) WHERE needs_review = TRUE")
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[QualityChecker] Table ensure error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+
 def check_agent_quality(db_conn, samples_per_agent: int = 3) -> Dict[str, Any]:
     """에이전트별 최근 상담을 샘플링하여 Gemini로 품질 평가.
 
@@ -18,6 +47,8 @@ def check_agent_quality(db_conn, samples_per_agent: int = 3) -> Dict[str, Any]:
     }
     """
     result: Dict[str, Any] = {"agent_scores": {}, "low_quality_samples": [], "summary": ""}
+
+    _ensure_reviews_table(db_conn)
 
     try:
         cur = db_conn.cursor()
@@ -101,19 +132,37 @@ JSON 형식으로 응답:
             try:
                 resp = model.generate_content(prompt)
                 scores = json.loads(resp.text)
-                avg = scores.get("avg", 0)
+                avg = float(scores.get("avg", 0) or 0)
+                accuracy = float(scores.get("accuracy", 0) or 0)
+                completeness = float(scores.get("completeness", 0) or 0)
+                usefulness = float(scores.get("usefulness", 0) or 0)
+                issue = scores.get("issue", "")[:500] if scores.get("issue") else None
 
                 if agent not in agent_scores:
                     agent_scores[agent] = []
                 agent_scores[agent].append(avg)
 
-                if avg < 5:
+                low_flag = avg < 5
+                if low_flag:
                     result["low_quality_samples"].append({
                         "log_id": sample.get("id"),
                         "agent": agent,
                         "score": avg,
-                        "issue": scores.get("issue", ""),
+                        "issue": issue or "",
                     })
+
+                # DB 저장 — 매 평가 기록
+                try:
+                    cur.execute("""
+                        INSERT INTO orchestrator_reviews
+                            (agent, consult_log_id, accuracy, completeness, usefulness, avg_score, issue, needs_review)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (agent[:40], sample.get("id"), accuracy, completeness, usefulness, avg, issue, low_flag))
+                    db_conn.commit()
+                except Exception as ins_err:
+                    logger.warning(f"[QualityChecker] Insert review error: {ins_err}")
+                    try: db_conn.rollback()
+                    except Exception: pass
             except Exception:
                 continue
 

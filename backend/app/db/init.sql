@@ -287,3 +287,22 @@ CREATE TABLE IF NOT EXISTS client_reports (
 
 CREATE INDEX IF NOT EXISTS idx_report_client ON client_reports(client_profile_id);
 CREATE INDEX IF NOT EXISTS idx_report_owner ON client_reports(owner_business_number);
+
+-- 15. 오케스트레이터 품질 리뷰 (COO가 에이전트별 상담 샘플 Gemini 평가 결과)
+CREATE TABLE IF NOT EXISTS orchestrator_reviews (
+    id SERIAL PRIMARY KEY,
+    review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    agent VARCHAR(40) NOT NULL,                -- lite_business_fund | lite_individual_fund | announce_consult | pro_biz | pro_indiv
+    consult_log_id INTEGER,                    -- ai_consult_logs.id (FK 없음 — 샘플링용)
+    accuracy FLOAT,                            -- 0~10
+    completeness FLOAT,                        -- 0~10
+    usefulness FLOAT,                          -- 0~10
+    avg_score FLOAT,                           -- 0~10
+    issue TEXT,                                -- Gemini가 지적한 문제점 한줄
+    needs_review BOOLEAN DEFAULT FALSE,        -- 평균 5점 미만 플래그
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_orch_review_date ON orchestrator_reviews(review_date DESC);
+CREATE INDEX IF NOT EXISTS idx_orch_review_agent ON orchestrator_reviews(agent);
+CREATE INDEX IF NOT EXISTS idx_orch_review_needs ON orchestrator_reviews(needs_review) WHERE needs_review = TRUE;

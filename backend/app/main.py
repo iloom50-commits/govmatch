@@ -5243,6 +5243,46 @@ def api_seed_interest_tags(req: AdminAuthRequest):
     }
 
 
+@app.post("/api/admin/coo/run")
+def api_coo_run(req: AdminAuthRequest):
+    """관리자: 오케스트레이터 AI 슈퍼바이저 수동 실행 — 즉시 품질체크/학습감시/보고서 발송."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    from app.services.orchestrator.supervisor import run_daily_supervision
+    conn = get_db_connection()
+    try:
+        result = run_daily_supervision(conn)
+    finally:
+        conn.close()
+    return {"status": "SUCCESS", **result}
+
+
+@app.get("/api/admin/coo/reviews")
+def api_coo_reviews(password: str, limit: int = 30):
+    """관리자: 최근 저품질 상담 리뷰 목록 조회 (orchestrator_reviews)."""
+    if password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, review_date, agent, consult_log_id,
+                   accuracy, completeness, usefulness, avg_score,
+                   issue, needs_review, created_at
+            FROM orchestrator_reviews
+            ORDER BY review_date DESC, created_at DESC
+            LIMIT %s
+        """, (max(1, min(limit, 200)),))
+        rows = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "reviews": rows, "count": len(rows)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"조회 실패: {str(e)[:200]}")
+    finally:
+        conn.close()
+
+
 class SuggestTagsRequest(BaseModel):
     text: str
     user_type: Optional[str] = "both"

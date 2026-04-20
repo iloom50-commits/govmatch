@@ -4,6 +4,7 @@ import os
 import json
 import logging
 import smtplib
+import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, Any
@@ -31,6 +32,14 @@ def generate_and_send_report(
 
     # ── 2. 이메일 발송 ──
     sent = _send_email_report(report_text)
+
+    # ── 2-2. 카카오 발송 (사장님 나에게 보내기) ──
+    try:
+        kakao_ok = _send_kakao_report(db_conn, report_text)
+        if kakao_ok:
+            logger.info("[Reporter] Kakao report sent to owner")
+    except Exception as e:
+        logger.warning(f"[Reporter] Kakao send skipped: {e}")
 
     # ── 3. DB에 보고서 저장 ──
     try:
@@ -183,4 +192,105 @@ def _send_email_report(report_text: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"[Reporter] Email send error: {e}")
+        return False
+
+
+def _send_kakao_report(db_conn, report_text: str) -> bool:
+    """사장님 카카오 '나에게 보내기'로 보고서 요약 발송.
+
+    - OWNER_EMAIL로 users에서 business_number + kakao_refresh_token 조회
+    - 텍스트 템플릿(최대 200자) + 이메일 상세 안내 버튼
+    """
+    kakao_client_id = os.getenv("KAKAO_CLIENT_ID", "")
+    if not kakao_client_id:
+        return False
+
+    # OWNER 계정의 refresh_token 찾기 (email 기준)
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT business_number, kakao_refresh_token
+            FROM users
+            WHERE email = %s AND kakao_refresh_token IS NOT NULL AND kakao_refresh_token != ''
+            LIMIT 1
+        """, (OWNER_EMAIL,))
+        row = cur.fetchone()
+        if not row or not row.get("kakao_refresh_token"):
+            logger.info("[Reporter] OWNER kakao_refresh_token 없음 — 카카오 발송 건너뜀")
+            return False
+        refresh_token = row["kakao_refresh_token"]
+        owner_bn = row["business_number"]
+    except Exception as e:
+        logger.warning(f"[Reporter] Owner lookup error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+        return False
+
+    # 메시지 요약 (200자 제한 — text 템플릿은 description 200자)
+    today = datetime.now().strftime("%m/%d")
+    # 보고서에서 첫 5줄 또는 180자 추출
+    summary_lines = report_text.split("\n")[:8]
+    summary = "\n".join(summary_lines)[:180]
+
+    kakao_client_secret = os.getenv("KAKAO_CLIENT_SECRET", "")
+    app_url = os.getenv("FRONTEND_URL", "https://govmatch.kr")
+
+    async def _do_send():
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # 1. refresh_token → access_token
+            token_res = await client.post("https://kauth.kakao.com/oauth/token", data={
+                "grant_type": "refresh_token",
+                "client_id": kakao_client_id,
+                "client_secret": kakao_client_secret,
+                "refresh_token": refresh_token,
+            })
+            token_data = token_res.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                logger.warning(f"[Reporter] Kakao token refresh 실패: {token_data}")
+                return False
+
+            # refresh_token 갱신 저장
+            new_refresh = token_data.get("refresh_token")
+            if new_refresh and owner_bn:
+                try:
+                    cur2 = db_conn.cursor()
+                    cur2.execute("UPDATE users SET kakao_refresh_token = %s WHERE business_number = %s",
+                                 (new_refresh, owner_bn))
+                    db_conn.commit()
+                except Exception:
+                    try: db_conn.rollback()
+                    except Exception: pass
+
+            # 2. 나에게 보내기 (text 템플릿)
+            msg_res = await client.post(
+                "https://kapi.kakao.com/v2/api/talk/memo/default/send",
+                headers={"Authorization": f"Bearer {access_token}"},
+                data={"template_object": json.dumps({
+                    "object_type": "text",
+                    "text": f"[COO {today}]\n{summary}",
+                    "link": {"web_url": app_url, "mobile_web_url": app_url},
+                    "button_title": "전체 보고서 보기",
+                }, ensure_ascii=False)},
+            )
+            result = msg_res.json()
+            return result.get("result_code") == 0
+
+    try:
+        # sync 컨텍스트에서 async 호출
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 이미 event loop 안이면 새 loop 생성
+                new_loop = asyncio.new_event_loop()
+                try:
+                    return new_loop.run_until_complete(_do_send())
+                finally:
+                    new_loop.close()
+            return loop.run_until_complete(_do_send())
+        except RuntimeError:
+            return asyncio.run(_do_send())
+    except Exception as e:
+        logger.warning(f"[Reporter] Kakao send error: {e}")
         return False

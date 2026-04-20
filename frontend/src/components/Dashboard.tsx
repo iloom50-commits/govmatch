@@ -156,12 +156,11 @@ const EMPLOYEE_KR: Record<string, string> = {
   "5ì¸~10ì¸": "5~10인",
 };
 
-// 🔴 실시간 통계 카운터 — 히어로 영역
+// 🔴 실시간 통계 카운터 — 히어로 영역 (공고/매칭/상담)
 function LiveStatsBar() {
   const API = process.env.NEXT_PUBLIC_API_URL || "";
-  const [stats, setStats] = useState<{ announcements: number; matches: number; consultations: number; companies: number } | null>(null);
-  // CountUp 애니메이션 상태
-  const [animated, setAnimated] = useState({ announcements: 0, matches: 0, consultations: 0, companies: 0 });
+  const [stats, setStats] = useState<{ announcements: number; matches: number; consultations: number } | null>(null);
+  const [animated, setAnimated] = useState({ announcements: 0, matches: 0, consultations: 0 });
 
   useEffect(() => {
     let active = true;
@@ -171,55 +170,44 @@ function LiveStatsBar() {
         if (!r.ok) return;
         const d = await r.json();
         if (!active) return;
-        setStats(d);
+        setStats({ announcements: d.announcements, matches: d.matches, consultations: d.consultations });
       } catch {}
     };
     fetchStats();
-    const iv = setInterval(fetchStats, 30000); // 30초 주기
+    const iv = setInterval(fetchStats, 30000);
     return () => { active = false; clearInterval(iv); };
   }, [API]);
 
-  // CountUp: 0 → 목표값까지 1.2초간 증가
   useEffect(() => {
     if (!stats) return;
     const duration = 1200;
     const startTime = Date.now();
     const from = { ...animated };
-    const to = {
-      announcements: stats.announcements,
-      matches: stats.matches,
-      consultations: stats.consultations,
-      companies: stats.companies,
-    };
     let raf: number;
     const tick = () => {
-      const elapsed = Date.now() - startTime;
-      const p = Math.min(1, elapsed / duration);
-      // easeOutCubic
+      const p = Math.min(1, (Date.now() - startTime) / duration);
       const ease = 1 - Math.pow(1 - p, 3);
       setAnimated({
-        announcements: Math.floor(from.announcements + (to.announcements - from.announcements) * ease),
-        matches: Math.floor(from.matches + (to.matches - from.matches) * ease),
-        consultations: Math.floor(from.consultations + (to.consultations - from.consultations) * ease),
-        companies: Math.floor(from.companies + (to.companies - from.companies) * ease),
+        announcements: Math.floor(from.announcements + (stats.announcements - from.announcements) * ease),
+        matches: Math.floor(from.matches + (stats.matches - from.matches) * ease),
+        consultations: Math.floor(from.consultations + (stats.consultations - from.consultations) * ease),
       });
       if (p < 1) raf = requestAnimationFrame(tick);
-      else setAnimated(to);
+      else setAnimated(stats);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats?.announcements, stats?.matches, stats?.consultations, stats?.companies]);
+  }, [stats?.announcements, stats?.matches, stats?.consultations]);
 
   const items = [
     { icon: "📋", label: "분석 공고",   value: animated.announcements, color: "from-indigo-500 to-violet-500" },
     { icon: "🎯", label: "매칭 성공",   value: animated.matches,       color: "from-emerald-500 to-teal-500" },
     { icon: "💬", label: "AI 상담",     value: animated.consultations, color: "from-amber-500 to-orange-500" },
-    { icon: "🏢", label: "가입 기업",   value: animated.companies,     color: "from-rose-500 to-pink-500" },
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
       {items.map((it) => (
         <div key={it.label} className="relative overflow-hidden rounded-lg bg-white/70 backdrop-blur-sm border border-slate-200/60 px-2 py-2 sm:px-3 sm:py-2.5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center gap-1.5">

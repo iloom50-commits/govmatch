@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "";
+
 const MESSAGES = [
   { title: "AI가 구석구석 모든 지원금을 찾고 있어요", sub: "수만 건의 지원금 공고를 살펴보는 중..." },
   { title: "나에게 딱 맞는 지원금 찾는 중", sub: "조건에 맞는 공고를 골라내고 있어요" },
@@ -9,14 +11,11 @@ const MESSAGES = [
   { title: "조금만 더 기다려주세요", sub: "최적의 공고를 선별하고 있어요" },
 ];
 
-const HIGHLIGHTS = [
-  { num: "17,000+", label: "정부 지원금 공고", desc: "실시간 분석" },
-  { num: "AI", label: "자동 매칭", desc: "내 조건에 딱 맞게" },
-  { num: "24/7", label: "새 공고 알림", desc: "놓치지 않게" },
-];
-
 export default function SkeletonLoader() {
   const [msgIdx, setMsgIdx] = useState(0);
+  // 🔴 실시간 통계 (로딩 중에도 동적으로 표시)
+  const [stats, setStats] = useState<{ announcements: number; matches: number; consultations: number } | null>(null);
+  const [animated, setAnimated] = useState({ announcements: 0, matches: 0, consultations: 0 });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -25,7 +24,53 @@ export default function SkeletonLoader() {
     return () => clearInterval(timer);
   }, []);
 
+  // 실시간 통계 fetch (30초 주기)
+  useEffect(() => {
+    let active = true;
+    const fetchStats = async () => {
+      try {
+        const r = await fetch(`${API}/api/stats/live`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!active) return;
+        setStats({ announcements: d.announcements, matches: d.matches, consultations: d.consultations });
+      } catch {}
+    };
+    fetchStats();
+    const iv = setInterval(fetchStats, 30000);
+    return () => { active = false; clearInterval(iv); };
+  }, []);
+
+  // CountUp 애니메이션
+  useEffect(() => {
+    if (!stats) return;
+    const duration = 1200;
+    const t0 = Date.now();
+    const from = { ...animated };
+    let raf: number;
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - t0) / duration);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setAnimated({
+        announcements: Math.floor(from.announcements + (stats.announcements - from.announcements) * ease),
+        matches: Math.floor(from.matches + (stats.matches - from.matches) * ease),
+        consultations: Math.floor(from.consultations + (stats.consultations - from.consultations) * ease),
+      });
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else setAnimated(stats);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats?.announcements, stats?.matches, stats?.consultations]);
+
   const { title, sub } = MESSAGES[msgIdx];
+
+  const HIGHLIGHTS = [
+    { num: stats ? animated.announcements.toLocaleString() : "—", label: "분석 공고", desc: "정부 지원금" },
+    { num: stats ? animated.matches.toLocaleString() : "—",      label: "매칭 성공", desc: "실시간 증가" },
+    { num: stats ? animated.consultations.toLocaleString() : "—", label: "AI 상담",   desc: "오늘도 진행 중" },
+  ];
 
   return (
     <div className="w-full max-w-md p-8 bg-white rounded-[2rem] shadow-2xl border border-indigo-50 animate-in fade-in zoom-in duration-500">

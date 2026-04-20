@@ -207,7 +207,10 @@ function LiveStatsBar() {
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+    <div
+      className="grid grid-cols-3 gap-1.5 sm:gap-2"
+      style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+    >
       {items.map((it) => (
         <div key={it.label} className="relative overflow-hidden rounded-lg bg-white/70 backdrop-blur-sm border border-slate-200/60 px-2 py-2 sm:px-3 sm:py-2.5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center gap-1.5">
@@ -1301,6 +1304,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
+          <header className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex items-baseline gap-1.5 sm:gap-3 flex-wrap">
+                <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+                <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
+                  전국 모든 지원금
+                </span>
+              </h2>
               {/* 지원금AI 설치 */}
               {!isPwaInstalled && (
                 <button
@@ -1308,22 +1323,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     if (deferredPrompt) handlePwaInstall();
                     else setShowInstallGuide(true);
                   }}
-                  className="ml-auto flex items-center justify-center gap-1.5 py-2 px-4 text-[13px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none"
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none flex-shrink-0"
                 >
-                  <span className="text-[13px]">⬇️</span><span>지원금AI 설치</span>
+                  <span className="text-[12px]">⬇️</span><span>지원금AI 설치</span>
                 </button>
               )}
             </div>
-          </div>
-
-          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
-          <header className="space-y-3">
-            <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex flex-wrap items-baseline gap-1.5 sm:gap-3">
-              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
-              <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                AI가 구석구석 모든 지원금을 찾아서 알려 드립니다
-              </span>
-            </h2>
 
             {/* 🔴 실시간 통계 카운터 바 */}
             <LiveStatsBar />

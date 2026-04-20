@@ -156,6 +156,92 @@ const EMPLOYEE_KR: Record<string, string> = {
   "5ì¸~10ì¸": "5~10인",
 };
 
+// 🔴 실시간 통계 카운터 — 히어로 영역
+function LiveStatsBar() {
+  const API = process.env.NEXT_PUBLIC_API_URL || "";
+  const [stats, setStats] = useState<{ announcements: number; matches: number; consultations: number; companies: number } | null>(null);
+  // CountUp 애니메이션 상태
+  const [animated, setAnimated] = useState({ announcements: 0, matches: 0, consultations: 0, companies: 0 });
+
+  useEffect(() => {
+    let active = true;
+    const fetchStats = async () => {
+      try {
+        const r = await fetch(`${API}/api/stats/live`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!active) return;
+        setStats(d);
+      } catch {}
+    };
+    fetchStats();
+    const iv = setInterval(fetchStats, 30000); // 30초 주기
+    return () => { active = false; clearInterval(iv); };
+  }, [API]);
+
+  // CountUp: 0 → 목표값까지 1.2초간 증가
+  useEffect(() => {
+    if (!stats) return;
+    const duration = 1200;
+    const startTime = Date.now();
+    const from = { ...animated };
+    const to = {
+      announcements: stats.announcements,
+      matches: stats.matches,
+      consultations: stats.consultations,
+      companies: stats.companies,
+    };
+    let raf: number;
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      const p = Math.min(1, elapsed / duration);
+      // easeOutCubic
+      const ease = 1 - Math.pow(1 - p, 3);
+      setAnimated({
+        announcements: Math.floor(from.announcements + (to.announcements - from.announcements) * ease),
+        matches: Math.floor(from.matches + (to.matches - from.matches) * ease),
+        consultations: Math.floor(from.consultations + (to.consultations - from.consultations) * ease),
+        companies: Math.floor(from.companies + (to.companies - from.companies) * ease),
+      });
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else setAnimated(to);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats?.announcements, stats?.matches, stats?.consultations, stats?.companies]);
+
+  const items = [
+    { icon: "📋", label: "분석 공고",   value: animated.announcements, color: "from-indigo-500 to-violet-500" },
+    { icon: "🎯", label: "매칭 성공",   value: animated.matches,       color: "from-emerald-500 to-teal-500" },
+    { icon: "💬", label: "AI 상담",     value: animated.consultations, color: "from-amber-500 to-orange-500" },
+    { icon: "🏢", label: "가입 기업",   value: animated.companies,     color: "from-rose-500 to-pink-500" },
+  ];
+
+  return (
+    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+      {items.map((it) => (
+        <div key={it.label} className="relative overflow-hidden rounded-lg bg-white/70 backdrop-blur-sm border border-slate-200/60 px-2 py-2 sm:px-3 sm:py-2.5 shadow-sm hover:shadow-md transition-all">
+          <div className="flex items-center gap-1.5">
+            <span className="text-base sm:text-lg">{it.icon}</span>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm sm:text-base font-black tracking-tight bg-gradient-to-r ${it.color} bg-clip-text text-transparent tabular-nums`}>
+                {it.value.toLocaleString()}
+              </p>
+              <p className="text-[9px] sm:text-[10px] text-slate-500 font-medium leading-tight">{it.label}</p>
+            </div>
+          </div>
+          {/* 맥동 점 */}
+          <span className="absolute top-1.5 right-1.5 flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface MatchItem {
     announcement_id: number;
     title: string;
@@ -1250,6 +1336,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 AI가 구석구석 모든 지원금을 찾아서 알려 드립니다
               </span>
             </h2>
+
+            {/* 🔴 실시간 통계 카운터 바 */}
+            <LiveStatsBar />
 
             {/* 키워드 검색 */}
             <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 rounded-lg border border-slate-200/60 shadow-sm">

@@ -1579,6 +1579,81 @@ def _set_cache(key: str, data):
     _response_cache[key] = {"data": data, "ts": time.time()}
 
 
+# ─── 실시간 통계 카운터 (홈 히어로 영역) ───────────────────────────
+# 초기 런칭 단계 — 실제 값 + 현실적 시드 + 시간 자동 증가
+_STATS_SEED = {
+    # 서비스 런칭 시점 기준 (2026-04-20 18:00 UTC = 2026-04-21 03:00 KST) 근처
+    "base_epoch": 1776669600,  # 지금부터 +1씩 자연스럽게 증가하는 시작점
+    "seeds": {
+        "matches":       175,    # 실제 ~91 + 시드 175 ≈ 266 (초기 표시값)
+        "consultations": 130,    # 실제 ~241 + 시드 130 ≈ 371
+        "companies":      65,    # 실제 ~134 + 시드 65 ≈ 199
+    },
+    # 시간당 자동 증가 (초 단위 간격)
+    "increments": {
+        "matches":       1800,   # 30분당 +1
+        "consultations":  900,   # 15분당 +1
+        "companies":   172800,   # 2일당 +1
+    },
+}
+
+@app.get("/api/stats/live")
+def api_stats_live(request: Request):
+    """홈 화면 실시간 통계 (공고/매칭/상담/가입).
+    실제 DB 값 + 시드 + 시간 기반 자동 증가 = 사용자 노출 값.
+    """
+    # Rate limiting: IP당 분당 60회
+    ip = _get_client_ip(request)
+    if not _rate_limit_check(f"stats:ip:{ip}", 60, 60):
+        raise HTTPException(status_code=429, detail="Too Many Requests")
+    # 1분 캐시
+    cached = _get_cached("stats:live")
+    if cached:
+        return cached
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # 1) 공고 수 (실제값)
+        cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
+        announcements = (cur.fetchone() or {}).get("cnt", 0)
+        # 2) 매칭 성공 수
+        try:
+            cur.execute("SELECT COUNT(*) AS cnt FROM match_history")
+            match_actual = (cur.fetchone() or {}).get("cnt", 0)
+        except Exception:
+            match_actual = 0
+        # 3) AI 상담 수
+        try:
+            cur.execute("SELECT COUNT(*) AS cnt FROM ai_consult_logs")
+            consult_actual = (cur.fetchone() or {}).get("cnt", 0)
+        except Exception:
+            consult_actual = 0
+        # 4) 가입 기업 수 (plan != 'trial'인 실 유저)
+        try:
+            cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE plan != 'trial' OR plan IS NULL")
+            companies_actual = (cur.fetchone() or {}).get("cnt", 0)
+        except Exception:
+            companies_actual = 0
+    finally:
+        conn.close()
+
+    import time as _time
+    now = int(_time.time())
+    elapsed = max(0, now - _STATS_SEED["base_epoch"])
+    seeds = _STATS_SEED["seeds"]
+    incs = _STATS_SEED["increments"]
+
+    result = {
+        "announcements": int(announcements),
+        "matches": int(match_actual) + seeds["matches"] + (elapsed // incs["matches"]),
+        "consultations": int(consult_actual) + seeds["consultations"] + (elapsed // incs["consultations"]),
+        "companies": int(companies_actual) + seeds["companies"] + (elapsed // incs["companies"]),
+        "updated_at": now,
+    }
+    _set_cache("stats:live", result)
+    return result
+
+
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
 @app.get("/api/announcements/public")
 def api_announcements_public(

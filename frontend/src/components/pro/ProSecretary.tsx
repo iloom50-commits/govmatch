@@ -807,7 +807,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                     const aid = m.announcement_id || m.id;
                                     if (aid) {
                                       setActiveAnnouncementId(aid);
-                                      handleSend(`공고 ID: ${aid} — 『${m.title || m.program_title || "공고"}』에 대해 자격요건과 신청 방법을 분석해주세요.`);
+                                      handleSend(`[공고 상세 분석 보고서 요청] 『${m.title || m.program_title || "공고"}』(공고 ID: ${aid})에 대해 공고 개요, 사업 목적, 지원 내용, 신청 자격, 필수 서류, 신청 절차, 심사 기준, 일정, 제외 대상, 유의사항, 문의처를 포함한 12섹션 상세 보고서를 작성해주세요.`);
                                     }
                                   }}
                                   className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>

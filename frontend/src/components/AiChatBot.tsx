@@ -1793,7 +1793,7 @@ ${convHtml}
                                 {ann.deadline_date && <span>~{String(ann.deadline_date).slice(5, 10)}</span>}
                               </div>
                             </div>
-                            <span className="text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">자격 확인 →</span>
+                            <span className="text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">공고 상세 분석 →</span>
                           </div>
                           );
                         })}

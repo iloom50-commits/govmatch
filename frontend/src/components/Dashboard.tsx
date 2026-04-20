@@ -465,6 +465,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  // 브라우저 타입 — 설치 가이드 맞춤 안내용 (Samsung/Firefox/Edge/Chrome/Safari 구분)
+  type BrowserType = "samsung" | "firefox_android" | "edge_android" | "chrome_android" | "safari_ios" | "chrome_ios" | "chrome_desktop" | "edge_desktop" | "safari_desktop" | "firefox_desktop" | "other";
+  const [browserType, setBrowserType] = useState<BrowserType>("other");
   const [isInAppBrowser, setIsInAppBrowser] = useState(false); // 카톡/네이버/라인 등 인앱 브라우저
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false);
   const [androidBannerDismissed, setAndroidBannerDismissed] = useState(false);
@@ -541,6 +544,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       setIsAndroid(true);
       const dismissed = sessionStorage.getItem("android_pwa_dismissed");
       if (dismissed) setAndroidBannerDismissed(true);
+    }
+
+    // 브라우저 타입 판별 (설치 가이드 맞춤 안내용)
+    // 체크 순서 중요: SamsungBrowser/Edg/Firefox/OPR 먼저, Chrome은 마지막
+    const isAndroidUA = /Android/i.test(ua);
+    if (/SamsungBrowser/i.test(ua)) {
+      setBrowserType("samsung");
+    } else if (/EdgA/i.test(ua)) {
+      setBrowserType("edge_android");
+    } else if (/EdgiOS/i.test(ua)) {
+      setBrowserType("chrome_ios"); // iOS Edge는 Safari WebView 기반 — iOS 공유 버튼으로 안내
+    } else if (/FxiOS/i.test(ua)) {
+      setBrowserType("chrome_ios"); // iOS Firefox도 Safari WebView — iOS 공유 버튼으로 안내
+    } else if (/CriOS/i.test(ua)) {
+      setBrowserType("chrome_ios"); // iOS Chrome — Safari WebView 기반
+    } else if (isiOS) {
+      setBrowserType("safari_ios");
+    } else if (isAndroidUA && /Firefox/i.test(ua)) {
+      setBrowserType("firefox_android");
+    } else if (isAndroidUA && /Chrome/i.test(ua)) {
+      setBrowserType("chrome_android");
+    } else if (/Edg\//i.test(ua)) {
+      setBrowserType("edge_desktop");
+    } else if (/Firefox/i.test(ua)) {
+      setBrowserType("firefox_desktop");
+    } else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) {
+      setBrowserType("safari_desktop");
+    } else if (/Chrome/i.test(ua)) {
+      setBrowserType("chrome_desktop");
     }
     // 글로벌로 캡처된 프롬프트 확인 (컴포넌트 마운트 전 이벤트 대비)
     if ((window as any).__pwaPrompt) {
@@ -1769,25 +1801,140 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </>
             ) : (
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <p className="text-[11px] font-bold text-slate-700 mb-2">설치 방법</p>
-                {isIos ? (
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
-                      <span className="text-base">□↑</span>
+                <p className="text-[11px] font-bold text-slate-700 mb-2">
+                  {browserType === "samsung" && "🔸 삼성 인터넷 설치 방법"}
+                  {browserType === "chrome_android" && "🔸 Chrome 설치 방법"}
+                  {browserType === "firefox_android" && "🔸 Firefox 설치 방법"}
+                  {browserType === "edge_android" && "🔸 Edge 설치 방법"}
+                  {browserType === "safari_ios" && "🔸 Safari 설치 방법"}
+                  {browserType === "chrome_ios" && "🔸 iPhone 설치 방법"}
+                  {browserType === "chrome_desktop" && "🔸 Chrome 설치 방법"}
+                  {browserType === "edge_desktop" && "🔸 Edge 설치 방법"}
+                  {(browserType === "firefox_desktop" || browserType === "safari_desktop" || browserType === "other") && "🔸 설치 방법"}
+                </p>
+
+                {/* Samsung Internet — 하단 중앙 탭바에 ≡ 아이콘 */}
+                {browserType === "samsung" && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg shrink-0 text-lg">≡</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> 화면 <span className="font-bold text-blue-700">하단 중앙 ≡ 메뉴</span> 탭
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Safari 하단 <span className="font-bold text-indigo-600">공유 버튼(□↑)</span>을 누른 뒤<br/>
-                      <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span>를 선택하세요
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-lg shrink-0">
-                      <span className="text-base font-bold">⋮</span>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">➕</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">2단계:</span> <span className="font-bold text-emerald-700">&quot;현재 페이지 추가&quot;</span> → <span className="font-bold text-emerald-700">&quot;홈 화면&quot;</span> 선택
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Chrome 우측 상단 <span className="font-bold text-indigo-600">메뉴(⋮)</span>를 누른 뒤<br/>
-                      <span className="font-bold text-indigo-600">&quot;홈 화면에 추가&quot;</span> 또는 <span className="font-bold text-indigo-600">&quot;앱 설치&quot;</span>를 선택하세요
+                  </>
+                )}
+
+                {/* Chrome Android */}
+                {browserType === "chrome_android" && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-lg font-black">⋮</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">우측 상단 ⋮ 메뉴</span> 탭
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">📱</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">2단계:</span> <span className="font-bold text-emerald-700">&quot;앱 설치&quot;</span> 또는 <span className="font-bold text-emerald-700">&quot;홈 화면에 추가&quot;</span> 선택
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Firefox Android */}
+                {browserType === "firefox_android" && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-orange-50 border border-orange-200 rounded-lg shrink-0 text-lg font-black">⋮</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> <span className="font-bold text-orange-700">우측 하단 ⋮ 메뉴</span> 탭
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">➕</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">2단계:</span> <span className="font-bold text-emerald-700">&quot;설치&quot;</span> 또는 <span className="font-bold text-emerald-700">&quot;홈 화면에 추가&quot;</span> 선택
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Edge Android */}
+                {browserType === "edge_android" && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-sky-50 border border-sky-200 rounded-lg shrink-0 text-lg font-black">⋯</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> <span className="font-bold text-sky-700">하단 중앙 ⋯ 메뉴</span> 탭
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">📱</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">2단계:</span> <span className="font-bold text-emerald-700">&quot;앱&quot;</span> → <span className="font-bold text-emerald-700">&quot;이 사이트를 앱으로 설치&quot;</span>
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Safari iOS / Chrome·Firefox·Edge iOS (모두 Safari WebView) */}
+                {(browserType === "safari_ios" || browserType === "chrome_ios") && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-base">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      </div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">하단 공유 버튼</span> (□↑) 탭
+                        {browserType === "chrome_ios" && (
+                          <span className="block text-[10px] text-amber-700 mt-1">
+                            ⚠ iPhone은 Safari로 열어야 설치 가능합니다.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">🏠</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">2단계:</span> <span className="font-bold text-emerald-700">&quot;홈 화면에 추가&quot;</span> 선택
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Desktop Chrome / Edge */}
+                {(browserType === "chrome_desktop" || browserType === "edge_desktop") && (
+                  <>
+                    <div className="flex items-start gap-2.5 mb-2">
+                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-base">🔗</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">주소창 오른쪽</span>의 설치 아이콘 클릭
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">📲</div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                        <span className="font-black">대안:</span> <span className="font-bold text-emerald-700">⋮ 메뉴 → &quot;지원금AI 앱 설치&quot;</span>
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Desktop Safari / Firefox / 기타 — PWA 설치 제한적 */}
+                {(browserType === "firefox_desktop" || browserType === "safari_desktop" || browserType === "other") && (
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex items-center justify-center w-10 h-10 bg-amber-50 border border-amber-200 rounded-lg shrink-0 text-base">💡</div>
+                    <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
+                      이 브라우저는 PWA 설치 지원이 제한적입니다.<br/>
+                      <span className="font-bold text-indigo-700">Chrome, Edge</span> 또는 <span className="font-bold text-indigo-700">Safari(iOS)</span>에서 열면 설치 가능합니다.
                     </p>
                   </div>
                 )}

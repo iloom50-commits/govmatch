@@ -120,6 +120,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [existingClients, setExistingClients] = useState<ClientProfile[]>([]);
   const [flowState, setFlowState] = useState<FlowState>("idle");
   const [clientCategory, setClientCategory] = useState<ClientCategory>("");
+  // 상담 종류 선택 (첫 화면 2카드)
+  const [consultType, setConsultType] = useState<"matching" | "announcement" | null>(null);
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
@@ -214,11 +216,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setShowProfileForm(false);
     setActiveView("chat");
     setSessionId(null);
+    setConsultType(null);
     localStorage.removeItem("pro_session_id");
     toast("상담이 종료되었습니다", "info");
   }, [messages.length, clientCategory, toast]);
 
-  // 뒤로가기: 단계별 복귀 (상담중→유형선택→닫기)
+  // 뒤로가기: 단계별 복귀 (상담중→고객유형→상담종류→닫기)
   const handleBack = useCallback(() => {
     if (activeView !== "chat") {
       setActiveView("chat");
@@ -236,8 +239,14 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       window.history.pushState({ proDash: true }, "");
       return;
     }
+    if (consultType) {
+      // 고객 유형 선택 화면에서 뒤로 → 상담 종류 선택으로
+      setConsultType(null);
+      window.history.pushState({ proDash: true }, "");
+      return;
+    }
     onClose();
-  }, [activeView, clientCategory, messages.length, onClose]);
+  }, [activeView, clientCategory, messages.length, consultType, onClose]);
 
   useEffect(() => {
     window.history.pushState({ proDash: true }, "");
@@ -638,7 +647,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             {/* 새 상담 버튼 */}
             <div className={`p-3 border-b ${t.border}`}>
               <button
-                onClick={() => { setClientCategory(""); setMessages([]); setActiveView("chat"); setLeftOpen(false); }}
+                onClick={() => { setClientCategory(""); setMessages([]); setActiveView("chat"); setLeftOpen(false); setConsultType(null); }}
                 className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
               >
                 {Icons.plus}
@@ -717,24 +726,63 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 </div>
               )}
 
-              {/* 유형 선택 (상담 미시작) */}
-              {!clientCategory && messages.length === 0 && !showProfileForm ? (
+              {/* Step 1: 상담 종류 선택 (2카드) — consultType이 null일 때 */}
+              {!clientCategory && messages.length === 0 && !showProfileForm && !consultType ? (
+                <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
+                  <div className="max-w-2xl text-center w-full">
+                    <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
+                      <span className="text-3xl">👋</span>
+                    </div>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>어떤 상담을 도와드릴까요?</h2>
+                    <p className={`text-[13px] mb-8 ${t.muted}`}>
+                      상담 종류를 선택하시면 AI 상담이 시작됩니다.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
+                      <button
+                        onClick={() => setConsultType("matching")}
+                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"} hover:shadow-lg`}>
+                        <div className="text-4xl mb-3">🏢</div>
+                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원사업 매칭 상담</p>
+                        <p className={`text-[12px] mb-3 ${t.muted}`}>고객 정보로 맞춤 공고 찾기</p>
+                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
+                          고객 프로필 수집 → 조건에 맞는 지원사업 매칭 → 자격 요건 심화 상담
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => { setActiveView("announce_search"); }}
+                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-indigo-500/60 hover:bg-indigo-500/10` : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 bg-white"} hover:shadow-lg`}>
+                        <div className="text-4xl mb-3">📋</div>
+                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>특정 공고 상담</p>
+                        <p className={`text-[12px] mb-3 ${t.muted}`}>알고 있는 공고 분석·자격 판정</p>
+                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
+                          공고명·기관·키워드로 검색 → 12섹션 상세 보고서 → 자격 요건 질문
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : /* Step 2: 고객 유형 선택 (매칭 선택 후) */
+              !clientCategory && messages.length === 0 && !showProfileForm && consultType === "matching" ? (
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
                   <div className="max-w-md text-center">
+                    <button
+                      onClick={() => setConsultType(null)}
+                      className={`mb-4 text-[12px] font-medium flex items-center gap-1 mx-auto ${dark ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-700"}`}
+                    >
+                      ← 상담 종류 다시 선택
+                    </button>
                     <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
                       <svg className="w-8 h-8 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
                       </svg>
                     </div>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>고객 유형을 선택하면</h2>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>AI 상담이 시작됩니다.</h2>
+                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>고객 유형을 선택해 주세요</h2>
                     <p className={`text-[13px] mb-8 ${t.muted}`}>
-                      고객 정보 수집 → 맞춤 지원사업 매칭 → 자격요건 분석까지 한번에
+                      고객 정보 수집 → 맞춤 지원사업 매칭 → 자격 요건 분석
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { key: "individual_biz" as ClientCategory, label: "개인사업자", icon: "🏪", desc: "1인 사업자, 프리랜서" },
-                        { key: "corporate" as ClientCategory, label: "법인사업자", icon: "🏢", desc: "법인 기업" },
+                        { key: "corporate" as ClientCategory, label: "사업자", icon: "🏢", desc: "법인 · 개인사업자" },
                         { key: "individual" as ClientCategory, label: "개인", icon: "👤", desc: "취업·복지·주거" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
@@ -965,19 +1013,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     })()}
                   </div>
 
-                  {/* 입력 영역 — AI Secretary 스타일 */}
-                  <div className={`flex-shrink-0 border-t px-4 lg:px-6 py-3 ${t.border} ${dark ? "bg-[#0d0e1a]" : "bg-white"}`}
-                    onDragOver={(e) => { e.preventDefault(); }}
-                    onDrop={async (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
-                  >
+                  {/* 입력 영역 — AI Secretary 스타일 (자료 첨부 제거) */}
+                  <div className={`flex-shrink-0 border-t px-4 lg:px-6 py-3 ${t.border} ${dark ? "bg-[#0d0e1a]" : "bg-white"}`}>
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-colors ${
                       dark ? "bg-[#1a1c30] border-white/[0.08] focus-within:border-violet-500/40" : "bg-slate-50 border-slate-200 focus-within:border-violet-400"
-                    }`}>
-                      <label className={`p-1.5 rounded-lg cursor-pointer transition-colors flex-shrink-0 ${dark ? "text-slate-500 hover:text-violet-400 hover:bg-white/5" : "text-slate-400 hover:text-violet-600 hover:bg-violet-50"}`} title="자료 첨부">
-                        {Icons.attach}
-                        <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.gif,.mp3,.wav,.m4a,.ogg,.webm,.aac"
-                          onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
-                      </label>
+                    }`}>{/* 파일 첨부 아이콘 제거됨 (사장님 요청) */}
                       <input
                         ref={inputRef}
                         type="text"
@@ -1191,26 +1231,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             </div>
           )}
 
-          {/* 자료 첨부 */}
-          <div className={`p-4 border-b ${t.border}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>자료 첨부</p>
-            <p className={`text-[10px] mb-3 ${t.muted}`}>재무제표, 사업계획서 등을 첨부하면 AI가 분석합니다</p>
-            <label
-              className={`block w-full min-h-[100px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl cursor-pointer transition-all ${
-                dark ? "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-violet-500/30" : "border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-300"
-              }`}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={async (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) await handleFileAttach(f); }}
-            >
-              <svg className={`w-6 h-6 mb-1 ${t.muted}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-              </svg>
-              <p className={`text-[11px] font-semibold ${dark ? "text-violet-400" : "text-violet-600"}`}>파일을 드래그하거나 클릭하여 선택</p>
-              <p className={`text-[9px] mt-0.5 ${t.muted}`}>PDF · HWP · DOCX · 이미지 · 음성 (20MB)</p>
-              <input type="file" className="hidden" accept=".pdf,.hwp,.hwpx,.docx,.doc,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.gif,.mp3,.wav,.m4a,.ogg,.webm,.aac"
-                onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleFileAttach(f); e.target.value = ""; }} />
-            </label>
-          </div>
+          {/* 자료 첨부 섹션 제거 (사장님 요청 — AI 파일 파싱 품질 이슈) */}
 
           {/* 연동 서비스 — 향후 제공 */}
         </aside>
@@ -1772,14 +1793,16 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, headers, selectedAnn]);
 
-  const search = async () => {
-    if (!query.trim()) return;
+  const search = async (overrideQ?: string) => {
+    const q = (overrideQ ?? query).trim();
+    if (!q) return;
+    if (overrideQ !== undefined) setQuery(overrideQ);
     setLoading(true);
     setSelectedAnn(null);
     setAnalysisData(null);
     setShowSuggestions(false);
     try {
-      const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=20`, { headers: headers() });
+      const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(q)}&limit=20`, { headers: headers() });
       if (res.ok) {
         const data = await res.json();
         const items = data.data || data.announcements || (Array.isArray(data) ? data : []);
@@ -1789,6 +1812,15 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     } catch { toast("검색 실패", "error"); }
     setLoading(false);
   };
+
+  const QUICK_FILTERS = [
+    { emoji: "💰", label: "정책자금", q: "정책자금" },
+    { emoji: "🔬", label: "R&D", q: "R&D" },
+    { emoji: "🚀", label: "창업", q: "창업" },
+    { emoji: "🌐", label: "수출", q: "수출" },
+    { emoji: "👥", label: "고용", q: "고용" },
+    { emoji: "🏗️", label: "시설", q: "시설" },
+  ];
 
   // 자동완성 항목 클릭 → 즉시 분석
   const pickSuggestion = (ann: any) => {
@@ -1830,10 +1862,28 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             onKeyDown={(e) => { if (e.key === "Enter") { setShowSuggestions(false); search(); } }}
             placeholder="상담할 공고명을 입력하세요 (예: 청년창업)" className={inputCls} />
-          <button onClick={search} disabled={loading || !query.trim()}
+          <button onClick={() => search()} disabled={loading || !query.trim()}
             className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
             검색
           </button>
+        </div>
+
+        {/* 빠른 필터 칩 */}
+        <div className="flex flex-wrap gap-2 mt-3">
+          {QUICK_FILTERS.map(f => (
+            <button
+              key={f.label}
+              onClick={() => search(f.q)}
+              disabled={loading}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${
+                dark
+                  ? "bg-white/[0.03] border-white/[0.08] text-slate-300 hover:bg-violet-500/15 hover:border-violet-500/30"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-violet-50 hover:border-violet-300"
+              } disabled:opacity-50`}
+            >
+              {f.emoji} {f.label}
+            </button>
+          ))}
         </div>
 
         {/* 자동완성 드롭다운 */}

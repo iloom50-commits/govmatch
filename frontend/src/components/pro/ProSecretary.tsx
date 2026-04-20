@@ -816,7 +816,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                       return (
                       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                         <div className="max-w-[80%] overflow-hidden">
-                          <div className={`px-4 py-3 rounded-2xl text-[14px] leading-relaxed break-words overflow-wrap-anywhere ${
+                          <div className={`px-4 py-3 rounded-2xl text-[15px] md:text-[14px] leading-relaxed break-words overflow-wrap-anywhere ${
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
@@ -827,7 +827,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                             <div className="flex flex-wrap gap-2 mt-2">
                               {msg.choices.map((choice, ci) => (
                                 <button key={ci} onClick={() => handleSend(choice)}
-                                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all active:scale-95 border ${
+                                  className={`px-3 py-1.5 rounded-full text-[13px] md:text-[12px] font-semibold transition-all active:scale-95 border ${
                                     dark
                                       ? "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"
                                       : "bg-white border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-400"
@@ -1026,7 +1026,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(input); } }}
                         placeholder="입력 후 전송 또는 매칭"
                         disabled={loading || typing}
-                        className={`flex-1 min-w-0 py-2 text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
+                        className={`flex-1 min-w-0 py-2 text-[16px] md:text-[14px] outline-none bg-transparent transition-all disabled:opacity-50 ${dark ? "text-slate-200 placeholder-slate-500" : "text-slate-700 placeholder-slate-400"}`}
                       />
                       <button
                         onClick={() => handleSend(input)}
@@ -1844,7 +1844,7 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     } catch (e) { console.error("[PRO]", e); }
   };
 
-  const inputCls = `flex-1 px-4 py-2.5 rounded-lg text-[13px] outline-none border transition-all ${
+  const inputCls = `flex-1 px-4 py-2.5 rounded-lg text-[16px] md:text-[13px] outline-none border transition-all ${
     dark ? "bg-[#1a1c30] border-white/[0.08] text-slate-200 focus:border-violet-500/40" : "bg-white border-slate-200 text-slate-700 focus:border-violet-400"
   }`;
 

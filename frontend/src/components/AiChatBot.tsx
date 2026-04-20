@@ -1755,7 +1755,7 @@ ${convHtml}
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`${mode === "consultant" && clientCategory ? "max-w-[80%]" : "max-w-[88%]"} ${msg.role === "user" ? "order-1" : ""}`}>
                     {/* Message bubble */}
-                    <div className={`px-3.5 py-2.5 rounded-2xl ${mode === "consultant" && clientCategory ? "text-[15px]" : "text-[14px]"} leading-relaxed ${
+                    <div className={`px-3.5 py-2.5 rounded-2xl ${mode === "consultant" && clientCategory ? "text-[15px]" : "text-[15px] md:text-[14px]"} leading-relaxed ${
                       msg.role === "user"
                         ? mode === "consultant" ? "bg-violet-600 text-white rounded-br-md" : "bg-indigo-600 text-white rounded-br-md"
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
@@ -1786,14 +1786,14 @@ ${convHtml}
                             }}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
-                              <div className="flex items-center gap-2 mt-0.5 text-[9px] text-slate-400">
+                              <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] md:text-[9px] text-slate-400">
                                 {ann.department && <span>{String(ann.department).slice(0, 10)}</span>}
                                 {ann.support_amount && <span className="text-rose-500 font-bold">{String(ann.support_amount).slice(0, 15)}</span>}
                                 {ann.deadline_date && <span>~{String(ann.deadline_date).slice(5, 10)}</span>}
                               </div>
                             </div>
-                            <span className="text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">공고 상세 분석 →</span>
+                            <span className="text-[11px] md:text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">공고 상세 분석 →</span>
                           </div>
                           );
                         })}
@@ -1808,7 +1808,7 @@ ${convHtml}
                             key={ci}
                             onClick={() => handleSend(choice)}
                             disabled={loading || matchingInProgress}
-                            className={`px-3 py-1.5 bg-white border rounded-full text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-50 ${
+                            className={`px-3 py-1.5 bg-white border rounded-full text-[13px] md:text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-50 ${
                               mode === "consultant"
                                 ? "border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
                                 : "border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300"
@@ -1905,7 +1905,7 @@ ${convHtml}
                         }}
                         placeholder={mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
                         disabled={loading || matchingInProgress}
-                        className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
+                        className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[16px] md:text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
                           mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
                         }`}
                       />

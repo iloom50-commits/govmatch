@@ -534,7 +534,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`${msg.role === "user" ? "max-w-[75%] order-1" : "max-w-[95%]"}`}>
                 {/* Message bubble */}
-                <div className={`rounded-2xl text-[14px] leading-relaxed ${
+                <div className={`rounded-2xl text-[15px] md:text-[14px] leading-relaxed ${
                   msg.role === "user"
                     ? "px-3.5 py-2.5 bg-indigo-600 text-white rounded-br-md"
                     : "px-4 py-3 bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-md"
@@ -552,7 +552,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                         key={ci}
                         onClick={() => handleSend(choice)}
                         disabled={loading}
-                        className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-full text-[11px] font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all active:scale-95 disabled:opacity-50"
+                        className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-full text-[13px] md:text-[11px] font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all active:scale-95 disabled:opacity-50"
                       >
                         {choice}
                       </button>
@@ -563,7 +563,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                 {/* Done indicator */}
                 {msg.role === "assistant" && msg.done && (
                   <div className="mt-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <p className="text-[11px] font-bold text-emerald-700">상담 완료</p>
+                    <p className="text-[12px] md:text-[11px] font-bold text-emerald-700">상담 완료</p>
                   </div>
                 )}
               </div>
@@ -702,7 +702,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                   }}
                   placeholder="질문을 입력하세요..."
                   disabled={loading}
-                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all disabled:opacity-50"
+                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[16px] md:text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all disabled:opacity-50"
                 />
                 <button
                   onClick={() => handleSend(input)}
@@ -723,7 +723,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                       toast("저장되었습니다 ✓ 내 상담 기록에서 다시 볼 수 있어요", "success");
                       setTimeout(() => handleClose(), 800);
                     }}
-                    className="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                    className="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[13px] md:text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -732,7 +732,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                   </button>
                   <button
                     onClick={handlePrintReport}
-                    className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                    className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-[13px] md:text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />

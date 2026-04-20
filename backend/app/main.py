@@ -1633,6 +1633,20 @@ def api_announcements_public(
         # 공백으로 단어 분리
         words = search.strip().split()
 
+        # 검색어 정규화: 구청/시청/군청 접미어 → 구/시/군 자동 포함
+        # 예: "부산진구청" → ["부산진구청", "부산진구"] / "수원시청" → ["수원시청", "수원시"]
+        import re as _re_norm
+        _normalized_words = []
+        for w in words:
+            _normalized_words.append(w)
+            _stripped = _re_norm.sub(r'(구|시|군|동|읍|면)청$', r'\1', w)
+            if _stripped != w and _stripped not in _normalized_words:
+                _normalized_words.append(_stripped)
+            # 반대로 끝에 "구/시/군"인데 "청" 붙은 버전도 포함 (검색 대상 department에 "청" 붙을 수 있음)
+            if _re_norm.search(r'(구|시|군)$', w) and w + '청' not in _normalized_words:
+                _normalized_words.append(w + '청')
+        words = _normalized_words
+
         # 동의어 확장: 각 단어별로 동의어 그룹 확장
         all_search_terms = []
         for word in words:

@@ -22,20 +22,20 @@ def _strip_html(text: str) -> str:
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-# 관심 분야 태그 → 매칭 키워드 확장 맵
+# 관심 분야 태그 → 매칭 키워드 확장 맵 (확장판)
 INTEREST_KEYWORD_MAP = {
-    "창업지원":   ["창업", "스타트업", "벤처", "예비창업", "창업패키지", "초기기업"],
-    "기술개발":   ["R&D", "연구개발", "기술개발", "기술혁신", "연구", "기술", "AI", "인공지능", "혁신기술"],
-    "수출마케팅": ["수출", "해외", "글로벌", "무역", "수출마케팅", "해외판로", "해외진출", "수출지원", "해외마케팅", "KOTRA"],
-    "고용지원":   ["고용", "채용", "일자리", "인력", "청년", "근로자", "고용지원", "인재", "취업", "고용안정", "고용장려", "인건비", "장려금"],
-    "시설개선":   ["시설", "설비", "인테리어", "리모델링", "환경개선", "공간", "장비"],
-    "정책자금":   ["정책자금", "융자", "대출", "보증", "자금", "금융", "지원금", "보조금"],
-    "디지털전환": ["디지털", "스마트", "IT", "정보화", "비대면", "플랫폼", "소프트웨어", "AI", "인공지능", "DX", "ICT"],
-    "판로개척":   ["판로", "마케팅", "홍보", "온라인", "판매", "유통", "쇼핑몰", "B2B", "B2C"],
-    "교육훈련":   ["교육", "훈련", "컨설팅", "멘토링", "역량", "강의", "아카데미"],
-    "에너지환경": ["에너지", "환경", "친환경", "탄소", "녹색", "ESG", "수소", "태양광", "신재생"],
-    "소상공인":   ["소상공인", "자영업", "골목상권", "전통시장", "소규모"],
-    "R&D":        ["R&D", "연구개발", "기술개발", "혁신", "연구", "AI", "인공지능"],
+    "창업지원":   ["창업", "스타트업", "벤처", "예비창업", "창업패키지", "초기기업", "팁스", "TIPS", "창업육성", "창업도약", "창업성공", "창업기업"],
+    "기술개발":   ["R&D", "연구개발", "기술개발", "기술혁신", "연구", "기술", "AI", "인공지능", "혁신기술", "R%26D", "기술사업화", "특허", "지식재산", "IP"],
+    "수출마케팅": ["수출", "해외", "글로벌", "무역", "수출마케팅", "해외판로", "해외진출", "수출지원", "해외마케팅", "KOTRA", "수출바우처", "해외전시", "CES", "IFA", "바이어"],
+    "고용지원":   ["고용", "채용", "일자리", "인력", "청년", "근로자", "고용지원", "인재", "취업", "고용안정", "고용장려", "인건비", "장려금", "청년내일", "두루누리", "육아휴직", "청년일자리"],
+    "시설개선":   ["시설", "설비", "인테리어", "리모델링", "환경개선", "공간", "장비", "스마트공장", "자동화", "장비구입", "기기구입", "공정개선", "작업환경"],
+    "정책자금":   ["정책자금", "융자", "대출", "보증", "자금", "금융", "지원금", "보조금", "특례보증", "신용보증", "운전자금", "경영안정자금", "성장지원", "특례자금"],
+    "디지털전환": ["디지털", "스마트", "IT", "정보화", "비대면", "플랫폼", "소프트웨어", "AI", "인공지능", "DX", "ICT", "데이터", "클라우드", "SaaS", "O2O", "디지털혁신", "딥테크"],
+    "판로개척":   ["판로", "마케팅", "홍보", "온라인", "판매", "유통", "쇼핑몰", "B2B", "B2C", "전시회", "박람회", "플랫폼입점", "라이브커머스", "인플루언서", "브랜드마케팅", "라이브방송"],
+    "교육훈련":   ["교육", "훈련", "컨설팅", "멘토링", "역량", "강의", "아카데미", "HRD", "직업훈련", "전문교육", "리스킬링", "업스킬링"],
+    "에너지환경": ["에너지", "환경", "친환경", "탄소", "녹색", "ESG", "수소", "태양광", "신재생", "그린뉴딜", "저탄소", "순환경제", "재활용"],
+    "소상공인":   ["소상공인", "자영업", "골목상권", "전통시장", "소규모", "골목", "중소유통", "상점가", "상권활성화", "생활밀착"],
+    "R&D":        ["R&D", "연구개발", "기술개발", "혁신", "연구", "AI", "인공지능", "기술사업화", "원천기술", "산학협력", "융합기술", "응용연구"],
 }
 
 # 지원 대상 기업 유형 분류
@@ -117,6 +117,288 @@ SYNONYM_MAP = {
 CATEGORY_CAP = 8
 
 
+# ════════════════════════════════════════════════════════════════
+# 0단계: 하드 필터 (자격 미달 즉시 제외)
+# ════════════════════════════════════════════════════════════════
+
+# 사용자 업종 코드(KSIC 대분류 2자리) → 제외 키워드 매핑
+# 공고의 exclusion_rules/제목/요약에 이 키워드가 있으면 해당 업종 사용자 제외
+INDUSTRY_EXCLUSION_KEYWORDS = {
+    "41": ["건설업", "건설기업", "토목", "건축"],
+    "42": ["건설업", "건설기업", "토목"],
+    "43": ["건설업", "건설기업"],
+    "46": [],  # 도매업 (일반적으로 제외 안 됨)
+    "47": [],  # 소매업
+    "55": ["숙박업", "숙박·음식", "숙박/음식"],
+    "56": ["음식점", "음식·숙박", "음식/숙박", "주점", "외식업", "유흥"],
+    "62": [],  # 정보통신 — IT는 거의 제외되지 않음
+    "63": [],  # 정보서비스
+    "64": ["금융업", "금융기관"],
+    "65": ["보험업", "보험기관"],
+    "66": ["금융", "보험"],
+    "68": ["부동산업", "부동산임대", "부동산 임대", "임대업"],
+    "91": ["사행성", "도박", "카지노", "경마", "복권"],
+    "92": ["유흥", "사행성", "도박"],
+}
+
+# 보편적 제외 키워드 (어떤 사용자든 해당 업종이면 제외)
+COMMON_EXCLUSION_PATTERNS = [
+    ("부동산임대업", "68"),
+    ("부동산 임대", "68"),
+    ("부동산업", "68"),
+    ("사행성", "91"),
+    ("유흥업", "92"),
+    ("도박", "91"),
+    ("숙박·음식점업", "55"),
+    ("주점업", "56"),
+]
+
+
+# 사용자 업종 대분류 → "타 분야 전용" 공고 제목 키워드
+# 해당 키워드가 제목에 있으면 이 사용자에게는 부적합 (특정 분야 지정 공고)
+# 정부사업 중 일부는 "OO분야 지원사업" 식으로 특정 업종만 대상
+INDUSTRY_DOMAIN_EXCLUSIONS = {
+    # IT/소프트웨어/정보서비스 (62, 63) — 이런 분야 지정 공고는 IT 유저에게 부적합
+    "62": [
+        # 관광·여행·숙박·음식
+        "관광진흥", "관광산업", "관광업", "관광기업", "여행업", "여행사",
+        "숙박업", "외식업", "음식업", "주점",
+        # 스포츠·체육·문화
+        "국민체육진흥", "체육산업", "스포츠산업", "스포츠기업",
+        "영화산업", "영화제작", "방송산업", "방송영상",
+        "애니메이션", "출판산업", "공연예술", "공예산업", "문화콘텐츠",
+        # 에너지·환경
+        "에너지기술", "에너지산업", "수소산업", "태양광", "신재생에너지", "풍력", "지열",
+        "오염방지", "탄소중립", "환경산업", "미래환경산업", "녹색산업",
+        # 농림수산
+        "축산", "농업인", "농업법인", "영농", "귀농", "어업인", "어선", "수산업", "임업", "산림",
+        # 건설·토목·광업
+        "건설업", "건설기술", "건설기업", "토목", "플랜트",
+        "광업", "광물", "제련",
+        # 바이오·의료·식품
+        "의약품산업", "제약산업", "바이오산업",  # R&D는 IT도 가능하므로 '산업' 키워드로 좁힘
+        "의료기기산업", "헬스케어산업",
+        "식품산업", "식품제조", "외식산업",
+        # 물류·해운·운송
+        "해운", "항만", "물류산업", "운송업", "철도산업",
+        "섬유산업", "의류제조", "패션산업",
+        # 특수 대상
+        "폐자원", "재활용산업",
+    ],
+    "63": [
+        # 관광·여행·숙박·음식
+        "관광진흥", "관광산업", "여행업", "숙박업", "외식업",
+        # 스포츠·체육·문화
+        "국민체육진흥", "체육산업", "스포츠산업",
+        "영화산업", "방송산업", "애니메이션", "공연예술",
+        # 에너지·환경
+        "에너지기술", "수소", "태양광", "오염방지", "환경산업",
+        # 농림수산
+        "축산", "농업인", "영농", "어업인", "수산업", "임업", "산림",
+        # 건설·광업
+        "건설업", "광업", "제약산업", "바이오산업",
+        # 물류
+        "해운", "항만", "물류산업", "철도산업",
+    ],
+    # 제조업 (10~33)
+    "10": ["관광", "여행", "IT전용", "소프트웨어전용", "영화·영상산업", "공연예술"],
+    # 도·소매 (46, 47)
+    "46": ["관광진흥", "농업", "어업", "건설업", "광업", "환경산업",
+           "IT전용", "R&D전용", "기술개발전용"],
+    "47": ["관광진흥", "농업", "어업", "건설업", "환경산업", "IT전용", "R&D전용"],
+    # 농업(01) — 반대로 농업 외 분야 제외
+    "01": ["IT", "소프트웨어", "관광", "제조업전용", "건설"],
+    # 건설(41,42) — 건설 외 분야 제외
+    "41": ["관광", "농업", "어업", "IT", "소프트웨어", "환경산업"],
+}
+
+
+def _extract_exclusion_text(exclusion_rules) -> str:
+    """deep_analysis.exclusion_rules(list of dict) → 검색용 텍스트로 병합."""
+    if not exclusion_rules:
+        return ""
+    if isinstance(exclusion_rules, str):
+        try:
+            exclusion_rules = json.loads(exclusion_rules)
+        except Exception:
+            return exclusion_rules
+    if not isinstance(exclusion_rules, list):
+        return ""
+    parts = []
+    for rule in exclusion_rules:
+        if isinstance(rule, dict):
+            parts.append(rule.get("rule") or "")
+            parts.append(rule.get("detail") or "")
+        elif isinstance(rule, str):
+            parts.append(rule)
+    return " ".join(parts)
+
+
+def _check_industry_exclusion(user_industry_code: str, exclusion_text: str, title: str, summary: str) -> tuple:
+    """사용자 업종이 공고 exclusion_rules에 해당하면 제외 (명시적 배제만).
+
+    B안 전환: 타 분야 지정 공고(관광/체육/에너지 등)는 관심분야 버킷이
+    자연스럽게 분리하므로 여기서는 명시적 exclusion_rules만 체크.
+
+    예: 공고가 "부동산임대업 제외"를 명시 + 사용자 업종=부동산임대업 → 제외.
+    Returns: (excluded: bool, reason: str or None)
+    """
+    if not user_industry_code:
+        return False, None
+    major = str(user_industry_code)[:2]
+    search_text = f"{exclusion_text} {title} {summary}".lower()
+
+    # 사용자 업종이 공고 exclusion_rules/본문에서 명시적으로 배제되는지
+    user_excl_kws = INDUSTRY_EXCLUSION_KEYWORDS.get(major, [])
+    for kw in user_excl_kws:
+        if kw.lower() in search_text:
+            return True, f"{kw} 제외 대상"
+    return False, None
+
+
+def _check_region_exclusion(user_city_normalized: str, ann_region: str, ann_title: str) -> tuple:
+    """공고가 특정 지역 전용인데 사용자 지역과 다르면 제외.
+
+    검사 순서:
+      1. 제목에 [전국] 있으면 통과
+      2. 제목에 [시·도명] 있으면 그 지역과 사용자 지역 비교
+      3. ann.region 필드 검사
+    """
+    title = ann_title or ""
+    # 1. [전국] 패턴이면 통과
+    if "[전국]" in title:
+        return False, None
+    if not user_city_normalized:
+        return False, None  # 사용자 지역 모르면 통과
+
+    # 2. 제목에 [지역명] 패턴이 있으면 우선 체크 (region 필드보다 신뢰도 높음)
+    import re as _re
+    bracket_match = _re.search(
+        r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]',
+        title
+    )
+    if bracket_match:
+        title_region = bracket_match.group(1)
+        title_region_norm = _normalize_region(title_region)
+        if (title_region_norm == user_city_normalized
+            or user_city_normalized in title_region_norm
+            or title_region_norm in user_city_normalized):
+            return False, None  # 사용자 지역과 일치 → 통과
+        return True, f"[{title_region}] 지역 전용"  # 다른 지역 전용 → 제외
+
+    # 3. ann.region 필드 체크
+    if not ann_region or ann_region in ("전국", "All", "전국단위", ""):
+        return False, None
+    normalized_ann = _normalize_region(ann_region)
+    if not normalized_ann or normalized_ann in ("전국", "All"):
+        return False, None
+    if (normalized_ann == user_city_normalized
+        or user_city_normalized in normalized_ann
+        or normalized_ann in user_city_normalized):
+        return False, None
+    return True, f"{ann_region} 지역 전용"
+
+
+def _load_exclusion_rules_bulk(db_conn, announcement_ids: list) -> dict:
+    """공고 ID 리스트 → {announcement_id: exclusion_text} 일괄 조회."""
+    if not announcement_ids or not db_conn:
+        return {}
+    try:
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT announcement_id, deep_analysis->'exclusion_rules' AS rules
+            FROM announcement_analysis
+            WHERE announcement_id = ANY(%s)
+              AND deep_analysis IS NOT NULL
+        """, (announcement_ids,))
+        result = {}
+        for row in cur.fetchall():
+            rules = row.get("rules") if hasattr(row, "get") else row[1]
+            ann_id = row.get("announcement_id") if hasattr(row, "get") else row[0]
+            if rules:
+                result[ann_id] = _extract_exclusion_text(rules)
+        return result
+    except Exception as e:
+        print(f"[hard_filter] exclusion_rules bulk load failed: {e}")
+        return {}
+
+
+def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) -> tuple:
+    """기업 사용자 0단계 하드 필터.
+    SQL로 이미 걸러진 업력/매출/직원 외에:
+    - 지역 전용 공고 제외
+    - AI 추출 exclusion_rules 기반 업종 제외
+    - 제목/요약의 보편적 제외 키워드
+    Returns: (passed: list, excluded: list of {ad, reasons})
+    """
+    user_industry = user_profile.get("industry_code") or ""
+    raw_city = user_profile.get("address_city") or ""
+    user_city_norm = ""
+    if raw_city:
+        first_city = raw_city.split(",")[0].strip()
+        user_city_norm = _normalize_region(first_city)
+    # 일괄 exclusion_rules 조회
+    ann_ids = [c.get("announcement_id") for c in candidates if c.get("announcement_id")]
+    exclusion_map = _load_exclusion_rules_bulk(db_conn, ann_ids)
+
+    passed = []
+    excluded = []
+    for ad in candidates:
+        ann_id = ad.get("announcement_id")
+        title = ad.get("title") or ""
+        summary = _strip_html(ad.get("summary_text") or "")[:500]
+        region = ad.get("region") or ""
+        reasons = []
+
+        # 1. 지역 전용 제외
+        region_excl, region_reason = _check_region_exclusion(user_city_norm, region, title)
+        if region_excl:
+            reasons.append(region_reason)
+
+        # 2. 업종 제외 (exclusion_rules + 제목/요약)
+        excl_text = exclusion_map.get(ann_id, "")
+        ind_excl, ind_reason = _check_industry_exclusion(user_industry, excl_text, title, summary)
+        if ind_excl:
+            reasons.append(ind_reason)
+
+        if reasons:
+            excluded.append({"ad": ad, "reasons": reasons})
+        else:
+            passed.append(ad)
+    return passed, excluded
+
+
+def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) -> tuple:
+    """개인 사용자 0단계 하드 필터.
+    - 지역 전용 공고 제외
+    - 연령 제한: eligibility_logic에 max_age/min_age 있으면 확인
+    - exclusion_rules 기반 제외 (개인 대상 사업도 제외 조건 있음)
+    """
+    raw_city = user_profile.get("address_city") or ""
+    user_city_norm = ""
+    if raw_city:
+        first_city = raw_city.split(",")[0].strip()
+        user_city_norm = _normalize_region(first_city)
+
+    passed = []
+    excluded = []
+    for ad in candidates:
+        title = ad.get("title") or ""
+        region = ad.get("region") or ""
+        reasons = []
+
+        # 지역 전용 제외
+        region_excl, region_reason = _check_region_exclusion(user_city_norm, region, title)
+        if region_excl:
+            reasons.append(region_reason)
+
+        if reasons:
+            excluded.append({"ad": ad, "reasons": reasons})
+        else:
+            passed.append(ad)
+    return passed, excluded
+
+
 def _is_soho(user_profile: dict) -> bool:
     """매출·인원 기준으로 소상공인 여부 판별"""
     rev_bracket = user_profile.get("revenue_bracket") or user_profile.get("revenue", "")
@@ -188,7 +470,16 @@ def get_matches_for_user(user_profile):
     for row in cursor.fetchall():
         d = dict(row)
         candidates.append(d)
+
+    # ═══════════════════════════════════════════════════════════
+    # 0단계: 하드 필터 — 자격 미달 공고 즉시 제외
+    # (업력/매출/직원은 SQL에서 이미 필터링됨. 여기서는 지역·업종·제외규칙)
+    # ═══════════════════════════════════════════════════════════
+    candidates, _hard_excluded = _hard_filter_business(candidates, user_profile, conn)
     conn.close()
+
+    if _hard_excluded:
+        print(f"[hard_filter_biz] passed={len(candidates)}, excluded={len(_hard_excluded)}")
 
     if not candidates:
         return []
@@ -462,17 +753,22 @@ def get_matches_for_user(user_profile):
         elif not is_soho and ad_targets_soho:
             score -= 5.0
 
-        # C. 관심분야 키워드 매칭 (최대 35점)
+        # C. 관심분야 키워드 매칭 (관심 일치 여부 플래그 + 최대 35점)
+        ad["interest_matched"] = False  # 기본값
+        ad["matched_interests"] = []
         if interest_keywords:
             matched_interests = [kw for kw in interest_keywords if kw.lower() in search_text]
             if matched_interests:
-                interest_score = min(35.0, len(set(matched_interests)) * 6.0)
-                score += interest_score
+                ad["interest_matched"] = True
+                # 어떤 관심분야가 일치했는지 저장 (프론트 뱃지용)
                 for tag in user_interest_tags:
                     tag_kws = INTEREST_KEYWORD_MAP.get(tag, [tag])
                     if any(kw.lower() in search_text for kw in tag_kws):
-                        reasons.append(f'"{tag}" 관심분야 부합')
-                        break
+                        ad["matched_interests"].append(tag)
+                interest_score = min(35.0, len(set(matched_interests)) * 6.0)
+                score += interest_score
+                if ad["matched_interests"]:
+                    reasons.append(f'"{ad["matched_interests"][0]}" 관심분야 부합')
 
         # C-2. 구체적 키워드 직접 매칭 부스트 (최대 30점)
         # custom_keywords(스마트공장, 바이오 등)가 제목에 직접 포함되면 최우선
@@ -699,7 +995,19 @@ INDIVIDUAL_CATEGORY_CAP = 6
 
 
 def get_individual_matches_for_user(user_profile: dict) -> list:
-    """개인 사용자 프로필 기반 복지/지원서비스 매칭"""
+    """개인 사용자 프로필 기반 복지/지원서비스 매칭.
+
+    설계 철학 (기업 매칭과 완전히 다름):
+    - 개인 공고 대부분이 '전 국민' 대상 → 점수화·컷오프 하지 않음
+    - 오직 '역 조건 배제'만 적용:
+      ① 연령 전용 공고(예: "65세 이상만")인데 사용자 연령대가 다름 → 제외
+      ② 가구형태 전용(예: "한부모 가구만")인데 다름 → 제외
+      ③ 소득 전용(예: "기초생활수급자만")인데 다름 → 제외
+      ④ 지역 전용(예: "[부산] 전용")인데 다름 → 제외 (이미 _hard_filter_individual에서 처리)
+      ⑤ 마감 지남 → 제외
+    - 관심 키워드 매칭 시 interest_matched=True (버킷 레이어에서 🎯 그룹)
+    - 나머지는 모두 통과 → ✅ 참고 버킷으로
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -724,7 +1032,15 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     """
     cursor.execute(query)
     candidates = [dict(row) for row in cursor.fetchall()]
+
+    # ═══════════════════════════════════════════════════════════
+    # 0단계: 하드 필터 — 자격 미달 공고 즉시 제외 (개인)
+    # ═══════════════════════════════════════════════════════════
+    candidates, _hard_excluded = _hard_filter_individual(candidates, user_profile, conn)
     conn.close()
+
+    if _hard_excluded:
+        print(f"[hard_filter_indiv] passed={len(candidates)}, excluded={len(_hard_excluded)}")
 
     if not candidates:
         return []
@@ -756,8 +1072,36 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     employment_keywords = EMPLOYMENT_KEYWORD_MAP.get(user_employment, [])
     age_life_stages = AGE_LIFE_STAGE_MAP.get(user_age, [])
 
+    # 관심분야 → 키워드 확장 (기업 매칭과 동일 구조)
+    interest_keywords = []
+    for tag in user_interest_tags:
+        if tag in INTEREST_KEYWORD_MAP:
+            interest_keywords.extend(INTEREST_KEYWORD_MAP[tag])
+        elif tag in SYNONYM_MAP:
+            interest_keywords.extend(SYNONYM_MAP[tag])
+        else:
+            interest_keywords.append(tag)
+    # custom_keywords 합치기
+    interest_keywords.extend(custom_kw_list)
+
     today = datetime.date.today()
     results = []
+
+    # 역조건(명시 전용) 그룹 — 사용자가 그 유형이 아니면 제외
+    AGE_EXCLUSIVE_MAP = {
+        "20대": ["노인", "어르신", "65세 이상", "고령자", "시니어"],
+        "30대": ["노인", "어르신", "65세 이상", "고령자", "시니어"],
+        "40대": ["노인 전용", "어르신 전용", "65세 이상 전용", "대학생 전용"],
+        "50대": ["대학생", "청소년", "만 18세 이하"],
+        "60대 이상": ["청년", "청소년", "대학생"],
+    }
+    FAMILY_EXCLUSIVE_MAP = {
+        "1인가구": ["한부모 전용", "다자녀 전용", "신혼부부 전용"],
+        "한부모가족": [],  # 한부모 전용 공고는 통과해야 함
+        "다자녀가족": [],
+        "신혼부부": [],
+        "일반": ["한부모 전용", "다자녀 전용"],
+    }
 
     for ad in candidates:
         # eligibility_logic 파싱
@@ -777,7 +1121,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         raw_summary = ad.get("summary_text") or ""
         clean_summary = _strip_html(raw_summary).lower()
 
-        # 만료 공고 필터 — 작년 이전 연도가 제목에 있고 마감일이 과거/없으면 제외
+        # 만료 연도 필터
         title_year_match = re.search(r'(\d{4})년', raw_title)
         if title_year_match:
             title_year = int(title_year_match.group(1))
@@ -795,7 +1139,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
                 except (ValueError, TypeError):
                     continue
 
-        # 정보/안내 페이지 필터 — 실제 공고가 아닌 기관 소개·행사 등 제외
+        # 정보/안내 페이지 필터
         _info_kws = ["소개", "안내 페이지", "지원시책", "지원 관련 기관", "상담 예약 현황",
                      "발대식", "개최", "개소식", "행사 안내", "설명회 안내", "상담 예약",
                      "만족도 조사", "조사 안내", "페스티벌", "페스티발", "축제",
@@ -803,7 +1147,6 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         if any(kw in raw_title for kw in _info_kws) and not any(kw in raw_title for kw in ["모집 공고", "참여기업 모집", "참여 기업 모집", "대상자 모집"]):
             continue
 
-        # 통합 검색 텍스트
         search_text = f"{title} {target_desc} {clean_summary} {sel_criteria}"
 
         # 지역 필터 — 소재지 기반
@@ -812,89 +1155,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
             if has_home and ad_region != home_city:
                 continue
 
-        score = 0.0
-        reasons = []
-
-        # A. 기본 자격 (20점)
-        score += 20.0
-
-        # B. 연령대 매칭 (최대 20점)
-        if age_keywords and target_desc:
-            age_matched = [kw for kw in age_keywords if kw in search_text]
-            if age_matched:
-                score += 20.0
-                reasons.append(f"{user_age} 대상")
-            elif not target_desc or "누구나" in target_desc or "전 국민" in target_desc or "제한없음" in target_desc:
-                score += 5.0  # 대상 제한 없는 서비스
-
-        # B-2. 연령대 역필터: 명시적으로 다른 연령대 전용인 경우 감점
-        if target_desc:
-            age_exclusive_penalty = False
-            if user_age in ("50대", "60대 이상"):
-                if any(kw in target_desc for kw in ["청년", "20대", "대학생"]) and not any(kw in target_desc for kw in ["중장년", "노인", "어르신", "시니어"]):
-                    age_exclusive_penalty = True
-            elif user_age in ("20대", "30대"):
-                if any(kw in target_desc for kw in ["노인", "어르신", "65세 이상", "고령자"]) and not any(kw in target_desc for kw in ["청년", "청소년"]):
-                    age_exclusive_penalty = True
-            if age_exclusive_penalty:
-                score -= 30.0  # 자격 미달 수준으로 감점
-
-        # C. 소득수준 매칭 (최대 20점)
-        if income_keywords and user_income != "해당없음":
-            income_matched = [kw for kw in income_keywords if kw in search_text]
-            if income_matched:
-                # 기초생활/차상위는 더 높은 점수 (전용 프로그램이 많음)
-                if user_income in ("기초생활", "차상위"):
-                    score += 20.0
-                    reasons.append(f"{user_income} 대상 지원")
-                else:
-                    score += 15.0
-                    reasons.append("소득기준 충족")
-
-        # D. 가구유형 매칭 (최대 15점)
-        if family_keywords and user_family not in ("일반", "해당없음"):
-            family_matched = [kw for kw in family_keywords if kw in search_text]
-            if family_matched:
-                score += 15.0
-                reasons.append(f"{user_family} 대상")
-
-        # E. 취업상태 매칭 (최대 15점)
-        if employment_keywords and user_employment != "해당없음":
-            emp_matched = [kw for kw in employment_keywords if kw in search_text]
-            if emp_matched:
-                score += 15.0
-                reasons.append(f"{user_employment} 대상")
-
-        # F. 지역 매칭 보너스 — 소재지 +10, 관심지역 +5
-        if ad_region and ad_region not in ("전국", "", "All"):
-            if ad_region == home_city:
-                score += 10.0
-                reasons.append(f"{home_city} 거주지역 서비스")
-            elif ad_region in interest_regions:
-                score += 5.0
-                reasons.append(f"{ad_region} 관심지역 서비스")
-
-        # G. 생애주기(life_stage) 매칭 (최대 5점)
-        if life_stage and age_life_stages:
-            if any(ls.lower() in life_stage for ls in age_life_stages):
-                score += 5.0
-
-        # H. 관심주제(theme) 매칭 (최대 5점)
-        if theme and user_interest_tags:
-            for tag in user_interest_tags:
-                if tag.lower() in theme:
-                    score += 5.0
-                    break
-
-        # H-2. 맞춤 키워드 매칭 (최대 15점)
-        if custom_kw_list:
-            kw_matched = [kw for kw in custom_kw_list if kw.lower() in search_text]
-            if kw_matched:
-                kw_score = min(15.0, len(set(kw_matched)) * 5.0)
-                score += kw_score
-                reasons.append(f'"{kw_matched[0]}" 키워드 매칭')
-
-        # I. 마감일 가중치 (최대 5점) — 상시모집이 대부분이므로 마감 있는 건 부스트
+        # 마감 지남 제외
         if ad.get("deadline_date"):
             try:
                 deadline_val = ad["deadline_date"]
@@ -902,36 +1163,81 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
                     deadline = deadline_val if isinstance(deadline_val, datetime.date) else deadline_val.date()
                 else:
                     deadline = datetime.datetime.strptime(str(deadline_val), "%Y-%m-%d").date()
-                days_left = (deadline - today).days
-                if days_left < 0:
-                    continue  # 만료 제외
-                if days_left <= 14:
-                    score += 5.0
-                    reasons.append(f"마감 D-{days_left}")
-                elif days_left <= 30:
-                    score += 3.0
+                if (deadline - today).days < 0:
+                    continue
             except (ValueError, TypeError):
                 pass
 
-        # 점수 100 캡
-        score = min(score, 100.0)
-        ad["match_score"] = round(score, 1)
-        meaningful_reasons = reasons[:3]
-        ad["recommendation_reason"] = " / ".join(meaningful_reasons) if meaningful_reasons else "지원 자격 충족"
+        # ═══ 역조건 배제 (명시적으로 다른 대상 전용인 경우만) ═══
+        exclude = False
+        # 1. 연령 역조건
+        age_ex_kws = AGE_EXCLUSIVE_MAP.get(user_age, [])
+        if age_ex_kws and target_desc:
+            # '전용' 표기된 경우 제외. target_desc에 본인 연령대 키워드가 없고 상대 연령대만 있으면 제외.
+            self_age_present = any(kw in target_desc for kw in age_keywords)
+            other_age_present = any(kw in target_desc for kw in age_ex_kws)
+            if other_age_present and not self_age_present:
+                exclude = True
 
-        # 카테고리 (다양성 보장용)
-        ad["_category"] = ad.get("category") or ""
+        # 2. 가구형태 역조건
+        family_ex_kws = FAMILY_EXCLUSIVE_MAP.get(user_family, [])
+        if not exclude and family_ex_kws and target_desc:
+            if any(kw in target_desc for kw in family_ex_kws):
+                exclude = True
+
+        # 3. 한부모/다자녀 전용 공고인데 사용자가 그 유형이 아님
+        if not exclude and target_desc:
+            if "한부모 전용" in target_desc and user_family != "한부모가족":
+                exclude = True
+            elif "다자녀 전용" in target_desc and user_family != "다자녀가족":
+                exclude = True
+
+        # 4. 기초생활수급자 전용인데 사용자가 다름
+        if not exclude and user_income not in ("저소득", "기초생활", "차상위") and target_desc:
+            if "기초생활수급자 전용" in target_desc or "수급자만" in target_desc:
+                exclude = True
+
+        if exclude:
+            continue
+
+        # ═══ 관심 일치 플래그 설정 (🎯 버킷 분류용) ═══
+        matched_interests = []
+        interest_matched = False
+        if interest_keywords:
+            hits = [kw for kw in interest_keywords if kw.lower() in search_text]
+            if hits:
+                interest_matched = True
+                for tag in user_interest_tags:
+                    tag_kws = INTEREST_KEYWORD_MAP.get(tag, [tag])
+                    if any(kw.lower() in search_text for kw in tag_kws):
+                        matched_interests.append(tag)
+
+        ad["interest_matched"] = interest_matched
+        ad["matched_interests"] = matched_interests
+
+        # 추천 사유 (UI 표시용)
+        reasons = []
+        if interest_matched and matched_interests:
+            reasons.append(f'"{matched_interests[0]}" 관심분야')
+        if ad_region == home_city and home_city:
+            reasons.append(f"{home_city} 거주지역")
+        elif not ad_region or ad_region in ("전국", "All"):
+            reasons.append("전국 대상")
+        ad["recommendation_reason"] = " / ".join(reasons[:2]) if reasons else "지원 가능"
+
+        # match_score는 제거. 버킷 레이어에서 rank만 부여
         results.append(ad)
 
-    # 노이즈 컷오프 — 60점 미만 제외
-    results = [r for r in results if r.get("match_score", 0) >= 60]
+    # 점수화·컷오프 없음 → 제외되지 않은 모든 공고 반환
+    # 정렬: 관심 일치 → 마감 유효 → 최신 순
+    def _indiv_sort_key(r):
+        interest_rank = 0 if r.get("interest_matched") else 1
+        amt = str(r.get("support_amount") or "")
+        has_amt = 0 if (any(c.isdigit() for c in amt) and any(k in amt for k in ("원", "억", "만"))) else 1
+        dl_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        return (interest_rank, has_amt, dl_ok)
 
-    # 점수 순 정렬
-    results.sort(key=lambda x: x["match_score"], reverse=True)
-
-    # 카테고리 정리
-    for r in results:
-        r.pop("_category", None)
+    results.sort(key=_indiv_sort_key)
     return results
 
 
@@ -1201,6 +1507,134 @@ _BUCKET_LABELS = {
     "fresh": "✨ 최근 등록",
 }
 
+# 새 버킷 라벨 (B안 — 관심 일치 + 참고 2단)
+_BUCKET_LABELS_V2 = {
+    "interest_match": "🎯 관심 분야 일치",
+    "qualified_other": "✅ 자격 통과 (참고)",
+    "deadline_urgent": "⏰ 마감 임박 (놓치면 아쉬운)",
+}
+
+
+# 사용자 업종 대분류 → 공고 관련 키워드 (제목/요약에 있으면 "업종 근접" 가산)
+# 관심 기반 우선순위 + 업종 근접도 2차 정렬로 품질 향상
+INDUSTRY_AFFINITY_KEYWORDS = {
+    "62": ["소프트웨어", "IT", "ICT", "AI", "인공지능", "디지털", "SaaS", "플랫폼", "앱", "딥테크", "기술창업", "R&D", "스타트업"],
+    "63": ["정보서비스", "데이터", "플랫폼", "IT", "디지털", "콘텐츠"],
+    "10": ["제조", "생산", "품질", "공장", "스마트공장", "자동화", "설비"],
+    "26": ["전자", "반도체", "부품", "전기전자", "스마트"],
+    "28": ["기계", "제조", "스마트공장", "자동화", "설비"],
+    "46": ["도매", "유통", "판로", "수출", "B2B"],
+    "47": ["소매", "소상공인", "골목", "유통", "판로"],
+    "41": ["건설", "건축", "토목", "시공", "인프라"],
+    "01": ["농업", "영농", "작물", "축산", "시설농업", "스마트팜"],
+    "03": ["어업", "수산", "양식"],
+    "20": ["화학", "소재", "신소재"],
+    "21": ["제약", "바이오", "의약품"],
+    "86": ["의료", "헬스케어", "병원", "진료"],
+    "58": ["출판", "콘텐츠", "교육"],
+    "72": ["연구", "R&D", "기술개발"],
+}
+
+
+def _industry_affinity_score(r: dict, user_major: str) -> int:
+    """공고 제목·요약에서 사용자 업종 관련 키워드 매치 개수 반환 (높을수록 근접)."""
+    if not user_major:
+        return 0
+    kws = INDUSTRY_AFFINITY_KEYWORDS.get(user_major, [])
+    if not kws:
+        return 0
+    search = ((r.get("title") or "") + " " + (r.get("summary_text") or ""))[:800].lower()
+    count = 0
+    for kw in kws:
+        if kw.lower() in search:
+            count += 1
+    return count
+
+
+def _apply_bucket_layer_v2(results: list, user_profile: dict) -> list:
+    """B안 — 관심 일치 + 참고 2단 버킷 (사용자 의도 우선).
+
+    버킷:
+    - 🎯 interest_match: 관심분야 일치 (사용자가 선택한 키워드 매칭)
+    - ⏰ deadline_urgent: 마감 D-7 이내 (관심 여부 무관, 놓치면 아쉬움)
+    - ✅ qualified_other: 자격 통과지만 관심분야 외 (참고)
+
+    각 버킷 내부 정렬:
+      1순위: 사용자 업종 근접도 (제목/요약 키워드 매치 수) ← NEW
+      2순위: 실제 금액 명시
+      3순위: 마감 유효
+      4순위: 금액 큰 순
+    """
+    if not results:
+        return results
+
+    # 자격 미달(지역 불일치/소상공인 아닌데 소상공인 전용 등) 완전 제외
+    pre_count = len(results)
+    results = [r for r in results if r.get("eligibility_status") != "ineligible"]
+    if pre_count != len(results):
+        print(f"[bucket_v2] ineligible 제외: {pre_count - len(results)}건")
+
+    user_major = str(user_profile.get("industry_code") or "")[:2]
+
+    def _bucket_of(r):
+        # 마감 임박 우선 체크 (관심과 무관하게 놓치면 아쉬운 공고)
+        dl = _days_left(r.get("deadline_date"))
+        if dl is not None and 0 <= dl <= 7:
+            return "deadline_urgent"
+        if r.get("interest_matched"):
+            return "interest_match"
+        return "qualified_other"
+
+    for r in results:
+        b = _bucket_of(r)
+        r["bucket"] = b
+        r["bucket_label"] = _BUCKET_LABELS_V2.get(b, b)
+        # 업종 근접도 계산 (저장해서 정렬·UI에 활용 가능)
+        r["industry_affinity"] = _industry_affinity_score(r, user_major)
+
+    def _sort_key(r):
+        # 업종 근접도가 높을수록 앞 (desc → 음수)
+        affinity = -(r.get("industry_affinity") or 0)
+        amt_str = str(r.get("support_amount") or "")
+        has_real_amount = 0 if (any(c.isdigit() for c in amt_str) and any(k in amt_str for k in ("원", "억", "만"))) else 1
+        deadline_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        amount = -_amount_value(amt_str)
+        return (affinity, has_real_amount, deadline_ok, amount)
+
+    # 버킷별 그룹 (정해진 순서)
+    bucket_order = ["interest_match", "deadline_urgent", "qualified_other"]
+    grouped = {b: [] for b in bucket_order}
+    for r in results:
+        grouped.get(r.get("bucket"), grouped["qualified_other"]).append(r)
+
+    final = []
+    for b in bucket_order:
+        items = grouped[b]
+        items.sort(key=_sort_key)
+        for r in items:
+            # 뱃지 재구성
+            reasons_arr = []
+            if b == "interest_match":
+                tags = r.get("matched_interests") or []
+                if tags:
+                    reasons_arr.append({"icon": "🎯", "label": tags[0]})
+                else:
+                    reasons_arr.append({"icon": "🎯", "label": "관심일치"})
+            elif b == "deadline_urgent":
+                dl = _days_left(r.get("deadline_date"))
+                if dl is not None:
+                    reasons_arr.append({"icon": "⏰", "label": f"D-{dl}"})
+            if _is_fund_related(r.get("title", ""), r.get("category", "")):
+                reasons_arr.append({"icon": "💰", "label": "자금"})
+            r["reasons"] = reasons_arr
+            final.append(r)
+
+    # 순위 부여 (match_score 제거 합의에 따라 rank만)
+    for idx, r in enumerate(final):
+        r["rank"] = idx + 1
+        r.pop("match_score", None)
+    return final
+
 
 def _apply_bucket_layer(results: list, user_profile: dict) -> list:
     """매칭 결과에 버킷 분류 + 2차 정렬 + 합성 score 부여.
@@ -1262,9 +1696,12 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
             r["reasons"] = reasons_arr
             final.append(r)
 
-    # match_score는 순서 보존용 (프론트 정렬 호환). 1등=N, 마지막=1
+    # 순위만 유지 (점수화 제거 합의에 따라 match_score 필드 제거)
+    # 프론트는 rank 또는 배열 순서로 정렬하므로 점수 불필요
     for idx, r in enumerate(final):
-        r["match_score"] = len(final) - idx
+        r["rank"] = idx + 1  # 1등부터 순위
+        # match_score 완전 제거 (기존 점수 계산값도 삭제)
+        r.pop("match_score", None)
 
     return final
 
@@ -1297,9 +1734,14 @@ def get_matches_hybrid(user_profile: dict, is_individual: bool = False, skip_buc
     if skip_bucket:
         return results
 
-    # 버킷 분류 + 순서 정렬 후처리
+    # 버킷 분류 + 순서 정렬 후처리 (B안 — 관심 우선 + 참고 2단)
     try:
-        results = _apply_bucket_layer(results, user_profile)
+        results = _apply_bucket_layer_v2(results, user_profile)
     except Exception as e:
-        print(f"[MatchHybrid] bucket layer error (fallback raw): {e}")
+        print(f"[MatchHybrid] bucket_v2 layer error (fallback raw): {e}")
+        # 구버전 폴백
+        try:
+            results = _apply_bucket_layer(results, user_profile)
+        except Exception:
+            pass
     return results

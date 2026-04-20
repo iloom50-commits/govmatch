@@ -1045,7 +1045,7 @@ def health_check():
     return {"status": "ok"}
 
 
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5181,http://localhost:8010")
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함
 for _o in list(_cors_origins):
@@ -1172,7 +1172,10 @@ class SecurityAgent:
             if len(self._events) > self._MAX_EVENTS:
                 self._events = self._events[-self._MAX_EVENTS:]
         if severity in ("HIGH", "CRITICAL"):
-            print(f"[SECURITY-{severity}] {event_type}: {ip} — {detail[:100]}")
+            try:
+                print(f"[SECURITY-{severity}] {event_type}: {ip} - {detail[:100]}")
+            except UnicodeEncodeError:
+                pass  # Windows cp949 인코딩 실패 시 로그 무시 (서비스 중단 방지)
 
     def _cleanup_old(self, counter: dict, window: int = 60):
         """오래된 타임스탬프 정리"""
@@ -3353,7 +3356,8 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
         result["support_details"] = (parsed.get("support_details") or "")[:1500] if parsed else ""
         result["application_method"] = (parsed.get("application_method") or "")[:800] if parsed else ""
         result["evaluation_criteria"] = (parsed.get("evaluation_criteria") or "")[:800] if parsed else ""
-        result["required_documents"] = (parsed.get("required_documents") or "")[:800] if parsed else ""
+        # 실제 DB 필드는 required_docs (parsed_sections), required_documents는 양쪽 fallback
+        result["required_documents"] = (parsed.get("required_docs") or parsed.get("required_documents") or "")[:800] if parsed else ""
         if deep:
             result["target_summary"] = deep.get("target_summary", "")
             result["support_summary"] = deep.get("support_summary", {})
@@ -3639,33 +3643,42 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
             else:
                 matches = get_matches_hybrid(profile, is_individual=False) or []
 
-            # 상위 5개만 응답에 포함
-            for ann in matches[:10]:
-                a = ann if isinstance(ann, dict) else dict(ann)
-                matched_announcements.append({
-                    "announcement_id": a.get("announcement_id"),
-                    "title": a.get("title", ""),
-                    "department": a.get("department", ""),
-                    "support_amount": a.get("support_amount", ""),
-                    "deadline_date": str(a.get("deadline_date", "")),
-                    "match_score": a.get("match_score", 0),
-                })
+            # 버킷별로 분리 (🎯 관심 일치 → ⏰ 마감 임박 → ✅ 자격 통과 참고)
+            # 각 버킷 상한: 관심 10개 / 마감 3개 / 참고 7개
+            _interest = [a for a in matches if a.get("bucket") == "interest_match"][:10]
+            _deadline = [a for a in matches if a.get("bucket") == "deadline_urgent"][:3]
+            _other = [a for a in matches if a.get("bucket") == "qualified_other"][:7]
+            _display_list = _interest + _deadline + _other
 
-            # 매칭 결과를 reply에 자연어로도 추가 (AI가 못 생성했을 경우 폴백)
+            def _simplify(a, idx):
+                d = a if isinstance(a, dict) else dict(a)
+                return {
+                    "announcement_id": d.get("announcement_id"),
+                    "title": d.get("title", ""),
+                    "department": d.get("department", ""),
+                    "support_amount": d.get("support_amount", ""),
+                    "deadline_date": str(d.get("deadline_date", "")),
+                    "rank": d.get("rank") or (idx + 1),
+                    "bucket": d.get("bucket", ""),
+                    "bucket_label": d.get("bucket_label", ""),
+                    "reasons": d.get("reasons", []),
+                    "matched_interests": d.get("matched_interests", []),
+                }
+
+            for idx, ann in enumerate(_display_list):
+                matched_announcements.append(_simplify(ann, idx))
+
+            # 그룹별 응답 구조 (프론트에서 섹션 분리 표시용)
+            matched_groups = {
+                "interest_match": [_simplify(a, i) for i, a in enumerate(_interest)],
+                "deadline_urgent": [_simplify(a, i) for i, a in enumerate(_deadline)],
+                "qualified_other": [_simplify(a, i) for i, a in enumerate(_other)],
+            }
+
+            # 매칭 결과 안내 — 카드로 표시되므로 텍스트 리스트는 제거, 간단한 요약만
             if matched_announcements and len(result.get("reply", "")) < 200:
-                top5 = matched_announcements[:5]
-                lines = ["**매칭 결과 상위 5개:**\n"]
-                for i, m in enumerate(top5, 1):
-                    lines.append(f"{i}. **{m['title']}**")
-                    if m.get('support_amount'):
-                        lines.append(f"   💰 지원금: {m['support_amount']}")
-                    if m.get('deadline_date'):
-                        lines.append(f"   📅 마감: {m['deadline_date'][:10]}")
-                    if m.get('match_score'):
-                        lines.append(f"   ⭐ 적합도: {m['match_score']}점")
-                    lines.append("")
-                lines.append(f"\n총 **{len(matched_announcements)}건**이 매칭되었습니다. 궁금하신 공고에 대해 자격 여부, 서류, 절차 등을 바로 상담해 드리겠습니다.")
-                result["reply"] = (result.get("reply", "") + "\n\n" + "\n".join(lines)).strip()
+                summary = f"총 **{len(matched_announcements)}건**의 맞춤 공고가 하단 카드로 표시됩니다. 궁금하신 공고를 클릭하시거나, 상담 질문을 이어서 하셔도 됩니다."
+                result["reply"] = (result.get("reply", "") + "\n\n" + summary).strip()
                 result["choices"] = ["1순위 공고 자격 확인해줘", "전체 공고 서류 목록 알려줘", "조건 변경 후 재매칭"]
 
             # 학습 사이클: 상담 종료(done=true) 시 AI가 대화에서 지식 추출 → knowledge_base 저장
@@ -3716,7 +3729,7 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                             def _s(v, n=400):
                                 return v[:n] if isinstance(v, str) else ""
                             it["eligibility"] = _s(ps.get("eligibility"))
-                            it["required_docs"] = _s(ps.get("required_documents"))
+                            it["required_docs"] = _s(ps.get("required_docs") or ps.get("required_documents"))
                             it["how_to_apply"] = _s(ps.get("application_method"), 300)
                             it["key_points"] = _s(da.get("key_points"), 300)
                         enriched.append(it)
@@ -3763,6 +3776,9 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
         "collected": result.get("collected", {}),
         "announcement_id": ann_id,
         "matched_announcements": matched_announcements,
+        "matched_groups": locals().get("matched_groups") or {
+            "interest_match": [], "deadline_urgent": [], "qualified_other": []
+        },
         "rag_sources": result.get("rag_sources", []),  # E: 출처 카드
         "session_id": session_state.get("session_id") if session_state else None,
         "current_step": result.get("current_step") or (session_state.get("current_step") if session_state else None),
@@ -10182,7 +10198,8 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
                 if isinstance(ps, dict):
                     if ps.get("eligibility"): ann_context += f"\n자격요건: {str(ps.get('eligibility'))[:500]}"
                     if ps.get("evaluation_criteria"): ann_context += f"\n평가기준: {str(ps.get('evaluation_criteria'))[:500]}"
-                    if ps.get("required_documents"): ann_context += f"\n제출서류: {str(ps.get('required_documents'))[:300]}"
+                    _docs = ps.get("required_docs") or ps.get("required_documents")
+                    if _docs: ann_context += f"\n제출서류: {str(_docs)[:300]}"
         except Exception:
             pass
 

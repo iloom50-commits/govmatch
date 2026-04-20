@@ -617,12 +617,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           <button onClick={() => setRightOpen(!rightOpen)} className="lg:hidden p-2 hover:bg-white/10 rounded-lg transition-colors">
             {Icons.info}
           </button>
-          {/* 최소화 */}
-          <button onClick={() => setMinimized(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="최소화">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
-            </svg>
-          </button>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="닫기">
             {Icons.close}
           </button>
@@ -742,7 +736,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         { key: "individual_biz" as ClientCategory, label: "개인사업자", icon: "🏪", desc: "1인 사업자, 프리랜서" },
                         { key: "corporate" as ClientCategory, label: "법인사업자", icon: "🏢", desc: "법인 기업" },
                         { key: "individual" as ClientCategory, label: "개인", icon: "👤", desc: "취업·복지·주거" },
-                        { key: "unknown" as ClientCategory, label: "모름", icon: "💬", desc: "AI가 대화로 파악" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
                           className={`p-4 rounded-xl border transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/40 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-400 hover:bg-violet-50 bg-white"}`}>
@@ -780,26 +773,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
-                          {/* RAG 출처 카드 — 매칭 결과 없는 상담 심화에서만 표시 */}
-                          {msg.role === "assistant" && msg.done && !msg.matched && msg.rag_sources && msg.rag_sources.length > 0 && (
-                            <div className={`mt-2 p-2 rounded-xl border ${dark ? "bg-amber-500/5 border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
-                              <div className={`text-[10px] font-bold mb-1.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
-                                📚 답변 근거 ({msg.rag_sources.length}건)
-                              </div>
-                              <div className="space-y-1">
-                                {msg.rag_sources.slice(0, 5).map((src: any, si: number) => (
-                                  <div key={si} className={`text-[11px] ${dark ? "text-slate-300" : "text-slate-700"}`}>
-                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold mr-1 ${dark ? "bg-amber-500/20 text-amber-300" : "bg-amber-100 text-amber-800"}`}>
-                                      {Math.round((src.similarity || 0) * 100)}%
-                                    </span>
-                                    <span className="font-semibold">『{(src.ann_title || "").slice(0, 50)}』</span>
-                                    {src.department && <span className={dark ? "text-slate-500" : "text-slate-500"}> · {src.department.slice(0, 25)}</span>}
-                                    {src.section_title && <span className={dark ? "text-amber-400" : "text-amber-700"}> [{src.section_title}]</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          {/* 답변 근거 패널 제거 (RAG 관련도 낮아 UX 혼선 유발) */}
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">
@@ -815,10 +789,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               ))}
                             </div>
                           )}
-                          {/* 매칭 결과 카드 + 보고서 생성 버튼 */}
+                          {/* 매칭 결과 카드 + 보고서 생성 버튼 — 버킷 배지로 그룹 시각화 */}
                           {msg.role === "assistant" && msg.matched && msg.matched.length > 0 && (
                             <div className="mt-3 space-y-2">
-                              {msg.matched.slice(0, 5).map((m: any, mi: number) => (
+                              {msg.matched.slice(0, 20).map((m: any, mi: number) => {
+                                const bucket = m.bucket || "";
+                                const bucketBadge = (() => {
+                                  if (bucket === "interest_match") return { icon: "🎯", label: "관심 일치", color: "bg-violet-500/10 text-violet-600 border-violet-400/30" };
+                                  if (bucket === "deadline_urgent") return { icon: "⏰", label: "마감 임박", color: "bg-red-500/10 text-red-600 border-red-400/30" };
+                                  if (bucket === "qualified_other") return { icon: "✅", label: "참고", color: "bg-slate-500/10 text-slate-500 border-slate-400/30" };
+                                  return null;
+                                })();
+                                const interestTags = (m.matched_interests || []).slice(0, 2);
+                                return (
                                 <button key={mi}
                                   onClick={() => {
                                     const aid = m.announcement_id || m.id;
@@ -830,6 +813,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
+                                      {/* 상단: 버킷 배지 + 관심 태그 */}
+                                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                        {bucketBadge && (
+                                          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold ${bucketBadge.color}`}>
+                                            <span>{bucketBadge.icon}</span><span>{bucketBadge.label}</span>
+                                          </span>
+                                        )}
+                                        {interestTags.map((tag: string, ti: number) => (
+                                          <span key={ti} className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold ${dark ? "bg-emerald-500/10 text-emerald-400 border-emerald-400/20" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                                            #{tag}
+                                          </span>
+                                        ))}
+                                      </div>
                                       <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
                                         {m.title || m.program_title || "공고"}
                                       </p>
@@ -846,7 +842,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                     <span className={`text-[10px] flex-shrink-0 ${dark ? "text-violet-400" : "text-violet-600"}`}>상담 →</span>
                                   </div>
                                 </button>
-                              ))}
+                              );
+                              })}
                               {msg.showReportButton && (
                                 <button
                                   onClick={async () => {
@@ -1001,20 +998,24 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         <span className="hidden sm:inline">전송</span>
                         {Icons.send}
                       </button>
-                      <button
-                        onClick={() => {
-                          // 매칭 버튼 — 수집된 정보 확인 모달 열기
-                          setMatchProfile({ ...collectedProfile });
-                          setShowMatchModal(true);
-                        }}
-                        disabled={loading || typing}
-                        className="p-2 sm:px-3 sm:py-2 border border-violet-500 text-violet-600 rounded-xl text-[12px] font-bold hover:bg-violet-50 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0"
-                        title="수집된 정보로 공고 매칭"
-                        aria-label="매칭 실행"
-                      >
-                        <span className="sm:hidden">📋</span>
-                        <span className="hidden sm:inline">📋 매칭</span>
-                      </button>
+                      {(() => {
+                        const hasMatched = messages.some(m => m.role === "assistant" && m.matched && m.matched.length > 0);
+                        return (
+                          <button
+                            onClick={() => {
+                              setMatchProfile({ ...collectedProfile });
+                              setShowMatchModal(true);
+                            }}
+                            disabled={loading || typing}
+                            className="p-2 sm:px-3 sm:py-2 border border-violet-500 text-violet-600 rounded-xl text-[12px] font-bold hover:bg-violet-50 transition-all active:scale-95 disabled:opacity-30 flex-shrink-0"
+                            title={hasMatched ? "조건 변경 후 재매칭" : "수집된 정보로 공고 매칭"}
+                            aria-label={hasMatched ? "재매칭" : "매칭 실행"}
+                          >
+                            <span className="sm:hidden">{hasMatched ? "🔄" : "📋"}</span>
+                            <span className="hidden sm:inline">{hasMatched ? "🔄 재매칭" : "📋 매칭"}</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </>
@@ -1143,63 +1144,49 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             </div>
           )}
 
-          {/* 마지막 답변 출처 요약 */}
-          {(() => {
-            const lastMsg = [...messages].reverse().find(m => m.role === "assistant" && m.done && !m.matched && m.rag_sources && m.rag_sources.length > 0);
-            if (!lastMsg || !lastMsg.rag_sources) return null;
-            return (
-              <div className={`p-4 border-b ${t.border}`}>
-                <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${dark ? "text-amber-400" : "text-amber-700"}`}>📚 답변 근거</p>
-                <div className="space-y-1.5">
-                  {lastMsg.rag_sources.slice(0, 3).map((src: any, i: number) => (
-                    <div key={i} className={`text-[11px] p-2 rounded-lg border ${dark ? "bg-amber-500/5 border-amber-500/15" : "bg-amber-50 border-amber-200"}`}>
-                      <div className="flex items-start gap-1">
-                        <span className={`text-[9px] font-bold flex-shrink-0 mt-0.5 ${dark ? "text-amber-400" : "text-amber-700"}`}>
-                          {Math.round((src.similarity || 0) * 100)}%
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className={`font-semibold truncate ${dark ? "text-slate-200" : "text-slate-800"}`}>
-                            {(src.ann_title || "").slice(0, 40)}
-                          </p>
-                          <p className={`text-[10px] ${t.muted}`}>{src.section_title}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          {/* 답변 근거 사이드바 섹션 제거 (RAG 관련도 낮아 UX 혼선 유발) */}
 
           {/* 빠른 액션 — 상담 진행 중일 때 */}
           {messages.length > 1 && (
             <div className={`p-4 border-b ${t.border}`}>
               <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>빠른 액션</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  onClick={() => handleSend("이 조건으로 매칭 진행해주세요")}
-                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-violet-500/10 border border-violet-500/30 text-violet-300 hover:bg-violet-500/20" : "bg-violet-50 border border-violet-200 text-violet-700 hover:bg-violet-100"}`}
-                >
-                  🎯 매칭
-                </button>
-                <button
-                  onClick={() => handleSend("지금까지 정리해줘")}
-                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"}`}
-                >
-                  📋 정리
-                </button>
-                <button
-                  onClick={() => handleSend("자격요건을 자세히 설명해주세요")}
-                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20" : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"}`}
-                >
-                  ✅ 자격
-                </button>
-                <button
-                  onClick={() => handleSend("필요한 서류 알려주세요")}
-                  className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20" : "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"}`}
-                >
-                  📄 서류
-                </button>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(() => {
+                  // 매칭 완료 여부 = 최근 assistant 메시지에 matched 배열이 있음
+                  const hasMatched = messages.some(m => m.role === "assistant" && m.matched && m.matched.length > 0);
+                  const disabledCls = "opacity-40 cursor-not-allowed";
+                  const enabledCls = (color: string) => dark
+                    ? `bg-${color}-500/10 border border-${color}-500/30 text-${color}-300 hover:bg-${color}-500/20`
+                    : `bg-${color}-50 border border-${color}-200 text-${color}-700 hover:bg-${color}-100`;
+                  return (
+                    <>
+                      <button
+                        onClick={() => hasMatched && handleSend("[상담 진행 경과 요약 요청] 지금까지 파악한 고객사 프로필, 관심분야, 매칭 결과(건수만), 남은 상담 포인트를 간단히 정리해줘. 공고 제목 나열 금지. 상위 카드는 이미 화면에 있음.")}
+                        disabled={!hasMatched}
+                        title={hasMatched ? "상담 진행 경과 정리" : "매칭 완료 후 활성화"}
+                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
+                      >
+                        📋 정리
+                      </button>
+                      <button
+                        onClick={() => hasMatched && handleSend("위 매칭된 공고들의 자격요건을 자세히 설명해주세요")}
+                        disabled={!hasMatched}
+                        title={hasMatched ? "자격요건 상세" : "매칭 완료 후 활성화"}
+                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20" : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
+                      >
+                        ✅ 자격
+                      </button>
+                      <button
+                        onClick={() => hasMatched && handleSend("위 매칭된 공고들의 필요 서류를 알려주세요")}
+                        disabled={!hasMatched}
+                        title={hasMatched ? "서류 안내" : "매칭 완료 후 활성화"}
+                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20" : "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
+                      >
+                        📄 서류
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1374,10 +1361,6 @@ function ClientsTabWrapper({ headers, toast, dark, t, onResumeConsult }: {
           )}
           <button onClick={handleExport} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${dark ? "bg-white/[0.05] text-slate-300 hover:bg-white/[0.08]" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
             CSV 다운로드
-          </button>
-          <button onClick={() => { toast("고객 추가는 상담에서 자동 등록됩니다", "info"); }}
-            className="px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-lg hover:bg-violet-500">
-            + 고객 추가
           </button>
         </div>
       </div>

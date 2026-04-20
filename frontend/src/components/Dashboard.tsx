@@ -161,7 +161,8 @@ interface MatchItem {
     title: string;
     support_amount: string;
     deadline_date: string;
-    match_score?: number;
+    match_score?: number;  // 구버전 호환 (deprecated) — rank 사용
+    rank?: number;
     recommendation_reason: string;
     bucket?: string;
     bucket_label?: string;
@@ -417,16 +418,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
-  // 오늘의 인기 공고 — majorTab(기업/개인) 따라 분기
-  const [trendingItems, setTrendingItems] = useState<any[]>([]);
-  useEffect(() => {
-    const _token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
-    fetch(`${API}/api/trending?target_type=${majorTab}`, {
-      headers: _token ? { Authorization: `Bearer ${_token}` } : {},
-    }).then(r => r.json()).then(d => {
-      if (d.data) setTrendingItems(d.data);
-    }).catch(() => {});
-  }, [majorTab]);
+  // 오늘의 인기 공고 state/fetch 제거 (사장님 요청)
 
   // DB 전체 공고 수 조회
   useEffect(() => {
@@ -783,8 +775,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
     if (!searchQuery.trim()) {
       if (sortKey === "recommend") {
-        // 맞춤추천: 서버에서 버킷 순서대로 정렬됨 — match_score는 순서 보존용
-        result.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+        // 맞춤추천: 서버에서 버킷 순서대로 정렬됨
+        // rank 오름차순 (1등이 앞) — match_score는 deprecated지만 구버전 호환 유지
+        result.sort((a, b) => {
+          const ra = a.rank ?? (1000 - (a.match_score || 0));
+          const rb = b.rank ?? (1000 - (b.match_score || 0));
+          return ra - rb;
+        });
       } else if (sortKey === "amount") {
         result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
       } else if (sortKey === "deadline") {
@@ -1452,32 +1449,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           ) : (
             <>
-            {/* 오늘의 인기 공고 — 1페이지 + 맞춤 탭 아닐 때만 */}
-            {trendingItems.length > 0 && currentPage === 1 && activeTab !== "smart" && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">🔥</span>
-                  <h3 className="text-[15px] font-bold text-slate-800">오늘의 인기 공고</h3>
-                  <span className="text-[11px] text-slate-400">네이버 검색 트렌드 기반 선정</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {trendingItems.slice(0, 2).map((t) => (
-                    <div
-                      key={t.announcement_id}
-                      className="rounded-2xl bg-gradient-to-br from-amber-100 via-orange-100 to-rose-100 p-[3px]"
-                    >
-                      <ResultCard
-                        res={t}
-                        planStatus={isPublic && !profile ? null : planStatus}
-                        onUpgrade={isPublic && !profile ? undefined : onUpgrade}
-                        onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
-                        highlight={highlightAid === t.announcement_id}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* 오늘의 인기 공고 섹션 제거 (사장님 요청) */}
 
             {/* 맞춤 추천 탭 — AI가 선별한 공고 */}
             {activeTab === "smart" && (

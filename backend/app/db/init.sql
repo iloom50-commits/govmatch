@@ -20,8 +20,18 @@ CREATE TABLE IF NOT EXISTS announcements (
     category VARCHAR(100),
     origin_source VARCHAR(100),
     target_type VARCHAR(20) DEFAULT 'business',   -- 'business' | 'individual' | 'both'
+    -- [Phase 1] 공고 상태 명시적 관리 (deadline 품질 근본 해결)
+    deadline_type VARCHAR(20) DEFAULT 'unknown',  -- 'fixed' | 'ongoing' | 'unknown' | 'expired'
+    is_archived BOOLEAN DEFAULT FALSE,
+    analysis_status VARCHAR(20) DEFAULT 'pending', -- 'pending' | 'analyzed' | 'failed' | 'skipped'
+    analysis_attempts INT DEFAULT 0,
+    last_analyzed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_ann_deadline_type ON announcements(deadline_type) WHERE is_archived = FALSE;
+CREATE INDEX IF NOT EXISTS idx_ann_archived ON announcements(is_archived) WHERE is_archived = FALSE;
+CREATE INDEX IF NOT EXISTS idx_ann_analysis_status ON announcements(analysis_status);
 
 -- 2. 사용자 프로필 테이블 (기업 + 개인 통합)
 CREATE TABLE IF NOT EXISTS users (

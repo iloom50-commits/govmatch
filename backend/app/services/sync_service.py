@@ -328,11 +328,41 @@ class SyncService:
 
                 support_amount = item.get('support_amount', '') or ''
 
+                # [Phase 2] deadline_type 자동 결정 — 수집 시점 상태 명시
+                # 1) 명확한 미래 마감일 있음 → 'fixed'
+                # 2) 제목/본문에 상시/연중/수시/마감일없음 키워드 → 'ongoing'
+                # 3) 과거 마감일 → 'expired' (이미 만료된 공고 유입 방지)
+                # 4) 그 외 → 'unknown' (분석 큐에서 재판정)
+                _ongoing_patterns = ("상시", "연중", "수시", "상시모집", "상시 모집", "마감일 없음", "마감 없음", "예산 소진", "마감일미정")
+                _text_for_detect = f"{item.get('title','')} {item.get('description','')}".lower()
+                _is_ongoing = any(p in _text_for_detect for p in _ongoing_patterns)
+
+                import datetime as _dt_phase2
+                _today = _dt_phase2.date.today()
+                if deadline_safe:
+                    try:
+                        _ddate = _dt_phase2.date.fromisoformat(str(deadline_safe)[:10])
+                        if _ddate >= _today:
+                            _deadline_type = "fixed"
+                        else:
+                            _deadline_type = "expired"
+                    except Exception:
+                        _deadline_type = "ongoing" if _is_ongoing else "unknown"
+                elif _is_ongoing:
+                    _deadline_type = "ongoing"
+                else:
+                    _deadline_type = "unknown"
+
                 query = """
-                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount, deadline_type, analysis_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
                 ON CONFLICT (origin_url) DO UPDATE SET
                     deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
+                    deadline_type = CASE
+                        -- 기존이 'fixed'/'ongoing'이면 보존, 그렇지 않을 때만 업데이트
+                        WHEN announcements.deadline_type IN ('fixed', 'ongoing') THEN announcements.deadline_type
+                        ELSE EXCLUDED.deadline_type
+                    END,
                     established_years_limit = COALESCE(EXCLUDED.established_years_limit, announcements.established_years_limit),
                     revenue_limit = COALESCE(EXCLUDED.revenue_limit, announcements.revenue_limit),
                     employee_limit = COALESCE(EXCLUDED.employee_limit, announcements.employee_limit),
@@ -358,7 +388,7 @@ class SyncService:
                     item.get('department', ''), item.get('category', ''), item.get('origin_source', ''),
                     item.get('region', 'All'), deadline_safe,
                     years_limit, revenue_limit, employee_limit, industry_codes, target_type,
-                    support_amount
+                    support_amount, _deadline_type
                 ))
                 saved += 1
                 if saved % 100 == 0:

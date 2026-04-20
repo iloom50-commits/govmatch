@@ -1100,6 +1100,105 @@ def _resolve_failure(db_conn, announcement_id: int) -> None:
         except: pass
 
 
+_MAX_ANALYSIS_ATTEMPTS = 3
+
+
+def _update_analysis_status(db_conn, announcement_id: int, status: str, attempts_inc: bool = True,
+                             deadline_type: Optional[str] = None, deadline_date: Optional[str] = None) -> None:
+    """[Phase 3] 분석 시도 상태를 announcements 테이블에 기록.
+
+    - status: 'pending' | 'analyzed' | 'failed' | 'skipped'
+    - attempts_inc: analysis_attempts를 1 증가시킬지
+    - deadline_type / deadline_date: 추출 성공 시 함께 업데이트
+    """
+    try:
+        cur = db_conn.cursor()
+        parts = ["analysis_status = %s", "last_analyzed_at = CURRENT_TIMESTAMP"]
+        params = [status]
+        if attempts_inc:
+            parts.append("analysis_attempts = COALESCE(analysis_attempts, 0) + 1")
+        if deadline_type:
+            parts.append("deadline_type = %s")
+            params.append(deadline_type)
+        if deadline_date:
+            # NULL이면 업데이트, 아니면 보존 (수집 단계에서 들어온 값 우선)
+            parts.append("deadline_date = COALESCE(deadline_date, %s::date)")
+            params.append(deadline_date)
+        params.append(announcement_id)
+        cur.execute(f"UPDATE announcements SET {', '.join(parts)} WHERE announcement_id = %s", params)
+        db_conn.commit()
+    except Exception as e:
+        try: db_conn.rollback()
+        except Exception: pass
+        print(f"[DocAnalysis] _update_analysis_status error: {e}")
+
+
+def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tuple:
+    """[Phase 3] 분석 결과에서 deadline_type 및 deadline_date 추출.
+
+    Returns: (deadline_type, deadline_date_iso or None)
+    """
+    import re as _re
+    import datetime as _dt
+
+    # 1) 상시 모집 키워드 우선 감지
+    ongoing_patterns = ("상시", "연중", "수시", "상시모집", "상시 모집", "마감일 없음", "마감 없음", "예산 소진", "마감일미정")
+    search_text = ""
+    if isinstance(parsed_sections, dict):
+        tl = parsed_sections.get("timeline") or ""
+        if isinstance(tl, dict):
+            tl = " ".join(str(v) for v in tl.values())
+        search_text = f"{tl} {(full_text or '')[:2000]}"
+    else:
+        search_text = (full_text or "")[:2000]
+
+    if any(p in search_text for p in ongoing_patterns):
+        return ("ongoing", None)
+
+    # 2) timeline에서 날짜 추출 시도 (YYYY-MM-DD, YYYY년 MM월 DD일, YYYY.MM.DD)
+    date_patterns = [
+        r"(20\d{2})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})",  # 2026-04-20, 2026.04.20
+        r"(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일",       # 2026년 4월 20일
+    ]
+    # 마감 관련 우선 영역
+    candidate_text = ""
+    if isinstance(parsed_sections, dict):
+        tl = parsed_sections.get("timeline")
+        if isinstance(tl, str):
+            candidate_text = tl
+        elif isinstance(tl, dict):
+            candidate_text = " ".join(str(v) for v in tl.values())
+    if not candidate_text:
+        candidate_text = (full_text or "")[:3000]
+
+    # "마감" 키워드 주변 우선 탐색
+    today = _dt.date.today()
+    best_future = None
+    best_past = None
+    # 마감일은 "가장 늦은 미래 날짜"를 선택 (접수기간 범위의 끝이 마감)
+    for pat in date_patterns:
+        for m in _re.finditer(pat, candidate_text):
+            try:
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                cand = _dt.date(y, mo, d)
+                start = max(0, m.start() - 30)
+                end = min(len(candidate_text), m.end() + 30)
+                ctx = candidate_text[start:end]
+                if any(kw in ctx for kw in ("마감", "접수", "신청", "까지", "~")):
+                    if cand >= today and (best_future is None or cand > best_future):
+                        best_future = cand
+                    elif cand < today and (best_past is None or cand > best_past):
+                        best_past = cand
+            except Exception:
+                continue
+
+    if best_future:
+        return ("fixed", best_future.isoformat())
+    if best_past:
+        return ("expired", best_past.isoformat())
+    return ("unknown", None)
+
+
 def analyze_and_store(
     announcement_id: int,
     origin_url: str,
@@ -1124,6 +1223,18 @@ def analyze_and_store(
         "attachments": [], "error": None,
     }
 
+    # [Phase 3] 분석 시작 시점에 attempts 증가 (재시도 추적)
+    try:
+        cur0 = db_conn.cursor()
+        cur0.execute(
+            "UPDATE announcements SET analysis_attempts = COALESCE(analysis_attempts, 0) + 1, last_analyzed_at = CURRENT_TIMESTAMP WHERE announcement_id = %s",
+            (announcement_id,)
+        )
+        db_conn.commit()
+    except Exception:
+        try: db_conn.rollback()
+        except Exception: pass
+
     # 1) 통합 텍스트 수집 (첨부파일 우선 → HTML → summary fallback)
     full_text, source_type, att_names = extract_full_text(origin_url, summary_text)
     result_info["source_type"] = source_type
@@ -1135,6 +1246,8 @@ def analyze_and_store(
         print(f"[DocAnalysis] ✗ {msg}")
         result_info["error"] = msg
         _record_failure(db_conn, announcement_id, "extract_empty", msg)
+        # [Phase 3] 원문 접근 불가 → skipped (재시도 의미 없음)
+        _update_analysis_status(db_conn, announcement_id, "skipped", attempts_inc=False)
         return result_info
 
     # 2) Gemini 정밀 분석
@@ -1148,6 +1261,18 @@ def analyze_and_store(
         print(f"[DocAnalysis] ✗ {msg}")
         result_info["error"] = msg
         _record_failure(db_conn, announcement_id, "gemini_empty", msg)
+        # [Phase 3] Gemini 응답 비어있음 → 재시도 카운트 확인 후 failed 전환
+        try:
+            cur_ck = db_conn.cursor()
+            cur_ck.execute("SELECT analysis_attempts FROM announcements WHERE announcement_id = %s", (announcement_id,))
+            row_ck = cur_ck.fetchone()
+            atp = (row_ck.get("analysis_attempts") if row_ck else 0) or 0
+            if atp >= _MAX_ANALYSIS_ATTEMPTS:
+                _update_analysis_status(db_conn, announcement_id, "failed", attempts_inc=False)
+            # 미만이면 status 유지(pending) — 다음 배치에서 재시도
+        except Exception:
+            try: db_conn.rollback()
+            except Exception: pass
         return result_info
 
     # 2-B) is_umbrella 판정 — 통합공고면 공고 자체를 삭제
@@ -1205,6 +1330,28 @@ def analyze_and_store(
         result_info["success"] = True
         print(f"[DocAnalysis] ✓ #{announcement_id} saved ({len(full_text)} chars, {source_type}, {len(att_names)} files)")
         _resolve_failure(db_conn, announcement_id)
+
+        # [Phase 3] 분석 완료 → analysis_status='analyzed' + deadline 자동 감지
+        try:
+            _dtype, _ddate = _detect_deadline_from_analysis(parsed_sections, full_text)
+            # deadline_type 보존 규칙:
+            #   - 기존이 'fixed'/'ongoing'이면 유지 (수집 시점 값 신뢰)
+            #   - 'unknown'/'expired'면 분석 결과로 덮어씀
+            cur_dt = db_conn.cursor()
+            cur_dt.execute("SELECT deadline_type FROM announcements WHERE announcement_id = %s", (announcement_id,))
+            cur_row = cur_dt.fetchone()
+            cur_type = (cur_row.get("deadline_type") if cur_row else None) or "unknown"
+            final_type = cur_type if cur_type in ("fixed", "ongoing") else _dtype
+            _update_analysis_status(
+                db_conn, announcement_id, "analyzed",
+                attempts_inc=False,
+                deadline_type=final_type,
+                deadline_date=_ddate,
+            )
+        except Exception as st_err:
+            print(f"[DocAnalysis] status update error: {st_err}")
+            try: db_conn.rollback()
+            except Exception: pass
 
         # 분석 결과에서 support_amount 추출 → announcements 테이블에 역저장
         try:

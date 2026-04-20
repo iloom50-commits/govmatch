@@ -233,6 +233,39 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline 품질 근본 해결용
+        # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
+        # - is_archived: 아카이브 여부 (UI 노출 제외)
+        # - analysis_status: 'pending'(대기) / 'analyzed'(완료) / 'failed'(재시도 초과) / 'skipped'(원문 없음)
+        # - analysis_attempts: 분석 시도 횟수 (재시도 로직 제어)
+        # - last_analyzed_at: 마지막 분석 시도 시각
+        for col_def in [
+            "deadline_type VARCHAR(20) DEFAULT 'unknown'",
+            "is_archived BOOLEAN DEFAULT FALSE",
+            "analysis_status VARCHAR(20) DEFAULT 'pending'",
+            "analysis_attempts INT DEFAULT 0",
+            "last_analyzed_at TIMESTAMP",
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE announcements ADD COLUMN IF NOT EXISTS {col_def}")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"  Note: announcements.{col_def.split()[0]} migration skipped: {e}")
+
+        # Phase 1 인덱스 — 자주 필터링되는 조합
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_ann_deadline_type ON announcements(deadline_type) WHERE is_archived = FALSE",
+            "CREATE INDEX IF NOT EXISTS idx_ann_archived ON announcements(is_archived) WHERE is_archived = FALSE",
+            "CREATE INDEX IF NOT EXISTS idx_ann_analysis_status ON announcements(analysis_status)",
+        ]:
+            try:
+                cursor.execute(idx_sql)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"  Note: Phase 1 index skipped: {e}")
+
         # billing_key 컬럼 추가 (정기결제용)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_key TEXT")

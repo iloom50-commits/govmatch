@@ -1,7 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: "#2563eb",
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -92,7 +100,6 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://govmatch-production.up.railway.app" />
         <link rel="preconnect" href="https://t1.kakaocdn.net" crossOrigin="anonymous" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta name="theme-color" content="#2563eb" />
         {/* Google Analytics 4 */}
         {process.env.NEXT_PUBLIC_GA_ID && (
           <>

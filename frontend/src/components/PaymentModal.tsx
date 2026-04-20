@@ -41,21 +41,65 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     });
   };
 
+  // JWT 페이로드에서 사용자 식별 정보 추출 (PortOne customer용)
+  const decodeJwt = (tok: string): { bn?: string; email?: string; user_id?: string | number } => {
+    try {
+      const part = tok.split(".")[1];
+      if (!part) return {};
+      const base = part.replace(/-/g, "+").replace(/_/g, "/").padEnd(part.length + ((4 - (part.length % 4)) % 4), "=");
+      return JSON.parse(atob(base));
+    } catch { return {}; }
+  };
+
   const handleSubscribe = async (targetPlan: "lite" | "pro") => {
     setLoading(true);
     try {
       const token = getToken();
+      const userClaims = decodeJwt(token);
+      const customerId = (userClaims.bn || String(userClaims.user_id || "")).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || `guest_${Date.now()}`;
+      const customerEmail = userClaims.email || "";
+
+      // 모바일 감지 — 모바일은 REDIRECTION 방식이 필수 (KCP 모바일 최적화 페이지 호출)
+      const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      // 모바일 리다이렉트 복귀 후 컨텍스트 복원용 — 토큰/플랜 저장
+      if (isMobile) {
+        sessionStorage.setItem("portone_billing_context", JSON.stringify({
+          targetPlan,
+          payMethod,
+          token,
+          savedAt: Date.now(),
+        }));
+      }
+
+      const issueId = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
+      const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/payment/billing-redirect` : "";
+
       const billingKeyResponse = await PortOne.requestIssueBillingKey({
         storeId: STORE_ID,
         channelKey: payMethod === "kakao" ? CHANNEL_KEY_KAKAO : CHANNEL_KEY,
         billingKeyMethod: payMethod === "kakao" ? "EASY_PAY" : "CARD",
-      });
-      // 결제창 닫기/취소 모든 케이스 방어
+        issueId,
+        issueName,
+        customer: {
+          customerId,
+          email: customerEmail || undefined,
+        },
+        // 모바일: REDIRECTION(전체 이동), 데스크톱: IFRAME(현재 페이지 위 팝업)
+        windowType: isMobile
+          ? { pc: "IFRAME", mobile: "REDIRECTION" }
+          : { pc: "IFRAME", mobile: "REDIRECTION" },
+        redirectUrl,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      // 모바일 REDIRECTION은 페이지가 이미 이동하므로 아래 코드는 데스크톱 IFRAME에서만 실행됨
       const code = billingKeyResponse?.code;
       if (code === "USER_CANCEL" || code === "FAILURE" || code === "PORTONE_ERROR") {
         toast("결제가 취소되었습니다.", "info"); setLoading(false); return;
       }
-      const billingKey = (billingKeyResponse as any)?.billingKey;
+      const billingKey = (billingKeyResponse as any)?.billingKey;  // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!billingKey || typeof billingKey !== "string" || billingKey.trim().length < 10) {
         toast("카드 등록에 실패했습니다. 다시 시도해 주세요.", "error"); setLoading(false); return;
       }

@@ -156,83 +156,6 @@ const EMPLOYEE_KR: Record<string, string> = {
   "5ì¸~10ì¸": "5~10인",
 };
 
-// 🔴 실시간 통계 카운터 — 히어로 영역 (공고/매칭/상담)
-function LiveStatsBar() {
-  const API = process.env.NEXT_PUBLIC_API_URL || "";
-  const [stats, setStats] = useState<{ announcements: number; matches: number; consultations: number } | null>(null);
-  const [animated, setAnimated] = useState({ announcements: 0, matches: 0, consultations: 0 });
-
-  useEffect(() => {
-    let active = true;
-    const fetchStats = async () => {
-      try {
-        const r = await fetch(`${API}/api/stats/live`);
-        if (!r.ok) return;
-        const d = await r.json();
-        if (!active) return;
-        setStats({ announcements: d.announcements, matches: d.matches, consultations: d.consultations });
-      } catch {}
-    };
-    fetchStats();
-    const iv = setInterval(fetchStats, 30000);
-    return () => { active = false; clearInterval(iv); };
-  }, [API]);
-
-  useEffect(() => {
-    if (!stats) return;
-    const duration = 1200;
-    const startTime = Date.now();
-    const from = { ...animated };
-    let raf: number;
-    const tick = () => {
-      const p = Math.min(1, (Date.now() - startTime) / duration);
-      const ease = 1 - Math.pow(1 - p, 3);
-      setAnimated({
-        announcements: Math.floor(from.announcements + (stats.announcements - from.announcements) * ease),
-        matches: Math.floor(from.matches + (stats.matches - from.matches) * ease),
-        consultations: Math.floor(from.consultations + (stats.consultations - from.consultations) * ease),
-      });
-      if (p < 1) raf = requestAnimationFrame(tick);
-      else setAnimated(stats);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats?.announcements, stats?.matches, stats?.consultations]);
-
-  const items = [
-    { icon: "📋", label: "분석 공고",   value: animated.announcements, color: "from-indigo-500 to-violet-500" },
-    { icon: "🎯", label: "매칭 성공",   value: animated.matches,       color: "from-emerald-500 to-teal-500" },
-    { icon: "💬", label: "AI 상담",     value: animated.consultations, color: "from-amber-500 to-orange-500" },
-  ];
-
-  return (
-    <div
-      className="grid grid-cols-3 gap-1.5 sm:gap-2"
-      style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
-    >
-      {items.map((it) => (
-        <div key={it.label} className="relative overflow-hidden rounded-lg bg-white/70 backdrop-blur-sm border border-slate-200/60 px-2 py-2 sm:px-3 sm:py-2.5 shadow-sm hover:shadow-md transition-all">
-          <div className="flex items-center gap-1.5">
-            <span className="text-base sm:text-lg">{it.icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm sm:text-base font-black tracking-tight bg-gradient-to-r ${it.color} bg-clip-text text-transparent tabular-nums`}>
-                {it.value.toLocaleString()}
-              </p>
-              <p className="text-[9px] sm:text-[10px] text-slate-500 font-medium leading-tight">{it.label}</p>
-            </div>
-          </div>
-          {/* 맥동 점 */}
-          <span className="absolute top-1.5 right-1.5 flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 interface MatchItem {
     announcement_id: number;
     title: string;
@@ -1361,9 +1284,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </button>
               )}
             </div>
-
-            {/* 🔴 실시간 통계 카운터 바 */}
-            <LiveStatsBar />
 
             {/* 키워드 검색 */}
             <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 rounded-lg border border-slate-200/60 shadow-sm">

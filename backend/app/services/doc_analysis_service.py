@@ -1353,22 +1353,40 @@ def analyze_and_store(
             try: db_conn.rollback()
             except Exception: pass
 
-        # 분석 결과에서 support_amount 추출 → announcements 테이블에 역저장
+        # [Phase 3 보강] 분석 결과에서 support_amount 추출 + 정규화 → announcements 역저장
         try:
+            from app.services.amount_parser import parse_support_amount as _parse_amt
             da = deep_analysis if isinstance(deep_analysis, dict) else {}
             support_summary = da.get("support_summary") or {}
             amount_text = support_summary.get("amount", "")
             if amount_text and amount_text not in ("미상", "없음", "", "N/A"):
+                _amt_type, _amt_max, _amt_min = _parse_amt(amount_text)
+                # 금액 문자열 + 정규화 값 + type 동시 업데이트
+                #   - support_amount 비었을 때만 텍스트 갱신 (기존 수집값 존중)
+                #   - support_amount_max/min은 기존 NULL이면 채움
+                #   - support_amount_type은 기존이 'numeric'이 아닐 때만 덮어씀
                 cur.execute(
-                    """UPDATE announcements SET support_amount = %s
-                       WHERE announcement_id = %s AND (support_amount IS NULL OR support_amount = '')""",
-                    (amount_text, announcement_id)
+                    """UPDATE announcements SET
+                         support_amount = CASE
+                           WHEN support_amount IS NULL OR support_amount = '' THEN %s
+                           ELSE support_amount
+                         END,
+                         support_amount_type = CASE
+                           WHEN support_amount_type = 'numeric' THEN support_amount_type
+                           ELSE %s
+                         END,
+                         support_amount_max = COALESCE(support_amount_max, %s),
+                         support_amount_min = COALESCE(support_amount_min, %s)
+                       WHERE announcement_id = %s""",
+                    (amount_text, _amt_type, _amt_max, _amt_min, announcement_id)
                 )
                 db_conn.commit()
                 if cur.rowcount > 0:
-                    print(f"[DocAnalysis] ✓ #{announcement_id} support_amount updated: {amount_text}")
+                    print(f"[DocAnalysis] ✓ #{announcement_id} amount={amount_text!r} type={_amt_type} max={_amt_max}")
         except Exception as amt_err:
             print(f"[DocAnalysis] support_amount update error: {amt_err}")
+            try: db_conn.rollback()
+            except Exception: pass
 
         # ★ 분석 완료 직후 임베딩 즉시 발행 (공고 단위 RAG 자동 편입)
         try:

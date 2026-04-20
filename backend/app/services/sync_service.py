@@ -328,6 +328,10 @@ class SyncService:
 
                 support_amount = item.get('support_amount', '') or ''
 
+                # [Phase 2 보강] 금액 파싱 — 수집 시점 정규화
+                from app.services.amount_parser import parse_support_amount as _parse_amt
+                _amt_type, _amt_max, _amt_min = _parse_amt(support_amount)
+
                 # [Phase 2] deadline_type 자동 결정 — 수집 시점 상태 명시
                 # 1) 명확한 미래 마감일 있음 → 'fixed'
                 # 2) 제목/본문에 상시/연중/수시/마감일없음 키워드 → 'ongoing'
@@ -354,8 +358,8 @@ class SyncService:
                     _deadline_type = "unknown"
 
                 query = """
-                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount, deadline_type, analysis_status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount, deadline_type, analysis_status, support_amount_type, support_amount_max, support_amount_min)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s)
                 ON CONFLICT (origin_url) DO UPDATE SET
                     deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
                     deadline_type = CASE
@@ -381,14 +385,21 @@ class SyncService:
                         WHEN EXCLUDED.support_amount IS NOT NULL AND EXCLUDED.support_amount != ''
                         THEN EXCLUDED.support_amount
                         ELSE COALESCE(announcements.support_amount, EXCLUDED.support_amount)
-                    END
+                    END,
+                    support_amount_type = CASE
+                        -- 기존이 'numeric'이면 보존, 그 외엔 신규 판정 적용
+                        WHEN announcements.support_amount_type = 'numeric' THEN announcements.support_amount_type
+                        ELSE EXCLUDED.support_amount_type
+                    END,
+                    support_amount_max = COALESCE(announcements.support_amount_max, EXCLUDED.support_amount_max),
+                    support_amount_min = COALESCE(announcements.support_amount_min, EXCLUDED.support_amount_min)
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,
                     item.get('department', ''), item.get('category', ''), item.get('origin_source', ''),
                     item.get('region', 'All'), deadline_safe,
                     years_limit, revenue_limit, employee_limit, industry_codes, target_type,
-                    support_amount, _deadline_type
+                    support_amount, _deadline_type, _amt_type, _amt_max, _amt_min
                 ))
                 saved += 1
                 if saved % 100 == 0:

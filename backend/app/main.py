@@ -233,18 +233,23 @@ def init_database():
         except Exception:
             conn.rollback()
 
-        # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline 품질 근본 해결용
+        # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)
         # - analysis_status: 'pending'(대기) / 'analyzed'(완료) / 'failed'(재시도 초과) / 'skipped'(원문 없음)
         # - analysis_attempts: 분석 시도 횟수 (재시도 로직 제어)
         # - last_analyzed_at: 마지막 분석 시도 시각
+        # - support_amount_type: 'numeric'(숫자 파싱 성공) / 'text_only'(텍스트만) / 'unknown' / 'not_specified'
+        # - support_amount_max / min: 정규화된 원(KRW) 단위 값 (정렬·필터용)
         for col_def in [
             "deadline_type VARCHAR(20) DEFAULT 'unknown'",
             "is_archived BOOLEAN DEFAULT FALSE",
             "analysis_status VARCHAR(20) DEFAULT 'pending'",
             "analysis_attempts INT DEFAULT 0",
             "last_analyzed_at TIMESTAMP",
+            "support_amount_type VARCHAR(20) DEFAULT 'unknown'",
+            "support_amount_max BIGINT",
+            "support_amount_min BIGINT",
         ]:
             try:
                 cursor.execute(f"ALTER TABLE announcements ADD COLUMN IF NOT EXISTS {col_def}")
@@ -258,6 +263,8 @@ def init_database():
             "CREATE INDEX IF NOT EXISTS idx_ann_deadline_type ON announcements(deadline_type) WHERE is_archived = FALSE",
             "CREATE INDEX IF NOT EXISTS idx_ann_archived ON announcements(is_archived) WHERE is_archived = FALSE",
             "CREATE INDEX IF NOT EXISTS idx_ann_analysis_status ON announcements(analysis_status)",
+            "CREATE INDEX IF NOT EXISTS idx_ann_amount_type ON announcements(support_amount_type) WHERE is_archived = FALSE",
+            "CREATE INDEX IF NOT EXISTS idx_ann_amount_max ON announcements(support_amount_max DESC NULLS LAST) WHERE is_archived = FALSE",
         ]:
             try:
                 cursor.execute(idx_sql)
@@ -1612,6 +1619,26 @@ def _set_cache(key: str, data):
     _response_cache[key] = {"data": data, "ts": time.time()}
 
 
+# [Phase 5] 공고 리스트 공용 유효성 필터 — 모든 리스트 API에서 이 필터 사용
+# 유효 공고 = 아카이브 안 됨 AND (상시 모집 OR (고정 마감일 미래) OR (분석 대기 중 & 최근 3개월 이내))
+def valid_announcement_where(alias: str = "") -> str:
+    """공고 리스트 WHERE 절용 공용 필터 SQL 생성.
+
+    Args:
+        alias: 테이블 별칭 (예: "a" → "a.deadline_type"), 없으면 컬럼 직접 참조
+    Returns:
+        괄호로 감싼 WHERE 조건 문자열
+    """
+    p = f"{alias}." if alias else ""
+    return (
+        f"({p}is_archived = FALSE AND ("
+        f"  {p}deadline_type = 'ongoing'"
+        f"  OR ({p}deadline_type = 'fixed' AND {p}deadline_date >= CURRENT_DATE)"
+        f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= CURRENT_DATE - INTERVAL '3 months')"
+        f"))"
+    )
+
+
 # ─── 실시간 통계 카운터 (홈 히어로 영역) ───────────────────────────
 # 초기 런칭 단계 — 실제 값 + 현실적 시드 + 시간 자동 증가
 _STATS_SEED = {
@@ -1723,11 +1750,9 @@ def api_announcements_public(
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    current_year = str(datetime.datetime.utcnow().year)
     where_clauses = [
-        "(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)",
-        # 마감일 NULL인 과거 연도 공고 숨김 (DB에는 유지, 표시만 안 함)
-        f"NOT (deadline_date IS NULL AND title ~ '^\\d{{4}}년' AND SUBSTRING(title FROM '^(\\d{{4}})년') < '{current_year}')",
+        # [Phase 5] 유효 공고 통일 필터 — deadline_type/is_archived 기반
+        valid_announcement_where(),
     ]
     params: list = []
 
@@ -1874,8 +1899,8 @@ def api_announcements_public(
     category_counts = _get_cached(cat_cache_key)
     if not category_counts:
         cat_where = [
-            "(deadline_date IS NULL OR deadline_date >= CURRENT_DATE)",
-            f"NOT (deadline_date IS NULL AND title ~ '^\\d{{4}}년' AND SUBSTRING(title FROM '^(\\d{{4}})년') < '{current_year}')",
+            # [Phase 5] 유효 공고 통일 필터
+            valid_announcement_where(),
         ]
         cat_params: list = []
         if target_type:
@@ -4898,7 +4923,7 @@ def api_analyze_batch_broad(req: AdminAuthRequest):
         WHERE aa.id IS NULL
           AND a.origin_url IS NOT NULL
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
         ORDER BY a.announcement_id DESC
         LIMIT %s
     """, (MAX_ITEMS,))
@@ -4909,7 +4934,7 @@ def api_analyze_batch_broad(req: AdminAuthRequest):
         LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE aa.id IS NULL AND a.origin_url IS NOT NULL
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
     """)
     remaining_total = cur.fetchone()["cnt"]
 
@@ -4997,7 +5022,7 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
             WHERE aa.id IS NULL
               AND a.support_amount IS NOT NULL AND a.support_amount != ''
               AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
-              AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+              AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
             ORDER BY amt_priority ASC,
                      CASE WHEN a.deadline_date IS NULL THEN 1 ELSE 0 END,
                      a.deadline_date ASC NULLS LAST,
@@ -5018,7 +5043,7 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
         WHERE aa.id IS NULL
           AND a.support_amount IS NOT NULL AND a.support_amount != ''
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
     """)
     _cnt_row = cur.fetchone()
     total_remaining = dict(_cnt_row)["cnt"] if _cnt_row else 0
@@ -6184,7 +6209,7 @@ def api_embeddings_debug_match(req: AdminAuthRequest):
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) AS c FROM announcement_embeddings")
     emb_count = cur.fetchone()["c"]
-    cur.execute("SELECT COUNT(*) AS c FROM announcements WHERE deadline_date IS NULL OR deadline_date >= CURRENT_DATE")
+    cur.execute(f"SELECT COUNT(*) AS c FROM announcements WHERE {valid_announcement_where()}")
     active_ann = cur.fetchone()["c"]
     cur.execute("SELECT target_type, COUNT(*) AS c FROM announcements GROUP BY target_type")
     tt_breakdown = [{"target_type": r["target_type"], "count": r["c"]} for r in cur.fetchall()]
@@ -6468,7 +6493,7 @@ def api_embeddings_reembed_analyzed(req: AdminAuthRequest):
         JOIN announcements a ON a.announcement_id = aa.announcement_id
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
         ORDER BY a.announcement_id
         LIMIT %s
     """, (MAX_ITEMS,))
@@ -6545,7 +6570,7 @@ def api_embeddings_reembed_analyzed(req: AdminAuthRequest):
         JOIN announcements a ON a.announcement_id = aa.announcement_id
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
     """)
     remaining = cur.fetchone()["c"]
     conn.close()
@@ -6619,7 +6644,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE e.announcement_id IS NULL
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
         ORDER BY
             CASE WHEN a.support_amount ILIKE '%%억%%' THEN 0
@@ -6716,7 +6741,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
         SELECT COUNT(*) AS remaining FROM announcements a
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE e.announcement_id IS NULL
-          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
     """)
     remaining = cur.fetchone()["remaining"]
@@ -10222,19 +10247,19 @@ def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depend
         a = dict(ann)
 
         # 같은 부처/카테고리의 활성 공고 수
-        cur.execute("""
+        cur.execute(f"""
             SELECT COUNT(*) AS cnt
             FROM announcements
             WHERE department = %s
-              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+              AND {valid_announcement_where()}
         """, (a.get("department") or "",))
         same_dept_count = cur.fetchone()["cnt"]
 
-        cur.execute("""
+        cur.execute(f"""
             SELECT COUNT(*) AS cnt
             FROM announcements
             WHERE category = %s
-              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+              AND {valid_announcement_where()}
         """, (a.get("category") or "",))
         same_cat_count = cur.fetchone()["cnt"]
 
@@ -11163,7 +11188,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
-                    WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                    WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
                       AND support_amount IS NOT NULL AND support_amount != ''{fb_tt_sql}
                     ORDER BY
                         CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
@@ -11209,7 +11234,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
-                    WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                    WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
                       AND support_amount IS NOT NULL AND support_amount != ''{_reg_tt_sql}
                       AND (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region ILIKE %s)
                       AND title NOT ILIKE %s
@@ -11249,7 +11274,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                 SELECT announcement_id, title, department, category,
                        support_amount, deadline_date, region, origin_url
                 FROM announcements
-                WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
                   AND support_amount IS NOT NULL AND support_amount != ''{_outer_tt_sql}
                 ORDER BY
                     CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,

@@ -20,18 +20,23 @@ CREATE TABLE IF NOT EXISTS announcements (
     category VARCHAR(100),
     origin_source VARCHAR(100),
     target_type VARCHAR(20) DEFAULT 'business',   -- 'business' | 'individual' | 'both'
-    -- [Phase 1] 공고 상태 명시적 관리 (deadline 품질 근본 해결)
-    deadline_type VARCHAR(20) DEFAULT 'unknown',  -- 'fixed' | 'ongoing' | 'unknown' | 'expired'
+    -- [Phase 1] 공고 상태 명시적 관리 (deadline/금액 품질 근본 해결)
+    deadline_type VARCHAR(20) DEFAULT 'unknown',   -- 'fixed' | 'ongoing' | 'unknown' | 'expired'
     is_archived BOOLEAN DEFAULT FALSE,
     analysis_status VARCHAR(20) DEFAULT 'pending', -- 'pending' | 'analyzed' | 'failed' | 'skipped'
     analysis_attempts INT DEFAULT 0,
     last_analyzed_at TIMESTAMP,
+    support_amount_type VARCHAR(20) DEFAULT 'unknown', -- 'numeric' | 'text_only' | 'unknown' | 'not_specified'
+    support_amount_max BIGINT,                     -- 원(KRW) 단위 정규화 값 (최대)
+    support_amount_min BIGINT,                     -- 범위 표기 시 최소
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_ann_deadline_type ON announcements(deadline_type) WHERE is_archived = FALSE;
 CREATE INDEX IF NOT EXISTS idx_ann_archived ON announcements(is_archived) WHERE is_archived = FALSE;
 CREATE INDEX IF NOT EXISTS idx_ann_analysis_status ON announcements(analysis_status);
+CREATE INDEX IF NOT EXISTS idx_ann_amount_type ON announcements(support_amount_type) WHERE is_archived = FALSE;
+CREATE INDEX IF NOT EXISTS idx_ann_amount_max ON announcements(support_amount_max DESC NULLS LAST) WHERE is_archived = FALSE;
 
 -- 2. 사용자 프로필 테이블 (기업 + 개인 통합)
 CREATE TABLE IF NOT EXISTS users (

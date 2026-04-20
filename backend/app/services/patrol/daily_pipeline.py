@@ -158,6 +158,18 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("⑤ 학습 전파", step_5_learning)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑤-B. [Phase 4] 공고 데이터 품질 자동 정리
+    #      - 마감 + 30일 경과 → is_archived=TRUE
+    #      - deadline_type='expired' → is_archived=TRUE
+    #      - analysis_status='failed' + 3개월 경과 → 아카이브
+    #      - deadline NULL + 수집 후 6개월 경과 → expired 처리 + 아카이브
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_5b_data_cleanup():
+        return archive_stale_announcements(db_conn)
+
+    _run_step("⑤-B 공고 품질 정리", step_5b_data_cleanup)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑥ 사전매칭 캐시 갱신
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_6_prematch():
@@ -336,3 +348,108 @@ def propagate_learning(db_conn) -> Dict[str, Any]:
 
     logger.info(f"[Learning] Propagation: tagged={stats['tagged']}, embedded={stats['embedded']}, cleaned={stats['cleaned']}")
     return stats
+
+
+def archive_stale_announcements(db_conn) -> Dict[str, Any]:
+    """[Phase 4] 공고 데이터 품질 자동 정리 — 마감·기한초과·분석실패 공고 아카이브.
+
+    규칙:
+    1) deadline_type='fixed' + deadline_date < (오늘 - 30일) → is_archived=TRUE + deadline_type='expired'
+    2) deadline_type='expired' AND NOT is_archived → is_archived=TRUE
+    3) analysis_status='failed' + created_at < (오늘 - 3개월) → is_archived=TRUE
+    4) deadline_type='unknown' AND created_at < (오늘 - 6개월) AND analysis_status != 'ongoing'
+       → deadline_type='expired' + is_archived=TRUE (보수적 정리)
+    5) 제목에 과거 연도 명시 + deadline_type='unknown' → is_archived=TRUE
+
+    Returns: 각 규칙별 처리 건수
+    """
+    cur = db_conn.cursor()
+    stats = {"past_deadline": 0, "expired_type": 0, "failed_old": 0, "unknown_old": 0, "past_year_title": 0}
+
+    # 1) 마감 후 30일 경과
+    try:
+        cur.execute("""
+            UPDATE announcements
+            SET is_archived = TRUE,
+                deadline_type = 'expired'
+            WHERE is_archived = FALSE
+              AND deadline_type = 'fixed'
+              AND deadline_date IS NOT NULL
+              AND deadline_date < CURRENT_DATE - INTERVAL '30 days'
+        """)
+        stats["past_deadline"] = cur.rowcount or 0
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Archive] past_deadline error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    # 2) deadline_type='expired' 인데 아직 아카이브 안 된 것
+    try:
+        cur.execute("""
+            UPDATE announcements
+            SET is_archived = TRUE
+            WHERE is_archived = FALSE
+              AND deadline_type = 'expired'
+        """)
+        stats["expired_type"] = cur.rowcount or 0
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Archive] expired_type error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    # 3) 분석 3회 이상 실패 + 3개월 경과
+    try:
+        cur.execute("""
+            UPDATE announcements
+            SET is_archived = TRUE
+            WHERE is_archived = FALSE
+              AND analysis_status = 'failed'
+              AND created_at < CURRENT_DATE - INTERVAL '3 months'
+        """)
+        stats["failed_old"] = cur.rowcount or 0
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Archive] failed_old error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    # 4) deadline 미확인 + 6개월 경과 (상시 제외)
+    try:
+        cur.execute("""
+            UPDATE announcements
+            SET is_archived = TRUE,
+                deadline_type = 'expired'
+            WHERE is_archived = FALSE
+              AND deadline_type = 'unknown'
+              AND created_at < CURRENT_DATE - INTERVAL '6 months'
+        """)
+        stats["unknown_old"] = cur.rowcount or 0
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Archive] unknown_old error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    # 5) 제목에 과거 연도 명시 (예: "2024년 XXX 지원") + deadline 불명
+    try:
+        cur.execute(r"""
+            UPDATE announcements
+            SET is_archived = TRUE,
+                deadline_type = 'expired'
+            WHERE is_archived = FALSE
+              AND deadline_type = 'unknown'
+              AND title ~ '^\d{4}년'
+              AND SUBSTRING(title FROM '^(\d{4})년')::int < EXTRACT(YEAR FROM CURRENT_DATE)::int
+        """)
+        stats["past_year_title"] = cur.rowcount or 0
+        db_conn.commit()
+    except Exception as e:
+        logger.warning(f"[Archive] past_year_title error: {e}")
+        try: db_conn.rollback()
+        except Exception: pass
+
+    total = sum(stats.values())
+    logger.info(f"[Archive] Stale announcements cleaned: {total} total — {stats}")
+    return {"total_archived": total, **stats}

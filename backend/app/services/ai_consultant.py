@@ -2108,20 +2108,54 @@ C. **"분석"과 "날조"는 다릅니다.** 사용자 기업 정보와 공고 �
         response = _chat.send_message(last_msg)
     except Exception as sdk_err:
         # 새 SDK 실패 → 기존 SDK 폴백
-        _sdk_used = f"google-generativeai (fallback: {type(sdk_err).__name__}: {str(sdk_err)[:100]})"
         print(f"[AIConsultant] New SDK failed: {sdk_err}, falling back to old SDK")
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 8192})
-        gemini_messages = []
-        for msg in messages:
-            role = "user" if msg.get("role") == "user" else "model"
-            gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
-        _chat = model.start_chat(history=[
-            {"role": "user", "parts": [system_prompt]},
-            {"role": "model", "parts": ['{"done": false, "conclusion": null, "choices": [], "message": "understood"}']},
-            *gemini_messages[:-1]
-        ])
-        response = _chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
+        try:
+            _sdk_used = f"google-generativeai (old SDK, reason: {type(sdk_err).__name__})"
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 8192})
+            gemini_messages = []
+            for msg in messages:
+                role = "user" if msg.get("role") == "user" else "model"
+                gemini_messages.append({"role": role, "parts": [msg.get("text", "")]})
+            _chat = model.start_chat(history=[
+                {"role": "user", "parts": [system_prompt]},
+                {"role": "model", "parts": ['{"done": false, "conclusion": null, "choices": [], "message": "understood"}']},
+                *gemini_messages[:-1]
+            ])
+            response = _chat.send_message(gemini_messages[-1]["parts"][0] if gemini_messages else "시작")
+        except Exception as old_sdk_err:
+            # 최종 폴백: OpenAI gpt-4o-mini (Gemini 완전 실패 시 서비스 유지)
+            openai_key_fb = os.environ.get("OPENAI_API_KEY")
+            if not openai_key_fb:
+                print(f"[AIConsultant] Gemini old SDK also failed: {old_sdk_err}, no OPENAI_API_KEY → raise")
+                raise old_sdk_err
+            print(f"[AIConsultant] Both Gemini SDKs failed (old: {old_sdk_err}), falling back to OpenAI gpt-4o-mini")
+            try:
+                from openai import OpenAI as _OAI_fb
+                _oai_cl = _OAI_fb(api_key=openai_key_fb)
+                _oai_msgs = [{"role": "system", "content": system_prompt}]
+                for msg in messages:
+                    _role = "user" if msg.get("role") == "user" else "assistant"
+                    _oai_msgs.append({"role": _role, "content": msg.get("text", "")})
+                _oai_resp = _oai_cl.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=_oai_msgs,
+                    max_tokens=8192,
+                    temperature=0.5,
+                    response_format={"type": "json_object"},
+                )
+                _oai_text = _oai_resp.choices[0].message.content or ""
+
+                # Gemini response.text 인터페이스에 맞추기 위한 래퍼
+                class _FakeResp:
+                    def __init__(self, text):
+                        self.text = text
+                response = _FakeResp(_oai_text)
+                _sdk_used = "openai-gpt-4o-mini (final fallback)"
+                print(f"[AIConsultant] OpenAI fallback succeeded ({len(_oai_text)} chars)")
+            except Exception as oai_err:
+                print(f"[AIConsultant] OpenAI fallback also failed: {oai_err}")
+                raise oai_err
 
     try:
         print(f"[AIConsultant] SDK used: {_sdk_used}")

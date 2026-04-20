@@ -18,7 +18,7 @@ class AIService:
             
         genai.configure(api_key=api_key)
         # Use a stable model name
-        self.model = genai.GenerativeModel('models/gemini-2.0-flash')
+        self.model = genai.GenerativeModel('models/gemini-2.5-flash')
         self.embedding_model = 'models/text-embedding-004'
 
     async def extract_program_details(self, text: str) -> Dict[str, Any]:

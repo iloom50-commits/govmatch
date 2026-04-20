@@ -72,7 +72,7 @@ def analyze_financial_announcement(
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash",
             generation_config={"max_output_tokens": 4096, "temperature": 0.1}
         )
         response = model.generate_content(prompt)

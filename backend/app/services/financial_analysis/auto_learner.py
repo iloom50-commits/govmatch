@@ -77,7 +77,7 @@ def extract_quality_knowledge(
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash",
             generation_config={"max_output_tokens": 2048, "temperature": 0.2}
         )
         response = model.generate_content(prompt)

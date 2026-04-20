@@ -4500,7 +4500,7 @@ def api_umbrella_verify(req: UmbrellaVerifyRequest):
             return {"status": "SUCCESS", "total": 0, "umbrella": 0, "kept": 0, "remaining_total": remaining_total, "results": []}
 
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash",
             generation_config={
                 "response_mime_type": "application/json",
                 "temperature": 0.1,
@@ -7264,7 +7264,7 @@ def api_generate_strategy_report():
         if api_key:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(prompt)
             report_text = response.text
         else:
@@ -8234,7 +8234,7 @@ def api_parse_interests(req: dict):
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         resp = model.generate_content(
             f"사용자가 관심분야를 다음과 같이 입력했습니다: \"{text}\"\n\n"
             f"아래 카테고리 목록에서 관련된 것을 모두 골라 JSON 배열로만 반환하세요. 카테고리 목록: [{cats}]\n"
@@ -9574,7 +9574,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         api_key = os.environ.get("GEMINI_API_KEY")
         if api_key and results:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("models/gemini-2.0-flash")
+            model = genai.GenerativeModel("models/gemini-2.5-flash")
 
             # 지원금액 파싱 함수 (백억/억/천만/만 → 숫자)
             def parse_amount(amt_str: str) -> int:
@@ -10061,7 +10061,7 @@ def api_pro_report_edit_section(report_id: int, req: ReportEditSectionRequest, c
         if not api_key:
             raise HTTPException(status_code=500, detail="AI 서비스가 설정되지 않았습니다.")
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash")
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
 
         prompt = f"""당신은 정부 지원사업 컨설턴트의 보고서 편집 어시스턴트입니다.
 
@@ -10473,7 +10473,7 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash",
             generation_config={
                 "max_output_tokens": 4096,
                 "response_mime_type": "application/json",
@@ -10598,7 +10598,7 @@ def _analyze_image_with_gemini(content: bytes, file_name: str, ext: str) -> dict
             return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다.", "extracted_text": ""}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash")
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
 
         try:
             img = Image.open(io.BytesIO(content))
@@ -10646,7 +10646,7 @@ def _analyze_audio_with_gemini(content: bytes, file_name: str, ext: str) -> dict
             return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다.", "extracted_text": ""}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash")
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
 
         # MIME 타입 매핑
         mime_map = {
@@ -10696,7 +10696,7 @@ def _analyze_text_with_ai(text: str, file_name: str, file_type: str) -> dict:
             return {"status": "SUCCESS", "summary": "AI 서비스를 사용할 수 없습니다."}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash")
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
 
         prompt = f"""아래는 고객사가 제출한 '{file_type}' ({file_name})입니다.
 핵심 내용을 3~5줄로 요약하세요. 숫자(매출, 인원, 금액 등)가 있으면 반드시 포함하세요.
@@ -10986,7 +10986,7 @@ def api_partnership_chat(req: dict, request: Request):
 
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         history = req.get("history", [])
         chat_messages = [{"role": "user", "parts": [system_prompt + "\n\n사용자 질문: " + message]}]
@@ -11112,7 +11112,7 @@ def api_support_chat(req: dict, request: Request):
 
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         history = req.get("history", [])
         context = ""

@@ -120,7 +120,7 @@ def _generate_report_with_gemini(
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.0-flash",
+        model = genai.GenerativeModel("models/gemini-2.5-flash",
                                        generation_config={"max_output_tokens": 1024, "temperature": 0.3})
         resp = model.generate_content(prompt)
         return resp.text.strip()

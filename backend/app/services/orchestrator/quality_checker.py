@@ -98,7 +98,7 @@ def check_agent_quality(db_conn, samples_per_agent: int = 3) -> Dict[str, Any]:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(
-                "models/gemini-2.0-flash",
+                "models/gemini-2.5-flash",
                 generation_config={"max_output_tokens": 2048, "temperature": 0.2, "response_mime_type": "application/json"},
             )
         except Exception as e:

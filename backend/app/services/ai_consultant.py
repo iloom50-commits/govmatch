@@ -672,7 +672,7 @@ def _extract_search_params(query: str, user_profile: dict = None) -> Dict[str, A
         return {"keywords": _simple_keyword_extract(query)}
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.0-flash")
+    model = genai.GenerativeModel("models/gemini-2.5-flash")
 
     user_context = ""
     if user_profile:
@@ -1500,7 +1500,7 @@ def chat_lite_fund_expert(
 
             tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
             model = genai.GenerativeModel(
-                "models/gemini-2.0-flash", tools=tools, system_instruction=system_prompt,
+                "models/gemini-2.5-flash", tools=tools, system_instruction=system_prompt,
                 generation_config={"max_output_tokens": 4096, "temperature": 0.5},
             )
             chat = model.start_chat(enable_automatic_function_calling=True)
@@ -2097,7 +2097,7 @@ C. **"분석"과 "날조"는 다릅니다.** 사용자 기업 정보와 공고 �
             chat_history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=msg.get("text", ""))]))
 
         _chat = _client.chats.create(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             history=chat_history,
             config=genai_types.GenerateContentConfig(
                 tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
@@ -2112,7 +2112,7 @@ C. **"분석"과 "날조"는 다릅니다.** 사용자 기업 정보와 공고 �
         try:
             _sdk_used = f"google-generativeai (old SDK, reason: {type(sdk_err).__name__})"
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("models/gemini-2.0-flash", generation_config={"max_output_tokens": 8192})
+            model = genai.GenerativeModel("models/gemini-2.5-flash", generation_config={"max_output_tokens": 8192})
             gemini_messages = []
             for msg in messages:
                 role = "user" if msg.get("role") == "user" else "model"
@@ -3557,7 +3557,7 @@ JSON 형식으로 반환:
                     return _exec_pro_tool("check_eligibility", {"announcement_id": announcement_id})
 
                 tools_b = [get_matched_summary, search_pro_sections, get_announcement_detail, analyze_announcement, search_knowledge_base, check_eligibility]
-                model_b = genai.GenerativeModel("models/gemini-2.0-flash", tools=tools_b,
+                model_b = genai.GenerativeModel("models/gemini-2.5-flash", tools=tools_b,
                     system_instruction=tool_prompt_full, generation_config={"max_output_tokens": 4096, "temperature": 0.5})
                 # Gemini에도 대화 히스토리 포함
                 from google.genai import types as _gtypes
@@ -3608,7 +3608,7 @@ JSON 형식으로 반환:
             chat_history.append(genai_types.Content(role=role, parts=[genai_types.Part(text=msg.get("text", ""))]))
 
         _chat = _client.chats.create(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             history=chat_history,
             config=genai_types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -3621,7 +3621,7 @@ JSON 형식으로 반환:
     except ImportError:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            "models/gemini-2.0-flash",
+            "models/gemini-2.5-flash",
             generation_config={
                 "max_output_tokens": 4096,
                 "response_mime_type": "application/json",

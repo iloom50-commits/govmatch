@@ -922,7 +922,7 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
         return {"parsed_sections": {}, "deep_analysis": {}}
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.0-flash")
+    model = genai.GenerativeModel("models/gemini-2.5-flash")
 
     text_for_analysis = full_text[:25000]
 

@@ -2684,12 +2684,47 @@ def api_plan_subscribe(
     current_user: dict = Depends(_get_current_user),
 ):
     """빌링키 등록 + 무료 체험 시작 (LITE 30일 / PRO 7일)"""
-    # 빌링키 유효성 검증
+    # 1차: 형식 검증
     if not req.billing_key or not isinstance(req.billing_key, str) or len(req.billing_key.strip()) < 10:
         raise HTTPException(status_code=400, detail="유효하지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
 
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
+
+    # 2차: PortOne V2 REST API로 billing_key 실존·소유 검증
+    #      — "결제창만 뜬 상태에서 자동 업그레이드" 현상 차단 (프론트엔드에서 더미 billing_key 전송 방지)
+    if PORTONE_API_SECRET:
+        import httpx as _httpx
+        try:
+            verify_res = _httpx.get(
+                f"https://api.portone.io/billing-keys/{req.billing_key.strip()}",
+                headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
+                timeout=10,
+            )
+            if verify_res.status_code == 404:
+                raise HTTPException(status_code=400, detail="등록되지 않은 빌링키입니다. 결제를 다시 시도해 주세요.")
+            if verify_res.status_code != 200:
+                # 일시적 서비스 장애 — 보수적으로 차단
+                raise HTTPException(status_code=502, detail="결제 검증 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.")
+            bk = verify_res.json()
+            if bk.get("status") != "ISSUED":
+                raise HTTPException(status_code=400, detail="결제가 완료되지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
+            # 타 사용자 빌링키 도용 방지 (customerId는 프론트엔드에서 bn을 정규화한 값)
+            expected_cid = "".join(c if (c.isalnum() or c in "_-") else "_" for c in (bn or ""))[:40]
+            bk_customer_id = ((bk.get("customer") or {}).get("id") or "").strip()
+            if expected_cid and bk_customer_id and bk_customer_id != expected_cid:
+                print(f"[subscribe] customerId mismatch: expected={expected_cid} got={bk_customer_id}")
+                raise HTTPException(status_code=403, detail="본인 계정으로 결제된 빌링키가 아닙니다.")
+        except HTTPException:
+            raise
+        except _httpx.RequestError as e:
+            # 네트워크 오류는 서비스 연속성을 위해 경고 로그만 남기고 통과
+            print(f"[subscribe] PortOne verify network error (허용): {e}")
+        except Exception as e:
+            print(f"[subscribe] PortOne verify unexpected error: {e}")
+            raise HTTPException(status_code=502, detail="결제 검증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+    else:
+        print("[subscribe] PORTONE_API_SECRET 미설정 — 빌링키 검증 건너뜀 (테스트 환경)")
 
     conn = get_db_connection()
     cur = conn.cursor()

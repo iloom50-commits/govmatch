@@ -4103,6 +4103,42 @@ JSON 형식으로 반환:
         if ai_choices and not any("직접" in str(c) or "기타" in str(c) for c in ai_choices):
             ai_choices = list(ai_choices) + ["✏️ 직접 입력"]
 
+        # [Phase 2 통합] PRO 상담도 ai_engine 연동 — client_profiles에 자동 저장
+        if os.environ.get("USE_AI_ENGINE_V2", "false").lower() == "true" and selected_client:
+            try:
+                from app.services.ai_engine import (
+                    extract_profile_info, save_extracted_to_client, schema_extract_profile,
+                )
+                last_user_pro = ""
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        last_user_pro = m.get("text", "")
+                        break
+                # ① 정규식 NER
+                extracted_pro = extract_profile_info(last_user_pro + " " + msg_text)
+                # ② Schema 강제 Gemini (옵션)
+                if os.environ.get("USE_SCHEMA_EXTRACT", "false").lower() == "true":
+                    try:
+                        schema_extracted = schema_extract_profile(last_user_pro, msg_text)
+                        for k, v in schema_extracted.items():
+                            if v and not extracted_pro.get(k):
+                                extracted_pro[k] = v
+                    except Exception:
+                        pass
+                # collected에서 얻은 정보도 병합 (PRO는 대화로 수집된 것이 많음)
+                if collected:
+                    for fld in ("industry_code", "address_city", "revenue_bracket",
+                                "employee_count_bracket", "establishment_date", "company_name"):
+                        if collected.get(fld) and not extracted_pro.get(fld):
+                            extracted_pro[fld] = collected[fld]
+                client_id = selected_client.get("id")
+                if extracted_pro and client_id:
+                    saved = save_extracted_to_client(int(client_id), extracted_pro, db_conn)
+                    if saved:
+                        logger.info(f"[AI_ENGINE_V2] PRO client profile auto-saved: {list(extracted_pro.keys())}")
+            except Exception as e:
+                logger.warning(f"[AI_ENGINE_V2] PRO extract/save error (비차단): {e}")
+
         # C: 하드코딩 reply 제거 — AI가 생성한 실제 응답 그대로 사용
         # done=true여도 AI의 정리 메시지 유지
         return {

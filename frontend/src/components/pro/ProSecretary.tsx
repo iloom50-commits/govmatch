@@ -145,6 +145,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       employee_bracket: "",
       address_city: "",
       interests: [] as string[],
+      // 선택 필드 — 우대·제외 판정용
+      representative_age: "",         // 대표 연령대
+      is_women_enterprise: false,     // 여성기업
+      is_youth_enterprise: false,     // 청년기업 (대표 만39세 이하)
+      certifications: [] as string[], // 벤처/이노비즈/사회적기업 등
+      is_restart: false,              // 재창업 여부
+      memo: "",                       // 컨설턴트 메모
     };
   });
 
@@ -1741,6 +1748,67 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             ))}
           </div>
         </div>
+
+        {/* 추가 조건 — 사업자 모드: 우대·제외 판정용 */}
+        {!isIndiv && (
+          <details className={`rounded-lg border ${dark ? "border-white/[0.06] bg-white/[0.02]" : "border-slate-200 bg-slate-50/50"} p-3`}>
+            <summary className={`text-[12px] font-semibold cursor-pointer ${dark ? "text-slate-300" : "text-slate-600"}`}>
+              추가 조건 (선택) — 정확한 매칭을 위한 보조 정보
+            </summary>
+            <div className="space-y-3 mt-3">
+              {/* 대표 연령대 */}
+              <div>
+                <p className={sectionTitle}>대표 연령대</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["20대", "30대", "40대", "50대", "60대 이상"].map(opt => (
+                    <button key={opt} onClick={() => update("representative_age", profileForm.representative_age === opt ? "" : opt)}
+                      className={btnCls(profileForm.representative_age === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 특별 자격 */}
+              <div>
+                <p className={sectionTitle}>특별 자격 (우대 적용)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button onClick={() => setProfileForm((p: any) => ({ ...p, is_women_enterprise: !p.is_women_enterprise }))}
+                    className={btnCls(profileForm.is_women_enterprise)}>여성기업</button>
+                  <button onClick={() => setProfileForm((p: any) => ({ ...p, is_youth_enterprise: !p.is_youth_enterprise }))}
+                    className={btnCls(profileForm.is_youth_enterprise)}>청년기업(만39세↓)</button>
+                  <button onClick={() => setProfileForm((p: any) => ({ ...p, is_restart: !p.is_restart }))}
+                    className={btnCls(profileForm.is_restart)}>재창업</button>
+                </div>
+              </div>
+
+              {/* 인증 */}
+              <div>
+                <p className={sectionTitle}>보유 인증 (복수 선택)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["벤처", "이노비즈", "메인비즈", "사회적기업", "예비사회적기업", "장애인기업"].map(opt => {
+                    const on = (profileForm.certifications || []).includes(opt);
+                    return (
+                      <button key={opt} onClick={() => setProfileForm((p: any) => ({
+                        ...p,
+                        certifications: on ? (p.certifications || []).filter((c: string) => c !== opt)
+                                           : [...(p.certifications || []), opt],
+                      }))}
+                        className={btnCls(on)}>{opt}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 메모 */}
+              <div>
+                <p className={sectionTitle}>컨설턴트 메모</p>
+                <textarea value={profileForm.memo || ""} onChange={(e) => update("memo", e.target.value)}
+                  placeholder="특이사항·우선순위·이전 신청 이력 등"
+                  rows={2}
+                  className={inputCls + " resize-none"} />
+              </div>
+            </div>
+          </details>
+        )}
 
         {/* 제출 */}
         <div className="flex gap-3 pt-2">

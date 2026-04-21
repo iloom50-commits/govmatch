@@ -1875,7 +1875,8 @@ def api_announcements_public(
 
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
-                   support_amount, deadline_date, origin_source, created_at,
+                   support_amount, support_amount_max, support_amount_min, support_amount_type,
+                   deadline_date, origin_source, created_at,
                    COALESCE(target_type, 'business') AS target_type,
                    origin_url, summary_text, eligibility_logic,
                    established_years_limit, revenue_limit, employee_limit

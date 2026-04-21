@@ -246,42 +246,48 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     ? bizTypes.join(" · ")
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
 
-  // 금액 뱃지: support_amount에서 핵심 금액만 추출 + 큰 숫자 한글 변환
+  // 금액 뱃지: support_amount_max(숫자) 우선 사용, 없으면 텍스트 파싱 (엄격)
+  // 이전 버그: "P1/P2 과정..." → "1원", "~25개 조직..." → "25원" 오노출
   const _rawAmount = res.support_amount || "";
-  const _formatKoreanAmount = (raw: string): string => {
+  const _rawMax = (res as any).support_amount_max;
+  const _rawMin = (res as any).support_amount_min;
+  const _formatKRW = (n: number, prefix = ""): string => {
+    if (!n || n < 10000) return "";  // 1만원 미만은 넌센스로 간주
+    if (n >= 100000000) {
+      const eok = n / 100000000;
+      return `${prefix}${eok % 1 === 0 ? eok : eok.toFixed(1)}억원`;
+    }
+    // 1천만~1억은 "N,NNN만원" 형식으로 정확히 표기 (반올림 과장 방지)
+    const man = Math.round(n / 10000);
+    return `${prefix}${man.toLocaleString()}만원`;
+  };
+  const _formatKoreanAmount = (raw: string, maxVal?: number, minVal?: number): string => {
+    // 1) 숫자 컬럼 최우선 (DB에서 정규화된 값)
+    if (typeof maxVal === "number" && maxVal >= 10000) {
+      const label = _formatKRW(maxVal, "최대 ");
+      if (label) return label;
+    }
+    if (typeof minVal === "number" && minVal >= 10000) {
+      const label = _formatKRW(minVal);
+      if (label) return label;
+    }
     if (!raw) return "";
-
-    // 1) 이미 "억원", "만원" 등 한글이 포함된 경우 — 핵심 금액 패턴 추출
+    // 2) 텍스트에 "억/천만/백만/만" qualifier + "원" 함께 있는 경우만 신뢰
     const m = raw.match(/(최대\s*)?[\d,]+(?:\.\d+)?\s*(?:억|천만|백만|만)\s*원/);
     if (m) return m[0].replace(/\s+/g, "");
-
-    // 2) 순수 숫자(원 단위)만 있는 경우 — 한글로 변환
-    // "최대450000000원" → 숫자 추출 → "최대4.5억원"
-    const prefix = raw.match(/^(최대|약|평균)/)?.[0] || "";
-    const numMatch = raw.match(/([\d,]+)\s*원?/);
-    if (numMatch) {
-      const num = parseInt(numMatch[1].replace(/,/g, ""), 10);
-      if (!isNaN(num) && num > 0) {
-        if (num >= 100000000) {
-          const eok = num / 100000000;
-          const label = eok % 1 === 0 ? `${eok}억원` : `${eok.toFixed(1)}억원`;
-          return `${prefix}${label}`;
-        } else if (num >= 10000000) {
-          return `${prefix}${Math.round(num / 10000000)}천만원`;
-        } else if (num >= 10000) {
-          return `${prefix}${Math.round(num / 10000)}만원`;
-        }
-        return `${prefix}${num.toLocaleString()}원`;
+    // 3) "N원" 명시 패턴 (숫자 + 원 직결, 최소 10,000원 이상)
+    const m2 = raw.match(/(최대\s*)?([\d,]{5,})\s*원/);
+    if (m2) {
+      const n = parseInt(m2[2].replace(/,/g, ""), 10);
+      if (!isNaN(n) && n >= 10000) {
+        const prefix = m2[1] ? "최대 " : "";
+        return _formatKRW(n, prefix) || `${prefix}${n.toLocaleString()}원`;
       }
     }
-
-    // 3) "N원" 패턴 폴백
-    const m2 = raw.match(/(최대\s*)?[\d,]+\s*원/);
-    if (m2) return m2[0].replace(/\s+/g, "");
-
+    // 4) 신뢰할 수 없으면 빈 문자열 → 호출부에서 뱃지 숨김
     return "";
   };
-  const amountLabel = _formatKoreanAmount(_rawAmount) || _rawAmount;
+  const amountLabel = _formatKoreanAmount(_rawAmount, _rawMax, _rawMin);
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (

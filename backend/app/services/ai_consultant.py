@@ -3346,9 +3346,36 @@ def chat_pro_consultant(messages: List[Dict], announcement_id: int = None, db_co
     if not api_key:
         return {"reply": "AI 서비스가 설정되지 않았습니다.", "choices": [], "done": False, "profile": None}
 
-    # ── 특정 공고 상담 모드: announcement_id가 있으면 chat_consult로 위임 ──
-    # 공고 데이터를 주입한 깊이 있는 답변을 위해 일반 공고 상담 엔진 활용
+    # ── 특정 공고 상담 모드: announcement_id가 있으면 분기 ──
     if announcement_id and db_conn:
+        # [재설계 05] Feature flag로 PRO 전용 엔진 vs LITE 위임 선택
+        from app.services.pro_announce import chat_pro_announce, is_v2_enabled
+        if is_v2_enabled():
+            try:
+                matched_snap = (session_state or {}).get("matched_snapshot") or []
+                coll = (session_state or {}).get("collected") or {}
+                v2_result = chat_pro_announce(
+                    messages=messages,
+                    announcement_id=announcement_id,
+                    db_conn=db_conn,
+                    selected_client=selected_client,
+                    matched_snapshot=matched_snap,
+                    collected=coll,
+                )
+                return {
+                    "reply": v2_result.get("reply", ""),
+                    "choices": v2_result.get("choices", []),
+                    "done": v2_result.get("done", False),
+                    "profile": None,
+                    "collected": coll,
+                    # V2 추가 필드 (프론트/보고서에서 활용)
+                    "verdict_for_client": v2_result.get("verdict_for_client"),
+                    "expert_insights": v2_result.get("expert_insights", {}),
+                    "citations": v2_result.get("citations", []),
+                }
+            except Exception as e:
+                logger.error(f"[chat_pro_consultant] V2 error, fallback to LITE: {e}")
+                # V2 실패 시 기존 로직으로 fall through
         try:
             cur = db_conn.cursor()
             cur.execute("""

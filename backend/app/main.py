@@ -3768,7 +3768,16 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
                 new_step = min(new_step, max_step)
                 cur = db.cursor()
                 # P0.3: messages 전체도 저장 (assistant 응답 포함)
-                full_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+                # [재설계 05] PRO 공고상담 V2 — expert_insights/verdict을 meta로 누적 (보고서 재료)
+                assistant_msg = {"role": "assistant", "text": result.get("reply", "")}
+                if result.get("expert_insights") or result.get("verdict_for_client"):
+                    assistant_msg["meta"] = {
+                        "announcement_id": ann_id,
+                        "verdict_for_client": result.get("verdict_for_client"),
+                        "expert_insights": result.get("expert_insights") or {},
+                        "citations": result.get("citations") or [],
+                    }
+                full_msgs = list(req.messages) + [assistant_msg]
                 # B/D: phase 계산 — result에서 반환된 phase 우선, 없으면 done/match 기반 판정
                 new_phase = session_state.get("phase", "collecting")
                 if result.get("phase") == "consulting":
@@ -3972,6 +3981,10 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
         "current_step": result.get("current_step") or (session_state.get("current_step") if session_state else None),
         "phase": result.get("phase"),
         "mode_b_debug": result.get("mode_b_debug"),
+        # [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 노출
+        "verdict_for_client": result.get("verdict_for_client"),
+        "expert_insights": result.get("expert_insights"),
+        "citations": result.get("citations"),
     }
 
 

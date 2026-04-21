@@ -18,6 +18,16 @@ interface ChatMessage {
   showReportButton?: boolean; // 보고서 생성 버튼 표시용
   done?: boolean;
   rag_sources?: any[];      // 답변에 참고한 출처 (공고 섹션) 카드
+  // [재설계 05] PRO 공고상담 V2 — 전문가 인사이트
+  verdict_for_client?: "eligible" | "conditional" | "ineligible" | null;
+  expert_insights?: {
+    selection_rate_estimate?: string;
+    evaluation_weights?: Array<{ criterion: string; weight: number; focus?: string }>;
+    common_pitfalls?: string[];
+    application_tips?: string[];
+    similar_programs?: Array<{ title: string; reason: string }>;
+    document_checklist?: string[];
+  } | null;
 }
 
 interface ClientProfile {
@@ -389,6 +399,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 matched: matched.length > 0 ? matched : undefined,
                 showReportButton: matched.length > 0,
                 rag_sources: ragSources.length > 0 ? ragSources : undefined,
+                // [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 저장
+                verdict_for_client: data.verdict_for_client || undefined,
+                expert_insights: data.expert_insights || undefined,
               };
             }
             return updated;
@@ -829,6 +842,76 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               : `${t.bubble} rounded-bl-md`
                           }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
                           {/* 답변 근거 패널 제거 (RAG 관련도 낮아 UX 혼선 유발) */}
+                          {/* [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 패널 */}
+                          {msg.role === "assistant" && msg.expert_insights && (
+                            <div className={`mt-2 rounded-xl border overflow-hidden ${dark ? "border-violet-500/30 bg-violet-500/5" : "border-violet-200 bg-violet-50/50"}`}>
+                              {/* 적합성 배지 */}
+                              {msg.verdict_for_client && (
+                                <div className={`px-3 py-2 border-b text-[12px] font-bold flex items-center gap-2 ${dark ? "border-violet-500/20" : "border-violet-200"}`}>
+                                  {msg.verdict_for_client === "eligible" && <span className="text-emerald-500">✅ 신청 가능</span>}
+                                  {msg.verdict_for_client === "conditional" && <span className="text-amber-500">⚠️ 조건부 가능</span>}
+                                  {msg.verdict_for_client === "ineligible" && <span className="text-rose-500">⊘ 신청 불가</span>}
+                                  {msg.expert_insights.selection_rate_estimate && (
+                                    <span className={`ml-auto text-[11px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
+                                      예상 선정률 {msg.expert_insights.selection_rate_estimate}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="p-3 space-y-3 text-[12px]">
+                                {msg.expert_insights.common_pitfalls && msg.expert_insights.common_pitfalls.length > 0 && (
+                                  <div>
+                                    <div className={`font-bold mb-1 ${dark ? "text-rose-400" : "text-rose-600"}`}>⚠️ 자주 떨어지는 이유</div>
+                                    <ul className={`space-y-0.5 pl-4 list-disc ${dark ? "text-slate-300" : "text-slate-700"}`}>
+                                      {msg.expert_insights.common_pitfalls.map((p, pi) => <li key={pi}>{p}</li>)}
+                                    </ul>
+                                  </div>
+                                )}
+                                {msg.expert_insights.application_tips && msg.expert_insights.application_tips.length > 0 && (
+                                  <div>
+                                    <div className={`font-bold mb-1 ${dark ? "text-emerald-400" : "text-emerald-600"}`}>💡 전문가 팁</div>
+                                    <ul className={`space-y-0.5 pl-4 list-disc ${dark ? "text-slate-300" : "text-slate-700"}`}>
+                                      {msg.expert_insights.application_tips.map((p, pi) => <li key={pi}>{p}</li>)}
+                                    </ul>
+                                  </div>
+                                )}
+                                {msg.expert_insights.evaluation_weights && msg.expert_insights.evaluation_weights.length > 0 && (
+                                  <div>
+                                    <div className={`font-bold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>📊 평가 배점</div>
+                                    <div className="space-y-1">
+                                      {msg.expert_insights.evaluation_weights.map((w, wi) => (
+                                        <div key={wi} className={`flex items-center gap-2 ${dark ? "text-slate-300" : "text-slate-700"}`}>
+                                          <span className="font-semibold min-w-[80px]">{w.criterion}</span>
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-700"}`}>{w.weight}%</span>
+                                          {w.focus && <span className="text-[11px] opacity-80 flex-1 truncate">{w.focus}</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {msg.expert_insights.document_checklist && msg.expert_insights.document_checklist.length > 0 && (
+                                  <div>
+                                    <div className={`font-bold mb-1 ${dark ? "text-amber-400" : "text-amber-600"}`}>📋 필수 서류</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {msg.expert_insights.document_checklist.map((d, di) => (
+                                        <span key={di} className={`px-2 py-0.5 rounded-full text-[11px] ${dark ? "bg-amber-500/10 text-amber-300 border border-amber-500/30" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>{d}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {msg.expert_insights.similar_programs && msg.expert_insights.similar_programs.length > 0 && (
+                                  <div>
+                                    <div className={`font-bold mb-1 ${dark ? "text-sky-400" : "text-sky-600"}`}>🔗 유사 프로그램</div>
+                                    <ul className={`space-y-1 ${dark ? "text-slate-300" : "text-slate-700"}`}>
+                                      {msg.expert_insights.similar_programs.map((s, si) => (
+                                        <li key={si} className="text-[11px]"><strong>{s.title}</strong> — {s.reason}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">

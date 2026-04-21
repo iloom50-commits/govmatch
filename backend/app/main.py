@@ -3477,12 +3477,17 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
 class AiConsultantChatRequest(BaseModel):
     messages: list  # [{"role": "user"|"assistant", "text": "..."}]
     announcement_id: Optional[int] = None  # 특정 공고 상담 모드 (PRO 전용)
-    explicit_match: Optional[bool] = False  # 명시적 매칭 요청 (버튼 클릭 시 true)
+    explicit_match: Optional[bool] = False  # [legacy] 명시적 매칭 요청 (action=match로 대체)
     profile_override: Optional[dict] = None  # 사용자가 확인/수정한 프로필 (매칭 시 사용)
     session_id: Optional[str] = None  # PRO 세션 ID (서버 측 상태 저장)
     client_category: Optional[str] = None  # 첫 호출 시 고객 유형 힌트
     client_id: Optional[int] = None  # I: 선택된 고객 프로필 ID (있으면 프롬프트에 주입)
     mode: Optional[str] = None  # LITE 자금 모드: "business_fund" | "individual_fund"
+    # [재설계 04] PRO 매칭 상담 — action 파라미터 분기
+    # "match": 매칭만 실행 (Gemini 호출 없음, 매칭 엔진만)
+    # "consult": 특정 공고 상담 (pro_announce V2 호출)
+    # None: 레거시 — announcement_id/explicit_match로 자동 추론
+    action: Optional[str] = None
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3585,408 +3590,362 @@ def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = D
 
 
 def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: dict):
-    from app.services.ai_consultant import chat_pro_consultant
+    """
+    [재설계 04] PRO 매칭 상담 — action 파라미터 분기.
+    Mode A (자연어 정보수집) 완전 제거. 폼 + 매칭 + 공고상담(V2)만 지원.
+    """
+    # action 결정 (명시 우선, 없으면 legacy 추론)
+    action = (req.action or "").strip().lower()
+    if not action:
+        if req.announcement_id:
+            action = "consult"
+        elif req.explicit_match and (req.profile_override or req.client_id):
+            action = "match"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="action 파라미터 필수: 'match' (매칭 실행) 또는 'consult' (공고 상담, announcement_id 필요)"
+            )
+
+    if action == "match":
+        return _handle_pro_match(req, current_user)
+    if action == "consult":
+        return _handle_pro_consult(req, current_user)
+    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult)")
+
+
+def _load_or_create_session(db, current_user, req_session_id, client_category):
+    """세션 로드 또는 신규 생성. (session_state dict 반환)"""
     import uuid as _uuid
+    cur = db.cursor()
+    if req_session_id:
+        cur.execute(
+            """SELECT session_id, client_category, current_step, collected,
+                      phase, matched_snapshot, messages
+               FROM pro_consult_sessions
+               WHERE session_id = %s AND business_number = %s""",
+            (req_session_id, current_user["bn"])
+        )
+        row = cur.fetchone()
+        if row:
+            d = dict(row)
+            coll = d.get("collected")
+            if isinstance(coll, str):
+                try: coll = json.loads(coll)
+                except: coll = {}
+            matched_snap = d.get("matched_snapshot")
+            if isinstance(matched_snap, str):
+                try: matched_snap = json.loads(matched_snap)
+                except: matched_snap = []
+            db_msgs = d.get("messages")
+            if isinstance(db_msgs, str):
+                try: db_msgs = json.loads(db_msgs)
+                except: db_msgs = []
+            if not isinstance(db_msgs, list):
+                db_msgs = []
+            return {
+                "session_id": d.get("session_id"),
+                "client_category": d.get("client_category") or "",
+                "current_step": d.get("current_step") or 1,
+                "collected": coll or {},
+                "phase": d.get("phase") or "collecting",
+                "matched_snapshot": matched_snap or [],
+                "db_messages": db_msgs,
+            }
+    sid = str(_uuid.uuid4())
+    cur.execute(
+        "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected) VALUES (%s, %s, %s, 1, '{}'::jsonb)",
+        (sid, current_user["bn"], client_category or "")
+    )
+    db.commit()
+    return {
+        "session_id": sid,
+        "client_category": client_category or "",
+        "current_step": 1,
+        "collected": {},
+        "phase": "collecting",
+        "matched_snapshot": [],
+        "db_messages": [],
+    }
 
-    # announcement_id가 명시되었거나, 메시지에서 자동 추출
-    ann_id = req.announcement_id
-    if not ann_id:
-        for m in req.messages[:2]:
-            text = m.get("text", "") if m.get("role") == "user" else ""
-            import re as _re
-            match = _re.search(r'공고\s*ID\s*[:：]\s*(\d+)', text)
-            if match:
-                ann_id = int(match.group(1))
-                break
 
-    # ── 세션 로드/생성 (특정 공고 모드 제외) — 실패해도 chat은 계속 동작 ──
-    session_state = None
+def _load_client(db, client_id, bn):
+    """client_profiles에서 선택된 고객 조회."""
+    if not client_id:
+        return None
+    try:
+        cur = db.cursor()
+        cur.execute(
+            """SELECT * FROM client_profiles
+               WHERE id = %s AND owner_business_number = %s AND is_active = TRUE""",
+            (client_id, bn)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[PRO load_client] {e}")
+        try: db.rollback()
+        except: pass
+        return None
+
+
+def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):
+    """action=match: 매칭 엔진만 실행, Gemini 호출 없음."""
     db = get_db_connection()
     try:
-        if not ann_id:
-            try:
-                cur = db.cursor()
-                sid = req.session_id
-                if sid:
-                    cur.execute(
-                        """SELECT session_id, client_category, current_step, collected,
-                                  phase, matched_snapshot, messages
-                           FROM pro_consult_sessions
-                           WHERE session_id = %s AND business_number = %s""",
-                        (sid, current_user["bn"])
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        d = dict(row)
-                        coll = d.get("collected")
-                        if isinstance(coll, str):
-                            try: coll = json.loads(coll)
-                            except: coll = {}
-                        matched_snap = d.get("matched_snapshot")
-                        if isinstance(matched_snap, str):
-                            try: matched_snap = json.loads(matched_snap)
-                            except: matched_snap = []
-                        db_msgs = d.get("messages")
-                        if isinstance(db_msgs, str):
-                            try: db_msgs = json.loads(db_msgs)
-                            except: db_msgs = []
-                        if not isinstance(db_msgs, list):
-                            db_msgs = []
-                        session_state = {
-                            "session_id": d.get("session_id"),
-                            "client_category": d.get("client_category") or "",
-                            "current_step": d.get("current_step") or 1,
-                            "collected": coll or {},
-                            "phase": d.get("phase") or "collecting",
-                            "matched_snapshot": matched_snap or [],
-                            "db_messages": db_msgs,
-                        }
-                if not session_state:
-                    sid = str(_uuid.uuid4())
-                    cur.execute(
-                        "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected) VALUES (%s, %s, %s, 1, '{}'::jsonb)",
-                        (sid, current_user["bn"], req.client_category or "")
-                    )
-                    db.commit()
-                    session_state = {
-                        "session_id": sid,
-                        "client_category": req.client_category or "",
-                        "current_step": 1,
-                        "collected": {},
-                    }
-            except Exception as sess_err:
-                print(f"[PRO chat] session load/create error (continuing without session): {sess_err}")
-                try: db.rollback()
-                except: pass
-                session_state = None
+        session_state = _load_or_create_session(db, current_user, req.session_id, req.client_category)
+        selected_client = _load_client(db, req.client_id, current_user["bn"])
 
-        # I: 선택된 고객 프로필 조회
-        selected_client = None
-        if req.client_id:
-            try:
-                cur2 = db.cursor()
-                cur2.execute(
-                    """SELECT * FROM client_profiles
-                       WHERE id = %s AND owner_business_number = %s AND is_active = TRUE""",
-                    (req.client_id, current_user["bn"])
-                )
-                row = cur2.fetchone()
-                if row:
-                    selected_client = dict(row)
-            except Exception as cl_err:
-                print(f"[PRO chat] client load error: {cl_err}")
-                try: db.rollback()
-                except: pass
-
-        # I-2: selected_client 필드를 session collected에 사전 병합
-        if selected_client and session_state:
-            coll = session_state.setdefault("collected", {})
-            field_map = {
-                "client_name": "company_name",
-                "industry_code": "industry_code",
-                "address_city": "address_city",
-                "establishment_date": "establishment_date",
-                "revenue_bracket": "revenue_bracket",
-                "employee_count_bracket": "employee_count_bracket",
-                "interests": "interests",
+        # 프로필 확정: profile_override > client_profile > session.collected
+        profile = req.profile_override or {}
+        if not profile and selected_client:
+            profile = {
+                "company_name": selected_client.get("client_name") or "",
+                "industry_code": selected_client.get("industry_code") or "",
+                "address_city": selected_client.get("address_city") or "",
+                "establishment_date": str(selected_client.get("establishment_date") or ""),
+                "revenue_bracket": selected_client.get("revenue_bracket") or "",
+                "employee_count_bracket": selected_client.get("employee_count_bracket") or "",
+                "interests": selected_client.get("interests") or "",
+                "certifications": selected_client.get("certifications") or "",
+                "user_type": selected_client.get("client_type") or "",
             }
-            for src_key, dst_key in field_map.items():
-                val = selected_client.get(src_key)
-                if val and not coll.get(dst_key):
-                    coll[dst_key] = str(val) if not isinstance(val, str) else val
+        if not profile:
+            profile = session_state.get("collected") or {}
 
-        # 대화 맥락 보강: 프론트 messages가 DB보다 짧으면 DB 히스토리로 보충
+        if not profile or not any(profile.values()):
+            raise HTTPException(status_code=400, detail="매칭에 필요한 프로필이 없습니다. 고객 정보 폼을 먼저 저장해주세요.")
+
+        # 매칭 실행
+        from app.core.matcher import get_matches_hybrid
+        has_industry = bool(str(profile.get("industry_code", "")).strip())
+        is_personal_name = profile.get("company_name", "") in ("개인", "")
+        is_individual = not has_industry or is_personal_name
+        interests_str = str(profile.get("interests", ""))
+        biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
+
+        if is_individual and not biz_interests:
+            matches = get_matches_hybrid(profile, is_individual=True) or []
+        elif is_individual and biz_interests:
+            ind_m = get_matches_hybrid(profile, is_individual=True) or []
+            biz_m = get_matches_hybrid(profile, is_individual=False) or []
+            matches = biz_m + ind_m
+            matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        else:
+            matches = get_matches_hybrid(profile, is_individual=False) or []
+
+        _interest = [a for a in matches if a.get("bucket") == "interest_match"][:10]
+        _deadline = [a for a in matches if a.get("bucket") == "deadline_urgent"][:3]
+        _other = [a for a in matches if a.get("bucket") == "qualified_other"][:7]
+        _display_list = _interest + _deadline + _other
+
+        def _simplify(a, idx):
+            d = a if isinstance(a, dict) else dict(a)
+            return {
+                "announcement_id": d.get("announcement_id"),
+                "title": d.get("title", ""),
+                "department": d.get("department", ""),
+                "support_amount": d.get("support_amount", ""),
+                "support_amount_max": d.get("support_amount_max"),
+                "deadline_date": str(d.get("deadline_date", "")),
+                "rank": d.get("rank") or (idx + 1),
+                "bucket": d.get("bucket", ""),
+                "bucket_label": d.get("bucket_label", ""),
+                "reasons": d.get("reasons", []),
+                "matched_interests": d.get("matched_interests", []),
+            }
+
+        matched_announcements = [_simplify(a, i) for i, a in enumerate(_display_list)]
+        matched_groups = {
+            "interest_match": [_simplify(a, i) for i, a in enumerate(_interest)],
+            "deadline_urgent": [_simplify(a, i) for i, a in enumerate(_deadline)],
+            "qualified_other": [_simplify(a, i) for i, a in enumerate(_other)],
+        }
+
+        # matched_snapshot + 상위 3개 상세분석 저장
+        try:
+            snap_cur = db.cursor()
+            top_ids = [m["announcement_id"] for m in matched_announcements[:3] if m.get("announcement_id")]
+            sections_map = {}
+            if top_ids:
+                try:
+                    snap_cur.execute(
+                        """SELECT announcement_id, parsed_sections, deep_analysis
+                           FROM announcement_analysis
+                           WHERE announcement_id = ANY(%s)""",
+                        (top_ids,),
+                    )
+                    for r in snap_cur.fetchall():
+                        sections_map[r["announcement_id"]] = {
+                            "ps": r.get("parsed_sections"), "da": r.get("deep_analysis")
+                        }
+                except Exception: pass
+            enriched = []
+            for m in matched_announcements[:10]:
+                it = dict(m)
+                aid = m.get("announcement_id")
+                if aid and aid in sections_map:
+                    ps = sections_map[aid].get("ps") or {}
+                    da = sections_map[aid].get("da") or {}
+                    if isinstance(ps, str):
+                        try: ps = json.loads(ps)
+                        except: ps = {}
+                    if isinstance(da, str):
+                        try: da = json.loads(da)
+                        except: da = {}
+                    def _s(v, n=400): return v[:n] if isinstance(v, str) else ""
+                    it["eligibility"] = _s(ps.get("eligibility"))
+                    it["required_docs"] = _s(ps.get("required_docs") or ps.get("required_documents"))
+                    it["how_to_apply"] = _s(ps.get("application_method"), 300)
+                    it["key_points"] = _s(da.get("key_points"), 300)
+                enriched.append(it)
+            snap_cur.execute(
+                """UPDATE pro_consult_sessions
+                   SET matched_snapshot = %s::jsonb,
+                       collected = %s::jsonb,
+                       phase = 'consulting',
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE session_id = %s""",
+                (json.dumps(enriched, ensure_ascii=False),
+                 json.dumps(profile, ensure_ascii=False),
+                 session_state["session_id"]),
+            )
+            db.commit()
+        except Exception as snap_err:
+            print(f"[PRO match snapshot] {snap_err}")
+            try: db.rollback()
+            except: pass
+
+        # 매칭 결과 요약 (자연어 AI 없음 — 결정적 텍스트)
+        total = len(matched_announcements)
+        if total == 0:
+            reply = "매칭된 공고가 없습니다. 조건을 완화해 다시 시도해보세요."
+            choices = ["🔄 조건 수정 후 재매칭"]
+        else:
+            reply = f"**{total}건**의 맞춤 공고를 찾았습니다. 카드를 클릭하면 전문가 레벨 심화 상담으로 이어집니다."
+            choices = ["🔄 조건 수정 후 재매칭"]
+
+        return {
+            "status": "SUCCESS",
+            "action": "match",
+            "reply": reply,
+            "choices": choices,
+            "done": True,
+            "profile": profile,
+            "collected": profile,
+            "announcement_id": None,
+            "matched_announcements": matched_announcements,
+            "matched_groups": matched_groups,
+            "rag_sources": [],
+            "session_id": session_state.get("session_id"),
+            "phase": "consulting",
+        }
+    finally:
+        try: db.close()
+        except: pass
+
+
+def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
+    """action=consult: 특정 공고 심화 상담 (V2 pro_announce 직접 호출)."""
+    from app.services.pro_announce import chat_pro_announce
+    ann_id = req.announcement_id
+    if not ann_id:
+        # 메시지에서 공고ID 자동 추출 (하위 호환)
+        import re as _re
+        for m in req.messages[:2]:
+            if m.get("role") != "user":
+                continue
+            mm = _re.search(r'공고\s*ID\s*[:：]\s*(\d+)', m.get("text", ""))
+            if mm:
+                ann_id = int(mm.group(1))
+                break
+    if not ann_id:
+        raise HTTPException(status_code=400, detail="action=consult에는 announcement_id 필수입니다.")
+
+    db = get_db_connection()
+    try:
+        session_state = _load_or_create_session(db, current_user, req.session_id, req.client_category) if req.session_id else None
+        selected_client = _load_client(db, req.client_id, current_user["bn"])
+
+        matched_snap = (session_state or {}).get("matched_snapshot") or []
+        coll = (session_state or {}).get("collected") or {}
+
+        # 대화 맥락 보강: 프론트 messages가 DB보다 짧으면 DB 히스토리 합병
         effective_messages = list(req.messages) if req.messages else []
         if session_state and session_state.get("db_messages"):
             db_msgs = session_state["db_messages"]
             if len(db_msgs) > len(effective_messages) + 1:
-                # DB에 더 많은 히스토리가 있음 → DB 히스토리 + 최신 사용자 메시지로 구성
                 last_user = effective_messages[-1] if effective_messages else None
                 if last_user and last_user.get("role") == "user":
                     effective_messages = db_msgs + [last_user]
-                    print(f"[PRO chat] messages restored from DB: {len(db_msgs)} + 1 new = {len(effective_messages)}")
 
-        # AI 호출 — 세션 상태 + 선택 고객 주입
         try:
-            result = chat_pro_consultant(
-                effective_messages,
+            v2_result = chat_pro_announce(
+                messages=effective_messages,
                 announcement_id=ann_id,
                 db_conn=db,
-                explicit_match=req.explicit_match,
-                session_state=session_state,
                 selected_client=selected_client,
-            )
-        except TypeError:
-            # 구버전 호환 (session_state/selected_client 미지원)
-            result = chat_pro_consultant(
-                req.messages,
-                announcement_id=ann_id,
-                db_conn=db,
-                explicit_match=req.explicit_match,
-                session_state=session_state,
+                matched_snapshot=matched_snap,
+                collected=coll,
             )
         except Exception as ai_err:
             import traceback as _tb
-            _tb_str = _tb.format_exc()[-600:]
-            print(f"[PRO chat] chat_pro_consultant unhandled: {ai_err}\n{_tb_str}")
-            result = {
+            _tb_str = _tb.format_exc()[-500:]
+            print(f"[PRO consult] chat_pro_announce error: {ai_err}\n{_tb_str}")
+            v2_result = {
                 "reply": "일시적으로 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
                 "choices": ["✏️ 다시 시도"],
                 "done": False,
-                "profile": None,
-                "collected": (session_state or {}).get("collected", {}) if session_state else {},
-                "current_step": (session_state or {}).get("current_step") if session_state else None,
-                "rag_sources": [],
-                "mode_b_debug": {"unhandled_error": f"{type(ai_err).__name__}: {str(ai_err)[:200]}", "tb": _tb_str},
             }
 
-        # 세션 갱신 (실패해도 응답은 정상 반환)
-        if not ann_id and session_state:
+        # 세션 messages 누적 (expert_insights 포함)
+        if session_state:
             try:
-                new_collected = {**session_state.get("collected", {}), **(result.get("collected") or {})}
-                ai_step = result.get("current_step")
-                cur_step = session_state.get("current_step", 1)
-                # 사용자가 실제로 답변을 보냈는지 체크 (마지막 user 메시지 존재 + 비어있지 않음)
-                last_user_text = ""
-                for m in reversed(req.messages):
-                    if m.get("role") == "user":
-                        last_user_text = (m.get("text") or "").strip()
-                        break
-                user_responded = bool(last_user_text) and "[새 케이스 시작]" not in last_user_text
-                if user_responded:
-                    # 사용자가 답변했으면 반드시 +1 (AI가 같은 step을 반복하지 못하게)
-                    baseline = cur_step + 1
-                    if ai_step and isinstance(ai_step, int) and ai_step > baseline:
-                        new_step = ai_step
-                    else:
-                        new_step = baseline
-                elif ai_step and isinstance(ai_step, int):
-                    new_step = max(cur_step, ai_step)
-                else:
-                    new_step = cur_step
-                # 개인 모드 7단계 / 사업자 5단계 상한
-                max_step = 7 if (session_state.get("client_category") or "") == "individual" else 5
-                new_step = min(new_step, max_step)
-                cur = db.cursor()
-                # P0.3: messages 전체도 저장 (assistant 응답 포함)
-                # [재설계 05] PRO 공고상담 V2 — expert_insights/verdict을 meta로 누적 (보고서 재료)
-                assistant_msg = {"role": "assistant", "text": result.get("reply", "")}
-                if result.get("expert_insights") or result.get("verdict_for_client"):
+                assistant_msg = {"role": "assistant", "text": v2_result.get("reply", "")}
+                if v2_result.get("expert_insights") or v2_result.get("verdict_for_client"):
                     assistant_msg["meta"] = {
                         "announcement_id": ann_id,
-                        "verdict_for_client": result.get("verdict_for_client"),
-                        "expert_insights": result.get("expert_insights") or {},
-                        "citations": result.get("citations") or [],
+                        "verdict_for_client": v2_result.get("verdict_for_client"),
+                        "expert_insights": v2_result.get("expert_insights") or {},
+                        "citations": v2_result.get("citations") or [],
                     }
                 full_msgs = list(req.messages) + [assistant_msg]
-                # B/D: phase 계산 — result에서 반환된 phase 우선, 없으면 done/match 기반 판정
-                new_phase = session_state.get("phase", "collecting")
-                if result.get("phase") == "consulting":
-                    new_phase = "consulting"
-                elif result.get("done") or (req.explicit_match):
-                    new_phase = "consulting"
-                print(f"[PRO chat] phase update: {session_state.get('phase')} → {new_phase}, done={result.get('done')}, mode_b={result.get('mode_b_debug', {}).get('tool_calling_entered')}")
-                cur.execute(
+                up_cur = db.cursor()
+                up_cur.execute(
                     """UPDATE pro_consult_sessions
-                       SET current_step = %s,
-                           collected = %s::jsonb,
-                           messages = %s::jsonb,
-                           phase = %s,
+                       SET messages = %s::jsonb,
+                           phase = 'consulting',
                            updated_at = CURRENT_TIMESTAMP
                        WHERE session_id = %s""",
-                    (new_step, json.dumps(new_collected, ensure_ascii=False),
-                     json.dumps(full_msgs, ensure_ascii=False),
-                     new_phase,
-                     session_state["session_id"])
+                    (json.dumps(full_msgs, ensure_ascii=False), session_state["session_id"])
                 )
                 db.commit()
             except Exception as upd_err:
-                print(f"[PRO chat] session update error (non-critical): {upd_err}")
+                print(f"[PRO consult session update] {upd_err}")
                 try: db.rollback()
                 except: pass
+
+        return {
+            "status": "SUCCESS",
+            "action": "consult",
+            "reply": v2_result.get("reply", ""),
+            "choices": v2_result.get("choices", []),
+            "done": v2_result.get("done", False),
+            "profile": None,
+            "collected": coll,
+            "announcement_id": ann_id,
+            "matched_announcements": [],
+            "matched_groups": {"interest_match": [], "deadline_urgent": [], "qualified_other": []},
+            "rag_sources": v2_result.get("rag_sources", []),
+            "session_id": session_state.get("session_id") if session_state else None,
+            "phase": "consulting",
+            "verdict_for_client": v2_result.get("verdict_for_client"),
+            "expert_insights": v2_result.get("expert_insights"),
+            "citations": v2_result.get("citations"),
+        }
     finally:
-        # 주의: 매칭/matched_snapshot 저장이 아래에서 db를 재사용하므로 여기선 close 안 함.
-        # db.close()는 함수 return 직전에 수행 (matched_snapshot 저장 완료 후).
-        pass
-
-    # ── 매칭 트리거: explicit_match=true(매칭 버튼 클릭)일 때만 ──
-    matched_announcements = []
-    # explicit_match가 true일 때만 매칭 실행
-    if not ann_id and req.explicit_match:
-        # profile_override(사용자 확인/수정)가 있으면 우선, 없으면 collected 사용
-        profile = req.profile_override or result.get("profile") or result.get("collected")
-        if profile:
-            result["done"] = True
-            result["profile"] = profile
-    if not ann_id and req.explicit_match and (req.profile_override or result.get("profile") or result.get("collected")):
-        try:
-            from app.core.matcher import get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid
-            profile = req.profile_override or result.get("profile") or result.get("collected")
-            # 개인 모드 판별: industry_code가 없거나 company_name이 "개인"이면 개인
-            has_industry = bool(profile.get("industry_code", "").strip())
-            is_personal_name = profile.get("company_name", "") in ("개인", "")
-            is_individual = not has_industry or is_personal_name
-
-            # 개인이라도 창업/R&D 관심이면 기업 매칭 병행
-            interests_str = profile.get("interests", "")
-            biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
-
-            if is_individual and not biz_interests:
-                matches = get_matches_hybrid(profile, is_individual=True) or []
-            elif is_individual and biz_interests:
-                ind_matches = get_matches_hybrid(profile, is_individual=True) or []
-                biz_matches = get_matches_hybrid(profile, is_individual=False) or []
-                matches = biz_matches + ind_matches
-                matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
-            else:
-                matches = get_matches_hybrid(profile, is_individual=False) or []
-
-            # 버킷별로 분리 (🎯 관심 일치 → ⏰ 마감 임박 → ✅ 자격 통과 참고)
-            # 각 버킷 상한: 관심 10개 / 마감 3개 / 참고 7개
-            _interest = [a for a in matches if a.get("bucket") == "interest_match"][:10]
-            _deadline = [a for a in matches if a.get("bucket") == "deadline_urgent"][:3]
-            _other = [a for a in matches if a.get("bucket") == "qualified_other"][:7]
-            _display_list = _interest + _deadline + _other
-
-            def _simplify(a, idx):
-                d = a if isinstance(a, dict) else dict(a)
-                return {
-                    "announcement_id": d.get("announcement_id"),
-                    "title": d.get("title", ""),
-                    "department": d.get("department", ""),
-                    "support_amount": d.get("support_amount", ""),
-                    "deadline_date": str(d.get("deadline_date", "")),
-                    "rank": d.get("rank") or (idx + 1),
-                    "bucket": d.get("bucket", ""),
-                    "bucket_label": d.get("bucket_label", ""),
-                    "reasons": d.get("reasons", []),
-                    "matched_interests": d.get("matched_interests", []),
-                }
-
-            for idx, ann in enumerate(_display_list):
-                matched_announcements.append(_simplify(ann, idx))
-
-            # 그룹별 응답 구조 (프론트에서 섹션 분리 표시용)
-            matched_groups = {
-                "interest_match": [_simplify(a, i) for i, a in enumerate(_interest)],
-                "deadline_urgent": [_simplify(a, i) for i, a in enumerate(_deadline)],
-                "qualified_other": [_simplify(a, i) for i, a in enumerate(_other)],
-            }
-
-            # 매칭 결과 안내 — 카드로 표시되므로 텍스트 리스트는 제거, 간단한 요약만
-            if matched_announcements and len(result.get("reply", "")) < 200:
-                summary = f"총 **{len(matched_announcements)}건**의 맞춤 공고가 하단 카드로 표시됩니다. 궁금하신 공고를 클릭하시거나, 상담 질문을 이어서 하셔도 됩니다."
-                result["reply"] = (result.get("reply", "") + "\n\n" + summary).strip()
-                result["choices"] = ["1순위 공고 자격 확인해줘", "전체 공고 서류 목록 알려줘", "조건 변경 후 재매칭"]
-
-            # 학습 사이클: 상담 종료(done=true) 시 AI가 대화에서 지식 추출 → knowledge_base 저장
-            if result.get("done") and req.messages and len(req.messages) >= 4:
-                try:
-                    from app.services.ai_consultant import extract_and_store_insights
-                    all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
-                    stored = extract_and_store_insights(all_msgs, db, source="pro_consult")
-                    if stored:
-                        print(f"[KB] extracted {stored} insights from PRO session {session_state.get('session_id') if session_state else '?'}")
-                except Exception as ex_err:
-                    print(f"[KB extract] {ex_err}")
-
-            # D+G: 매칭 결과 스냅샷 + 상위 3개 상세분석 주입
-            if session_state and matched_announcements:
-                try:
-                    snap_cur = db.cursor()
-                    top_ids = [m.get("announcement_id") for m in matched_announcements[:3] if m.get("announcement_id")]
-                    sections_map = {}
-                    if top_ids:
-                        try:
-                            snap_cur.execute(
-                                """SELECT announcement_id, parsed_sections, deep_analysis
-                                   FROM announcement_analysis
-                                   WHERE announcement_id = ANY(%s)""",
-                                (top_ids,),
-                            )
-                            for r in snap_cur.fetchall():
-                                sections_map[r["announcement_id"]] = {
-                                    "ps": r.get("parsed_sections"),
-                                    "da": r.get("deep_analysis"),
-                                }
-                        except Exception:
-                            pass
-                    enriched = []
-                    for m in matched_announcements[:10]:
-                        it = dict(m)
-                        aid = m.get("announcement_id")
-                        if aid and aid in sections_map:
-                            ps = sections_map[aid].get("ps") or {}
-                            da = sections_map[aid].get("da") or {}
-                            if isinstance(ps, str):
-                                try: ps = json.loads(ps)
-                                except: ps = {}
-                            if isinstance(da, str):
-                                try: da = json.loads(da)
-                                except: da = {}
-                            def _s(v, n=400):
-                                return v[:n] if isinstance(v, str) else ""
-                            it["eligibility"] = _s(ps.get("eligibility"))
-                            it["required_docs"] = _s(ps.get("required_docs") or ps.get("required_documents"))
-                            it["how_to_apply"] = _s(ps.get("application_method"), 300)
-                            it["key_points"] = _s(da.get("key_points"), 300)
-                        enriched.append(it)
-                    snap_cur.execute(
-                        """UPDATE pro_consult_sessions
-                           SET matched_snapshot = %s::jsonb,
-                               phase = 'consulting',
-                               updated_at = CURRENT_TIMESTAMP
-                           WHERE session_id = %s""",
-                        (json.dumps(enriched, ensure_ascii=False),
-                         session_state["session_id"]),
-                    )
-                    db.commit()
-                except Exception as snap_err:
-                    print(f"[PRO matched_snapshot] {snap_err}")
-                    try: db.rollback()
-                    except: pass
-        except Exception as e:
-            print(f"[PRO consultant] auto-match error: {e}")
-
-    # choices가 비어있으면 매우 최소한의 폴백만 사용 (AI가 생성하는 것이 원칙)
-    choices = result.get("choices", [])
-    if not choices:
-        if result.get("done") and matched_announcements:
-            # 매칭 후에만 행동 옵션 허용
-            choices = ["📄 보고서 생성", "🔍 특정 공고 자세히 보기", "🔄 조건 변경 후 재매칭"]
-        elif result.get("done"):
-            choices = ["🔄 다른 조건으로 재매칭", "✏️ 직접 입력"]
-        else:
-            # 미완료 상태에서는 빈 배열 — 사용자가 자유롭게 입력하도록
-            choices = []
-
-    # db 연결 정리 (matching/matched_snapshot 저장 완료 후)
-    if db:
         try: db.close()
         except: pass
-
-    return {
-        "status": "SUCCESS",
-        "reply": result.get("reply", ""),
-        "choices": choices,
-        "done": result.get("done", False),
-        "profile": result.get("profile"),
-        "collected": result.get("collected", {}),
-        "announcement_id": ann_id,
-        "matched_announcements": matched_announcements,
-        "matched_groups": locals().get("matched_groups") or {
-            "interest_match": [], "deadline_urgent": [], "qualified_other": []
-        },
-        "rag_sources": result.get("rag_sources", []),  # E: 출처 카드
-        "session_id": session_state.get("session_id") if session_state else None,
-        "current_step": result.get("current_step") or (session_state.get("current_step") if session_state else None),
-        "phase": result.get("phase"),
-        "mode_b_debug": result.get("mode_b_debug"),
-        # [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 노출
-        "verdict_for_client": result.get("verdict_for_client"),
-        "expert_insights": result.get("expert_insights"),
-        "citations": result.get("citations"),
-    }
 
 
 @app.post("/api/ai/consultant/chat")

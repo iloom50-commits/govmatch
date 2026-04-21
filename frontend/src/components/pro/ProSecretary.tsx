@@ -312,7 +312,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [sessionId]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { explicit_match?: boolean; profile_override?: any }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -320,13 +320,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         text: (i === 0 && m.role === "user" && systemContext) ? `${systemContext}\n\n${m.text}` : m.text,
       }));
 
+      // [재설계 04] action 자동 추론 (명시 우선)
+      const action = options?.action || (activeAnnouncementId ? "consult" : "match");
+
       const res = await fetch(`${API}/api/pro/consultant/chat`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({
           messages: messagesPayload,
           announcement_id: activeAnnouncementId,
-          explicit_match: options?.explicit_match || false,
+          action,
           profile_override: options?.profile_override || null,
           session_id: sessionId,
           client_category: clientCategory || null,
@@ -427,10 +430,14 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
     setInput("");
-    // E: 재매칭 키워드 감지 시 explicit_match=true
+    // [재설계 04] 재매칭 키워드 감지 시 action=match + 현재 프로필로 재매칭
     const rematchKeywords = ["재매칭", "다시 매칭", "매칭 진행", "이 조건으로 매칭", "매칭해"];
     const isRematch = rematchKeywords.some(kw => text.includes(kw));
-    sendToAI(newHistory, isRematch ? { explicit_match: true } : undefined);
+    if (isRematch) {
+      sendToAI(newHistory, { action: "match", profile_override: collectedProfile });
+    } else {
+      sendToAI(newHistory);
+    }
     if (flowState === "idle") setFlowState("info_collect");
   };
 
@@ -500,67 +507,59 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     }
   };
 
-  // ─── 입력 폼 제출 → 매칭 시작 ───
+  // ─── 입력 폼 제출 → 즉시 매칭 실행 (재설계 04) ───
   const handleProfileSubmit = () => {
     const f = profileForm;
-    // 모든 필드 선택. 정보가 없어도 즉시 상담 시작 가능 — AI가 대화로 수집
-
     setShowProfileForm(false);
-    setFlowState("info_collect");
-    // 상담 시작 시 임시 저장 정리
+    setFlowState("matching");
     try { if (typeof window !== "undefined") localStorage.removeItem(PROFILE_FORM_STORAGE_KEY); } catch {}
 
     const isIndiv = clientCategory === "individual";
-    const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
-
-    // 정확한 날짜가 있으면 우선 사용, 없으면 연도만
-    const dateLabel = isIndiv ? "생년월일" : "설립일";
-    const yearLabel = isIndiv ? "출생연도" : "설립연도";
     const dateValue = f.establishment_date || (f.establishment_year ? `${f.establishment_year}-01-01` : "");
-    const dateDisplay = f.establishment_date || (f.establishment_year ? `${f.establishment_year}년` : "");
 
-    // 정보가 전혀 없으면 빈 상담으로 시작
-    const hasAnyInfo = !!(f.company_name?.trim() || dateValue || f.industry || f.revenue_bracket || f.employee_bracket || f.address_city || (f.interests && f.interests.length > 0));
-
+    // 최소한의 필수 필드 체크
+    const hasAnyInfo = !!(f.company_name?.trim() || dateValue || f.industry_code || f.revenue_bracket || f.employee_bracket || f.address_city || (f.interests && f.interests.length > 0));
     if (!hasAnyInfo) {
-      // 정보 없음 → AI에게 첫 인사 + contextual choices를 생성하게 함
-      setSystemContext(`[전문가 상담 모드] 고객유형: ${catLabel} (정보 미입력 — 대화 중 수집)`);
-      const seedHistory: ChatMessage[] = [
-        { role: "user", text: `[새 케이스 시작] 고객 유형: ${catLabel}. 고객의 상황 파악부터 함께 진행해주세요.` },
-      ];
-      setMessages(seedHistory);
-      sendToAI(seedHistory);
+      toast("고객 정보를 먼저 입력해주세요. (최소 1개 필드 필수)", "error");
+      setShowProfileForm(true);
       return;
     }
 
-    // 수집된 정보를 시스템 컨텍스트에 설정
-    const infoParts = [`고객유형: ${catLabel}`];
-    if (f.company_name?.trim()) infoParts.push(`${isIndiv ? "이름" : "기업명"}: ${f.company_name}`);
-    if (dateValue) infoParts.push(`${dateLabel}: ${dateValue}`);
-    if (f.industry) infoParts.push(`업종: ${f.industry}`);
-    if (f.revenue_bracket) infoParts.push(`매출: ${f.revenue_bracket}`);
-    if (f.employee_bracket) infoParts.push(`직원수: ${f.employee_bracket}`);
-    if (f.address_city) infoParts.push(`지역: ${f.address_city}`);
-    if (f.interests.length > 0) infoParts.push(`관심분야: ${f.interests.join(", ")}`);
+    // 매칭 엔진이 받을 프로필 구조
+    const matchProfile = {
+      company_name: f.company_name?.trim() || (isIndiv ? "개인" : ""),
+      industry_code: f.industry_code || "",
+      address_city: f.address_city || "",
+      establishment_date: dateValue,
+      revenue_bracket: f.revenue_bracket || "",
+      employee_count_bracket: f.employee_bracket || "",
+      interests: (f.interests || []).join(","),
+      certifications: (f.certifications || []).join(","),
+      user_type: isIndiv ? "individual" : (clientCategory === "individual_biz" ? "sole_proprietor" : "corporate"),
+      // 우대/제외 판정용 선택 필드
+      representative_age_range: f.representative_age_range || "",
+      is_women_enterprise: f.is_women_enterprise || false,
+      is_youth_enterprise: f.is_youth_enterprise || false,
+      is_restart: f.is_restart || false,
+    };
 
-    setSystemContext(`[전문가 상담 모드] ${infoParts.join("\n")}`);
-
-    // 입력된 정보를 첫 사용자 메시지로 AI에게 전달 → AI가 인사 + 상황 파악 질문 + 선택지 생성
-    const summaryLines = [`[새 케이스 시작] ${catLabel} 고객`];
-    if (f.company_name?.trim()) summaryLines.push(`${isIndiv ? "이름" : "기업명"}: ${f.company_name}`);
-    if (dateDisplay) summaryLines.push(`${isIndiv ? "출생" : "설립"}: ${dateDisplay}`);
-    if (f.industry) summaryLines.push(`업종: ${f.industry}`);
-    if (f.revenue_bracket) summaryLines.push(`매출: ${f.revenue_bracket}`);
-    if (f.employee_bracket) summaryLines.push(`직원수: ${f.employee_bracket}`);
-    if (f.address_city) summaryLines.push(`지역: ${f.address_city}`);
-    if (f.interests.length > 0) summaryLines.push(`관심분야: ${f.interests.join(", ")}`);
-    summaryLines.push("\n위 정보를 바탕으로 부족한 부분을 함께 파악해주세요.");
+    // 사용자 시각화용 요약 메시지 (messages에 기록)
+    const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
+    const summaryLines = [`📋 **${catLabel} 고객 프로필로 매칭 실행**`];
+    if (matchProfile.company_name) summaryLines.push(`• ${isIndiv ? "이름" : "기업명"}: ${matchProfile.company_name}`);
+    if (matchProfile.industry_code) summaryLines.push(`• 업종: ${f.industry || matchProfile.industry_code}`);
+    if (dateValue) summaryLines.push(`• ${isIndiv ? "생년월일" : "설립일"}: ${dateValue}`);
+    if (matchProfile.revenue_bracket) summaryLines.push(`• 매출: ${matchProfile.revenue_bracket}`);
+    if (matchProfile.employee_count_bracket) summaryLines.push(`• 직원수: ${matchProfile.employee_count_bracket}`);
+    if (matchProfile.address_city) summaryLines.push(`• 지역: ${matchProfile.address_city}`);
+    if (matchProfile.interests) summaryLines.push(`• 관심분야: ${matchProfile.interests}`);
 
     const seedHistory: ChatMessage[] = [
       { role: "user", text: summaryLines.join("\n") },
     ];
     setMessages(seedHistory);
-    sendToAI(seedHistory);
+    // [재설계 04] Mode A 제거 — 자연어 수집 없이 즉시 매칭 엔진 호출
+    sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
   };
 
   // ─── 마크다운 렌더링 ───
@@ -916,7 +915,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">
                               {msg.choices.map((choice, ci) => (
-                                <button key={ci} onClick={() => handleSend(choice)}
+                                <button key={ci} onClick={() => {
+                                  // [재설계 04] "조건 수정 후 재매칭" 클릭 → 폼으로 복귀
+                                  if (choice.includes("조건 수정") || choice.includes("조건 변경")) {
+                                    setShowProfileForm(true);
+                                    setFlowState("info_collect");
+                                    return;
+                                  }
+                                  handleSend(choice);
+                                }}
                                   className={`px-3 py-1.5 rounded-full text-[13px] md:text-[12px] font-semibold transition-all active:scale-95 border ${
                                     dark
                                       ? "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"
@@ -1367,12 +1374,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               </button>
               <button
                 onClick={() => {
-                  // 매칭 실행
+                  // [재설계 04] action=match로 매칭 실행
                   setShowMatchModal(false);
-                  // 사용자 메시지 추가 + explicit_match로 매칭 실행
                   const newHistory = [...messages, { role: "user" as const, text: "📋 수집된 정보로 공고 매칭 실행" }];
                   setMessages(newHistory);
-                  sendToAI(newHistory, { explicit_match: true, profile_override: matchProfile });
+                  sendToAI(newHistory, { action: "match", profile_override: matchProfile });
                 }}
                 className="flex-[2] py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95"
               >

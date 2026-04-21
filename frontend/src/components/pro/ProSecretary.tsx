@@ -678,7 +678,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             {/* 메뉴 */}
             <div className="flex-1 py-2">
               {([
-                { view: "chat" as ActiveView, icon: Icons.chat, label: "상담" },
+                { view: "chat" as ActiveView, icon: Icons.chat, label: "지원사업 매칭 상담" },
                 { view: "announce_search" as ActiveView, icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>, label: "특정 공고 상담" },
                 { view: "clients" as ActiveView, icon: Icons.clients, label: "고객 관리" },
                 { view: "history" as ActiveView, icon: Icons.history, label: "상담 이력" },

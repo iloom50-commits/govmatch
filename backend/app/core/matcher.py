@@ -516,6 +516,9 @@ def get_matches_for_user(user_profile):
     has_social = any(("사회적" in c) or ("협동조합" in c) or ("마을기업" in c) for c in user_certs)
     has_venture = any("벤처" in c for c in user_certs)
     has_innobiz = any(("이노비즈" in c) or ("메인비즈" in c) for c in user_certs)
+    # [재설계 04] 청년기업/재창업 플래그
+    has_youth_biz = any(("청년" in c) for c in user_certs)
+    has_restart = any(("재창업" in c) or ("재도전" in c) for c in user_certs)
 
     # 업종 대분류 (KSIC 앞 2자리)
     user_ind_code = (user_profile.get("industry_code") or "")[:2]
@@ -691,6 +694,12 @@ def get_matches_for_user(user_profile):
         # 사회적경제기업 전용 (제목 기반)
         elif any(kw in title for kw in ["사회적경제기업", "사회적기업", "마을기업", "자활기업", "협동조합"]) and not has_social:
             restricted_reason = "사회적경제기업 전용 자격"
+        # [재설계 04] 청년기업 전용 공고인데 사용자가 청년기업 아닌 경우 제외
+        elif any(kw in title for kw in ["청년창업", "청년기업", "만39세", "만 39세"]) and not has_youth_biz:
+            restricted_reason = "청년기업 전용 자격 (만 39세 이하)"
+        # 재도전/재창업 전용 공고
+        elif any(kw in title for kw in ["재도전", "재창업", "폐업 후"]) and not has_restart:
+            restricted_reason = "재도전/재창업 전용"
 
         if restricted_reason:
             _mark_ineligible(ad, restricted_reason)

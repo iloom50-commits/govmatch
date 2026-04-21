@@ -2650,6 +2650,28 @@ C. **"분석"과 "날조"는 다릅니다.** 사용자 기업 정보와 공고 �
         if can_use_cache:
             _faq_cache.put(announcement_id, last_user_msg, response_data)
 
+        # [Phase 2 통합] LITE 공고상담도 V2 연동 — 대화 중 프로필 자동 저장
+        if os.environ.get("USE_AI_ENGINE_V2", "false").lower() == "true":
+            try:
+                from app.services.ai_engine import (
+                    extract_profile_info, save_extracted_to_users, schema_extract_profile,
+                )
+                extracted_c = extract_profile_info(last_user_msg + " " + verified_reply)
+                if os.environ.get("USE_SCHEMA_EXTRACT", "false").lower() == "true":
+                    try:
+                        schema_extracted = schema_extract_profile(last_user_msg, verified_reply)
+                        for k, v in schema_extracted.items():
+                            if v and not extracted_c.get(k):
+                                extracted_c[k] = v
+                    except Exception:
+                        pass
+                if extracted_c and user_profile and user_profile.get("business_number"):
+                    saved = save_extracted_to_users(user_profile["business_number"], extracted_c, db_conn)
+                    if saved:
+                        logger.info(f"[AI_ENGINE_V2] chat_consult profile auto-saved: {list(extracted_c.keys())}")
+            except Exception as e:
+                logger.warning(f"[AI_ENGINE_V2] chat_consult extract/save error (비차단): {e}")
+
         return response_data
     except json.JSONDecodeError:
         return {"reply": response.text.strip() if 'response' in dir() else "응답 처리 오류", "choices": [], "done": False, "conclusion": None}
@@ -4065,8 +4087,28 @@ JSON 형식으로 반환:
             # 구체적 키워드를 custom_keywords로 추가
             if auto_custom:
                 profile["custom_keywords"] = collected.get("custom_keywords") or auto_custom
+
+            # [재설계 04] 폼의 추가 조건을 certifications/age_range로 병합 → matcher가 자동 활용
+            if selected_client:
+                extra_certs = []
+                if selected_client.get("is_women_enterprise"):
+                    extra_certs.append("여성기업")
+                if selected_client.get("is_youth_enterprise"):
+                    extra_certs.append("청년기업")
+                if selected_client.get("is_restart"):
+                    extra_certs.append("재창업")
+                existing_certs_str = (selected_client.get("certifications") or "").strip()
+                if existing_certs_str:
+                    extra_certs = existing_certs_str.split(",") + extra_certs
+                if extra_certs:
+                    merged = ",".join(sorted(set(c.strip() for c in extra_certs if c.strip())))
+                    profile["certifications"] = merged
+                # 대표 연령대 (우대·제외 판정용)
+                if selected_client.get("representative_age"):
+                    profile["age_range"] = selected_client["representative_age"]
+
             done = True
-            logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile")
+            logger.info(f"[chat_pro_consultant] Match keyword trigger → done=True with profile (certs={profile.get('certifications','')[:80]})")
 
         # ── 방어적 후처리: AI가 message에 JSON 조각/choices를 흘렸을 때 강제 정리 ──
         msg_text = result.get("message", "")

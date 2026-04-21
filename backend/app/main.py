@@ -328,6 +328,12 @@ def init_database():
             "contact_phone VARCHAR(50)",
             "tags TEXT DEFAULT ''",
             "status VARCHAR(20) DEFAULT 'new'",
+            # [재설계 04] 우대·제외 판정용 선택 필드
+            "representative_age VARCHAR(20)",
+            "is_women_enterprise BOOLEAN DEFAULT FALSE",
+            "is_youth_enterprise BOOLEAN DEFAULT FALSE",
+            "certifications TEXT DEFAULT ''",  # 콤마 구분: '벤처,이노비즈'
+            "is_restart BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 cursor.execute(f"ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS {col_def}")

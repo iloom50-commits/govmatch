@@ -1418,6 +1418,92 @@ def _tool_check_eligibility(db_conn, announcement_id: int, profile: dict) -> Dic
         return {"error": str(e)[:200], "eligible": None}
 
 
+def _detect_conversation_signals(messages: List[Dict]) -> str:
+    """[대화 신호 감지] 반복/심화요구/주제전환/이미 안내한 공고를 감지하여 프롬프트 동적 보강.
+
+    3가지 신호 검출:
+    1. 이미 안내한 공고 추적 → 중복 설명 방지
+    2. 사용자 심화 요구("피상적", "더 자세히", "구체적") → 깊이 강제
+    3. 주제 전환("아 그것 말고", "다시", "다른") → 이전 맥락 폐기
+    """
+    if not messages:
+        return ""
+
+    blocks = []
+
+    # ── 1. 이미 안내한 공고 제목 추출 (AI 답변에서) ──
+    import re as _re
+    mentioned = []
+    for m in messages:
+        if m.get("role") == "assistant":
+            text = m.get("text", "") or ""
+            # "### 1. XXX", "### XXX", "**XXX**" 패턴에서 공고 제목 추출
+            for pat in [r"###\s*\d*\.?\s*([가-힣A-Z0-9][^\n#]{4,40})", r"\*\*([가-힣A-Z0-9][^\n\*]{4,40})\*\*"]:
+                for hit in _re.findall(pat, text):
+                    clean = hit.strip().rstrip(":·").strip()
+                    # 관련 키워드 필터 (자금/사업/지원 포함하는 것만 공고명으로 인식)
+                    if any(k in clean for k in ["자금", "지원", "사업", "패키지", "보증", "융자", "바우처", "보조금"]):
+                        if clean not in mentioned and len(mentioned) < 15:
+                            mentioned.append(clean)
+    if mentioned:
+        blocks.append(
+            "[★ 이미 안내한 공고 (중복 금지) ★]\n"
+            + ", ".join(mentioned[:12])
+            + "\n→ 위 공고는 이전 대화에서 이미 설명했습니다. 같은 공고를 다시 나열하지 마세요.\n"
+            + "  - 사용자가 같은 공고의 상세를 물으면: 다른 측면(신청절차/실제사례/대안)에 초점\n"
+            + "  - 새 검색 시: 위 목록 제외한 신규 공고 찾기"
+        )
+
+    # ── 2. 사용자 심화 요구/불만 감지 (최근 2개 user 메시지) ──
+    recent_user_texts = [m.get("text", "") for m in messages if m.get("role") == "user"][-2:]
+    last_user = recent_user_texts[-1] if recent_user_texts else ""
+    unsatisfied_keywords = ["피상적", "더 자세히", "더 구체적", "어려워", "모르겠", "이해 안", "똑같", "반복", "같은 얘기",
+                             "진짜요", "확실해요", "정확히", "자세한", "자세히 알려", "부족"]
+    if any(k in last_user for k in unsatisfied_keywords):
+        blocks.append(
+            "[★ 사용자 심화 요구 감지 ★]\n"
+            f"마지막 사용자 발화: '{last_user[:100]}'\n"
+            "→ 이전 답변이 불충분하다는 신호입니다. 다음을 반드시 실행:\n"
+            "  1. 같은 내용 복붙 절대 금지\n"
+            "  2. get_announcement_detail 도구로 공고 원문 상세 조회\n"
+            "  3. 구체 수치(금리, 한도, 기간, 조건) 중심\n"
+            "  4. 출처 공고 ID 또는 부처·기관명 명시\n"
+            "  5. 실제 신청 단계·필요 서류 언급"
+        )
+
+    # ── 3. 주제 전환 감지 ──
+    topic_shift_keywords = ["아 그것 말고", "그것 말고", "다시", "다른 걸", "다른거", "아 말고", "말고", "그 말고",
+                              "근데", "그런데 말이야"]
+    if any(k in last_user for k in topic_shift_keywords):
+        # 이전 AI 답변에서 다룬 주제와 현재 사용자 질문 주제 대조
+        blocks.append(
+            "[★ 주제 전환 감지 ★]\n"
+            f"마지막 사용자 발화: '{last_user[:100]}'\n"
+            "→ 사용자가 주제를 전환했습니다. 이전 주제는 폐기하고 현재 질문에만 집중:\n"
+            "  - 이전 답변의 공고들을 계속 끌고 가지 말 것\n"
+            "  - 현재 발화의 핵심 키워드로 새로 search_fund_announcements 호출\n"
+            "  - 이전 주제 언급 금지"
+        )
+
+    # ── 4. 반복 답변 패턴 감지 (최근 3개 AI 답변이 유사한가) ──
+    ai_texts = [m.get("text", "")[:200] for m in messages if m.get("role") == "assistant"][-3:]
+    if len(ai_texts) >= 2:
+        # 첫 100자 비교 — 50% 이상 동일하면 반복으로 간주
+        a, b = ai_texts[-1], ai_texts[-2]
+        if a and b and len(a) > 50:
+            common = sum(1 for i in range(min(len(a), len(b))) if a[i] == b[i])
+            if common / max(len(a), len(b)) > 0.4:
+                blocks.append(
+                    "[★ 답변 반복 패턴 감지 ★]\n"
+                    "→ 최근 답변이 이전 답변과 유사합니다. 완전히 다른 각도로 접근:\n"
+                    "  - 다른 공고 검색 (search_fund_announcements 신규 키워드)\n"
+                    "  - 이전 답변의 공고는 한 줄 요약만, 새 공고 상세 안내\n"
+                    "  - 또는 사용자의 진짜 궁금증을 재확인하는 질문"
+                )
+
+    return "\n\n".join(blocks)
+
+
 def chat_lite_fund_expert(
     messages: List[Dict],
     db_conn=None,
@@ -1524,6 +1610,11 @@ def chat_lite_fund_expert(
 4. 사용자 재질문·회의("진짜요?", "확실해요?", "피상적") 반복 시 → 같은 답변 복붙 절대 금지, 근거 공고 ID 명시하고 구체 수치 집중
 5. Tool 결과 중 `_profile_match: false` 플래그 있는 항목은 "해당 없음"으로 명시 설명 (추천 안 함)
 """
+
+    # [대화 신호 감지] — 반복/심화/주제전환 동적 보강
+    conv_signals = _detect_conversation_signals(messages)
+    if conv_signals:
+        profile_ctx += "\n" + conv_signals + "\n"
 
     # 프롬프트 선택
     if is_individual:

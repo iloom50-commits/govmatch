@@ -492,13 +492,13 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   if (!open || !announcement) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center lg:justify-end p-0 sm:p-4 lg:pr-6 lg:pointer-events-none">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center lg:justify-end p-0 sm:p-2 lg:p-0 lg:pointer-events-none">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm lg:hidden" onClick={handleClose} />
 
       <div
         data-consult-panel
         className={`bg-white shadow-2xl border border-white/60 overflow-hidden flex flex-col pointer-events-auto ${
-          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-3xl lg:max-w-[820px] h-[90vh] sm:h-[88vh] sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 lg:slide-in-from-right duration-300"
+          dragPos ? "fixed rounded-2xl" : "relative w-full sm:max-w-3xl lg:max-w-[820px] h-screen sm:rounded-none lg:rounded-none animate-in slide-in-from-bottom sm:zoom-in-95 lg:slide-in-from-right duration-300"
         }`}
         style={dragPos ? { left: dragPos.x, top: dragPos.y, width: 700, height: "80vh", zIndex: 60, borderRadius: 16 } : undefined}
       >

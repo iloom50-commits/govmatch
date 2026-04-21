@@ -1815,6 +1815,26 @@ def chat_lite_fund_expert(
                 "choices": ["✏️ 다시 시도"],
             }
 
+    # [Phase 2 통합] ai_engine extractor + updater — feature flag로 점진 적용
+    if os.environ.get("USE_AI_ENGINE_V2", "false").lower() == "true":
+        try:
+            from app.services.ai_engine import extract_profile_info, save_extracted_to_users
+            # 사용자 마지막 메시지에서 정보 추출
+            last_user = ""
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    last_user = m.get("text", "")
+                    break
+            # reply도 같이 검사 (AI가 사용자 대신 정리한 경우)
+            extracted = extract_profile_info(last_user + " " + reply_text)
+            if extracted and user_profile and user_profile.get("business_number"):
+                bn = user_profile.get("business_number")
+                saved = save_extracted_to_users(bn, extracted, db_conn)
+                if saved:
+                    logger.info(f"[AI_ENGINE_V2] LITE profile auto-saved: {list(extracted.keys())}")
+        except Exception as e:
+            logger.warning(f"[AI_ENGINE_V2] LITE extract/save error (비차단): {e}")
+
     return {
         "reply": reply_text,
         "choices": parsed_choices,

@@ -1816,17 +1816,33 @@ def chat_lite_fund_expert(
             }
 
     # [Phase 2 통합] ai_engine extractor + updater — feature flag로 점진 적용
+    # 이중 안전망: ① 정규식 NER (extract_profile_info) + ② Schema 강제 Gemini (schema_extract_profile)
     if os.environ.get("USE_AI_ENGINE_V2", "false").lower() == "true":
         try:
-            from app.services.ai_engine import extract_profile_info, save_extracted_to_users
-            # 사용자 마지막 메시지에서 정보 추출
+            from app.services.ai_engine import (
+                extract_profile_info, save_extracted_to_users, schema_extract_profile,
+            )
+            # 사용자 마지막 메시지
             last_user = ""
             for m in reversed(messages):
                 if m.get("role") == "user":
                     last_user = m.get("text", "")
                     break
-            # reply도 같이 검사 (AI가 사용자 대신 정리한 경우)
+
+            # ① 정규식 NER (빠름, 비용 0)
             extracted = extract_profile_info(last_user + " " + reply_text)
+
+            # ② Schema 강제 Gemini — 정규식이 놓친 필드 보완 (USE_SCHEMA_EXTRACT=true일 때만)
+            if os.environ.get("USE_SCHEMA_EXTRACT", "false").lower() == "true":
+                try:
+                    schema_extracted = schema_extract_profile(last_user, reply_text)
+                    # 정규식이 놓친 것만 Schema 결과로 보완
+                    for k, v in schema_extracted.items():
+                        if v and not extracted.get(k):
+                            extracted[k] = v
+                except Exception as se:
+                    logger.debug(f"[AI_ENGINE_V2] schema_extract fallback: {se}")
+
             if extracted and user_profile and user_profile.get("business_number"):
                 bn = user_profile.get("business_number")
                 saved = save_extracted_to_users(bn, extracted, db_conn)

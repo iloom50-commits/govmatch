@@ -17,6 +17,7 @@ from .schemas import LITE_ANNOUNCE_SCHEMA, EXTRACTED_INFO_SCHEMA
 from .extractor import extract_profile_info, extract_mentioned_announcement_ids
 from .updater import save_extracted_to_users, save_extracted_to_client, calculate_profile_completeness
 from .fsm import decide_next_state, LiteAnnounceState, LiteFundState, ProMatchState
+from .schema_extractor import schema_extract_profile
 
 __all__ = [
     "LITE_ANNOUNCE_SCHEMA",
@@ -30,4 +31,5 @@ __all__ = [
     "LiteAnnounceState",
     "LiteFundState",
     "ProMatchState",
+    "schema_extract_profile",
 ]

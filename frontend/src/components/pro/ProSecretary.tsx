@@ -312,7 +312,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [sessionId]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any; announcement_id?: number }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -320,15 +320,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         text: (i === 0 && m.role === "user" && systemContext) ? `${systemContext}\n\n${m.text}` : m.text,
       }));
 
-      // [재설계 04] action 자동 추론 (명시 우선)
-      const action = options?.action || (activeAnnouncementId ? "consult" : "match");
+      // [재설계 04] action 결정 — 명시적 override 우선 (React state 비동기 문제 우회)
+      const annId = options?.announcement_id ?? activeAnnouncementId;
+      const action = options?.action || (annId ? "consult" : "match");
 
       const res = await fetch(`${API}/api/pro/consultant/chat`, {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({
           messages: messagesPayload,
-          announcement_id: activeAnnouncementId,
+          announcement_id: annId,
           action,
           profile_override: options?.profile_override || null,
           session_id: sessionId,
@@ -950,10 +951,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                 <button key={mi}
                                   onClick={() => {
                                     const aid = m.announcement_id || m.id;
-                                    if (aid) {
-                                      setActiveAnnouncementId(aid);
-                                      handleSend(`[공고 상세 분석 보고서 요청] 『${m.title || m.program_title || "공고"}』(공고 ID: ${aid})에 대해 공고 개요, 사업 목적, 지원 내용, 신청 자격, 필수 서류, 신청 절차, 심사 기준, 일정, 제외 대상, 유의사항, 문의처를 포함한 12섹션 상세 보고서를 작성해주세요.`);
-                                    }
+                                    if (!aid) return;
+                                    // [재설계 04] 카드 클릭 → 즉시 action=consult (React state 비동기 우회)
+                                    setActiveAnnouncementId(aid);
+                                    const consultMsg = `『${m.title || m.program_title || "공고"}』 상세 상담을 시작합니다. 이 공고에 대해 신청 가능 여부, 평가 포인트, 흔한 실수, 필수 서류, 유사 프로그램을 분석해주세요.`;
+                                    const newHistory = [...messages, { role: "user" as const, text: consultMsg }];
+                                    setMessages(newHistory);
+                                    sendToAI(newHistory, { action: "consult", announcement_id: aid });
                                   }}
                                   className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
                                   <div className="flex items-start justify-between gap-2">

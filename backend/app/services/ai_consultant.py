@@ -907,11 +907,144 @@ def _tool_search_pro_sections(db_conn, query: str, target_type: str = "business"
 # LITE 프롬프트는 prompts/ 패키지에서 import됨
 
 
-def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None) -> List[Dict]:
-    """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드). user_region 있으면 지역 필터."""
+def _profile_exclusion_clause(profile: dict, alias: str = "a") -> tuple:
+    """[Level 1] 프로필 기반 WHERE 절 추가 생성.
+
+    나이·업종·업력 등이 명백히 부적합한 공고를 DB 레벨에서 1차 제외.
+
+    Args:
+        profile: 사용자 프로필
+        alias: 테이블 별칭 (예: 'a' → 'a.title', 빈 문자열이면 컬럼 직접)
+
+    Returns: (추가 WHERE 조건 문자열, 파라미터 리스트)
+    """
+    if not profile:
+        return "", []
+
+    conds = []
+    params = []
+    p = f"{alias}." if alias else ""
+
+    # 개인: 연령대 제외 규칙
+    age_range = (profile or {}).get("age_range", "") or ""
+    if age_range:
+        if any(a in age_range for a in ["40대", "50대", "60대"]):
+            conds.append(f"NOT ({p}title ~* '청년|만\\s*3[0-4]세|만\\s*2[0-9]세|만\\s*1[0-9]세|대학생' OR {p}summary_text ~* '청년|만\\s*3[0-4]세|대학생')")
+
+    # 기업: 업력 계산
+    try:
+        est_date = (profile or {}).get("establishment_date") or (profile or {}).get("founded_date")
+        if est_date:
+            import datetime as _dt
+            if hasattr(est_date, "year"):
+                est_year = est_date.year
+                est_month = est_date.month
+            else:
+                s = str(est_date)[:10]
+                est_year = int(s[:4])
+                est_month = int(s[5:7]) if len(s) >= 7 else 1
+            today = _dt.date.today()
+            years = today.year - est_year - (1 if (today.month, today.day) < (est_month, 1) else 0)
+            years = max(0, years)
+            conds.append(f"({p}established_years_limit IS NULL OR {p}established_years_limit >= %s)")
+            params.append(years)
+            if years >= 1:
+                conds.append(f"NOT ({p}title ~* '예비창업' OR {p}summary_text ~* '예비창업자')")
+    except Exception:
+        pass
+
+    # 중견/대기업 감지 → 소상공인 전용 제외
+    try:
+        rev = (profile or {}).get("revenue_bracket", "") or ""
+        emp = (profile or {}).get("employee_count_bracket", "") or ""
+        is_mid_or_large = False
+        if rev and any(x in rev for x in ["500억", "1000억", "5000억", "1조"]):
+            is_mid_or_large = True
+        if emp and any(x in emp for x in ["300명", "500명", "1000명", "5000명"]):
+            is_mid_or_large = True
+        if is_mid_or_large:
+            conds.append(f"NOT ({p}title ~* '소상공인|영세|1인\\s*창업' OR {p}summary_text ~* '소상공인\\s*전용')")
+    except Exception:
+        pass
+
+    if not conds:
+        return "", []
+    return " AND " + " AND ".join(conds), params
+
+
+def _validate_against_profile(results: List[Dict], profile: dict) -> List[Dict]:
+    """[Level 2] Tool 결과를 프로필 기준으로 후검증하여 exclusion_reason 부착.
+
+    LLM이 답변 생성 시 부적합 공고를 거르거나 '해당 없음' 명시하도록 메타 주입.
+    결과 자체는 반환하되, 부적합 항목은 후순위 정렬.
+    """
+    if not results or not profile:
+        return results
+    import datetime as _dt
+
+    age_range = (profile or {}).get("age_range", "") or ""
+    is_senior = any(a in age_range for a in ["40대", "50대", "60대"])
+    is_youth = any(a in age_range for a in ["10대", "20대", "30대"])
+
+    # 업력 계산
+    years = None
+    est_date = (profile or {}).get("establishment_date") or (profile or {}).get("founded_date")
+    if est_date:
+        try:
+            if hasattr(est_date, "year"):
+                est_y, est_m = est_date.year, est_date.month
+            else:
+                s = str(est_date)[:10]
+                est_y, est_m = int(s[:4]), int(s[5:7]) if len(s) >= 7 else 1
+            today = _dt.date.today()
+            years = today.year - est_y - (1 if (today.month, today.day) < (est_m, 1) else 0)
+            years = max(0, years)
+        except Exception:
+            years = None
+
+    for r in results:
+        reasons = []
+        text = ((r.get("title") or "") + " " + (r.get("summary") or "")).lower()
+
+        # 청년 관련 공고인데 40대 이상 → 부적합
+        if is_senior and any(kw in text for kw in ["청년", "만 34세", "만 29세", "대학생"]):
+            reasons.append("연령 초과 가능 (청년 지원사업)")
+
+        # 예비창업자 공고인데 이미 창업 1년 이상 → 부적합
+        if years is not None and years >= 1 and "예비창업" in text:
+            reasons.append(f"이미 {years}년차 (예비창업자 대상 아님)")
+
+        # 업력 초과 (공고는 5년 이하 대상인데 사용자는 10년차)
+        # (established_years_limit는 DB에서 이미 필터됐지만 텍스트로도 재확인)
+        import re as _re
+        m = _re.search(r"업력\s*(\d+)년\s*(?:이내|이하|미만)", text)
+        if m and years is not None:
+            limit = int(m.group(1))
+            if years > limit:
+                reasons.append(f"업력 {years}년 > 제한 {limit}년")
+
+        if reasons:
+            r["_profile_match"] = False
+            r["_exclusion_reason"] = " · ".join(reasons)
+        else:
+            r["_profile_match"] = True
+
+    # 프로필 적합한 것을 앞으로 정렬
+    results.sort(key=lambda x: (not x.get("_profile_match", True),))
+    return results
+
+
+def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None, profile: dict = None) -> List[Dict]:
+    """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드).
+
+    Args:
+        profile: [Level 1] 사용자 프로필 — WHERE 절에 제외 조건 자동 추가
+    """
     if not db_conn or not keywords:
         return []
     results = []
+    # [Level 1] 프로필 기반 WHERE 추가 조건
+    profile_where, profile_params = _profile_exclusion_clause(profile)
     try:
         # 1) 임베딩 검색 시도
         try:
@@ -938,6 +1071,8 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                     if user_region:
                         region_filter = "AND (a.region IS NULL OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
                         params.append(f"%{user_region[:10]}%")
+                    # [Level 1] 프로필 제외 조건 주입
+                    params.extend(profile_params)
                     params.extend([vec_str, limit])
                     cur.execute(f"""
                         SELECT a.announcement_id, a.title, a.department,
@@ -953,6 +1088,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                               OR a.category ~* %s
                           )
                           {region_filter}
+                          {profile_where}
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
                     """, params)
@@ -985,6 +1121,9 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 if user_region:
                     region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
                     params2.append(f"%{user_region[:10]}%")
+                # [Level 1] 프로필 제외 조건 (alias 없는 버전)
+                fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
+                params2.extend(fallback_profile_params)
                 params2.append(limit)
                 cur.execute(f"""
                     SELECT announcement_id, title, department, support_amount,
@@ -998,6 +1137,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                           OR category ~* '금융|보증|자금'
                       )
                       {region_filter2}
+                      {fallback_profile_where}
                     ORDER BY deadline_date ASC NULLS LAST
                     LIMIT %s
                 """, params2)
@@ -1019,6 +1159,8 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 except: pass
     except Exception as e:
         logger.warning(f"[tool fund] {e}")
+    # [Level 2] 결과 검증 — 프로필 부적합 플래그 부착
+    results = _validate_against_profile(results, profile)
     return results
 
 
@@ -1312,27 +1454,76 @@ def chat_lite_fund_expert(
                 user_type = "individual"
         is_individual = user_type == "individual"
 
-    # 프로필 컨텍스트 (짧게 — tool calling이 주축)
-    profile_ctx = ""
+    # [Level 3] 프로필 컨텍스트 — 핵심 제약으로 강하게 주입 (프롬프트 상단 배치)
+    # 변경점: interests/user_type/오늘 날짜 + 업력 자동 계산 + 경고 라인 명시
+    import datetime as _dt_now
+    _today = _dt_now.date.today()
+    profile_ctx = f"\n\n[오늘] {_today.isoformat()} ({['월','화','수','목','금','토','일'][_today.weekday()]}요일)\n"
+    _profile_warnings: List[str] = []  # 프로필 상충 경고 (나중에 프롬프트에 주입)
+
     if user_profile:
         u = user_profile
         if is_individual:
             parts = []
             for label, k in [("연령대", "age_range"), ("지역", "address_city"), ("소득", "income_level"),
-                             ("가구", "family_type"), ("고용", "employment_status"), ("주거", "housing_status")]:
+                             ("가구", "family_type"), ("고용", "employment_status"), ("주거", "housing_status"),
+                             ("관심분야", "interests")]:
                 if u.get(k):
-                    parts.append(f"{label} {u[k]}")
+                    parts.append(f"{label}: {u[k]}")
+            # 연령 관련 제약 자동 감지
+            age = u.get("age_range", "") or ""
+            if any(a in age for a in ["40대", "50대", "60대"]):
+                _profile_warnings.append(f"⚠ 사용자 {age} — 만 34세 이하 '청년' 지원사업은 해당 안 됨. 절대 추천 금지.")
             if parts:
-                profile_ctx = f"\n[사용자] {' · '.join(parts)}"
+                profile_ctx += "[사용자 프로필]\n- " + "\n- ".join(parts) + "\n"
         else:
             parts = []
-            for label, k in [("업종", "industry_code"), ("지역", "address_city"),
+            for label, k in [("회사명", "company_name"), ("업종코드", "industry_code"), ("지역", "address_city"),
                              ("매출", "revenue_bracket"), ("직원", "employee_count_bracket"),
-                             ("설립", "establishment_date")]:
+                             ("설립일", "establishment_date"), ("관심분야", "interests"),
+                             ("인증", "certifications"), ("맞춤키워드", "custom_keywords")]:
                 if u.get(k):
-                    parts.append(f"{label} {u[k]}")
+                    parts.append(f"{label}: {u[k]}")
+            # 업력 자동 계산 → 명시
+            try:
+                est = u.get("establishment_date") or u.get("founded_date")
+                if est:
+                    if hasattr(est, "year"):
+                        est_y, est_m = est.year, est.month
+                    else:
+                        s = str(est)[:10]
+                        est_y, est_m = int(s[:4]), int(s[5:7]) if len(s) >= 7 else 1
+                    years = _today.year - est_y - (1 if (_today.month, _today.day) < (est_m, 1) else 0)
+                    years = max(0, years)
+                    parts.append(f"**현재 업력: {years}년차** (오늘 {_today.isoformat()} 기준)")
+                    if years >= 1:
+                        _profile_warnings.append(f"⚠ 업력 {years}년차 — '예비창업자' 전용 공고는 해당 안 됨. 절대 추천 금지.")
+                    if years >= 7:
+                        _profile_warnings.append(f"⚠ 업력 {years}년차 — '업력 7년 이내' 제한 공고는 해당 안 됨.")
+            except Exception:
+                pass
+            # 중견/대기업 감지
+            rev = u.get("revenue_bracket", "") or ""
+            if any(x in rev for x in ["500억", "1000억", "5000억", "1조"]):
+                _profile_warnings.append(f"⚠ 매출 {rev} — 중견/대기업. '소상공인' 전용 공고는 해당 안 됨.")
             if parts:
-                profile_ctx = f"\n[사용자] {' · '.join(parts)}"
+                profile_ctx += "[사용자 프로필]\n- " + "\n- ".join(parts) + "\n"
+
+    if _profile_warnings:
+        profile_ctx += "\n[프로필 기반 주의사항 — 절대 어겨선 안 됨]\n" + "\n".join(_profile_warnings) + "\n"
+
+    # 확인 질문 규칙 (모든 상담 공통)
+    profile_ctx += """
+[★ 확인 질문 규칙 — 반드시 따를 것 ★]
+1. 사용자 요청이 모호하면("아무거나", "뭐든지", "다 받고싶어") 바로 답하지 말고 영역 재확인
+   예: "주거/취업/창업/학자금 중 어느 쪽에 관심 있으신가요?"
+2. 시점 언급("작년", "올해", "3년 전") 감지 시 → 위 [오늘] 날짜와 프로필 기준으로 명시적 계산
+   예: 사용자 "작년 6월 창업" + 프로필 설립일 2025-06-01 → "2025년 6월 맞으시죠?" 확인
+3. 프로필과 상충하는 질문 감지 시 → 반드시 먼저 재확인
+   예: 프로필 60대 + "청년 지원금?" → "청년 지원사업은 만 34세 이하인데, 혹시 자녀분께?" 확인
+4. 사용자 재질문·회의("진짜요?", "확실해요?", "피상적") 반복 시 → 같은 답변 복붙 절대 금지, 근거 공고 ID 명시하고 구체 수치 집중
+5. Tool 결과 중 `_profile_match: false` 플래그 있는 항목은 "해당 없음"으로 명시 설명 (추천 안 함)
+"""
 
     # 프롬프트 선택
     if is_individual:
@@ -1375,7 +1566,8 @@ def chat_lite_fund_expert(
         except Exception as kb_err:
             logger.warning(f"[LITE kb inject] {kb_err}")
 
-    system_prompt = base_prompt + profile_ctx + knowledge_ctx
+    # [Level 3] profile_ctx를 base_prompt **앞**에 배치 → LLM 주목도 최대화
+    system_prompt = profile_ctx + "\n\n" + base_prompt + knowledge_ctx
 
     # 사용자 지역 추출 (도구 검색에 자동 적용)
     _user_region = (user_profile or {}).get("address_city", "")
@@ -1385,7 +1577,11 @@ def chat_lite_fund_expert(
     def _exec_tool(name: str, args: dict) -> dict:
         """도구 실행 — 이름으로 라우팅"""
         if name == "search_fund_announcements":
-            rows = _tool_search_fund_announcements(db_conn, args.get("keywords", ""), args.get("target_type", tt), limit=5, user_region=_user_region)
+            # [Level 1+2] 프로필 전달 — Tool 레벨에서 나이·업력·업종 자동 필터
+            rows = _tool_search_fund_announcements(
+                db_conn, args.get("keywords", ""), args.get("target_type", tt),
+                limit=5, user_region=_user_region, profile=user_profile,
+            )
             for r in rows:
                 if r not in _referenced_announcements:
                     _referenced_announcements.append(r)

@@ -329,6 +329,7 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
     - 지역 전용 공고 제외
     - AI 추출 exclusion_rules 기반 업종 제외
     - 제목/요약의 보편적 제외 키워드
+    - [방어 장치] 제목이 개인 대상(교육생/수강생/참가자 모집 등)인 공고 제외
     Returns: (passed: list, excluded: list of {ad, reasons})
     """
     user_industry = user_profile.get("industry_code") or ""
@@ -337,9 +338,15 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
     if raw_city:
         first_city = raw_city.split(",")[0].strip()
         user_city_norm = _normalize_region(first_city)
-    # 일괄 exclusion_rules 조회
     ann_ids = [c.get("announcement_id") for c in candidates if c.get("announcement_id")]
     exclusion_map = _load_exclusion_rules_bulk(db_conn, ann_ids)
+
+    # [방어 장치] 개인 대상 키워드 — 기업 매칭에서 제외
+    individual_only_keywords = [
+        "교육생 모집", "수강생 모집", "연수생 모집", "교육 참가자 모집",
+        "청년 인재", "인력 양성 사업", "AI 기술인력 양성",
+        "장학생", "취업 준비생", "구직자 대상",
+    ]
 
     passed = []
     excluded = []
@@ -360,6 +367,11 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
         ind_excl, ind_reason = _check_industry_exclusion(user_industry, excl_text, title, summary)
         if ind_excl:
             reasons.append(ind_reason)
+
+        # 3. [방어 장치] 제목 기반 개인 대상 공고 제외
+        # target_type 메타데이터가 잘못 설정된 경우(business인데 실제 개인 대상) 대비
+        if any(kw in title for kw in individual_only_keywords):
+            reasons.append("개인 대상 공고 (제목 기반 판정)")
 
         if reasons:
             excluded.append({"ad": ad, "reasons": reasons})
@@ -1623,6 +1635,18 @@ def _apply_bucket_layer_v2(results: list, user_profile: dict) -> list:
         dl = _days_left(r.get("deadline_date"))
         if dl is not None and 0 <= dl <= 7:
             return "deadline_urgent"
+        # [방어 장치] eligibility_logic이 비어있는 공고는 interest_match 진입 금지
+        # 자격 요건 검증이 불가능하므로 "참고"로 강등 — 재분석 대기 또는 데이터 누락
+        elig = r.get("eligibility_logic")
+        elig_empty = (
+            elig is None
+            or elig == ""
+            or elig == "{}"
+            or elig == "null"
+            or (isinstance(elig, dict) and not any(v for v in elig.values() if v not in (None, [], "")))
+        )
+        if elig_empty:
+            return "qualified_other"
         if r.get("interest_matched"):
             return "interest_match"
         return "qualified_other"

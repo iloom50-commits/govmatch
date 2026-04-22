@@ -279,7 +279,7 @@ _BRIEF_SYSTEM_PROMPT_TMPL = """당신은 15년차 정부지원사업 전문 컨�
 ---
 **고객사 기준 초기 검토**: {{한 줄 결론}}
 
-응답은 JSON 형식으로, choices는 빈 배열([])로 반환."""
+출력은 **마크다운 텍스트만** 작성하세요. JSON, 코드블록, 백틱 등 금지."""
 
 
 def chat_pro_announce(
@@ -343,25 +343,85 @@ def chat_pro_announce(
     announcement_ctx = _build_announcement_context(ann, deep, parsed)
 
     if is_first_turn:
-        # [재설계 04] 1차: 공고 12섹션 구조화 분석 + 하단 간결 verdict
+        # [재설계 04] 1차: LITE chat_consult 벤치마킹 — Schema 없이 자연어 마크다운
         system_prompt = _BRIEF_SYSTEM_PROMPT_TMPL.format(
             today=today,
             client_ctx=client_ctx,
             announcement_ctx=announcement_ctx,
         )
-        schema = _PRO_BRIEF_SCHEMA
-    else:
-        # 2차 이후: 전문가 인사이트 전면 제공
-        matched_ctx = _build_matched_context(matched_snapshot, announcement_id)
-        system_prompt = _SYSTEM_PROMPT_TMPL.format(
-            today=today,
-            client_ctx=client_ctx,
-            announcement_ctx=announcement_ctx,
-            matched_ctx=matched_ctx or "(없음)",
-        )
-        schema = _PRO_ANNOUNCE_SCHEMA
+        last_msg = messages[-1].get("text", "") if messages else "이 공고를 분석해주세요."
+        reply_text = ""
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(
+                "models/gemini-2.5-flash",
+                system_instruction=system_prompt,
+                generation_config={
+                    "temperature": 0.3,
+                    "max_output_tokens": 16384,
+                },
+            )
+            response = model.generate_content(last_msg)
+            reply_text = (response.text or "").strip()
+        except Exception as e:
+            logger.warning(f"[pro_announce brief] Gemini error: {e}, trying OpenAI")
+            try:
+                reply_text = _openai_fallback_text(system_prompt, messages)
+            except Exception as oe:
+                logger.error(f"[pro_announce brief] OpenAI fallback error: {oe}")
+                return _fallback(f"AI 응답 생성 실패: {str(e)[:100]}")
+        if not reply_text:
+            # Gemini 빈 응답 → OpenAI로 재시도
+            try:
+                reply_text = _openai_fallback_text(system_prompt, messages)
+            except Exception as oe:
+                logger.error(f"[pro_announce brief] OpenAI retry error: {oe}")
+        if not reply_text:
+            return _fallback("공고 분석 응답이 비어있습니다. 잠시 후 다시 시도해주세요.")
 
-    # 4) Gemini 호출 (Schema 강제)
+        # 안전장치: 응답이 ```json { "message": "..." } ``` 블록이면 message만 추출
+        stripped = reply_text.strip()
+        if stripped.startswith("```"):
+            try:
+                # 코드블록 제거
+                inner = stripped.split("```", 2)
+                if len(inner) >= 2:
+                    body = inner[1]
+                    if body.lower().startswith("json"):
+                        body = body[4:].lstrip()
+                    parsed = json.loads(body)
+                    if isinstance(parsed, dict) and parsed.get("message"):
+                        reply_text = parsed["message"]
+            except Exception:
+                pass
+        elif stripped.startswith("{"):
+            # 순수 JSON 응답
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict) and parsed.get("message"):
+                    reply_text = parsed["message"]
+            except Exception:
+                pass
+
+        verdict = _extract_verdict_from_text(reply_text)
+        return {
+            "reply": reply_text,
+            "choices": [],
+            "verdict_for_client": verdict,
+            "expert_insights": {},  # 1차엔 비움 — 프론트 패널 자동 숨김
+            "citations": [],
+            "done": False,
+        }
+
+    # 2차 이후: 전문가 인사이트 전면 제공 (Schema 강제 유지)
+    matched_ctx = _build_matched_context(matched_snapshot, announcement_id)
+    system_prompt = _SYSTEM_PROMPT_TMPL.format(
+        today=today,
+        client_ctx=client_ctx,
+        announcement_ctx=announcement_ctx,
+        matched_ctx=matched_ctx or "(없음)",
+    )
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
@@ -370,12 +430,11 @@ def chat_pro_announce(
             system_instruction=system_prompt,
             generation_config={
                 "response_mime_type": "application/json",
-                "response_schema": schema,
+                "response_schema": _PRO_ANNOUNCE_SCHEMA,
                 "temperature": 0.3,
                 "max_output_tokens": 8192,
             },
         )
-        # 대화 이력 구성
         chat = model.start_chat(history=[
             {"role": "user", "parts": [m.get("text", "")]} if m.get("role") == "user"
             else {"role": "model", "parts": [m.get("text", "")]}
@@ -386,29 +445,14 @@ def chat_pro_announce(
         raw = response.text or "{}"
         data = json.loads(raw)
     except Exception as e:
-        logger.error(f"[pro_announce] Gemini error: {e}")
-        # OpenAI 폴백
+        logger.error(f"[pro_announce expert] Gemini error: {e}")
         try:
             data = _openai_fallback(system_prompt, messages)
         except Exception as oe:
-            logger.error(f"[pro_announce] OpenAI fallback error: {oe}")
+            logger.error(f"[pro_announce expert] OpenAI fallback error: {oe}")
             return _fallback(f"AI 응답 생성 실패: {str(e)[:100]}")
 
-    # 5) 응답 정리
     reply = data.get("message") or "분석을 생성하지 못했습니다."
-
-    if is_first_turn:
-        # 1차: choices 비움 (사용자 자유 입력 유도), expert_insights는 2차에서 제공
-        return {
-            "reply": reply,
-            "choices": [],
-            "verdict_for_client": data.get("verdict_for_client") or "undetermined",
-            "expert_insights": {},  # 1차엔 비움 — 프론트 패널 자동 숨김
-            "citations": data.get("citations") or [],
-            "done": False,
-        }
-
-    # 2차 이후: 전문가 인사이트 전면
     choices = data.get("choices") or [
         "유사 사업과 비교표 보기",
         "신청서 작성 가이드",
@@ -475,6 +519,50 @@ def _openai_fallback(system_prompt: str, messages: List[Dict]) -> Dict:
     resp.raise_for_status()
     text = resp.json()["choices"][0]["message"]["content"]
     return json.loads(text)
+
+
+def _openai_fallback_text(system_prompt: str, messages: List[Dict]) -> str:
+    """Gemini 실패 시 OpenAI gpt-4o-mini로 자연어 텍스트 응답 (1차 턴용)."""
+    import httpx
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY 미설정")
+    oai_msgs = [{"role": "system", "content": system_prompt}]
+    for m in messages:
+        role = "user" if m.get("role") == "user" else "assistant"
+        oai_msgs.append({"role": role, "content": m.get("text", "")})
+    resp = httpx.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": "gpt-4o-mini",
+            "messages": oai_msgs,
+            "temperature": 0.3,
+            "max_tokens": 6000,
+        },
+        timeout=90,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"] or ""
+
+
+def _extract_verdict_from_text(text: str) -> str:
+    """1차 턴 자연어 응답의 마지막 부분에서 verdict 판별.
+
+    프롬프트는 마지막에 "고객사 기준 초기 검토: ⊘/⚠️/✅ ..." 형식을 지시함.
+    """
+    if not text:
+        return "undetermined"
+    # 마지막 200자만 검사
+    tail = text[-300:]
+    # 명시적 기호 우선
+    if "⊘" in tail or "신청 불가" in tail or "부적합" in tail:
+        return "ineligible"
+    if "⚠️" in tail or "조건부" in tail:
+        return "conditional"
+    if "✅ 신청 가능" in tail or "신청 가능" in tail:
+        return "eligible"
+    return "undetermined"
 
 
 def is_v2_enabled() -> bool:

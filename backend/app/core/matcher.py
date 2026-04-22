@@ -623,6 +623,39 @@ def get_matches_for_user(user_profile):
                 _mark_ineligible(ad, f"{title_city} 지역 전용 (소재지 불일치)")
                 continue
 
+        # [fix] DB region이 비어있을 때 제목 앞부분에서 지역 추론
+        # 예: "2026년 전남 관광기업..." / "2026년 대구콘텐츠코리아랩..." / "2026년 춘천시 ..."
+        if (not ad_region or ad_region in ("전국", "", "All")) and not bracket_city_match and has_home:
+            # 제목 앞 60자 내에서 시·도 감지
+            title_head = title[:60]
+            sido_match = re.search(
+                r'(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)',
+                title_head
+            )
+            inferred_region = sido_match.group(1) if sido_match else None
+            # 시·군·구 감지 (해당 시도 매핑)
+            if not inferred_region:
+                sigungu_map = {
+                    "춘천": "강원", "원주": "강원", "강릉": "강원",
+                    "수원": "경기", "성남": "경기", "고양": "경기", "용인": "경기", "부천": "경기", "안산": "경기", "안양": "경기",
+                    "화성": "경기", "남양주": "경기", "의정부": "경기", "평택": "경기", "파주": "경기", "시흥": "경기",
+                    "김포": "경기", "광명": "경기", "광주시": "경기",
+                    "청주": "충북", "충주": "충북",
+                    "천안": "충남", "아산": "충남",
+                    "전주": "전북", "군산": "전북", "익산": "전북",
+                    "순천": "전남", "여수": "전남", "목포": "전남",
+                    "창원": "경남", "김해": "경남", "양산": "경남", "진주": "경남",
+                    "포항": "경북", "경주": "경북", "구미": "경북", "안동": "경북",
+                    "제주시": "제주", "서귀포": "제주",
+                }
+                for city_kw, sido in sigungu_map.items():
+                    if city_kw in title_head:
+                        inferred_region = sido
+                        break
+            if inferred_region and inferred_region != home_city:
+                _mark_ineligible(ad, f"{inferred_region} 지역 전용 (제목 추론, 소재지 불일치)")
+                continue
+
         # business_type 하드 필터: 배타적 대상 유형이 지정된 경우
         ad_biz_types = _get_biz_types(eligibility_logic)
         biz_skipped = False

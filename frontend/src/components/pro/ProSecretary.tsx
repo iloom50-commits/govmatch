@@ -312,7 +312,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [sessionId]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any; announcement_id?: number }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -331,6 +331,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           messages: messagesPayload,
           announcement_id: annId,
           action,
+          is_announcement_start: options?.is_announcement_start || false,
           profile_override: options?.profile_override || null,
           session_id: sessionId,
           client_category: clientCategory || null,
@@ -952,12 +953,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   onClick={() => {
                                     const aid = m.announcement_id || m.id;
                                     if (!aid) return;
-                                    // [재설계 04] 카드 클릭 → 1차는 공고 12섹션 분석부터 시작
+                                    // [재설계 04] 카드 클릭 → 1차 12섹션 분석 강제 (is_announcement_start=true)
                                     setActiveAnnouncementId(aid);
                                     const consultMsg = `『${m.title || m.program_title || "공고"}』 공고를 분석해주세요.`;
                                     const newHistory = [...messages, { role: "user" as const, text: consultMsg }];
                                     setMessages(newHistory);
-                                    sendToAI(newHistory, { action: "consult", announcement_id: aid });
+                                    sendToAI(newHistory, { action: "consult", announcement_id: aid, is_announcement_start: true });
                                   }}
                                   className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
                                   <div className="flex items-start justify-between gap-2">

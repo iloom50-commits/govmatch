@@ -289,8 +289,13 @@ def chat_pro_announce(
     selected_client: Optional[Dict] = None,
     matched_snapshot: Optional[List[Dict]] = None,
     collected: Optional[Dict] = None,
+    force_first_turn: bool = False,
 ) -> Dict[str, Any]:
-    """PRO 공고상담 — 전문가 레벨 심화 분석."""
+    """PRO 공고상담 — 전문가 레벨 심화 분석.
+
+    force_first_turn: True면 매칭 결과 안내 assistant 메시지가 섞여있어도 1차 턴으로 강제.
+    (카드 클릭 직후 호출 시 반드시 True로 전달해야 12섹션 분석이 나옴)
+    """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return _fallback("AI 서비스가 설정되지 않았습니다.")
@@ -329,8 +334,8 @@ def chat_pro_announce(
         logger.error(f"[pro_announce] DB load error: {e}")
         return _fallback("공고 정보 조회 중 오류가 발생했습니다.")
 
-    # 2) 1차 턴 판정 — 카드 클릭 직후인지 (assistant 응답이 아직 없음)
-    is_first_turn = not any(m.get("role") == "assistant" for m in messages)
+    # 2) 1차 턴 판정 — 명시적 override 우선, 없으면 assistant 메시지 유무
+    is_first_turn = bool(force_first_turn) or not any(m.get("role") == "assistant" for m in messages)
 
     # 3) 시스템 프롬프트 구축 (1차 vs 2차+ 분기)
     today = datetime.date.today().isoformat()

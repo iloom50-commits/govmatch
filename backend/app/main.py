@@ -3488,6 +3488,8 @@ class AiConsultantChatRequest(BaseModel):
     # "consult": 특정 공고 상담 (pro_announce V2 호출)
     # None: 레거시 — announcement_id/explicit_match로 자동 추론
     action: Optional[str] = None
+    # [재설계 04] 공고 카드 클릭 직후 — 1차 턴(12섹션 분석) 강제 플래그
+    is_announcement_start: Optional[bool] = False
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -3887,6 +3889,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 selected_client=selected_client,
                 matched_snapshot=matched_snap,
                 collected=coll,
+                force_first_turn=bool(req.is_announcement_start),
             )
         except Exception as ai_err:
             import traceback as _tb

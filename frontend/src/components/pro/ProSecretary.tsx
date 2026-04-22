@@ -952,9 +952,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   onClick={() => {
                                     const aid = m.announcement_id || m.id;
                                     if (!aid) return;
-                                    // [재설계 04] 카드 클릭 → 즉시 action=consult (React state 비동기 우회)
+                                    // [재설계 04] 카드 클릭 → 1차는 공고 12섹션 분석부터 시작
                                     setActiveAnnouncementId(aid);
-                                    const consultMsg = `『${m.title || m.program_title || "공고"}』 상세 상담을 시작합니다. 이 공고에 대해 신청 가능 여부, 평가 포인트, 흔한 실수, 필수 서류, 유사 프로그램을 분석해주세요.`;
+                                    const consultMsg = `『${m.title || m.program_title || "공고"}』 공고를 분석해주세요.`;
                                     const newHistory = [...messages, { role: "user" as const, text: consultMsg }];
                                     setMessages(newHistory);
                                     sendToAI(newHistory, { action: "consult", announcement_id: aid });

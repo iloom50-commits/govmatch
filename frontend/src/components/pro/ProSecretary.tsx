@@ -1903,30 +1903,31 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
   const [loading, setLoading] = useState(false);
   const [selectedAnn, setSelectedAnn] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
-  // 자동완성
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 입력 시 자동완성
+  // [재설계] 2자 이상 입력 시 debounce로 본문 리스트 자동 갱신 (드롭다운 없이)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim() || query.trim().length < 2 || selectedAnn) {
-      setSuggestions([]);
-      setShowSuggestions(false);
       return;
     }
     debounceRef.current = setTimeout(async () => {
+      setLoading(true);
       try {
-        const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=8`, { headers: headers() });
+        const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(query)}&limit=20`, { headers: headers() });
         if (res.ok) {
           const data = await res.json();
           const items = data.data || data.announcements || (Array.isArray(data) ? data : []);
           const normalized = items.map((a: any) => ({ ...a, id: a.announcement_id || a.id }));
-          setSuggestions(normalized);
-          setShowSuggestions(normalized.length > 0);
+          setResults(normalized);
+        } else {
+          setResults([]);
         }
-      } catch {/* */}
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, headers, selectedAnn]);
@@ -1938,7 +1939,6 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     setLoading(true);
     setSelectedAnn(null);
     setAnalysisData(null);
-    setShowSuggestions(false);
     try {
       const res = await fetch(`${API}/api/announcements/search?q=${encodeURIComponent(q)}&limit=20`, { headers: headers() });
       if (res.ok) {
@@ -1959,14 +1959,6 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
     { emoji: "👥", label: "고용", q: "고용" },
     { emoji: "🏗️", label: "시설", q: "시설" },
   ];
-
-  // 자동완성 항목 클릭 → 즉시 분석
-  const pickSuggestion = (ann: any) => {
-    setQuery(ann.title);
-    setShowSuggestions(false);
-    setResults([]);
-    loadAnalysis(ann);
-  };
 
   const loadAnalysis = async (ann: any) => {
     setSelectedAnn(ann);
@@ -1991,15 +1983,13 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
       <h3 className={`text-sm font-bold ${dark ? "text-slate-200" : "text-slate-700"}`}>특정 공고 상담</h3>
       <p className={`text-[12px] ${t.muted}`}>공고명이나 키워드로 검색하여 상세 상담을 시작하세요</p>
 
-      {/* 검색 + 자동완성 */}
-      <div className="relative">
+      {/* 검색 입력 + 빠른 필터 */}
+      <div>
         <div className="flex gap-2">
           <input type="text" value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-            onKeyDown={(e) => { if (e.key === "Enter") { setShowSuggestions(false); search(); } }}
-            placeholder="상담할 공고명을 입력하세요 (예: 청년창업)" className={inputCls} />
+            onKeyDown={(e) => { if (e.key === "Enter") { search(); } }}
+            placeholder="공고명 입력 (2자 이상 — 자동 검색)" className={inputCls} />
           <button onClick={() => search()} disabled={loading || !query.trim()}
             className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-500 disabled:opacity-30">
             검색
@@ -2023,33 +2013,6 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
             </button>
           ))}
         </div>
-
-        {/* 자동완성 드롭다운 */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className={`absolute left-0 right-16 top-full mt-1 z-20 rounded-lg border shadow-2xl max-h-96 overflow-y-auto ${
-            dark ? "bg-[#1a1c30] border-violet-500/30" : "bg-white border-slate-200"
-          }`}>
-            {suggestions.map((ann: any) => (
-              <button key={ann.id}
-                onMouseDown={(e) => { e.preventDefault(); pickSuggestion(ann); }}
-                className={`w-full text-left px-3 py-2.5 border-b last:border-b-0 transition-colors ${
-                  dark ? "border-white/[0.04] hover:bg-violet-500/10" : "border-slate-100 hover:bg-violet-50"
-                }`}>
-                <p className={`text-[12px] font-semibold truncate ${dark ? "text-slate-100" : "text-slate-800"}`}>
-                  {ann.title}
-                </p>
-                <div className={`flex gap-2 mt-0.5 text-[10px] ${t.muted}`}>
-                  {ann.department && <span>{ann.department}</span>}
-                  {ann.support_amount && <span>· {ann.support_amount}</span>}
-                  {ann.deadline_date && <span>· ~{String(ann.deadline_date).slice(5, 10)}</span>}
-                </div>
-              </button>
-            ))}
-            <div className={`px-3 py-1.5 text-[10px] text-center ${t.muted} ${dark ? "bg-white/[0.02]" : "bg-slate-50"}`}>
-              제안된 공고 클릭 또는 Enter로 전체 검색
-            </div>
-          </div>
-        )}
       </div>
 
       {loading && <p className={`text-[12px] ${t.muted}`}>검색 중...</p>}

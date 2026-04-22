@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import DOMPurify from "dompurify";
 import { useToast } from "@/components/ui/Toast";
 import { generateConsultReportHTML } from "@/components/consult/reportTemplate";
+import { renderMarkdown } from "@/lib/markdown";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -164,13 +166,20 @@ export default function ConsultDetailPage() {
           <div className="space-y-4">
             {consult.messages.filter(m => !m.done).map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] ${msg.role === "user" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-800"} rounded-2xl px-4 py-2.5`}>
+                <div className={`${msg.role === "user" ? "max-w-[85%] bg-indigo-600 text-white" : "w-full bg-slate-50 text-slate-800 border border-slate-200"} rounded-2xl px-4 py-2.5`}>
                   <div className="text-[10px] font-bold opacity-70 mb-1">
                     {msg.role === "user" ? "질문" : "AI 상담사"}
                   </div>
-                  <div className="text-[14px] whitespace-pre-wrap leading-relaxed">
-                    {msg.text}
-                  </div>
+                  {msg.role === "user" ? (
+                    <div className="text-[14px] whitespace-pre-wrap leading-relaxed">
+                      {msg.text}
+                    </div>
+                  ) : (
+                    <div
+                      className="text-[14px] leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(msg.text)) }}
+                    />
+                  )}
                 </div>
               </div>
             ))}

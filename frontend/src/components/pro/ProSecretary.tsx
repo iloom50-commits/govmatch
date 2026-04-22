@@ -5,6 +5,7 @@ import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 import IndustryPicker from "@/components/shared/IndustryPicker";
 import EstablishmentDateInput from "@/components/shared/EstablishmentDateInput";
+import { renderMarkdown } from "@/lib/markdown";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -564,12 +565,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
   };
 
-  // ─── 마크다운 렌더링 ───
+  // ─── 마크다운 렌더링 — 공용 renderMarkdown 사용 (테이블/헤딩/리스트/체크박스 지원) ───
   const renderText = (text: string) => {
-    let html = text
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\n/g, "<br/>");
-    return DOMPurify.sanitize(html);
+    return DOMPurify.sanitize(renderMarkdown(text));
   };
 
   // ─── 플로우 상태 ───

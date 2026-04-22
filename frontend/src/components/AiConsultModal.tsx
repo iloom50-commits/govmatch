@@ -5,12 +5,13 @@ import { useModalBack } from "@/hooks/useModalBack";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 import { generateConsultReportHTML } from "@/components/consult/reportTemplate";
+import { renderMarkdown } from "@/lib/markdown";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-/** 마크다운 → 보고서 스타일 HTML 변환 (표/체크리스트/섹션 제목 지원) */
-function renderMarkdown(text: string): string {
-  // 0) (None) 링크 패턴 제거
+// [lib/markdown.ts로 이동됨] 아래 내용은 공용화로 제거
+function _removedLegacyRenderMarkdown(text: string): string {
+  // 0) (None) 링크 패턴 제거 — 이 함수는 호출되지 않음 (공용 renderMarkdown 사용)
   text = text.replace(/\(\[.*?\]\(None\)\)/g, "").replace(/\[.*?\]\(None\)/g, "");
 
   // 1) 이스케이프

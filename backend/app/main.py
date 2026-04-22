@@ -1858,7 +1858,7 @@ def api_announcements_public(
     total = cursor.fetchone()["cnt"]
 
     # 공고 리스트 — 검색 시 관련성 정렬
-    # 구문 제목 매칭 > 구문 요약 매칭 > AND 제목 > AND 요약 > OR 매칭
+    # 기관명 정확 매칭 > 구문 제목 > AND 제목 > 구문 요약 > AND 요약 > OR
     if search:
         words = search.strip().split()
         # AND 조건: 모든 단어가 제목에 포함
@@ -1868,13 +1868,15 @@ def api_announcements_public(
         and_summary_params = [f"%{w}%" for w in words]
 
         relevance_order = f"""
-                CASE WHEN title ILIKE %s THEN 0
-                     WHEN ({and_title_parts}) THEN 1
-                     WHEN summary_text ILIKE %s THEN 2
-                     WHEN ({and_summary_parts}) THEN 3
-                     ELSE 4 END,
+                CASE WHEN department ILIKE %s THEN 0
+                     WHEN title ILIKE %s THEN 1
+                     WHEN ({and_title_parts}) THEN 2
+                     WHEN summary_text ILIKE %s THEN 3
+                     WHEN ({and_summary_parts}) THEN 4
+                     ELSE 5 END,
 """
-        relevance_params = [s] + and_title_params + [s] + and_summary_params
+        # [s] — department/title/summary 각각 구문 정확 매칭, 각 순서에 맞게 params 추가
+        relevance_params = [s, s] + and_title_params + [s] + and_summary_params
     else:
         relevance_order = ""
         relevance_params = []

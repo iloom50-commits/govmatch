@@ -288,19 +288,22 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               ) : <div className="h-[24px]" />}
             </div>
 
-            {/* PRO */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-300 bg-white"}`}>
+            {/* PRO — [프로모션] 준비중 전환 (신규 결제 차단) */}
+            <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-slate-200 bg-slate-50"}`}>
+              {/* 준비중 오버레이 뱃지 */}
+              {!isPro && (
+                <div className="absolute top-3 right-3 px-2 py-1 bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold rounded-full">
+                  🛠️ 준비중
+                </div>
+              )}
               <div className="h-[90px] mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
-                  <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[9px] font-bold rounded">오픈 이벤트</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[13px] text-slate-400 line-through mr-1">₩49,000</span>
-                  <span className="text-2xl font-black text-violet-700">₩29,000</span>
-                  <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
+                  <span className="text-[20px] font-black text-slate-400">기능 개선 중</span>
                 </div>
-                <p className="text-[11px] text-red-500 mt-1 font-semibold">3개월 한정 이벤트 가격</p>
+                <p className="text-[11px] text-slate-500 mt-1">곧 업그레이드된 버전으로 오픈 예정</p>
               </div>
 
               <div className="h-[44px] mb-4 flex items-center">
@@ -309,9 +312,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                     현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
                   </div>
                 ) : (
-                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
-                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    {loading ? "처리 중..." : "Pro 시작하기"}
+                  <button disabled
+                    className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold cursor-not-allowed">
+                    준비중
                   </button>
                 )}
               </div>

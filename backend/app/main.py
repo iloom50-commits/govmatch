@@ -1549,6 +1549,12 @@ PLAN_PRICES = {
     "biz": 29000,       # legacy → PRO 취급
 }
 
+# [프로모션] 2026-04-22 ~ 2026-05-23 LITE 1개월 무료 개방
+# 프로모션 기간 동안 신규 가입자는 자동으로 LITE 플랜 + PROMO_END까지 무료
+# PRO 요금제는 "준비중"으로 신규 결제 차단
+PROMO_LITE_FREE_END = "2026-05-23 23:59:59"  # ISO format
+PROMO_ACTIVE = True  # False로 바꾸면 프로모션 종료 (기존 7일 체험 로직으로 복귀)
+
 # AI 신청서 작성 가격 (원/건) — Coming Soon
 AI_GUIDE_PRICE = None
 
@@ -2150,14 +2156,18 @@ def api_register(req: RegisterRequest, request: Request):
             )
             user_id = existing["user_id"]
         else:
+            # [프로모션] 활성화 시 기본 플랜을 lite + 2026-05-23까지 무료
+            _initial_plan = 'lite' if PROMO_ACTIVE else 'free'
+            _initial_expires = PROMO_LITE_FREE_END if PROMO_ACTIVE else None
             cursor.execute(
                 """INSERT INTO users (business_number, company_name, email, password_hash, plan,
-                   plan_started_at, ai_usage_month, ai_usage_reset_at,
+                   plan_started_at, plan_expires_at, ai_usage_month, ai_usage_reset_at,
                    address_city, establishment_date, industry_code, revenue_bracket, employee_count_bracket, interests,
                    referred_by, user_type)
-                   VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING user_id""",
-                (req.business_number, req.company_name or "", req.email, hashed, now_iso, now_iso,
+                (req.business_number, req.company_name or "", req.email, hashed,
+                 _initial_plan, now_iso, _initial_expires, now_iso,
                  req.address_city or None, est_date,
                  req.industry_code or None, req.revenue_bracket or None,
                  req.employee_count_bracket or None, req.interests,
@@ -2168,8 +2178,8 @@ def api_register(req: RegisterRequest, request: Request):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
-            # 가입 시 LITE 7일 무료체험 자동 부여 (추천인이 없는 경우)
-            if not req.referred_by:
+            # [프로모션 비활성 시만] LITE 7일 무료체험 (추천인 없는 경우)
+            if not PROMO_ACTIVE and not req.referred_by:
                 trial_end = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat()
                 cursor.execute(
                     "UPDATE users SET plan='lite', plan_started_at=%s, plan_expires_at=%s WHERE user_id=%s",
@@ -2383,15 +2393,18 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
             cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s", params)
             conn.commit()
     else:
-        # 신규 가입
+        # 신규 가입 — [프로모션] 활성화 시 기본 lite + 2026-05-23까지 무료
         bn = f"U{int(datetime.datetime.utcnow().timestamp())}"[-10:]
         import hashlib as _hashlib
+        _initial_plan = 'lite' if PROMO_ACTIVE else 'free'
+        _initial_expires = PROMO_LITE_FREE_END if PROMO_ACTIVE else None
         cursor.execute(
             """INSERT INTO users (business_number, company_name, email, password_hash, plan,
-               plan_started_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range, user_type)
-               VALUES (%s, %s, %s, %s, 'free', %s, 0, %s, %s, %s, %s, 'both')
+               plan_started_at, plan_expires_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range, user_type)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, 'both')
                RETURNING user_id, business_number""",
-            (bn, name or "", email, "", now_iso, now_iso, f"{provider}:{social_id}", normalized_gender, age_range_val)
+            (bn, name or "", email, "", _initial_plan, now_iso, _initial_expires, now_iso,
+             f"{provider}:{social_id}", normalized_gender, age_range_val)
         )
         row = cursor.fetchone()
         ref_code = _hashlib.md5(f'{bn}{row["user_id"]}'.encode()).hexdigest()[:8].upper()
@@ -2649,6 +2662,13 @@ def api_plan_upgrade(
     """포트원 V2 결제 확인 후 플랜 업그레이드"""
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
+
+    # [프로모션] PRO는 현재 "준비중" — 신규 결제 차단
+    if target == "pro":
+        raise HTTPException(
+            status_code=400,
+            detail="PRO 플랜은 현재 준비중입니다. LITE 플랜을 2026-05-23까지 무료로 체험해보세요."
+        )
 
     # 사용자 정보 조회
     conn = get_db_connection()

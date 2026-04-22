@@ -1175,6 +1175,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
+      {/* [프로모션 2026-04-22 ~ 2026-05-23] LITE 1개월 무료 배너 */}
+      {planStatus && (planStatus.plan === "lite" || planStatus.plan === "lite_trial") && (() => {
+        // 2026-05-23까지 남은 일수 계산
+        const now = new Date();
+        const promoEnd = new Date("2026-05-23T23:59:59");
+        const daysLeft = Math.max(0, Math.ceil((promoEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        // 프로모션 기간 종료 시 자동 숨김
+        if (daysLeft === 0 || now > promoEnd) return null;
+        return (
+          <div className="mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-lg">🎁</span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold truncate">
+                    LITE 1개월 무료 체험 중 · D-{daysLeft}
+                  </div>
+                  <div className="text-[11px] opacity-90 truncate">
+                    2026-05-23까지 모든 기능 무료 · 공고AI 상담 · 맞춤 공고 알림
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}

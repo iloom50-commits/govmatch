@@ -565,9 +565,28 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
   };
 
-  // ─── 마크다운 렌더링 — 공용 renderMarkdown 사용 (테이블/헤딩/리스트/체크박스 지원) ───
+  // ─── AI 응답 마크다운 렌더링 — 공용 renderMarkdown (밝은 배경 전제) ───
   const renderText = (text: string) => {
     return DOMPurify.sanitize(renderMarkdown(text));
+  };
+
+  // ─── 사용자 메시지용 경량 렌더러 — 보라 배경에서 흰 글자 유지 ───
+  // 공용 renderMarkdown은 text-slate-900 등 어두운 색을 강제 지정해 대비 부족
+  const renderUserText = (text: string) => {
+    const escaped = text
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .split("\n")
+      .map(line => {
+        const t = line.trim();
+        if (t.startsWith("• ") || t.startsWith("- ") || t.startsWith("* ")) {
+          return `<div class="flex gap-1.5"><span>•</span><span>${t.replace(/^[•\-*]\s+/, "")}</span></div>`;
+        }
+        return line;
+      })
+      .join("\n")
+      .replace(/\n/g, "<br/>");
+    return DOMPurify.sanitize(escaped);
   };
 
   // ─── 플로우 상태 ───
@@ -839,7 +858,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                             msg.role === "user"
                               ? "bg-violet-600 text-white rounded-br-md"
                               : `${t.bubble} rounded-bl-md`
-                          }`} dangerouslySetInnerHTML={{ __html: renderText(msg.text) }} />
+                          }`} dangerouslySetInnerHTML={{
+                            __html: msg.role === "user" ? renderUserText(msg.text) : renderText(msg.text)
+                          }} />
                           {/* 답변 근거 패널 제거 (RAG 관련도 낮아 UX 혼선 유발) */}
                           {/* [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 패널 */}
                           {msg.role === "assistant" && msg.expert_insights && (

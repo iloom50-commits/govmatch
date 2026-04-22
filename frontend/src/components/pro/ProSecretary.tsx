@@ -1307,50 +1307,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
           {/* 답변 근거 사이드바 섹션 제거 (RAG 관련도 낮아 UX 혼선 유발) */}
 
-          {/* 빠른 액션 — 상담 진행 중일 때 */}
-          {messages.length > 1 && (
-            <div className={`p-4 border-b ${t.border}`}>
-              <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${t.sectionTitle}`}>빠른 액션</p>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(() => {
-                  // 매칭 완료 여부 = 최근 assistant 메시지에 matched 배열이 있음
-                  const hasMatched = messages.some(m => m.role === "assistant" && m.matched && m.matched.length > 0);
-                  const disabledCls = "opacity-40 cursor-not-allowed";
-                  const enabledCls = (color: string) => dark
-                    ? `bg-${color}-500/10 border border-${color}-500/30 text-${color}-300 hover:bg-${color}-500/20`
-                    : `bg-${color}-50 border border-${color}-200 text-${color}-700 hover:bg-${color}-100`;
-                  return (
-                    <>
-                      <button
-                        onClick={() => hasMatched && handleSend("[상담 진행 경과 요약 요청] 지금까지 파악한 고객사 프로필, 관심분야, 매칭 결과(건수만), 남은 상담 포인트를 간단히 정리해줘. 공고 제목 나열 금지. 상위 카드는 이미 화면에 있음.")}
-                        disabled={!hasMatched}
-                        title={hasMatched ? "상담 진행 경과 정리" : "매칭 완료 후 활성화"}
-                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20" : "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
-                      >
-                        📋 정리
-                      </button>
-                      <button
-                        onClick={() => hasMatched && handleSend("위 매칭된 공고들의 자격요건을 자세히 설명해주세요")}
-                        disabled={!hasMatched}
-                        title={hasMatched ? "자격요건 상세" : "매칭 완료 후 활성화"}
-                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20" : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
-                      >
-                        ✅ 자격
-                      </button>
-                      <button
-                        onClick={() => hasMatched && handleSend("위 매칭된 공고들의 필요 서류를 알려주세요")}
-                        disabled={!hasMatched}
-                        title={hasMatched ? "서류 안내" : "매칭 완료 후 활성화"}
-                        className={`text-[11px] py-2 px-2 rounded-lg font-semibold transition-all active:scale-95 ${hasMatched ? (dark ? "bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20" : "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100") : disabledCls + " bg-slate-100 border border-slate-200 text-slate-400"}`}
-                      >
-                        📄 서류
-                      </button>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
+          {/* [재설계 04] 빠른 액션 제거 — 공고 카드 클릭 후 1차 턴 12섹션 분석 + AI choices로 대체 */}
 
           {/* 자료 첨부 섹션 제거 (사장님 요청 — AI 파일 파싱 품질 이슈) */}
 

@@ -1231,7 +1231,7 @@ ${convHtml}
                 <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">전문가 도구</p>
               </div>
               {[
-                { id: "free", icon: "💬", label: "자금 상담 AI", desc: "정책자금·보증·대출 Q&A", needsPro: true, needsLogin: true },
+                { id: "free", icon: "💬", label: "자금 상담 AI", desc: "정책자금·보증·대출 Q&A", needsPro: false, needsLogin: true },
                 { id: "consultant", icon: "📋", label: "전문가 상담", desc: "고객사 맞춤 상담·분석", needsPro: true },
                 { id: "search", icon: "🔍", label: "공고 매칭/검색", desc: "조건별 공고 검색", needsPro: false },
                 { id: "analysis", icon: "📄", label: "공고 상세 분석", desc: "원문 AI 정밀 분석", needsPro: true },
@@ -1281,11 +1281,10 @@ ${convHtml}
                   <button onClick={() => {
                     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
                     if (!hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
-                    if (!isPro) { toast("자금 상담 AI는 PRO 플랜 전용입니다.", "info"); onUpgrade?.(); return; }
                     startMode("free");
                   }}
                     className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">
-                    <p className="text-[12px] font-bold text-indigo-700">💬 자금 상담 AI <span className="text-[9px] bg-violet-600 text-white px-1 py-0.5 rounded">PRO</span></p>
+                    <p className="text-[12px] font-bold text-indigo-700">💬 자금 상담 AI</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">정책자금·보증·대출 Q&A</p>
                   </button>
                   <button onClick={() => {
@@ -1301,7 +1300,7 @@ ${convHtml}
                 {!isPro && (
                   <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     <p className="text-[11px] text-slate-500">
-                      자금 상담 AI·전문가 상담·공고분석·CRM은 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
+                      전문가 상담·공고분석·CRM은 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
                     </p>
                     <button onClick={() => { setOpen(false); onUpgrade?.(); }}
                       className="mt-2 px-4 py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all">

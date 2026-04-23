@@ -91,6 +91,13 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         except Exception as e:
             result["semas_error"] = str(e)[:100]
 
+        # [Tier 1] TP·공공기관 개별 스크래퍼 실행 (scraper_runs 로그 자동 기록)
+        try:
+            from app.services.scrapers.tier1 import run_tier1_scrapers
+            result["tier1"] = run_tier1_scrapers(db_conn)
+        except Exception as e:
+            result["tier1_error"] = str(e)[:200]
+
         return result
 
     _run_step("② 직접 크롤링", step_2_crawl)

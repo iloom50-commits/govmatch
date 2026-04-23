@@ -1045,13 +1045,14 @@ async def lifespan(app):
             def _daily_pipeline_job():
                 try:
                     from app.services.patrol.daily_pipeline import run_daily_pipeline
-                    conn = get_db_pool().getconn()
+                    conn = get_db_connection()
                     try:
                         print("[Pipeline] Daily pipeline starting (03:00 KST)...")
                         result = run_daily_pipeline(conn)
                         print(f"[Pipeline] Done: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
                     finally:
-                        get_db_pool().putconn(conn)
+                        try: conn.close()
+                        except Exception: pass
                 except Exception as e:
                     print(f"[Pipeline] Error: {e}")
 
@@ -7821,7 +7822,7 @@ def _run_manual_sync_in_thread():
     manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
     conn = None
     try:
-        conn = get_db_pool().getconn()
+        conn = get_db_connection()
         result = run_daily_pipeline(conn)
         err_cnt = result.get("error_count", 0)
         total = result.get("total_elapsed", 0)
@@ -7834,7 +7835,7 @@ def _run_manual_sync_in_thread():
         _log_system("manual_sync", "collection", f"수동 동기화 오류: {e}", "error")
     finally:
         if conn is not None:
-            try: get_db_pool().putconn(conn)
+            try: conn.close()
             except Exception: pass
         manual_sync_status["running"] = False
         manual_sync_status["last_time"] = datetime.datetime.now().isoformat()

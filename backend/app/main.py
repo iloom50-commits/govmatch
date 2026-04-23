@@ -2181,19 +2181,19 @@ def api_register(req: RegisterRequest, request: Request):
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
 
-            # [프로모션 비활성 시만] LITE 7일 무료체험 (추천인 없는 경우)
+            # [프로모션 비활성 시만] LITE 1개월 무료체험 (추천인 없는 경우)
             if not PROMO_ACTIVE and not req.referred_by:
-                trial_end = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat()
+                trial_end = (datetime.datetime.utcnow() + datetime.timedelta(days=30)).isoformat()
                 cursor.execute(
                     "UPDATE users SET plan='lite', plan_started_at=%s, plan_expires_at=%s WHERE user_id=%s",
                     (now_iso, trial_end, user_id)
                 )
 
-            # 가입 시 추천인 보상: LITE 1개월 무료 (최대 5회 — merit_months로 추적)
+            # 가입 시 추천인 보상: LITE 1개월 무료 (최대 1회 — merit_months로 추적)
             if req.referred_by:
                 cursor.execute("SELECT user_id, plan, plan_expires_at, merit_months FROM users WHERE referral_code = %s", (req.referred_by,))
                 referrer = cursor.fetchone()
-                if referrer and (referrer["merit_months"] or 0) < 5:
+                if referrer and (referrer["merit_months"] or 0) < 1:
                     new_merit = (referrer["merit_months"] or 0) + 1
                     now_dt = datetime.datetime.utcnow()
                     if referrer["plan"] in ("lite", "basic", "pro", "biz"):

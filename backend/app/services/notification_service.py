@@ -4,10 +4,8 @@ import json
 import psycopg2
 import psycopg2.extras
 import datetime
-import smtplib
 import httpx
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from app.config import DATABASE_URL
@@ -16,6 +14,12 @@ load_dotenv()
 
 
 class NotificationService:
+    """
+    이메일 발송: Resend HTTP API (https://resend.com)
+    Railway는 outbound SMTP 포트(25/587/465)를 차단하므로 SMTP 직접 발송 불가.
+    Resend는 HTTPS로 통신하므로 Railway에서도 정상 작동.
+    """
+
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
@@ -24,15 +28,14 @@ class NotificationService:
         else:
             self.model = None
 
-        self.smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        self.smtp_user = os.getenv("SMTP_USER", "")
-        self.smtp_password = os.getenv("SMTP_PASSWORD", "")
-        self.smtp_from = os.getenv("SMTP_FROM", self.smtp_user)
+        # Resend 설정
+        self.resend_api_key = os.getenv("RESEND_API_KEY", "")
+        # 도메인 검증 전엔 onboarding@resend.dev 기본값. 검증 후 RESEND_FROM 지정.
+        self.resend_from = os.getenv("RESEND_FROM", "onboarding@resend.dev")
 
     @property
-    def smtp_configured(self) -> bool:
-        return bool(self.smtp_user and self.smtp_password)
+    def email_configured(self) -> bool:
+        return bool(self.resend_api_key)
 
     async def get_target_users(self):
         """LITE 이상 플랜 + 푸시 구독이 있거나 이메일 알림이 활성화된 사용자만 조회"""
@@ -178,39 +181,48 @@ class NotificationService:
         </div>"""
 
     def send_email(self, to_email: str, company_name: str, matches: List[Dict]) -> bool:
-        """SMTP를 통해 매칭 결과 이메일 발송"""
-        # 디버그: 환경변수 실제 로드 상태 (credential 노출 없음 — 길이·host만)
-        print(f"  [SMTP DEBUG] host={self.smtp_host!r} port={self.smtp_port} "
-              f"user_set={bool(self.smtp_user)} user_len={len(self.smtp_user or '')} "
-              f"pw_set={bool(self.smtp_password)} pw_len={len(self.smtp_password or '')}")
-        if not self.smtp_configured:
-            print(f"  SMTP 미설정 -> 이메일 발송 건너뜀 (to: {to_email})")
-            # 원인 진단용 로그 저장 — DB에도 명시 (이전엔 건너뛰었음)
+        """Resend HTTP API를 통해 매칭 결과 이메일 발송.
+
+        Railway가 SMTP(25/587/465)를 차단하므로 Resend HTTPS API 사용.
+        """
+        if not self.email_configured:
+            print(f"  Resend 미설정 (RESEND_API_KEY 없음) -> 이메일 발송 건너뜀: {to_email}")
             try: self._log_notification(to_email, company_name, "email", "not_configured")
             except Exception: pass
             return False
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
-        msg["From"] = self.smtp_from
-        msg["To"] = to_email
-
         html_body = self._build_email_html(company_name, matches)
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        subject = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
 
         try:
-            # timeout 필수 — 없으면 worker가 무한 hang
-            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
-            print(f"  Email sent to {to_email}")
-            try: self._log_notification(to_email, company_name, "email", "sent")
-            except Exception: pass
-            return True
+            resp = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": self.resend_from,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_body,
+                },
+                timeout=15,
+            )
+            if resp.status_code in (200, 202):
+                print(f"  Email sent to {to_email} via Resend (id={resp.json().get('id','?')})")
+                try: self._log_notification(to_email, company_name, "email", "sent")
+                except Exception: pass
+                return True
+            else:
+                err_text = resp.text[:200]
+                print(f"  Resend API error ({to_email}): {resp.status_code} {err_text}")
+                try: self._log_notification(to_email, company_name, "email", f"http_{resp.status_code}")
+                except Exception: pass
+                return False
         except Exception as e:
-            print(f"  Email send error ({to_email}): {e}")
-            try: self._log_notification(to_email, company_name, "email", f"error: {str(e)[:100]}")
+            print(f"  Resend request error ({to_email}): {e}")
+            try: self._log_notification(to_email, company_name, "email", f"exc: {type(e).__name__}")
             except Exception: pass
             return False
 
@@ -351,11 +363,15 @@ class NotificationService:
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
             conn.autocommit = True
             cursor = conn.cursor()
-            # 누락 컬럼 자동 보강 (이미 존재하면 무시)
+            # 누락 컬럼 자동 보강 + 짧은 VARCHAR 확장 (이미 적용돼있으면 무시)
             for alt in [
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS recipient TEXT",
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS company_name TEXT",
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS channel TEXT",
+                # 기존 스키마의 business_number/status 컬럼이 너무 짧아 저장 실패 → 확장
+                "ALTER TABLE notification_logs ALTER COLUMN business_number TYPE VARCHAR(50)",
+                "ALTER TABLE notification_logs ALTER COLUMN notification_type TYPE VARCHAR(30)",
+                "ALTER TABLE notification_logs ALTER COLUMN status TYPE VARCHAR(200)",
             ]:
                 try: cursor.execute(alt)
                 except Exception: pass
@@ -363,7 +379,7 @@ class NotificationService:
                 """INSERT INTO notification_logs
                    (business_number, notification_type, recipient, company_name, channel, status)
                    VALUES (%s, %s, %s, %s, %s, %s)""",
-                (recipient[:20] if recipient else "", channel, recipient, company_name, channel, status[:50])
+                (recipient[:50] if recipient else "", channel, recipient, company_name, channel, status[:200])
             )
             conn.close()
         except Exception as e:

@@ -285,13 +285,14 @@ function ChipRect({ label, selected, onClick }: { label: string; selected: boole
 }
 
 export default function NotificationModal({
-  isOpen, onClose, businessNumber, onSave, profile
+  isOpen, onClose, businessNumber, onSave, profile, shortcutMode = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   businessNumber: string;
   onSave: (data: any) => void;
   profile?: any;
+  shortcutMode?: boolean;  // true면 프로필 스텝 스킵 — 알림 설정만 바로 보여줌
 }) {
   useModalBack(isOpen, onClose);
   const { toast } = useToast();
@@ -340,7 +341,7 @@ export default function NotificationModal({
 
   useEffect(() => {
     if (!isOpen || !businessNumber) return;
-    setStep(0);
+    setStep(shortcutMode ? steps.length - 1 : 0);
     fetch(`${API}/api/notification-settings/${businessNumber}`)
       .then(r => r.json())
       .then(d => {
@@ -406,7 +407,15 @@ export default function NotificationModal({
 
   // ── 네비게이션 ──
   const goNext = () => { if (step < totalSteps - 1) setStep(s => s + 1); };
-  const goBack = () => { if (step > 0) setStep(s => s - 1); };
+  const goBack = () => {
+    if (shortcutMode) return;  // shortcut에선 뒤로 불가 (프로필 스텝 접근 차단)
+    if (step > 0) setStep(s => s - 1);
+  };
+
+  // shortcutMode에서 userType이 프로필 로드 후 바뀌면 마지막 스텝으로 재정렬
+  useEffect(() => {
+    if (isOpen && shortcutMode) setStep(steps.length - 1);
+  }, [isOpen, shortcutMode, userType]);  // eslint-disable-line
 
   // 유형 변경 시 스텝 리셋 + 자동 다음
   const handleTypeChange = (val: UserType) => {
@@ -500,16 +509,18 @@ export default function NotificationModal({
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[92vh] flex flex-col">
-        {/* 진행률 바 */}
-        <div className="h-1.5 bg-slate-100 shrink-0">
-          <div className="h-full bg-indigo-600 transition-all duration-500 ease-out rounded-r-full" style={{ width: `${progressPct}%` }} />
-        </div>
+        {/* 진행률 바 — shortcut에선 숨김 */}
+        {!shortcutMode && (
+          <div className="h-1.5 bg-slate-100 shrink-0">
+            <div className="h-full bg-indigo-600 transition-all duration-500 ease-out rounded-r-full" style={{ width: `${progressPct}%` }} />
+          </div>
+        )}
 
         <div className="p-5 sm:p-7 overflow-y-auto flex-1">
           {/* 헤더 */}
           <div className="flex items-center justify-between mb-5 sm:mb-7">
             <div className="flex items-center gap-3">
-              {step > 0 ? (
+              {step > 0 && !shortcutMode ? (
                 <button onClick={goBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                 </button>
@@ -517,9 +528,19 @@ export default function NotificationModal({
                 <div className="w-10" />
               )}
               <div>
-                <p className="text-xs font-bold text-indigo-500 tracking-wider">{step + 1} / {totalSteps}</p>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{currentStep.title}</h2>
-                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{currentStep.subtitle}</p>
+                {shortcutMode ? (
+                  <>
+                    <p className="text-xs font-bold text-indigo-500 tracking-wider">맞춤 알림</p>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">알림 받기</h2>
+                    <p className="text-xs sm:text-sm text-slate-400 mt-0.5">평일 오전 9시에 맞춤 공고를 보내드려요</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-indigo-500 tracking-wider">{step + 1} / {totalSteps}</p>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{currentStep.title}</h2>
+                    <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{currentStep.subtitle}</p>
+                  </>
+                )}
               </div>
             </div>
             <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-xl shrink-0">✕</button>
@@ -708,35 +729,37 @@ export default function NotificationModal({
             {/* ===== Step: 관심분야 + 맞춤키워드 + 알림 ===== */}
             {currentStep.id === "interests" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-                {/* 관심분야 — 자동완성 입력 */}
-                <div>
-                  <p className="text-sm font-bold text-slate-700 mb-2">관심분야를 입력하세요</p>
-                  {/* 선택된 태그 */}
-                  {interests.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {interests.map((tag) => (
-                        <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[13px] font-semibold">
-                          {tag}
-                          <button type="button" onClick={() => setInterests(prev => prev.filter(t => t !== tag))} className="hover:text-indigo-900 text-indigo-400">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {/* 입력 + 드롭다운 (관심분야 + 맞춤키워드 통합) */}
-                  <InterestAutocomplete
-                    options={[
-                      ...(isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS),
-                      ...(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS),
-                    ]}
-                    selected={interests}
-                    onSelect={(opt) => setInterests(prev => [...prev, opt])}
-                    userType={isInd ? "individual" : "business"}
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
-                </div>
+                {/* 관심분야 — shortcut 모드에선 숨김 (기존 프로필 값 유지) */}
+                {!shortcutMode && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-700 mb-2">관심분야를 입력하세요</p>
+                    {/* 선택된 태그 */}
+                    {interests.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {interests.map((tag) => (
+                          <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[13px] font-semibold">
+                            {tag}
+                            <button type="button" onClick={() => setInterests(prev => prev.filter(t => t !== tag))} className="hover:text-indigo-900 text-indigo-400">×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* 입력 + 드롭다운 (관심분야 + 맞춤키워드 통합) */}
+                    <InterestAutocomplete
+                      options={[
+                        ...(isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS),
+                        ...(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS),
+                      ]}
+                      selected={interests}
+                      onSelect={(opt) => setInterests(prev => [...prev, opt])}
+                      userType={isInd ? "individual" : "business"}
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
+                  </div>
+                )}
 
                 {/* 알림 on/off */}
-                <div className="border-t border-slate-100 pt-4 space-y-3">
+                <div className={`${shortcutMode ? "" : "border-t border-slate-100 pt-4"} space-y-3`}>
                   <p className="text-sm font-bold text-slate-600">알림 받기</p>
 
                   {/* 이메일 */}

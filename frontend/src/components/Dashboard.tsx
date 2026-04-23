@@ -368,14 +368,30 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const showIndividualTab = true;
   const [sortKey, setSortKey] = useState<SortKey>("recommend");
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+  const [notifyShortcut, setNotifyShortcut] = useState(false);  // true면 모달이 알림 설정만 바로 표시 (프로필 스텝 스킵)
+  const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
   // 프로필 미완성(로그인O) → NotificationModal, 비로그인 → onLoginRequired
   const handleLoginRequired = () => {
-    if (profile) { setIsNotifyOpen(true); } else { onLoginRequired?.(); }
+    if (profile) { setIsNotifyOpen(true); setNotifyShortcut(false); } else { onLoginRequired?.(); }
   };
   // 외부에서 NotificationModal 열기 요청
   useEffect(() => {
-    if (autoOpenNotify) { setIsNotifyOpen(true); onNotifyOpened?.(); }
+    if (autoOpenNotify) { setIsNotifyOpen(true); setNotifyShortcut(false); onNotifyOpened?.(); }
   }, [autoOpenNotify]);
+
+  // 맞춤알림 설정 여부 체크 — 미설정 시 빨간 점/배지 노출
+  useEffect(() => {
+    const bn = profile?.business_number;
+    if (!bn) return;
+    fetch(`${API}/api/notification-settings/${bn}`)
+      .then(r => r.json())
+      .then(d => {
+        const active = d?.data?.is_active;
+        const hasEmail = !!(d?.data?.email);
+        setHasNotificationSet(Boolean(active && hasEmail));
+      })
+      .catch(() => setHasNotificationSet(true));  // 실패 시 조용히 (배지 안 띄움)
+  }, [profile?.business_number, isNotifyOpen]);  // 모달 닫힌 후 재조회
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -916,6 +932,25 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
 
+      {/* 🔔 맞춤 알림 미설정 — 최상단 CTA 카드 (설정되면 자동 숨김) */}
+      {profile && !hasNotificationSet && (
+        <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
+              <button
+                onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); setSidebarOpen(false); }}
+                className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
+              >
+                1분만에 설정하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
       {(() => {
         const ut = profile?.user_type || "both";
@@ -1298,18 +1333,31 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   전국 모든 지원금
                 </span>
               </h2>
-              {/* 지원금AI 설치 */}
-              {!isPwaInstalled && (
-                <button
-                  onClick={() => {
-                    if (deferredPrompt) handlePwaInstall();
-                    else setShowInstallGuide(true);
-                  }}
-                  className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none flex-shrink-0"
-                >
-                  <span className="text-[12px]">⬇️</span><span>지원금AI 설치</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {/* 🔔 맞춤 알림 켜기 — 데스크탑 전용 compact (미설정 시만, 모바일은 빨간 점 뱃지로 대체) */}
+                {profile && !hasNotificationSet && (
+                  <button
+                    onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); }}
+                    className="hidden sm:flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-rose-600 hover:text-white hover:bg-rose-500 bg-rose-50 border border-rose-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none relative"
+                    title="맞춤 알림 켜기"
+                  >
+                    <span className="text-[12px]">🔔</span><span>알림 켜기</span>
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" />
+                  </button>
+                )}
+                {/* 지원금AI 설치 */}
+                {!isPwaInstalled && (
+                  <button
+                    onClick={() => {
+                      if (deferredPrompt) handlePwaInstall();
+                      else setShowInstallGuide(true);
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none"
+                  >
+                    <span className="text-[12px]">⬇️</span><span>지원금AI 설치</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 키워드 검색 */}
@@ -1648,19 +1696,24 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       ) : (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 relative"
         >
           <span className="text-base">👤</span>
           <span className="text-xs font-bold">내 정보</span>
+          {/* 맞춤알림 미설정 시 빨간 점 — 사이드바 열면 최상단 카드로 안내 */}
+          {profile && !hasNotificationSet && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" aria-label="알림 미설정" />
+          )}
         </button>
       )}
 
       <NotificationModal
         isOpen={isNotifyOpen}
-        onClose={() => setIsNotifyOpen(false)}
+        onClose={() => { setIsNotifyOpen(false); setNotifyShortcut(false); }}
         businessNumber={profile?.business_number}
         onSave={() => { onProfileRefresh?.(); onRefresh?.(); }}
         profile={profile}
+        shortcutMode={notifyShortcut}
       />
       <SmartDocModal />
 

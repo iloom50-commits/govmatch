@@ -156,6 +156,7 @@ interface AiConsultModalProps {
 export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: AiConsultModalProps) {
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -396,11 +397,20 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     setLimitReached(false);
     setFeedbackSent(false);
     setConsultLogId(null);
+    setShowSaveDialog(false);
     // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
   }, []);
 
+  const handleBackPress = useCallback(() => {
+    if (messages.length > 0 && !isDone) {
+      setShowSaveDialog(true);
+    } else {
+      handleClose();
+    }
+  }, [messages.length, isDone, handleClose]);
+
   // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)
-  useModalBack(open, handleClose);
+  useModalBack(open, handleBackPress);
 
   // 사용자가 직접 상담 종료 — ai_consult_logs에 명시 저장
   const handleManualEnd = async () => {
@@ -752,6 +762,37 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
           )}
         </div>
       </div>
+
+      {/* 상담 저장 확인 다이얼로그 */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">상담을 저장하시겠습니까?</h3>
+            <p className="text-[13px] text-slate-600 mb-6">현재까지의 상담 내용을 저장하고 종료하겠습니다.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowSaveDialog(false);
+                }}
+                className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"
+              >
+                아니요, 계속하기
+              </button>
+              <button
+                onClick={async () => {
+                  setShowSaveDialog(false);
+                  await handleManualEnd();
+                  handleClose();
+                }}
+                className="flex-1 py-2.5 px-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all active:scale-95"
+              >
+                저장하고 종료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

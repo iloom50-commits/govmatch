@@ -135,6 +135,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [consultType, setConsultType] = useState<"matching" | "announcement" | "fund" | null>(null);
   // 매칭 공고 선택 모달
   const [selectedMatchedAnnouncement, setSelectedMatchedAnnouncement] = useState<any>(null);
+  // 뒤로가기 저장 dialog
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [pendingBackAction, setPendingBackAction] = useState<(() => void) | null>(null);
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
@@ -248,9 +251,25 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       window.history.pushState({ proDash: true }, "");
       return;
     }
-    if (clientCategory || messages.length > 0) {
+    // 상담 중이면 저장 dialog 표시
+    if (messages.length > 0) {
+      setPendingBackAction(() => {
+        return () => {
+          setClientCategory("");
+          setMessages([]);
+          setFlowState("idle");
+          setSelectedClient(null);
+          setSystemContext("");
+          setSessionId(null);
+          localStorage.removeItem("pro_session_id");
+          window.history.pushState({ proDash: true }, "");
+        };
+      });
+      setShowSaveDialog(true);
+      return;
+    }
+    if (clientCategory) {
       setClientCategory("");
-      setMessages([]);
       setFlowState("idle");
       setSelectedClient(null);
       setSystemContext("");
@@ -1338,6 +1357,53 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           {/* 연동 서비스 — 향후 제공 */}
         </aside>
       </div>
+
+      {/* 상담 저장 확인 다이얼로그 */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">상담을 저장하시겠습니까?</h3>
+            <p className="text-[13px] text-slate-600 mb-6">현재까지의 상담 내용을 저장하고 이전으로 이동하겠습니다.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowSaveDialog(false);
+                  setPendingBackAction(null);
+                }}
+                className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"
+              >
+                아니요, 계속하기
+              </button>
+              <button
+                onClick={() => {
+                  // 로컬스토리지에 상담 내용 저장
+                  const consultationData = {
+                    activeView,
+                    clientCategory,
+                    messages,
+                    sessionId,
+                    selectedClient,
+                    systemContext,
+                    consultType,
+                    savedAt: new Date().toISOString(),
+                  };
+                  localStorage.setItem("pro_consultation_draft", JSON.stringify(consultationData));
+                  setShowSaveDialog(false);
+                  if (pendingBackAction) {
+                    pendingBackAction();
+                  }
+                  setPendingBackAction(null);
+                  toast("상담 내용이 저장되었습니다.", "success");
+                }}
+                className="flex-1 py-2.5 px-3 bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 transition-all active:scale-95"
+              >
+                저장하고 이동
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 매칭 확인 모달 */}
       {showMatchModal && (

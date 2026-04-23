@@ -308,11 +308,22 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     setFormProfile({ ...EMPTY_FORM });
 
     if (selectedMode === "free") {
+      // 프로필 조회 후 첫 메시지에 반영
+      const userProfile = await fetchUserProfile();
+      const profileSummary = userProfile ? buildProfileSummary(userProfile) : null;
+      const hasProfile = profileSummary && profileSummary.trim().length > 0;
+
+      const baseText = fundMode === "individual_fund"
+        ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."
+        : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요.";
+
+      const profileNote = hasProfile
+        ? `\n\n📋 **등록된 정보로 맞춤 상담합니다:**\n${profileSummary}`
+        : `\n\n💡 프로필을 설정하시면 더 정확한 맞춤 상담이 가능합니다.`;
+
       setMessages([{
         role: "assistant",
-        text: fundMode === "individual_fund"
-          ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요. (무상 지원금은 PRO 종합 상담에서 확인 가능합니다)"
-          : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요. (무상 지원금/R&D/수출 바우처는 PRO 종합 상담에서 확인 가능합니다)",
+        text: baseText + profileNote,
         choices: fundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
           : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],

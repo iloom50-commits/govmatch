@@ -179,8 +179,15 @@ class NotificationService:
 
     def send_email(self, to_email: str, company_name: str, matches: List[Dict]) -> bool:
         """SMTP를 통해 매칭 결과 이메일 발송"""
+        # 디버그: 환경변수 실제 로드 상태 (credential 노출 없음 — 길이·host만)
+        print(f"  [SMTP DEBUG] host={self.smtp_host!r} port={self.smtp_port} "
+              f"user_set={bool(self.smtp_user)} user_len={len(self.smtp_user or '')} "
+              f"pw_set={bool(self.smtp_password)} pw_len={len(self.smtp_password or '')}")
         if not self.smtp_configured:
             print(f"  SMTP 미설정 -> 이메일 발송 건너뜀 (to: {to_email})")
+            # 원인 진단용 로그 저장 — DB에도 명시 (이전엔 건너뛰었음)
+            try: self._log_notification(to_email, company_name, "email", "not_configured")
+            except Exception: pass
             return False
 
         msg = MIMEMultipart("alternative")

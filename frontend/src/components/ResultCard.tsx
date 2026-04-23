@@ -1,12 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/ui/Toast";
 
 function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: string, type?: "success" | "error" | "info") => void; announcementId?: number; announcementTitle?: string }) {
   const [open, setOpen] = useState(false);
-  const url = announcementId ? `https://www.govmatch.kr?aid=${announcementId}` : "https://www.govmatch.kr";
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchReferralCode = async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setReferralCode(data.user?.referral_code || null);
+        }
+      } catch (e) {
+        console.error("Failed to fetch referral code:", e);
+      }
+    };
+    fetchReferralCode();
+  }, []);
+
+  const baseUrl = announcementId ? `https://www.govmatch.kr?aid=${announcementId}` : "https://www.govmatch.kr";
+  const url = referralCode ? `${baseUrl}${announcementId ? "&" : "?"}ref=${referralCode}` : baseUrl;
+
   const shareText = announcementTitle
     ? `이 지원사업 한번 확인해보세요!\n"${announcementTitle.slice(0, 40)}"\nAI가 자격 여부까지 분석해줍니다.`
     : "정부지원금, 아직도 직접 찾고 계세요?\nAI가 내 조건에 맞는 지원금을 자동으로 찾아줍니다.\n친구 추천 시 양쪽 모두 LITE 1개월 무료!";

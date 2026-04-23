@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/Toast";
 
 interface OnboardingWizardProps {
@@ -16,6 +16,17 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [referredBy, setReferredBy] = useState<string | null>(null);
+
+  // URL 파라미터에서 추천 코드 읽기
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if (ref) {
+      setReferredBy(ref);
+    }
+  }, []);
 
   const handleSubmit = async () => {
     if (!email) {
@@ -37,6 +48,7 @@ export default function OnboardingWizard({ initialBusinessNumber = "", initialEm
         email,
         password,
         business_number: initialBusinessNumber || `U${Date.now().toString().slice(-9)}`,
+        referred_by: referredBy || undefined,
       });
     } finally {
       setLoading(false);

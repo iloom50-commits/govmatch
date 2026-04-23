@@ -132,7 +132,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [flowState, setFlowState] = useState<FlowState>("idle");
   const [clientCategory, setClientCategory] = useState<ClientCategory>("");
   // 상담 종류 선택 (첫 화면 2카드)
-  const [consultType, setConsultType] = useState<"matching" | "announcement" | null>(null);
+  const [consultType, setConsultType] = useState<"matching" | "announcement" | "fund" | null>(null);
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
@@ -313,7 +313,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [sessionId]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -337,6 +337,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           session_id: sessionId,
           client_category: clientCategory || null,
           client_id: selectedClient?.id || null,
+          mode: options?.mode || null,
         }),
       });
 
@@ -561,8 +562,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       { role: "user", text: summaryLines.join("\n") },
     ];
     setMessages(seedHistory);
-    // [재설계 04] Mode A 제거 — 자연어 수집 없이 즉시 매칭 엔진 호출
-    sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
+
+    if (consultType === "fund") {
+      // 자금 상담: 전문가-고객 관점의 정책자금/보증/대출 전문 상담
+      const fundMode = isIndiv ? "individual_fund" : "business_fund";
+      sendToAI(seedHistory, { action: "fund_consult", profile_override: matchProfile, mode: fundMode });
+    } else {
+      // [재설계 04] Mode A 제거 — 자연어 수집 없이 즉시 매칭 엔진 호출
+      sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
+    }
   };
 
   // ─── AI 응답 마크다운 렌더링 — 공용 renderMarkdown (밝은 배경 전제) ───
@@ -716,8 +724,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             {/* 메뉴 */}
             <div className="flex-1 py-2">
               {([
-                { view: "chat" as ActiveView, icon: Icons.chat, label: "지원사업 매칭 상담" },
-                { view: "announce_search" as ActiveView, icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>, label: "특정 공고 상담" },
+                { view: "chat" as ActiveView, icon: Icons.chat, label: "AI 상담 시작" },
+                { view: "announce_search" as ActiveView, icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>, label: "공고 검색" },
                 { view: "clients" as ActiveView, icon: Icons.clients, label: "고객 관리" },
                 { view: "history" as ActiveView, icon: Icons.history, label: "상담 이력" },
                 { view: "reports" as ActiveView, icon: Icons.reports, label: "보고서" },
@@ -775,12 +783,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     <p className={`text-[13px] mb-8 ${t.muted}`}>
                       상담 종류를 선택하시면 AI 상담이 시작됩니다.
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
                       <button
                         onClick={() => setConsultType("matching")}
                         className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"} hover:shadow-lg`}>
                         <div className="text-4xl mb-3">🏢</div>
-                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원사업 매칭 상담</p>
+                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원사업 상담</p>
                         <p className={`text-[12px] mb-3 ${t.muted}`}>고객 정보로 맞춤 공고 찾기</p>
                         <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
                           고객 프로필 수집 → 조건에 맞는 지원사업 매칭 → 자격 요건 심화 상담
@@ -796,11 +804,21 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           공고명·기관·키워드로 검색 → 12섹션 상세 보고서 → 자격 요건 질문
                         </p>
                       </button>
+                      <button
+                        onClick={() => setConsultType("fund")}
+                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-emerald-500/60 hover:bg-emerald-500/10` : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 bg-white"} hover:shadow-lg`}>
+                        <div className="text-4xl mb-3">💰</div>
+                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>자금 상담</p>
+                        <p className={`text-[12px] mb-3 ${t.muted}`}>정책자금·보증·대출 전문</p>
+                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
+                          고객 개인/기업 선택 → 프로필 입력 → 정책자금·보증·대출 맞춤 상담
+                        </p>
+                      </button>
                     </div>
                   </div>
                 </div>
-              ) : /* Step 2: 고객 유형 선택 (매칭 선택 후) */
-              !clientCategory && messages.length === 0 && !showProfileForm && consultType === "matching" ? (
+              ) : /* Step 2: 고객 유형 선택 (매칭/자금 선택 후) */
+              !clientCategory && messages.length === 0 && !showProfileForm && (consultType === "matching" || consultType === "fund") ? (
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
                   <div className="max-w-md text-center">
                     <button
@@ -816,7 +834,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     </div>
                     <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>고객 유형을 선택해 주세요</h2>
                     <p className={`text-[13px] mb-8 ${t.muted}`}>
-                      고객 정보 수집 → 맞춤 지원사업 매칭 → 자격 요건 분석
+                      {consultType === "fund"
+                        ? "고객 정보 입력 → 정책자금·보증·대출 전문 상담"
+                        : "고객 정보 수집 → 맞춤 지원사업 매칭 → 자격 요건 분석"}
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       {[

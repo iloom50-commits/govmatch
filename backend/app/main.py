@@ -3636,7 +3636,114 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
         return _handle_pro_match(req, current_user)
     if action == "consult":
         return _handle_pro_consult(req, current_user)
-    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult)")
+    if action == "fund_consult":
+        return _handle_pro_fund_consult(req, current_user)
+    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult | fund_consult)")
+
+
+def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
+    """action=fund_consult: PRO 전문가의 고객 자금상담.
+
+    ★ 데이터 격리 원칙 (사장님 지시) ★
+    - 전문가 본인의 users 테이블 프로필은 절대 AI 프롬프트에 주입하지 않음
+    - profile_override(폼 데이터) 또는 client_profiles(CRM 등록된 고객) 에서만 프로필 구성
+    - 어느 쪽도 없으면 400 에러로 폼 입력 요구
+    """
+    from app.services.ai_consultant import chat_lite_fund_expert
+
+    # mode: "individual_fund" (개인 고객) | "business_fund" (기업 고객)
+    fund_mode = (req.mode or "").strip().lower()
+    if fund_mode not in ("individual_fund", "business_fund"):
+        raise HTTPException(
+            status_code=400,
+            detail="자금상담 모드 필수: mode='individual_fund' (개인 고객) 또는 'business_fund' (기업 고객)"
+        )
+
+    pro_ctx = "individual" if fund_mode == "individual_fund" else "business"
+
+    db = get_db_connection()
+    try:
+        # 1) 프로필 우선순위: profile_override (폼) > client_profiles (CRM 선택 고객)
+        profile = req.profile_override or {}
+        if not profile and req.client_id:
+            selected_client = _load_client(db, req.client_id, current_user["bn"])
+            if selected_client:
+                if fund_mode == "business_fund":
+                    profile = {
+                        "company_name": selected_client.get("client_name") or "",
+                        "industry_code": selected_client.get("industry_code") or "",
+                        "address_city": selected_client.get("address_city") or "",
+                        "establishment_date": str(selected_client.get("establishment_date") or ""),
+                        "revenue_bracket": selected_client.get("revenue_bracket") or "",
+                        "employee_count_bracket": selected_client.get("employee_count_bracket") or "",
+                        "interests": selected_client.get("interests") or "",
+                        "certifications": selected_client.get("certifications") or "",
+                        "user_type": "business",
+                    }
+                else:
+                    profile = {
+                        "age_range": selected_client.get("age_range") or "",
+                        "address_city": selected_client.get("address_city") or "",
+                        "income_level": selected_client.get("income_level") or "",
+                        "family_type": selected_client.get("family_type") or "",
+                        "employment_status": selected_client.get("employment_status") or "",
+                        "housing_status": selected_client.get("housing_status") or "",
+                        "interests": selected_client.get("interests") or "",
+                        "user_type": "individual",
+                    }
+
+        # 폼 또는 CRM 어느 쪽도 없으면 폼 요구
+        if not profile or not any(v for v in profile.values() if v):
+            raise HTTPException(
+                status_code=400,
+                detail="고객 정보가 없습니다. 자금상담 시작 전 고객 정보 폼을 먼저 작성해 주세요."
+            )
+
+        # 2) 전문가 본인 프로필 섞이는지 안전검증 — profile에 current_user의 bn/email 금지
+        for forbidden_key in ("business_number", "email", "password_hash"):
+            profile.pop(forbidden_key, None)
+
+        # 3) AI 호출 — pro_consult_context 플래그로 3인칭 화법 강제
+        result = chat_lite_fund_expert(
+            messages=req.messages,
+            db_conn=db,
+            user_profile=profile,
+            mode=fund_mode,
+            pro_consult_context=pro_ctx,
+        )
+
+        # 4) 상담 로그 저장
+        try:
+            import uuid as _uuid
+            sid = req.session_id or f"fund_{_uuid.uuid4()}"
+            all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
+            log_cur = db.cursor()
+            log_cur.execute(
+                """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
+                   VALUES (NULL, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
+                   ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                       messages = EXCLUDED.messages,
+                       conclusion = EXCLUDED.conclusion,
+                       updated_at = CURRENT_TIMESTAMP""",
+                (current_user["bn"], json.dumps(all_msgs, ensure_ascii=False), f"pro_fund_{pro_ctx}", sid)
+            )
+            db.commit()
+        except Exception as save_err:
+            print(f"[PRO fund_consult save] {save_err}")
+            try: db.rollback()
+            except: pass
+
+        return {
+            "status": "SUCCESS",
+            "reply": result.get("reply", ""),
+            "choices": result.get("choices", []),
+            "announcements": result.get("announcements", []),
+            "done": result.get("done", False),
+            "session_id": sid if 'sid' in dir() else req.session_id,
+        }
+    finally:
+        try: db.close()
+        except: pass
 
 
 def _load_or_create_session(db, current_user, req_session_id, client_category):

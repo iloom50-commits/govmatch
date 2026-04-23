@@ -1509,9 +1509,15 @@ def chat_lite_fund_expert(
     db_conn=None,
     user_profile: dict = None,
     mode: str = None,  # "business_fund" | "individual_fund" | None (자동 판별)
+    pro_consult_context: str = None,  # PRO: "individual" | "business" — 전문가-고객 관점 주입
 ) -> Dict[str, Any]:
     """LITE 자금 전문 상담. mode 명시 → 사용자 선택 우선.
     mode=None이면 user_profile.user_type + 시드 메시지로 자동 판별.
+
+    pro_consult_context: PRO 전문가 상담 모드. 값이 주어지면:
+      - 프로필은 전문가 본인이 아닌 '고객(client)' 의 것임을 명시
+      - 화법을 3인칭('고객님/고객사') 으로 강제
+      - user_profile은 반드시 폼에서 수집된 고객 데이터만 전달되어야 함 (전문가 본인 프로필 주입 금지)
     """
     if not HAS_GENAI:
         return {"reply": "AI 서비스를 사용할 수 없습니다.", "choices": []}
@@ -1657,8 +1663,22 @@ def chat_lite_fund_expert(
         except Exception as kb_err:
             logger.warning(f"[LITE kb inject] {kb_err}")
 
+    # PRO 전문가 상담 모드: 3인칭 관점 강제 주입
+    pro_prefix = ""
+    if pro_consult_context:
+        client_label = "개인 고객" if pro_consult_context == "individual" else "기업 고객(고객사)"
+        pro_prefix = f"""[★★★ PRO 전문가 상담 모드 — 반드시 지킬 것 ★★★]
+당신은 세무사·경영지도사·창업컨설턴트 등 전문가의 {client_label} 자금 상담을 보조하는 AI입니다.
+1. 지금 질문하는 사용자는 '전문가'이며, 상담 대상은 그 전문가의 '고객'입니다.
+2. 위 [사용자 프로필]은 '전문가 본인'이 아니라 '고객'의 정보입니다. 절대 전문가 본인으로 오해 금지.
+3. 화법 규칙: "사장님은/귀하께서는" 금지. 반드시 "이 고객님께서는/고객사는/해당 고객의 경우" 등 3인칭.
+4. 답변은 전문가가 자기 고객에게 전달/설명할 수 있는 수준으로 구체적 수치·근거·조건 중심.
+5. 추측 금지. 제공된 고객 정보가 부족하면 "확인 필요 항목"으로 명시하고 전문가에게 재수집을 요청.
+
+"""
+
     # [Level 3] profile_ctx를 base_prompt **앞**에 배치 → LLM 주목도 최대화
-    system_prompt = profile_ctx + "\n\n" + base_prompt + knowledge_ctx
+    system_prompt = pro_prefix + profile_ctx + "\n\n" + base_prompt + knowledge_ctx
 
     # 사용자 지역 추출 (도구 검색에 자동 적용)
     _user_region = (user_profile or {}).get("address_city", "")

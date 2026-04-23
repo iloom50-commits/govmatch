@@ -165,7 +165,17 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const isIndividual = currentTab === "individual" || (userType === "individual" && currentTab !== "business");
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
-  useModalBack(open, () => setOpen(false));
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  const handleBackPress = useCallback(() => {
+    if (messages.length > 0 && !isDone) {
+      setShowSaveDialog(true);
+    } else {
+      setOpen(false);
+    }
+  }, [messages.length, isDone]);
+
+  useModalBack(open, handleBackPress);
   const [mode, setMode] = useState<ChatMode>("select");
   // LITE 자금 전문 모드 (기업/개인) — currentTab 우선, 없으면 user_type 기반
   const [fundMode, setFundMode] = useState<"business_fund" | "individual_fund">(
@@ -1937,6 +1947,46 @@ ${convHtml}
           </>
         )}
       </div>
+
+      {/* 상담 저장 확인 다이얼로그 */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">상담을 저장하시겠습니까?</h3>
+            <p className="text-[13px] text-slate-600 mb-6">현재까지의 상담 내용을 저장하고 종료하겠습니다.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowSaveDialog(false);
+                }}
+                className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"
+              >
+                아니요, 계속하기
+              </button>
+              <button
+                onClick={() => {
+                  // 로컬스토리지에 상담 내용 저장
+                  const consultationData = {
+                    mode,
+                    fundMode,
+                    messages,
+                    formProfile,
+                    savedAt: new Date().toISOString(),
+                  };
+                  localStorage.setItem("lite_consultation_draft", JSON.stringify(consultationData));
+                  setShowSaveDialog(false);
+                  setOpen(false);
+                  toast("상담 내용이 저장되었습니다.", "success");
+                }}
+                className="flex-1 py-2.5 px-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all active:scale-95"
+              >
+                저장하고 종료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 상담 보고서 모달 */}
       {showReport && (

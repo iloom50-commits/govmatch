@@ -133,6 +133,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [clientCategory, setClientCategory] = useState<ClientCategory>("");
   // 상담 종류 선택 (첫 화면 2카드)
   const [consultType, setConsultType] = useState<"matching" | "announcement" | "fund" | null>(null);
+  // 매칭 공고 선택 모달
+  const [selectedMatchedAnnouncement, setSelectedMatchedAnnouncement] = useState<any>(null);
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
@@ -992,6 +994,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   onClick={() => {
                                     const aid = m.announcement_id || m.id;
                                     if (!aid) return;
+                                    // 모달에 공고 정보 표시
+                                    setSelectedMatchedAnnouncement(m);
                                     // [재설계 04] 카드 클릭 → 1차 12섹션 분석 강제 (is_announcement_start=true)
                                     setActiveAnnouncementId(aid);
                                     const consultMsg = `『${m.title || m.program_title || "공고"}』 공고를 분석해주세요.`;
@@ -1384,6 +1388,108 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 className="flex-[2] py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-95"
               >
                 ✅ 이대로 매칭 실행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 매칭된 공고 상세 모달 */}
+      {selectedMatchedAnnouncement && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedMatchedAnnouncement(null)}>
+          <div className={`relative w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ${dark ? "bg-[#0d0e1f] border border-white/10" : "bg-white"}`} onClick={(e) => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className={`flex-shrink-0 px-6 py-4 border-b ${dark ? "border-white/10 bg-white/[0.02]" : "border-slate-200 bg-gradient-to-r from-indigo-50 to-violet-50"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[12px] font-semibold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>📋 특정공고 상담</p>
+                  <h2 className={`text-xl font-bold ${dark ? "text-slate-100" : "text-slate-800"} line-clamp-2`}>
+                    {selectedMatchedAnnouncement.title || selectedMatchedAnnouncement.program_title || "공고명"}
+                  </h2>
+                </div>
+                <button onClick={() => setSelectedMatchedAnnouncement(null)} className={`flex-shrink-0 p-2 rounded-lg transition-all ${dark ? "hover:bg-white/10" : "hover:bg-slate-100"}`}>
+                  <svg className={`w-5 h-5 ${dark ? "text-slate-400" : "text-slate-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* 컨텐츠 */}
+            <div className={`flex-1 overflow-y-auto px-6 py-4 space-y-4 ${dark ? "text-slate-300" : "text-slate-700"}`}>
+              {/* 주요 정보 */}
+              <div className="grid grid-cols-2 gap-4">
+                {selectedMatchedAnnouncement.support_amount && (
+                  <div>
+                    <p className={`text-[11px] font-semibold mb-1 ${dark ? "text-slate-400" : "text-slate-500"}`}>지원금액</p>
+                    <p className="text-[14px] font-bold text-emerald-500">{selectedMatchedAnnouncement.support_amount}</p>
+                  </div>
+                )}
+                {selectedMatchedAnnouncement.deadline_date && selectedMatchedAnnouncement.deadline_date !== "None" && (
+                  <div>
+                    <p className={`text-[11px] font-semibold mb-1 ${dark ? "text-slate-400" : "text-slate-500"}`}>마감일</p>
+                    <p className={`text-[14px] font-bold ${new Date(selectedMatchedAnnouncement.deadline_date) < new Date() ? "text-slate-400" : "text-violet-500"}`}>
+                      {String(selectedMatchedAnnouncement.deadline_date).slice(0, 10)}
+                    </p>
+                  </div>
+                )}
+                {selectedMatchedAnnouncement.support_type && (
+                  <div>
+                    <p className={`text-[11px] font-semibold mb-1 ${dark ? "text-slate-400" : "text-slate-500"}`}>지원유형</p>
+                    <p className="text-[13px]">{selectedMatchedAnnouncement.support_type}</p>
+                  </div>
+                )}
+                {selectedMatchedAnnouncement.eligibility_status && (
+                  <div>
+                    <p className={`text-[11px] font-semibold mb-1 ${dark ? "text-slate-400" : "text-slate-500"}`}>대상 판정</p>
+                    <p className={`text-[13px] font-semibold ${selectedMatchedAnnouncement.eligibility_status === "eligible" ? "text-emerald-500" : selectedMatchedAnnouncement.eligibility_status === "conditional" ? "text-amber-500" : "text-slate-400"}`}>
+                      {selectedMatchedAnnouncement.eligibility_status === "eligible" ? "✓ 신청 가능" : selectedMatchedAnnouncement.eligibility_status === "conditional" ? "⚠ 조건부 가능" : "⊘ 대상 아님"}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* 요약 */}
+              {selectedMatchedAnnouncement.summary && (
+                <div>
+                  <p className={`text-[11px] font-semibold mb-2 ${dark ? "text-slate-400" : "text-slate-500"}`}>공고 요약</p>
+                  <p className={`text-[13px] leading-relaxed ${dark ? "text-slate-300" : "text-slate-600"}`}>
+                    {selectedMatchedAnnouncement.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* 관심 태그 */}
+              {selectedMatchedAnnouncement.matched_interests && selectedMatchedAnnouncement.matched_interests.length > 0 && (
+                <div>
+                  <p className={`text-[11px] font-semibold mb-2 ${dark ? "text-slate-400" : "text-slate-500"}`}>관련 키워드</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedMatchedAnnouncement.matched_interests.slice(0, 5).map((tag: string, idx: number) => (
+                      <span key={idx} className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-[11px] font-semibold ${dark ? "bg-emerald-500/10 text-emerald-400 border-emerald-400/20" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 푸터 */}
+            <div className={`flex-shrink-0 px-6 py-4 border-t flex gap-3 ${dark ? "border-white/10" : "border-slate-200"}`}>
+              <button
+                onClick={() => setSelectedMatchedAnnouncement(null)}
+                className={`flex-1 py-2.5 px-3 rounded-lg font-semibold transition-all active:scale-95 ${dark ? "border border-white/20 text-slate-300 hover:bg-white/10" : "border border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedMatchedAnnouncement(null);
+                  toast("공고 분석을 진행 중입니다.", "info");
+                }}
+                className="flex-1 py-2.5 px-3 bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 transition-all active:scale-95"
+              >
+                상담 계속
               </button>
             </div>
           </div>

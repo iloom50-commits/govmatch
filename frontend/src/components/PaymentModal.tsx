@@ -270,7 +270,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>50회</strong>/월</Feature>
+                <Feature available>공고AI 상담 — <strong>100회</strong>/월</Feature>
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>

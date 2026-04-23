@@ -1517,25 +1517,27 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 
 # ── 플랜 v4: 플랜 차별화 강화 (2026-04-05 확정) ──
 # FREE: 공고AI 1회/월, 저장/알림 불가
-# LITE: 공고AI 20회/월, 저장/알림 가능, 가입 시 7일 무료체험
-# PRO (전문가용): 무제한, 전방위 전문가 에이전트
-# 자금상담 + 공고상담 합산 건수 제한
-# FREE: 3회/월, LITE: 50회/월, PRO: 무제한
+# 플랜별 AI 이용 규칙 (2026-04 개정):
+# - FREE: 모든 AI 차단 (공고 열람만 가능)
+# - LITE: 공고별 상담 AI 100회/월, 정책자금 상담 AI 차단 (PRO 전용)
+# - PRO: 모든 AI 무제한 (정책자금 상담 + 공고별 상담 + 전문가 상담)
 PLAN_LIMITS = {
-    "free": 3,         # FREE: 체험용 월 3회
-    "lite": 50,        # LITE: 자금상담 + 공고상담 합산 50회/월
-    "lite_trial": 50,
-    "basic": 50,       # legacy → LITE 취급
+    # 정책자금 상담 AI (/api/ai/chat) — PRO 전용, FREE/LITE는 차단
+    "free": 0,
+    "lite": 0,
+    "lite_trial": 0,
+    "basic": 0,        # legacy → LITE 취급 (차단)
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
 
 # 공고AI 상담도 PLAN_LIMITS와 동일 (합산 차감)
 CONSULT_LIMITS = {
-    "free": 3,
-    "lite_trial": 50,
-    "lite": 50,
-    "basic": 50,       # legacy → LITE 취급
+    # 공고별 상담 AI (/api/ai/consult) — LITE 월 100회, FREE 차단, PRO 무제한
+    "free": 0,
+    "lite_trial": 100,
+    "lite": 100,
+    "basic": 100,      # legacy → LITE 취급
     "biz": 999999,     # legacy → PRO 취급
     "pro": 999999,
 }
@@ -3151,6 +3153,15 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
 
     if plan in ("trial", "premium"):
         plan = "free"
+
+    # 정책자금 상담 AI는 PRO 전용 — FREE/LITE 차단
+    if plan not in ("pro", "biz"):
+        conn.close()
+        raise HTTPException(
+            status_code=403,
+            detail="정책자금 상담 AI는 PRO 플랜 전용 기능입니다. PRO로 업그레이드하시면 무제한으로 이용하실 수 있습니다."
+        )
+
     limit = PLAN_LIMITS.get(plan, 1)
     usage = u.get("ai_usage_month") or 0
 
@@ -3340,9 +3351,9 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         if ai_usage >= consult_limit:
             conn.close()
             if plan == "free":
-                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 월 20회까지 이용할 수 있습니다."
+                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 월 100회까지 이용할 수 있습니다."
             else:
-                msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
+                msg = f"이번 달 공고 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
             raise HTTPException(status_code=429, detail=msg)
         # 새 세션: 1회 차감 + 세션ID 발급
         session_id = str(_uuid.uuid4())

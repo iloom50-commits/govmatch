@@ -175,12 +175,6 @@ export default function MyConsultsPage() {
                       <span>💬 {item.message_count}턴</span>
                     </div>
 
-                    {item.preview && (
-                      <p className="text-[12px] text-slate-600 line-clamp-2 mb-3 bg-slate-50 rounded-lg p-2.5">
-                        {item.preview}
-                      </p>
-                    )}
-
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-slate-400">
                         {new Date(item.created_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}

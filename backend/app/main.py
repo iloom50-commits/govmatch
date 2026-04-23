@@ -7810,24 +7810,34 @@ def admin_cleanup_db():
 
 
 def _run_manual_sync_in_thread():
-    """관리자 수동 동기화를 별도 스레드에서 실행"""
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """관리자 수동 동기화 — 일일 통합 파이프라인 전체를 실행.
+
+    이전에는 admin_scraper.run_all()만 호출하여 Playwright 미설치 환경에서
+    무용지물이었음. 지금은 스케줄러와 동일한 run_daily_pipeline을 호출.
+    """
+    from app.services.patrol.daily_pipeline import run_daily_pipeline
     manual_sync_status["running"] = True
     manual_sync_status["last_result"] = "진행 중..."
     manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
+    conn = None
     try:
-        loop.run_until_complete(admin_scraper.run_all())
-        manual_sync_status["last_result"] = "완료"
-        _log_system("manual_sync", "collection", "수동 URL 수집 완료", "success")
+        conn = get_db_pool().getconn()
+        result = run_daily_pipeline(conn)
+        err_cnt = result.get("error_count", 0)
+        total = result.get("total_elapsed", 0)
+        summary = f"완료 ({total}s, 에러 {err_cnt})"
+        manual_sync_status["last_result"] = summary
+        manual_sync_status["last_pipeline"] = result
+        _log_system("manual_sync", "collection", summary, "success")
     except Exception as e:
         manual_sync_status["last_result"] = f"오류: {e}"
-        _log_system("manual_sync", "collection", f"수동 URL 수집 오류: {e}", "error")
+        _log_system("manual_sync", "collection", f"수동 동기화 오류: {e}", "error")
     finally:
+        if conn is not None:
+            try: get_db_pool().putconn(conn)
+            except Exception: pass
         manual_sync_status["running"] = False
         manual_sync_status["last_time"] = datetime.datetime.now().isoformat()
-        loop.close()
 
 
 @app.post("/api/admin/sync-manual", dependencies=[Depends(_verify_admin)])

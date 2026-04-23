@@ -147,19 +147,28 @@ class NotificationService:
 
         APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
 
-        # 맞춤 공고 (최대 5건)
+        # 맞춤 공고 (최대 5건) - 클릭 가능한 카드 형식
         top_matches = matches[:5]
         custom_rows = ""
         for m in top_matches:
             title = m['program_title']
+            announcement_id = m.get('announcement_id', m.get('id'))
+
             # 금액/D-day 정보가 있으면 표시
             extra = []
             if m.get('support_amount'):
                 extra.append(m['support_amount'])
             if m.get('d_day'):
                 extra.append(m['d_day'])
-            suffix = f" ({', '.join(extra)})" if extra else ""
-            custom_rows += f'<p style="margin:0 0 8px; color:#1e293b; font-size:14px; line-height:1.6;">  {title}{suffix}</p>\n'
+            extra_text = f" ({', '.join(extra)})" if extra else ""
+
+            # 공고별 링크 (공고 카드 클릭 시 해당 공고로 이동)
+            announcement_url = f"{APP_URL}?aid={announcement_id}" if announcement_id else APP_URL
+
+            custom_rows += f'''<a href="{announcement_url}" style="display:block; margin:0 0 12px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; text-decoration:none; transition:all 0.2s;">
+  <p style="margin:0 0 4px; color:#1e293b; font-size:14px; font-weight:600; line-height:1.6;">{title}</p>
+  <p style="margin:0; color:#64748b; font-size:12px;">{extra_text}</p>
+</a>\n'''
 
         return f"""
         <div style="max-width:520px; margin:0 auto; font-family:-apple-system,'Pretendard',sans-serif; color:#1e293b;">

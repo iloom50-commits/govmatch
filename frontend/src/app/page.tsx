@@ -115,6 +115,13 @@ export default function Home() {
     );
   })();
 
+  // AI 챗봇에서 "지금 채우기" 클릭 시 프로필 설정 열기
+  useEffect(() => {
+    const handler = () => { if (step === "RESULTS") setStep("PROFILE"); };
+    window.addEventListener("open-profile-settings", handler);
+    return () => window.removeEventListener("open-profile-settings", handler);
+  }, [step]);
+
   // 맞춤 설정 모달: 최초 1회만
   useEffect(() => {
     if (!isProfileIncomplete || step !== "RESULTS") return;

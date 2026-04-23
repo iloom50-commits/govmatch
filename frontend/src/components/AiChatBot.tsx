@@ -98,6 +98,8 @@ interface ChatMessage {
   choices?: string[];
   announcements?: RelatedAnnouncement[];
   done?: boolean;
+  profilePrompt?: boolean;       // 프로필 부족 시 "지금 채우기" 버튼 표시
+  missingFields?: string[];      // 부족한 필드 목록
 }
 
 type ChatMode = "select" | "free" | "consultant";
@@ -313,13 +315,32 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
       const profileSummary = userProfile ? buildProfileSummary(userProfile) : null;
       const hasProfile = profileSummary && profileSummary.trim().length > 0;
 
+      // 부족한 핵심 필드 감지
+      const bizRequiredFields: { key: string; label: string }[] = [
+        { key: "company_name", label: "기업명" },
+        { key: "industry_code", label: "업종" },
+        { key: "revenue_bracket", label: "매출 규모" },
+        { key: "employee_count_bracket", label: "직원수" },
+      ];
+      const indivRequiredFields: { key: string; label: string }[] = [
+        { key: "age_range", label: "나이대" },
+        { key: "income_level", label: "소득 수준" },
+        { key: "employment_status", label: "고용 상태" },
+      ];
+      const requiredFields = fundMode === "individual_fund" ? indivRequiredFields : bizRequiredFields;
+      const missingFields = userProfile
+        ? requiredFields.filter(f => !userProfile[f.key]).map(f => f.label)
+        : requiredFields.map(f => f.label);
+
       const baseText = fundMode === "individual_fund"
         ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."
         : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요.";
 
-      const profileNote = hasProfile
+      const profileNote = hasProfile && missingFields.length === 0
         ? `\n\n📋 **등록된 정보로 맞춤 상담합니다:**\n${profileSummary}`
-        : `\n\n💡 프로필을 설정하시면 더 정확한 맞춤 상담이 가능합니다.`;
+        : hasProfile && missingFields.length > 0
+          ? `\n\n📋 **등록된 정보:** ${profileSummary}\n\n⚠️ **부족한 정보:** ${missingFields.join(", ")}`
+          : "";
 
       setMessages([{
         role: "assistant",
@@ -327,6 +348,8 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
         choices: fundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
           : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
+        profilePrompt: missingFields.length > 0,
+        missingFields: missingFields.length > 0 ? missingFields : undefined,
       }]);
     } else {
       // consultant: 고객 유형 선택 화면 먼저 표시
@@ -1818,6 +1841,23 @@ ${convHtml}
                           </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {/* 프로필 부족 시 "지금 채우기" 버튼 */}
+                    {msg.role === "assistant" && msg.profilePrompt && i === messages.length - 1 && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p className="text-[12px] text-amber-700 font-semibold mb-2">
+                          📝 부족한 정보: {msg.missingFields?.join(", ")}
+                        </p>
+                        <button
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent("open-profile-settings"));
+                          }}
+                          className="px-4 py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
+                        >
+                          지금 채우기 →
+                        </button>
                       </div>
                     )}
 

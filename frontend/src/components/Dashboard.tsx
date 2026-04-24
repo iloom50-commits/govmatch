@@ -7,6 +7,7 @@ import NotificationModal from "./NotificationModal";
 import SmartDocModal from "./SmartDocModal";
 import ProDashboard from "./ProDashboard";
 import { useToast } from "@/components/ui/Toast";
+import { useModalBack } from "@/hooks/useModalBack";
 
 // 맞춤형 알림 버튼 + 말풍선 안내
 function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => void }) {
@@ -690,6 +691,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
     return () => { document.body.style.overflow = ""; };
   }, [sidebarOpen]);
+
+  // 모바일 뒤로가기로 사이드바 닫기
+  useModalBack(sidebarOpen, () => setSidebarOpen(false));
 
   const isFree = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
 

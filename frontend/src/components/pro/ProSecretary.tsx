@@ -287,12 +287,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     onClose();
   }, [activeView, clientCategory, messages.length, consultType, onClose]);
 
+  const handleBackRef = useRef(handleBack);
+  useEffect(() => { handleBackRef.current = handleBack; }, [handleBack]);
+
   useEffect(() => {
     window.history.pushState({ proDash: true }, "");
-    const onPopState = () => handleBack();
+    const onPopState = () => handleBackRef.current();
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [handleBack]);
+  }, []); // 마운트 시 1회만 등록 — 상태 변화마다 history entry 중복 추가 방지
 
   const getToken = () => localStorage.getItem("auth_token") || "";
   const headers = useCallback(() => ({
@@ -569,7 +572,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     };
 
     // 사용자 시각화용 요약 메시지 (messages에 기록)
-    const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "고객";
+    const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "사업자" : clientCategory === "individual" ? "개인" : "고객";
     const summaryLines = [`📋 **${catLabel} 고객 프로필로 매칭 실행**`];
     if (matchProfile.company_name) summaryLines.push(`• ${isIndiv ? "이름" : "기업명"}: ${matchProfile.company_name}`);
     if (matchProfile.industry_code) summaryLines.push(`• 업종: ${f.industry || matchProfile.industry_code}`);
@@ -784,7 +787,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 <div className={`flex items-center justify-between px-4 lg:px-6 h-10 border-b flex-shrink-0 ${t.border}`}>
                   <div className="flex items-center gap-2 text-[12px]">
                     <span className={`font-semibold ${dark ? "text-violet-400" : "text-violet-700"}`}>
-                      {selectedClient ? selectedClient.client_name : clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : clientCategory === "individual" ? "개인" : "유형 미정"}
+                      {selectedClient ? selectedClient.client_name : clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "사업자" : clientCategory === "individual" ? "개인" : "유형 미정"}
                     </span>
                     <span className={`${t.muted}`}>·</span>
                     <span className={`${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label || "대기"}</span>
@@ -859,16 +862,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         ? "고객 정보 입력 → 정책자금·보증·대출 전문 상담"
                         : "고객 정보 수집 → 맞춤 지원사업 매칭 → 자격 요건 분석"}
                     </p>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-4 max-w-xl mx-auto w-full">
                       {[
                         { key: "corporate" as ClientCategory, label: "사업자", icon: "🏢", desc: "법인 · 개인사업자" },
                         { key: "individual" as ClientCategory, label: "개인", icon: "👤", desc: "취업·복지·주거" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
-                          className={`p-4 rounded-xl border transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/40 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-400 hover:bg-violet-50 bg-white"}`}>
-                          <span className="text-2xl">{opt.icon}</span>
-                          <p className={`text-[13px] font-bold mt-2 ${dark ? "text-slate-200" : "text-slate-800"}`}>{opt.label}</p>
-                          <p className={`text-[10px] mt-0.5 ${t.muted}`}>{opt.desc}</p>
+                          className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
+                          <span className="text-4xl">{opt.icon}</span>
+                          <p className={`text-base font-bold mt-3 mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>{opt.label}</p>
+                          <p className={`text-[12px] ${t.muted}`}>{opt.desc}</p>
                         </button>
                       ))}
                     </div>

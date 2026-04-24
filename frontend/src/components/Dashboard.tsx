@@ -1208,6 +1208,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   );
 
   return (
+    <>
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
       {/* [프로모션 2026-04-22 ~ 2026-05-23] LITE 1개월 무료 배너 */}
@@ -1683,12 +1684,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
         </main>
       </div>
+    </div>
 
-      {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
+    {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
       {isPublic && !profile ? (
         <button
           onClick={handleLoginRequired}
-          className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+          className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
         >
           <span className="text-base">🚀</span>
           <span className="text-xs font-bold">무료 가입</span>
@@ -1696,7 +1698,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       ) : (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 relative"
+          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all flex items-center gap-2"
         >
           <span className="text-base">👤</span>
           <span className="text-xs font-bold">내 정보</span>
@@ -1943,6 +1945,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

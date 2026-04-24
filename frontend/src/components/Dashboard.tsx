@@ -1208,7 +1208,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   );
 
   return (
-    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
+    <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
       {/* [프로모션 2026-04-22 ~ 2026-05-23] LITE 1개월 무료 배너 */}
       {planStatus && (planStatus.plan === "lite" || planStatus.plan === "lite_trial") && (() => {

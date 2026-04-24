@@ -168,6 +168,8 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isDone, setIsDone] = useState(false);
 
   const handleBackPress = useCallback(() => {
     if (messages.length > 0 && !isDone) {
@@ -192,14 +194,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const [clientCategory, setClientCategory] = useState<"" | "individual_biz" | "corporate" | "individual" | "unknown">("");
   const [selectedExistingClient, setSelectedExistingClient] = useState<number | null>(null);
   const [existingClients, setExistingClients] = useState<any[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [consultantProfile, setConsultantProfile] = useState<Record<string, any> | null>(null);
   const [matchingInProgress, setMatchingInProgress] = useState(false);
   const [formProfile, setFormProfile] = useState<FormProfile>({ ...EMPTY_FORM });
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isDone, setIsDone] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 

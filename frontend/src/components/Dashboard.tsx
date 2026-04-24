@@ -371,6 +371,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const [notifyShortcut, setNotifyShortcut] = useState(false);  // true면 모달이 알림 설정만 바로 표시 (프로필 스텝 스킵)
   const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
+  const [showPromoModal, setShowPromoModal] = useState(false);
+
+  // 프로필 완성도 체크 (사이드바/알림 버튼 공통 사용)
+  const profileCity = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
+  const hasProfile = !!(
+    profileCity || profile?.age_range || profile?.gender || profile?.income_level ||
+    profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
+    profile?.employee_count_bracket || profile?.founded_date || profile?.is_pre_founder ||
+    (profile?.certifications && String(profile.certifications).length > 0) ||
+    (profile?.interests && String(profile.interests).length > 0)
+  );
+
   // 프로필 미완성(로그인O) → NotificationModal, 비로그인 → onLoginRequired
   const handleLoginRequired = () => {
     if (profile) { setIsNotifyOpen(true); setNotifyShortcut(false); } else { onLoginRequired?.(); }
@@ -962,7 +974,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
                 <button
-                  onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); setSidebarOpen(false); }}
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    if (!hasProfile) {
+                      // 프로필 미완성 → 프로필 설정 폼으로 이동
+                      onEditProfile();
+                    } else {
+                      // 프로필 완성 → 알림 설정 모달 바로 열기
+                      setNotifyShortcut(true);
+                      setIsNotifyOpen(true);
+                    }
+                  }}
                   className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
                 >
                   1분만에 설정하기
@@ -1236,7 +1258,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         // 프로모션 기간 종료 시 자동 숨김
         if (daysLeft === 0 || now > promoEnd) return null;
         return (
-          <div className="mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md">
+          <button
+            onClick={() => setShowPromoModal(true)}
+            className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
+          >
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className="text-lg">🎁</span>
@@ -1249,8 +1274,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </div>
                 </div>
               </div>
+              <span className="text-[11px] opacity-70 flex-shrink-0">자세히 ›</span>
             </div>
-          </div>
+          </button>
         );
       })()}
 
@@ -1733,6 +1759,45 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         shortcutMode={notifyShortcut}
       />
       <SmartDocModal />
+
+      {/* LITE 프로모션 공지 모달 */}
+      {showPromoModal && (
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPromoModal(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 pb-8 sm:pb-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🎁</span>
+                <h3 className="text-[16px] font-black text-slate-900">LITE 1개월 무료 체험</h3>
+              </div>
+              <button onClick={() => setShowPromoModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all text-sm">✕</button>
+            </div>
+            <div className="space-y-3 mb-5">
+              <div className="bg-violet-50 rounded-xl p-4 border border-violet-100">
+                <p className="text-[13px] font-bold text-violet-700 mb-1">🗓 체험 기간</p>
+                <p className="text-[13px] text-slate-700">2026년 4월 22일 ~ <strong>5월 23일</strong>까지</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-bold text-slate-500 uppercase tracking-wide">무료 제공 기능</p>
+                {[
+                  ["✅", "공고AI 상담 월 50회"],
+                  ["✅", "맞춤 공고 알림 (이메일·푸시)"],
+                  ["✅", "관심 공고 저장 · 일정 관리"],
+                  ["✅", "AI 스마트 매칭 (전체 공고)"],
+                ].map(([icon, text]) => (
+                  <div key={text} className="flex items-center gap-2 text-[13px] text-slate-700">
+                    <span>{icon}</span><span>{text}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">체험 기간 종료 후 자동으로 무료 플랜(공고AI 상담 월 3회)으로 전환됩니다. 별도 해지 불필요.</p>
+            </div>
+            <button onClick={() => setShowPromoModal(false)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-[14px] hover:bg-indigo-700 transition-all active:scale-[0.98]">
+              확인
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* PRO 고객사 관리 AI */}
       {showProDashboard && (

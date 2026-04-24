@@ -932,23 +932,41 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
 
-      {/* 🔔 맞춤 알림 미설정 — 최상단 CTA 카드 (설정되면 자동 숨김) */}
-      {profile && !hasNotificationSet && (
-        <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
+      {/* 🔔 맞춤 알림 카드 — 미설정(핑크 CTA) / 완료(초록 확인) */}
+      {profile && (
+        hasNotificationSet ? (
+          <div className="relative z-10 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">✅</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-emerald-800">맞춤 알림 설정 완료</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">평일 오전 9시에 맞춤 공고를 받아보고 있어요</p>
+              </div>
               <button
-                onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); setSidebarOpen(false); }}
-                className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
+                onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
+                className="flex-shrink-0 text-[11px] font-bold text-emerald-600 hover:text-emerald-800 underline underline-offset-2 transition-colors"
               >
-                1분만에 설정하기
+                수정
               </button>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
+                <button
+                  onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); setSidebarOpen(false); }}
+                  className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
+                >
+                  1분만에 설정하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
@@ -1132,11 +1150,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           )}
         </div>
       )}
-
-      <NudgeBubbleButton
-        profile={profile}
-        onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
-      />
 
       {/* PWA 설치는 우측 상단 버튼으로 통합 — 로그인 후 사이드바에서도 제거 */}
 

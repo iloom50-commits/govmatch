@@ -1852,7 +1852,8 @@ ${convHtml}
                         </p>
                         <button
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent("open-profile-settings"));
+                            setOpen(false);
+                            setTimeout(() => window.dispatchEvent(new CustomEvent("open-profile-settings")), 100);
                           }}
                           className="px-4 py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
                         >

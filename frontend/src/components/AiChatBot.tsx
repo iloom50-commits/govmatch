@@ -1910,12 +1910,25 @@ ${convHtml}
                                   deadline_date: displayDeadline,
                                   department: displayDept,
                                   category: ann.category,
+                                  origin_url: ann.origin_url,
                                 }}
                               }));
                             }}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
+                              {ann.origin_url ? (
+                                <a
+                                  href={ann.origin_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate block hover:text-indigo-600 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {ann.title}
+                                </a>
+                              ) : (
+                                <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
+                              )}
                               <div className="flex items-center gap-2 mt-0.5 text-[11px] md:text-[9px] text-slate-400">
                                 {displayDept && <span>{String(displayDept).slice(0, 10)}</span>}
                                 {displayAmount && <span className="text-rose-500 font-bold">{formatSupportAmount(displayAmount)}</span>}

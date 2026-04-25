@@ -362,7 +362,7 @@ def search_knowledge_for_rag(query: str, db_conn, top_k_ann: int = 5, top_k_kb: 
         cur.execute("""
             SELECT a.announcement_id, a.title, a.department, a.category,
                    a.support_amount, a.region, a.summary_text,
-                   a.deadline_date, a.target_type,
+                   a.deadline_date, a.target_type, a.origin_url,
                    1 - (e.embedding <=> %s::vector) AS similarity
             FROM announcement_embeddings e
             JOIN announcements a ON e.announcement_id = a.announcement_id
@@ -386,6 +386,7 @@ def search_knowledge_for_rag(query: str, db_conn, top_k_ann: int = 5, top_k_kb: 
                 "summary": (d.get("summary_text") or "")[:400],
                 "deadline": str(d.get("deadline_date") or "")[:10],
                 "target_type": d.get("target_type"),
+                "origin_url": d.get("origin_url") or "",
                 "similarity": round(sim, 3),
             })
     except Exception as e:

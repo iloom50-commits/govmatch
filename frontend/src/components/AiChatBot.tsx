@@ -119,8 +119,6 @@ interface ChatMessage {
   choices?: string[];
   announcements?: RelatedAnnouncement[];
   done?: boolean;
-  profilePrompt?: boolean;       // 프로필 부족 시 "지금 채우기" 버튼 표시
-  missingFields?: string[];      // 부족한 필드 목록
 }
 
 type ChatMode = "select" | "free" | "consultant";
@@ -245,9 +243,6 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const [showReport, setShowReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 자금상담 — 프로필 미완성 차단 여부 (첫 메시지에 profilePrompt=true이면 차단)
-  const isProfileBlocked = mode === "free" && messages.length === 1 && messages[0]?.profilePrompt === true;
-
   // 드래그 이동
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -316,16 +311,15 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     return () => window.removeEventListener("consult-result", handler);
   }, [mode, open]);
 
-  // 프로필 저장 후 자금상담 자동 재오픈 (B안)
+  // 프로필 게이트 통과 후 자금상담 오픈
   useEffect(() => {
     const handler = () => {
-      setMode("free");
-      setMessages([]);
       setOpen(true);
+      setDragPos(null);
       setTimeout(() => startMode("free"), 100);
     };
-    window.addEventListener("profile-saved-reopen-fund-chat", handler);
-    return () => window.removeEventListener("profile-saved-reopen-fund-chat", handler);
+    window.addEventListener("open-fund-chat", handler);
+    return () => window.removeEventListener("open-fund-chat", handler);
   }, []);
 
   // 로그인된 사용자 프로필 가져오기
@@ -370,42 +364,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     if (selectedMode === "free") {
       const userProfile = await fetchUserProfile();
       const profileSummary = userProfile ? buildProfileSummary(userProfile) : null;
-      const hasProfile = profileSummary && profileSummary.trim().length > 0;
-
-      const bizRequiredFields: { key: string; label: string }[] = [
-        { key: "company_name", label: "기업명" },
-        { key: "revenue_bracket", label: "매출 규모" },
-        { key: "employee_count_bracket", label: "직원수" },
-      ];
-      const indivRequiredFields: { key: string; label: string }[] = [
-        { key: "age_range", label: "나이대" },
-        { key: "income_level", label: "소득 수준" },
-        { key: "employment_status", label: "고용 상태" },
-      ];
-      const requiredFields = activeFundMode === "individual_fund" ? indivRequiredFields : bizRequiredFields;
-      const missingFields = userProfile
-        ? requiredFields.filter(f => !userProfile[f.key]).map(f => f.label)
-        : requiredFields.map(f => f.label);
 
       const baseText = activeFundMode === "individual_fund"
         ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."
         : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요.";
 
-      if (missingFields.length > 0) {
-        // 프로필 미완성 → 상담 차단, 채우기 유도만 표시
-        const blockText = baseText
-          + `\n\n⚠️ **정확한 맞춤 상담을 위해 아래 정보가 필요합니다:**\n${missingFields.map(f => `• ${f}`).join("\n")}\n\n아래 **[지금 채우기]** 버튼을 눌러 정보를 입력해 주세요. 입력 후 상담이 시작됩니다.`;
-        setMessages([{
-          role: "assistant",
-          text: blockText,
-          choices: [],
-          profilePrompt: true,
-          missingFields,
-        }]);
-        return;
-      }
-
-      const profileNote = hasProfile
+      const profileNote = profileSummary?.trim()
         ? `\n\n📋 **등록된 정보로 맞춤 상담합니다:**\n${profileSummary}`
         : "";
 
@@ -415,7 +379,6 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
         choices: activeFundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
           : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
-        profilePrompt: false,
       }]);
     } else {
       // consultant: 고객 유형 선택 화면 먼저 표시
@@ -1208,7 +1171,7 @@ ${convHtml}
         {/* 플로팅 AI 상담 버튼 */}
         <FabWithBubble
           label="AI 지원사업 상담"
-          onClick={() => { setOpen(true); setDragPos(null); }}
+          onClick={() => window.dispatchEvent(new CustomEvent("request-fund-chat"))}
           botPhase={botPhase}
         />
       </>
@@ -1945,7 +1908,8 @@ ${convHtml}
                               <button
                                 className="flex-1 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 text-[11px] md:text-[10px] font-bold hover:bg-indigo-100 active:scale-95 transition-all text-center"
                                 onClick={() => {
-                                  window.dispatchEvent(new CustomEvent("open-ai-consult", {
+                                  setOpen(false);
+                                  window.dispatchEvent(new CustomEvent("request-ai-consult", {
                                     detail: { announcement: {
                                       announcement_id: annId,
                                       title: ann.title,
@@ -1967,26 +1931,6 @@ ${convHtml}
                       </div>
                     )}
 
-                    {/* 프로필 부족 시 "지금 채우기" 버튼 */}
-                    {msg.role === "assistant" && msg.profilePrompt && i === messages.length - 1 && (
-                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                        <p className="text-[12px] text-amber-700 font-semibold mb-2">
-                          📝 부족한 정보: {msg.missingFields?.join(", ")}
-                        </p>
-                        <button
-                          onClick={() => {
-                            localStorage.setItem("reopen_fund_chat_after_profile", "1");
-                            // 챗봇은 열어두고 프로필 폼만 위에 표시 (z-[100] > 챗봇 z-index)
-                            // 저장 완료 시 profile-saved-reopen-fund-chat 이벤트로 메시지 초기화+재시작
-                            // 취소 시 챗봇 상태 그대로 유지
-                            window.dispatchEvent(new CustomEvent("open-notification-modal"));
-                          }}
-                          className="px-4 py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
-                        >
-                          지금 채우기 →
-                        </button>
-                      </div>
-                    )}
 
                     {/* Choice buttons */}
                     {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && !matchingInProgress && (
@@ -2091,15 +2035,15 @@ ${convHtml}
                             handleSend(input);
                           }
                         }}
-                        placeholder={isProfileBlocked ? "정보를 먼저 입력해야 상담이 가능합니다." : mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
-                        disabled={loading || matchingInProgress || isProfileBlocked}
+                        placeholder={mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
+                        disabled={loading || matchingInProgress}
                         className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[16px] md:text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
                           mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
                         }`}
                       />
                       <button
                         onClick={() => handleSend(input)}
-                        disabled={loading || matchingInProgress || isProfileBlocked || !input.trim()}
+                        disabled={loading || matchingInProgress || !input.trim()}
                         className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
                           mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
                         }`}

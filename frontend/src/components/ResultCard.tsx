@@ -444,7 +444,7 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
                   if (isExpired) { onUpgrade?.(); return; }
                   if (isConsultBlocked) { toast("AI 상담은 곧 유료 서비스로 제공될 예정입니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
                   if (typeof window !== "undefined") {
-                    window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: res } }));
+                    window.dispatchEvent(new CustomEvent("request-ai-consult", { detail: { announcement: res } }));
                   }
                 }}
                 className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1

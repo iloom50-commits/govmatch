@@ -416,12 +416,48 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (autoOpenNotify) { setIsNotifyOpen(true); setNotifyShortcut(false); onNotifyOpened?.(); }
   }, [autoOpenNotify]);
 
-  // AI챗봇 "지금 채우기" 버튼 → NotificationModal 열기
+  // AI챗봇 "지금 채우기" 버튼 → NotificationModal 열기 (레거시 호환)
   useEffect(() => {
     const handler = () => { setIsNotifyOpen(true); setNotifyShortcut(false); };
     window.addEventListener("open-notification-modal", handler);
     return () => window.removeEventListener("open-notification-modal", handler);
   }, []);
+
+  // 프로필 게이트: 프로필 미완성 시 폼 먼저 → 저장 후 원래 액션 자동 실행
+  const pendingActionRef = useRef<(() => void) | null>(null);
+  const checkProfileThenRun = useCallback((action: () => void) => {
+    if (hasProfile) {
+      action();
+    } else {
+      pendingActionRef.current = action;
+      setIsNotifyOpen(true);
+      setNotifyShortcut(false);
+      setSidebarOpen(false);
+    }
+  }, [hasProfile]);
+
+  // request-ai-consult → 프로필 게이트 → open-ai-consult
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      checkProfileThenRun(() => {
+        window.dispatchEvent(new CustomEvent("open-ai-consult", { detail }));
+      });
+    };
+    window.addEventListener("request-ai-consult", handler);
+    return () => window.removeEventListener("request-ai-consult", handler);
+  }, [checkProfileThenRun]);
+
+  // request-fund-chat → 프로필 게이트 → open-fund-chat
+  useEffect(() => {
+    const handler = () => {
+      checkProfileThenRun(() => {
+        window.dispatchEvent(new CustomEvent("open-fund-chat"));
+      });
+    };
+    window.addEventListener("request-fund-chat", handler);
+    return () => window.removeEventListener("request-fund-chat", handler);
+  }, [checkProfileThenRun]);
 
   // 맞춤알림 설정 여부 체크 — 미설정 시 빨간 점/배지 노출
   useEffect(() => {
@@ -1819,12 +1855,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         businessNumber={profile?.business_number}
         onSave={() => {
           onRefresh?.();
-          // refreshProfile 완료 후 챗봇 재오픈 — 완료 전 열면 stale profile로 modal이 열림
           (async () => {
             await onProfileRefresh?.();
-            if (localStorage.getItem("reopen_fund_chat_after_profile")) {
-              localStorage.removeItem("reopen_fund_chat_after_profile");
-              window.dispatchEvent(new CustomEvent("profile-saved-reopen-fund-chat"));
+            // 프로필 게이트에서 저장된 액션 실행
+            if (pendingActionRef.current) {
+              pendingActionRef.current();
+              pendingActionRef.current = null;
             }
           })();
         }}

@@ -8130,6 +8130,51 @@ def get_reanalyze_status():
     return {"status": "SUCCESS", "data": reanalyze_status}
 
 
+@app.post("/api/admin/reset-gov24-individual", dependencies=[Depends(_verify_admin)])
+def reset_gov24_individual_analysis():
+    """gov.kr 개인지원사업 공고 중 잘못 분석된 것 초기화 — ai_analyzed_at 리셋 + announcement_analysis 삭제"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # 대상: origin_url이 gov.kr 개인지원사업 패턴인 공고
+        cur.execute("""
+            SELECT announcement_id FROM announcements
+            WHERE origin_url ~ 'gov\\.kr/portal/rcv[a-zA-Z]*Svc/dtlEx/'
+        """)
+        ids = [r["announcement_id"] for r in cur.fetchall()]
+        if not ids:
+            return {"status": "SUCCESS", "reset": 0, "message": "대상 없음"}
+
+        id_tuple = tuple(ids)
+
+        # 1) announcement_analysis 삭제 (상담용 분석 초기화)
+        cur.execute("DELETE FROM announcement_analysis WHERE announcement_id = ANY(%s)", (list(id_tuple),))
+        deleted_analysis = cur.rowcount
+
+        # 2) ai_analyzed_at 리셋 (매칭용 분석 초기화 → reanalyze 루프가 다시 처리)
+        cur.execute("""
+            UPDATE announcements
+            SET ai_analyzed_at = NULL,
+                eligibility_logic = NULL
+            WHERE announcement_id = ANY(%s)
+        """, (list(id_tuple),))
+        reset_count = cur.rowcount
+
+        conn.commit()
+        return {
+            "status": "SUCCESS",
+            "total_gov24_individual": len(ids),
+            "reset_ai_analyzed_at": reset_count,
+            "deleted_announcement_analysis": deleted_analysis,
+            "message": f"gov.kr 개인지원사업 {reset_count}건 초기화 완료. reanalyze 루프로 재분석 필요.",
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Auto_Gov_Macting API"}

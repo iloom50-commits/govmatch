@@ -1913,17 +1913,8 @@ ${convHtml}
                                 </span>
                               )}
                             </div>
-                            {/* 버튼 3개 */}
+                            {/* 버튼 2개 */}
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              {/* 메인 목록에서 보기 */}
-                              <a
-                                href={`/?aid=${annId}`}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[11px] md:text-[10px] font-medium hover:bg-slate-200 active:scale-95 transition-all"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                                목록에서 보기
-                              </a>
                               {/* 원문 바로가기 (origin_url 있을 때만) */}
                               {ann.origin_url && (
                                 <a

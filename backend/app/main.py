@@ -1053,10 +1053,6 @@ async def lifespan(app):
     if pipeline_scheduler:
         try: pipeline_scheduler.shutdown(wait=False)
         except: pass
-    try:
-        await task_digest
-    except asyncio.CancelledError:
-        pass
 
 
 app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -3444,9 +3440,14 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         consult_log_id = None
         print(f"[ConsultLog] Save error: {log_err}")
 
+    # 최종 방어선: reply가 비어있으면 공고 제목 기반 안내 메시지로 대체
+    final_reply = result.get("reply", "")
+    if not final_reply or not final_reply.strip():
+        final_reply = f"**{a.get('title', '공고')}** 분석을 시작합니다. 아래 선택지를 눌러 질문해 주세요."
+
     return {
         "status": "SUCCESS",
-        "reply": result.get("reply", ""),
+        "reply": final_reply,
         "choices": result.get("choices", []),
         "done": is_done,
         "conclusion": result.get("conclusion") if is_done else None,

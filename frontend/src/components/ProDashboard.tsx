@@ -779,6 +779,15 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<any>(null);
 
+  // 상세 진입 시 history entry 추가 → 브라우저 뒤로가기가 목록으로 돌아오게 함
+  useEffect(() => {
+    if (!detail) return;
+    window.history.pushState({ reportDetail: true }, "");
+    const onPop = () => setDetail(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [detail]);
+
   const fetchReports = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/pro/reports`, { headers: headers() });
@@ -800,19 +809,25 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
     setSelectedClient(null);
   }, [headers, fetchReports, clientType]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (forceRegenerate = false) => {
     if (!selectedClient) { toast("고객사를 선택하세요", "error"); return; }
     setGenerating(true);
     try {
       const res = await fetch(`${API}/api/pro/reports/generate`, {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({ client_profile_id: selectedClient }),
+        body: JSON.stringify({ client_profile_id: selectedClient, force_regenerate: forceRegenerate }),
       });
       const data = await res.json();
       if (res.ok) {
-        toast(`리포트 생성 완료 — ${data.total}건 매칭`, "success");
-        fetchReports();
+        if (data.status === "CACHED") {
+          toast("기존 보고서를 불러왔습니다", "success");
+        } else {
+          toast(`리포트 생성 완료 — ${data.total}건 매칭`, "success");
+        }
+        await fetchReports();
+        // 생성(또는 캐시) 된 보고서를 바로 상세로 이동
+        if (data.report_id) handleDetail(data.report_id);
       } else {
         toast(data.detail || "오류 발생", "error");
       }
@@ -833,10 +848,38 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
   if (detail) {
     return (
       <div>
-        <button onClick={() => setDetail(null)} className="flex items-center gap-1 text-sm text-violet-600 font-semibold mb-4 hover:text-violet-800">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-          목록으로
-        </button>
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => setDetail(null)} className="flex items-center gap-1 text-sm text-violet-600 font-semibold hover:text-violet-800">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+            목록으로
+          </button>
+          <button
+            onClick={async () => {
+              if (!detail.client_profile_id) return;
+              setGenerating(true);
+              try {
+                const res = await fetch(`${API}/api/pro/reports/generate`, {
+                  method: "POST",
+                  headers: headers(),
+                  body: JSON.stringify({ client_profile_id: detail.client_profile_id, force_regenerate: true }),
+                });
+                const data = await res.json();
+                if (res.ok && data.report_id) {
+                  toast("보고서를 새로 생성했습니다", "success");
+                  const r2 = await fetch(`${API}/api/pro/reports/${data.report_id}`, { headers: headers() });
+                  const d2 = await r2.json();
+                  if (d2.report) setDetail(d2.report);
+                  fetchReports();
+                } else { toast(data.detail || "오류", "error"); }
+              } catch { toast("서버 오류", "error"); }
+              setGenerating(false);
+            }}
+            disabled={generating}
+            className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-[11px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50"
+          >
+            {generating ? "생성 중..." : "🔄 다시 생성"}
+          </button>
+        </div>
         <div className="mb-6">
           <h3 className="text-lg font-bold text-slate-900">{detail.title}</h3>
           <p className="text-sm text-slate-500 mt-1">{detail.client_name} | {detail.address_city} | {detail.revenue_bracket}</p>
@@ -944,9 +987,9 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
           <option value="">고객사 선택</option>
           {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
         </select>
-        <button onClick={handleGenerate} disabled={generating || !selectedClient}
+        <button onClick={() => handleGenerate(false)} disabled={generating || !selectedClient}
           className="px-5 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap">
-          {generating ? "분석 중..." : "리포트 생성"}
+          {generating ? "분석 중..." : "리포트 보기"}
         </button>
       </div>
 

@@ -140,15 +140,9 @@ export default function Home() {
   const [publicCategoryCountsBiz, setPublicCategoryCountsBiz] = useState<Record<string, number>>({});
   const [publicCategoryCountsInd, setPublicCategoryCountsInd] = useState<Record<string, number>>({});
 
-  // 비로그인: 카테고리 건수만 초기 로드 (데이터 로딩은 Dashboard에서 직접)
-  useEffect(() => {
-    Promise.all([
-      fetch(`${API}/api/announcements/public?page=1&size=1&target_type=business`).then(r => r.json()),
-      fetch(`${API}/api/announcements/public?page=1&size=1&target_type=individual`).then(r => r.json()),
-    ]).then(([biz, ind]) => {
-      if (biz.category_counts) setPublicCategoryCountsBiz(biz.category_counts);
-      if (ind.category_counts) setPublicCategoryCountsInd(ind.category_counts);
-    }).catch(() => {});
+  const handleCategoryCountsLoaded = useCallback((counts: Record<string, number>, tab: "business" | "individual") => {
+    if (tab === "business") setPublicCategoryCountsBiz(counts);
+    else setPublicCategoryCountsInd(counts);
   }, []);
 
   // URL ?ref= 파라미터 읽기 (추천 링크)
@@ -530,6 +524,11 @@ export default function Home() {
           setProfileData(meData.user);
         }
         await performMatching(businessNumber, true);
+        // 자금상담 "지금 채우기" 경유 시 채팅 자동 재시작
+        if (localStorage.getItem("reopen_fund_chat_after_profile")) {
+          localStorage.removeItem("reopen_fund_chat_after_profile");
+          setTimeout(() => window.dispatchEvent(new CustomEvent("profile-saved-reopen-fund-chat")), 300);
+        }
       } else {
         toast("프로필 저장에 실패했습니다.", "error");
         setStep("PROFILE");
@@ -583,6 +582,7 @@ export default function Home() {
             onLoginRequired={() => setShowLoginModal(true)}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
+            onCategoryCountsLoaded={handleCategoryCountsLoaded}
           />
         </div>
       )}
@@ -733,6 +733,7 @@ export default function Home() {
             onLoginRequired={isProfileIncomplete ? handleEditProfile : undefined}
             categoryCountsBiz={publicCategoryCountsBiz}
             categoryCountsInd={publicCategoryCountsInd}
+            onCategoryCountsLoaded={handleCategoryCountsLoaded}
             defaultMajorTab={isProfileIncomplete ? "individual" : undefined}
             autoOpenNotify={openNotifyOnReturn}
             onNotifyOpened={() => setOpenNotifyOnReturn(false)}

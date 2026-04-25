@@ -245,6 +245,9 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const [showReport, setShowReport] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 자금상담 — 프로필 미완성 차단 여부 (첫 메시지에 profilePrompt=true이면 차단)
+  const isProfileBlocked = mode === "free" && messages.length === 1 && messages[0]?.profilePrompt === true;
+
   // 드래그 이동
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -371,7 +374,6 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
 
       const bizRequiredFields: { key: string; label: string }[] = [
         { key: "company_name", label: "기업명" },
-        { key: "industry_code", label: "업종" },
         { key: "revenue_bracket", label: "매출 규모" },
         { key: "employee_count_bracket", label: "직원수" },
       ];
@@ -389,11 +391,23 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
         ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."
         : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요.";
 
-      const profileNote = hasProfile && missingFields.length === 0
+      if (missingFields.length > 0) {
+        // 프로필 미완성 → 상담 차단, 채우기 유도만 표시
+        const blockText = baseText
+          + `\n\n⚠️ **정확한 맞춤 상담을 위해 아래 정보가 필요합니다:**\n${missingFields.map(f => `• ${f}`).join("\n")}\n\n아래 **[지금 채우기]** 버튼을 눌러 정보를 입력해 주세요. 입력 후 상담이 시작됩니다.`;
+        setMessages([{
+          role: "assistant",
+          text: blockText,
+          choices: [],
+          profilePrompt: true,
+          missingFields,
+        }]);
+        return;
+      }
+
+      const profileNote = hasProfile
         ? `\n\n📋 **등록된 정보로 맞춤 상담합니다:**\n${profileSummary}`
-        : hasProfile && missingFields.length > 0
-          ? `\n\n📋 **등록된 정보:** ${profileSummary}\n\n⚠️ **부족한 정보:** ${missingFields.join(", ")}`
-          : "";
+        : "";
 
       setMessages([{
         role: "assistant",
@@ -401,8 +415,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
         choices: activeFundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
           : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
-        profilePrompt: missingFields.length > 0,
-        missingFields: missingFields.length > 0 ? missingFields : undefined,
+        profilePrompt: false,
       }]);
     } else {
       // consultant: 고객 유형 선택 화면 먼저 표시
@@ -1325,7 +1338,7 @@ ${convHtml}
         {mode === "select" ? (
           <div className="flex-1 flex overflow-hidden">
             {/* 좌측 네비게이션 */}
-            <nav className="w-[200px] lg:w-[220px] border-r border-slate-100 bg-gradient-to-b from-slate-50 to-white flex flex-col flex-shrink-0 overflow-y-auto">
+            <nav className="w-[200px] lg:w-[220px] border-r border-slate-100 bg-gradient-to-b from-slate-50 to-white flex flex-col flex-shrink-0 overflow-y-auto overscroll-contain">
               <div className="p-4 pb-2">
                 <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">전문가 도구</p>
               </div>
@@ -1367,7 +1380,7 @@ ${convHtml}
             </nav>
 
             {/* 중앙 메인 영역 — 환영 화면 */}
-            <div className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto">
+            <div className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto overscroll-contain">
               <div className="max-w-md text-center">
                 <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 rounded-2xl flex items-center justify-center">
                   <span className="text-3xl">✨</span>
@@ -1413,7 +1426,7 @@ ${convHtml}
 
         ) : mode === "consultant" && !clientCategory && !matchingInProgress ? (
           /* ── 고객 유형 선택 화면 ── */
-          <div className="flex-1 flex flex-col px-5 py-6 overflow-y-auto">
+          <div className="flex-1 flex flex-col px-5 py-6 overflow-y-auto overscroll-contain">
             <div className="text-center mb-5">
               <p className="text-[16px] font-bold text-slate-800">고객 유형을 선택하세요</p>
               <p className="text-[12px] text-slate-400 mt-1">유형에 맞는 입력 폼이 자동으로 구성됩니다</p>
@@ -1518,7 +1531,7 @@ ${convHtml}
             </div>
 
             {/* Direct Input Form */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
               {/* 이름/기업명 */}
               <div>
                 <label className="block text-[14px] font-bold text-slate-700 mb-1.5">
@@ -1875,7 +1888,7 @@ ${convHtml}
             )}
 
             {/* Chat area */}
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto px-4 py-4 space-y-3 order-1 ${mode === "consultant" && clientCategory ? "px-6 py-5" : ""}`}>
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3 order-1 ${mode === "consultant" && clientCategory ? "px-6 py-5" : ""}`}>
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`${mode === "consultant" && clientCategory ? "max-w-[80%]" : "max-w-[88%]"} ${msg.role === "user" ? "order-1" : ""}`}>
@@ -1963,9 +1976,10 @@ ${convHtml}
                         <button
                           onClick={() => {
                             localStorage.setItem("reopen_fund_chat_after_profile", "1");
-                            setMessages([]);
-                            setOpen(false);
-                            setTimeout(() => window.dispatchEvent(new CustomEvent("open-notification-modal")), 100);
+                            // 챗봇은 열어두고 프로필 폼만 위에 표시 (z-[100] > 챗봇 z-index)
+                            // 저장 완료 시 profile-saved-reopen-fund-chat 이벤트로 메시지 초기화+재시작
+                            // 취소 시 챗봇 상태 그대로 유지
+                            window.dispatchEvent(new CustomEvent("open-notification-modal"));
                           }}
                           className="px-4 py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
                         >
@@ -2077,15 +2091,15 @@ ${convHtml}
                             handleSend(input);
                           }
                         }}
-                        placeholder={mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
-                        disabled={loading || matchingInProgress}
+                        placeholder={isProfileBlocked ? "정보를 먼저 입력해야 상담이 가능합니다." : mode === "consultant" ? "고객 정보를 입력하거나 질문하세요..." : "지원사업에 대해 자유롭게 질문하세요..."}
+                        disabled={loading || matchingInProgress || isProfileBlocked}
                         className={`flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[16px] md:text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:ring-2 transition-all disabled:opacity-50 ${
                           mode === "consultant" ? "focus:ring-violet-200 focus:border-violet-300" : "focus:ring-indigo-200 focus:border-indigo-300"
                         }`}
                       />
                       <button
                         onClick={() => handleSend(input)}
-                        disabled={loading || matchingInProgress || !input.trim()}
+                        disabled={loading || matchingInProgress || isProfileBlocked || !input.trim()}
                         className={`p-2.5 text-white rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
                           mode === "consultant" ? "bg-violet-600 hover:bg-violet-700" : "bg-indigo-600 hover:bg-indigo-700"
                         }`}

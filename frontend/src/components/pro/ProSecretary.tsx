@@ -161,6 +161,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       employee_bracket: "",
       address_city: "",
       interests: [] as string[],
+      // 기업 소상공인 판별 전용 (재무재표 기준)
+      sme_category: "",
+      sme_employee: "",
+      sme_revenue: "",
+      // 개인 고객 매칭용 필드
+      age_range: "",
+      income_level: "",
+      family_type: "",
+      employment_status: "",
       // 선택 필드 — 우대·제외 판정용
       representative_age: "",         // 대표 연령대
       is_women_enterprise: false,     // 여성기업
@@ -244,7 +253,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     toast("상담이 종료되었습니다", "info");
   }, [messages.length, clientCategory, toast]);
 
-  // 뒤로가기: 단계별 복귀 (상담중→고객유형→상담종류→닫기)
+  // 뒤로가기: 단계별 복귀 (고객정보폼→고객유형→상담종류→닫기)
   const handleBack = useCallback(() => {
     if (activeView !== "chat") {
       setActiveView("chat");
@@ -255,6 +264,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (messages.length > 0) {
       setPendingBackAction(() => {
         return () => {
+          setShowProfileForm(false);
           setClientCategory("");
           setMessages([]);
           setFlowState("idle");
@@ -268,6 +278,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       setShowSaveDialog(true);
       return;
     }
+    // 고객 정보 입력 폼 → 고객 유형 선택으로
+    if (showProfileForm) {
+      setShowProfileForm(false);
+      setClientCategory("");
+      window.history.pushState({ proDash: true }, "");
+      return;
+    }
     if (clientCategory) {
       setClientCategory("");
       setFlowState("idle");
@@ -279,13 +296,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       return;
     }
     if (consultType) {
-      // 고객 유형 선택 화면에서 뒤로 → 상담 종류 선택으로
       setConsultType(null);
       window.history.pushState({ proDash: true }, "");
       return;
     }
     onClose();
-  }, [activeView, clientCategory, messages.length, consultType, onClose]);
+  }, [activeView, showProfileForm, clientCategory, messages.length, consultType, onClose]);
 
   const handleBackRef = useRef(handleBack);
   useEffect(() => { handleBackRef.current = handleBack; }, [handleBack]);
@@ -518,7 +534,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
         choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
       }]);
     } else {
-      // 신규 고객 → 입력 폼 표시
+      // 신규 고객 → 빈 폼 (전문가가 고객사 정보를 직접 입력)
       setShowProfileForm(true);
       setProfileForm({
         company_name: "",
@@ -569,6 +585,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       is_women_enterprise: f.is_women_enterprise || false,
       is_youth_enterprise: f.is_youth_enterprise || false,
       is_restart: f.is_restart || false,
+      // 개인 고객 매칭용 필드
+      age_range: isIndiv ? (f.age_range || "") : "",
+      income_level: isIndiv ? (f.income_level || "") : "",
+      family_type: isIndiv ? (f.family_type || "") : "",
+      employment_status: isIndiv ? (f.employment_status || "") : "",
+      // 소상공인 판별 결과 (기업만 — 재무재표 기준 전용 입력)
+      ...((!isIndiv) && (() => {
+        const smeCat = f.sme_category || ksicToSMECat(f.industry_code || "");
+        const smeResult = determineSMEExact(smeCat, f.sme_employee, f.sme_revenue);
+        return { is_small_business: smeResult === "yes" ? true : smeResult === "no" ? false : null };
+      })()),
+    };
+
+    const INCOME_LABEL: Record<string, string> = {
+      "기초생활": "월 100만원 이하",
+      "차상위": "월 100~200만원",
+      "중위50%이하": "월 200~350만원",
+      "중위75%이하": "월 350~500만원",
+      "중위100%이하": "월 500만원 이상",
+      "해당없음": "월 500만원 이상",
     };
 
     // 사용자 시각화용 요약 메시지 (messages에 기록)
@@ -580,6 +616,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (matchProfile.revenue_bracket) summaryLines.push(`• 매출: ${matchProfile.revenue_bracket}`);
     if (matchProfile.employee_count_bracket) summaryLines.push(`• 직원수: ${matchProfile.employee_count_bracket}`);
     if (matchProfile.address_city) summaryLines.push(`• 지역: ${matchProfile.address_city}`);
+    if (isIndiv && matchProfile.age_range) summaryLines.push(`• 연령대: ${matchProfile.age_range}`);
+    if (isIndiv && matchProfile.income_level) summaryLines.push(`• 월 소득: ${INCOME_LABEL[matchProfile.income_level] || matchProfile.income_level}`);
+    if (isIndiv && matchProfile.family_type) summaryLines.push(`• 가구 유형: ${matchProfile.family_type}`);
+    if (isIndiv && matchProfile.employment_status) summaryLines.push(`• 취업 상태: ${matchProfile.employment_status}`);
+    if (!isIndiv && matchProfile.is_small_business === true) summaryLines.push(`• 소상공인: 해당 ✅`);
+    if (!isIndiv && matchProfile.is_small_business === false) summaryLines.push(`• 소상공인: 해당 없음`);
     if (matchProfile.interests) summaryLines.push(`• 관심분야: ${matchProfile.interests}`);
 
     const seedHistory: ChatMessage[] = [
@@ -1011,21 +1053,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   return null;
                                 })();
                                 const interestTags = (m.matched_interests || []).slice(0, 2);
-                                return (
-                                <button key={mi}
-                                  onClick={() => {
+                                const consultAnnouncement = () => {
                                     const aid = m.announcement_id || m.id;
                                     if (!aid) return;
-                                    // 모달에 공고 정보 표시
                                     setSelectedMatchedAnnouncement(m);
-                                    // [재설계 04] 카드 클릭 → 1차 12섹션 분석 강제 (is_announcement_start=true)
                                     setActiveAnnouncementId(aid);
                                     const consultMsg = `『${m.title || m.program_title || "공고"}』 공고를 분석해주세요.`;
                                     const newHistory = [...messages, { role: "user" as const, text: consultMsg }];
                                     setMessages(newHistory);
                                     sendToAI(newHistory, { action: "consult", announcement_id: aid, is_announcement_start: true });
-                                  }}
-                                  className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
+                                  };
+                                return (
+                                <div key={mi}
+                                  className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
                                       {/* 상단: 버킷 배지 + 관심 태그 */}
@@ -1041,11 +1081,21 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                           </span>
                                         ))}
                                       </div>
-                                      <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
-                                        {m.title || m.program_title || "공고"}
-                                      </p>
+                                      {/* 제목: origin_url 있으면 새 탭 링크, 없으면 일반 텍스트 */}
+                                      {m.origin_url ? (
+                                        <a href={m.origin_url} target="_blank" rel="noopener noreferrer"
+                                          className={`text-[13px] font-bold block truncate ${dark ? "text-slate-100 hover:text-violet-300" : "text-slate-800 hover:text-violet-700"} hover:underline`}>
+                                          {m.title || m.program_title || "공고"}
+                                        </a>
+                                      ) : (
+                                        <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
+                                          {m.title || m.program_title || "공고"}
+                                        </p>
+                                      )}
                                       <div className="flex flex-wrap gap-2 mt-1 text-[11px]">
-                                        {m.support_amount && <span className="text-emerald-500 font-semibold">💰 {m.support_amount}</span>}
+                                        {(m.support_amount || m.support_amount_max) && (
+                                          <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
+                                        )}
                                         {m.deadline_date && m.deadline_date !== "None" && <span className={t.muted}>📅 {String(m.deadline_date).slice(0,10)}</span>}
                                         {m.eligibility_status === "ineligible" ? (
                                           <span className="text-slate-400 font-semibold">⊘ 대상 아님</span>
@@ -1054,9 +1104,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                         )}
                                       </div>
                                     </div>
-                                    <span className={`text-[10px] flex-shrink-0 ${dark ? "text-violet-400" : "text-violet-600"}`}>상담 →</span>
+                                    <button onClick={consultAnnouncement}
+                                      className={`text-[10px] flex-shrink-0 px-2 py-1 rounded-lg transition-colors ${dark ? "text-violet-400 hover:bg-violet-500/20" : "text-violet-600 hover:bg-violet-50"}`}>
+                                      상담 →
+                                    </button>
                                   </div>
-                                </button>
+                                </div>
                               );
                               })}
                               {msg.showReportButton && (
@@ -1837,6 +1890,76 @@ function InlineInputWidget({ fields, dark, t, onSubmit, onSkip }: {
 }
 
 
+// ─── 금액 포맷터: "200,000,000원" → "2억원" ───
+function formatAmount(raw: string, max?: number | null): string {
+  const toKRW = (n: number) => {
+    const 억 = Math.floor(n / 100_000_000);
+    const 만 = Math.floor((n % 100_000_000) / 10_000);
+    if (억 > 0 && 만 > 0) return `${억}억 ${만}만원`;
+    if (억 > 0) return `${억}억원`;
+    if (만 > 0) return `${만}만원`;
+    return `${n.toLocaleString()}원`;
+  };
+  if (max && max > 0) return toKRW(max);
+  if (!raw) return "";
+  const stripped = raw.replace(/,/g, "").replace(/원$/, "").trim();
+  if (/^\d+$/.test(stripped)) return toKRW(parseInt(stripped));
+  return raw;
+}
+
+// ─── 소상공인 판별 헬퍼 ───
+const SME_CATEGORIES = [
+  { key: "manufacturing", label: "제조·광업·건설·운수업", maxEmp: 10, maxRev: 120 },
+  { key: "retail",        label: "도소매업",              maxEmp: 5,  maxRev: 50  },
+  { key: "food",          label: "숙박·음식업",           maxEmp: 5,  maxRev: 10  },
+  { key: "service",       label: "기타 서비스업",         maxEmp: 5,  maxRev: 30  },
+];
+const EMP_RANGE: Record<string, [number, number]> = {
+  "5인 미만":   [0,  4],
+  "5~10인":    [5,  9],   // 5이상 10미만
+  "10~30인":   [10, 29],  // 10이상 30미만
+  "30~50인":   [30, 49],  // 30이상 50미만
+  "50인 이상":  [50, 999],
+};
+const REV_RANGE: Record<string, [number, number]> = {
+  "1억 미만":    [0,  0.99],
+  "1억~5억":    [1,  5],
+  "5억~10억":   [5,  10],
+  "10억~50억":  [10, 50],
+  "50억 이상":   [50, 999],
+};
+function ksicToSMECat(code: string): string {
+  if (!code || code.length < 2) return "";
+  const div = parseInt(code.substring(0, 2));
+  if ((div >= 5 && div <= 8) || (div >= 10 && div <= 33) || (div >= 41 && div <= 42) || (div >= 49 && div <= 52)) return "manufacturing";
+  if (div >= 45 && div <= 47) return "retail";
+  if (div >= 55 && div <= 56) return "food";
+  return "service";
+}
+const SME_REV_MAX: Record<string, number> = {
+  "10억 이하": 10, "10억~30억": 30, "30억~50억": 50, "50억~120억": 120, "120억 초과": 9999,
+};
+function determineSMEExact(catKey: string, smeEmp: string, smeRev: string): "yes" | "no" | null {
+  const cat = SME_CATEGORIES.find(c => c.key === catKey);
+  if (!cat || !smeEmp || !smeRev) return null;
+  const empOk = catKey === "manufacturing"
+    ? smeEmp === "5인 미만" || smeEmp === "5~9인"
+    : smeEmp === "5인 미만";
+  const revOk = (SME_REV_MAX[smeRev] ?? 9999) <= cat.maxRev;
+  return empOk && revOk ? "yes" : "no";
+}
+
+function determineSME(catKey: string, emp: string, rev: string): "yes" | "no" | "check" | null {
+  const cat = SME_CATEGORIES.find(c => c.key === catKey);
+  if (!cat || !emp || !rev) return null;
+  const [empMin, empMax] = EMP_RANGE[emp] ?? [-1, -1];
+  const [revMin, revMax] = REV_RANGE[rev] ?? [-1, -1];
+  if (empMin < 0 || revMin < 0) return null;
+  if (empMin >= cat.maxEmp || revMin >= cat.maxRev) return "no";
+  if (empMax < cat.maxEmp && revMax <= cat.maxRev) return "yes";
+  return "check";
+}
+
 // ─── 고객 정보 입력 폼 (버튼식) ───
 function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm, onSubmit, onBack }: {
   dark: boolean; t: any; clientCategory: string;
@@ -1844,7 +1967,7 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
   onSubmit: () => void; onBack: () => void;
 }) {
   const isIndiv = clientCategory === "individual";
-  const catLabel = clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "법인사업자" : isIndiv ? "개인" : "고객";
+  const catLabel = clientCategory === "corporate" || clientCategory === "individual_biz" ? "사업자" : isIndiv ? "개인" : "고객";
   const update = (key: string, val: string) => setProfileForm((prev: any) => ({ ...prev, [key]: val }));
   const toggleInterest = (v: string) => setProfileForm((prev: any) => ({
     ...prev,
@@ -1882,17 +2005,6 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             뒤로
           </button>
         </div>
-
-        {/* 빠른 시작 — 정보 입력 없이 바로 AI와 대화 */}
-        <button
-          onClick={onSubmit}
-          className="w-full py-3 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-[14px] font-bold rounded-xl hover:from-violet-600 hover:to-purple-600 transition-all active:scale-[0.98] shadow-md flex items-center justify-center gap-2"
-        >
-          🚀 정보 입력 건너뛰고 바로 상담하기
-        </button>
-        <p className={`text-[11px] text-center -mt-3 ${t.muted}`}>
-          AI가 대화 중에 필요한 정보를 자연스럽게 물어봅니다
-        </p>
 
         {/* 기업명/이름 (선택) */}
         <div>
@@ -1966,6 +2078,83 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
           </div>
         )}
 
+        {/* 소상공인 판별기 (사업자만 — 재무재표 기준 전용 입력) */}
+        {!isIndiv && (() => {
+          const autoCat = ksicToSMECat(profileForm.industry_code || "");
+          const selCat = profileForm.sme_category || autoCat;
+          const result = determineSMEExact(selCat, profileForm.sme_employee, profileForm.sme_revenue);
+
+          const smeBtnCls = (selected: boolean) =>
+            `px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all active:scale-95 border ${
+              selected
+                ? "bg-violet-600 text-white border-violet-600"
+                : dark ? "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-violet-500/40"
+                       : "bg-white border-slate-200 text-slate-600 hover:border-violet-400"
+            }`;
+
+          return (
+            <div className={`rounded-xl border p-4 space-y-4 ${dark ? "border-white/[0.08] bg-white/[0.02]" : "border-slate-200 bg-slate-50/60"}`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-[12px] font-bold ${dark ? "text-slate-200" : "text-slate-600"}`}>소상공인 판별 <span className={`font-normal ${t.muted}`}>(재무재표 기준)</span></p>
+                {autoCat && !profileForm.sme_category && (
+                  <span className={`text-[10px] ${dark ? "text-violet-400" : "text-violet-500"}`}>업종코드 자동 감지됨</span>
+                )}
+              </div>
+
+              {/* 업종 구분 */}
+              <div>
+                <p className={`text-[11px] mb-1.5 ${t.muted}`}>업종 구분</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {SME_CATEGORIES.map(cat => (
+                    <button key={cat.key}
+                      onClick={() => update("sme_category", profileForm.sme_category === cat.key ? "" : cat.key)}
+                      className={smeBtnCls(selCat === cat.key)}>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 상시근로자수 */}
+              <div>
+                <p className={`text-[11px] mb-1.5 ${t.muted}`}>상시근로자수</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["5인 미만", "5~9인", "10인 이상"].map(opt => (
+                    <button key={opt}
+                      onClick={() => update("sme_employee", profileForm.sme_employee === opt ? "" : opt)}
+                      className={smeBtnCls(profileForm.sme_employee === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 연매출 */}
+              <div>
+                <p className={`text-[11px] mb-1.5 ${t.muted}`}>연매출</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["10억 이하", "10억~30억", "30억~50억", "50억~120억", "120억 초과"].map(opt => (
+                    <button key={opt}
+                      onClick={() => update("sme_revenue", profileForm.sme_revenue === opt ? "" : opt)}
+                      className={smeBtnCls(profileForm.sme_revenue === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 판별 결과 */}
+              {result && (
+                <div className={`rounded-lg px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 ${
+                  result === "yes" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+                }`}>
+                  {result === "yes" ? "✅ 소상공인 해당" : "❌ 소상공인 해당 없음"}
+                </div>
+              )}
+              {!result && selCat && (
+                <p className={`text-[11px] ${t.muted}`}>상시근로자수와 연매출을 선택하면 자동 판별됩니다.</p>
+              )}
+            </div>
+          );
+        })()}
+
         {/* 지역 — 소재지 선택 (전국은 기본 포함, 소재지 공고 우선) */}
         <div>
           <p className={sectionTitle}>{isIndiv ? "거주 지역" : "소재지"} <span className={t.muted}>(선택 — 전국 공고는 항상 포함, 선택 지역 우선 표시)</span></p>
@@ -2002,6 +2191,66 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             );
           })()}
         </div>
+
+        {/* 개인 고객 전용 — 연령대 / 소득 / 가구 유형 / 취업 상태 */}
+        {isIndiv && (() => {
+          const INCOME_OPTIONS = [
+            { label: "월 100만원 이하",   value: "기초생활" },
+            { label: "월 100~200만원",    value: "차상위" },
+            { label: "월 200~350만원",    value: "중위50%이하" },
+            { label: "월 350~500만원",    value: "중위75%이하" },
+            { label: "월 500만원 이상",   value: "해당없음" },
+            { label: "잘 모르겠음",       value: "" },
+          ];
+          return (
+            <>
+              {/* 연령대 */}
+              <div>
+                <p className={sectionTitle}>연령대 <span className={t.muted}>(선택)</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["20대", "30대", "40대", "50대", "60대 이상"].map(opt => (
+                    <button key={opt} onClick={() => update("age_range", profileForm.age_range === opt ? "" : opt)}
+                      className={btnCls(profileForm.age_range === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 월 소득 */}
+              <div>
+                <p className={sectionTitle}>월 소득 <span className={t.muted}>(선택 — 지원 자격 판단 기준)</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {INCOME_OPTIONS.map(opt => (
+                    <button key={opt.label}
+                      onClick={() => update("income_level", profileForm.income_level === opt.value ? "" : opt.value)}
+                      className={btnCls(profileForm.income_level === opt.value && opt.value !== "")}>{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 가구 유형 */}
+              <div>
+                <p className={sectionTitle}>가구 유형 <span className={t.muted}>(선택)</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["1인가구", "한부모", "다자녀", "신혼부부", "다문화", "일반"].map(opt => (
+                    <button key={opt} onClick={() => update("family_type", profileForm.family_type === opt ? "" : opt)}
+                      className={btnCls(profileForm.family_type === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 취업 상태 */}
+              <div>
+                <p className={sectionTitle}>취업 상태 <span className={t.muted}>(선택)</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {["재직자", "구직자", "학생", "자영업", "프리랜서", "해당없음"].map(opt => (
+                    <button key={opt} onClick={() => update("employment_status", profileForm.employment_status === opt ? "" : opt)}
+                      className={btnCls(profileForm.employment_status === opt)}>{opt}</button>
+                  ))}
+                </div>
+              </div>
+            </>
+          );
+        })()}
 
         {/* 관심분야 (복수 선택) */}
         <div>

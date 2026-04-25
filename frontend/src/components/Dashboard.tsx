@@ -397,12 +397,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [showPromoModal, setShowPromoModal] = useState(false);
 
   // 프로필 완성도 체크 (사이드바/알림 버튼 공통 사용)
+  // founded_date·is_pre_founder는 가입 시 자동 세팅되므로 제외 — 사용자가 능동적으로 입력한 필드만 체크
   const profileCity = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
   const hasProfile = !!(
     profileCity || profile?.age_range || profile?.gender || profile?.income_level ||
     profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
-    profile?.employee_count_bracket || profile?.founded_date || profile?.is_pre_founder ||
-    (profile?.certifications && String(profile.certifications).length > 0) ||
+    profile?.employee_count_bracket ||
+    (profile?.certifications && String(profile.certifications).replace("없음", "").length > 0) ||
     (profile?.interests && String(profile.interests).length > 0)
   );
 
@@ -993,9 +994,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
 
-      {/* 🔔 맞춤 알림 카드 — 미설정(핑크 CTA) / 완료(초록 확인) */}
-      {profile && (
-        hasNotificationSet ? (
+      {/* 🔔 맞춤 알림 카드 — 프로필+알림 둘 다 완료 시 녹색, 하나라도 미완성 시 핑크 CTA */}
+      {(() => {
+        const _city = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
+        // founded_date·is_pre_founder는 가입 시 자동 세팅되므로 제외 — 사용자가 능동적으로 입력한 필드만 체크
+        const hasProfile = !!(
+          _city || profile?.age_range || profile?.gender || profile?.income_level ||
+          profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
+          profile?.employee_count_bracket ||
+          (profile?.certifications && String(profile.certifications).replace("없음","").length > 0) ||
+          (profile?.interests && String(profile.interests).length > 0)
+        );
+        const allDone = hasProfile && hasNotificationSet;
+
+        if (!profile) return null;
+
+        if (allDone) return (
           <div className="relative z-10 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">✅</div>
@@ -1011,8 +1025,37 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </button>
             </div>
           </div>
-        ) : null
-      )}
+        );
+
+        // 프로필 미완성 → 프로필 폼부터 / 프로필 완성+알림 미설정 → 알림 설정만
+        const handleCardClick = () => {
+          setNotifyShortcut(false);  // 항상 step 0부터 — 핑크 카드는 프로필 미완성 상태
+          setIsNotifyOpen(true);
+          setSidebarOpen(false);
+        };
+        const ctaLabel = !hasProfile ? "1분만에 설정하기" : "알림만 켜면 완성!";
+        const ctaDesc = !hasProfile
+          ? "평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요"
+          : "프로필은 완성됐어요. 알림만 켜면 맞춤 공고를 받을 수 있어요";
+
+        return (
+          <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{ctaDesc}</p>
+                <button
+                  onClick={handleCardClick}
+                  className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
+                >
+                  {ctaLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
       {(() => {
@@ -1021,27 +1064,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         const hasProfile = !!(
           _city || profile?.age_range || profile?.gender || profile?.income_level ||
           profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
-          profile?.employee_count_bracket || profile?.founded_date || profile?.is_pre_founder ||
-          (profile?.certifications && String(profile.certifications).length > 0) ||
+          profile?.employee_count_bracket ||
+          (profile?.certifications && String(profile.certifications).replace("없음","").length > 0) ||
           (profile?.interests && String(profile.interests).length > 0)
         );
-        if (!hasProfile) return (
-          <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
-                <button
-                  onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
-                  className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
-                >
-                  1분만에 설정하기
-                </button>
-              </div>
-            </div>
-          </div>
-        );
+        if (!hasProfile) return null;
         // 개인 사용자: 개인 정보 카드
         if (ut === "individual") return (
           <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
@@ -1791,11 +1818,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         onClose={() => { setIsNotifyOpen(false); setNotifyShortcut(false); }}
         businessNumber={profile?.business_number}
         onSave={() => {
-          onProfileRefresh?.(); onRefresh?.();
-          if (localStorage.getItem("reopen_fund_chat_after_profile")) {
-            localStorage.removeItem("reopen_fund_chat_after_profile");
-            setTimeout(() => window.dispatchEvent(new CustomEvent("profile-saved-reopen-fund-chat")), 300);
-          }
+          onRefresh?.();
+          // refreshProfile 완료 후 챗봇 재오픈 — 완료 전 열면 stale profile로 modal이 열림
+          (async () => {
+            await onProfileRefresh?.();
+            if (localStorage.getItem("reopen_fund_chat_after_profile")) {
+              localStorage.removeItem("reopen_fund_chat_after_profile");
+              window.dispatchEvent(new CustomEvent("profile-saved-reopen-fund-chat"));
+            }
+          })();
         }}
         profile={profile}
         shortcutMode={notifyShortcut}

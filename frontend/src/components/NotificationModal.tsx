@@ -109,19 +109,26 @@ async function isPushSubscribed(): Promise<boolean> {
   } catch { return false; }
 }
 
-// ── 동적 스텝 계산 ──
-function getSteps(userType: UserType) {
-  // 공통: 유형 → (개인 정보+거주지역) → (기업 정보+사업장소재지) → 관심분야
-  const steps: { id: string; title: string; subtitle: string }[] = [
+// ── 동적 스텝 계산 (페이지당 2~3항목, 스크롤 없음) ──
+type StepId = "type" | "ind_location" | "ind_basic" | "ind_life" | "biz_location" | "biz_info1" | "biz_info2" | "interests" | "notify";
+function getSteps(userType: UserType): { id: StepId; title: string; subtitle: string }[] {
+  const steps: { id: StepId; title: string; subtitle: string }[] = [
     { id: "type", title: "어떤 지원금을 찾고 계세요?", subtitle: "맞춤 공고를 찾아드릴게요" },
   ];
   if (userType === "individual" || userType === "both") {
-    steps.push({ id: "individual", title: "개인 정보를 알려주세요", subtitle: "거주 지역과 개인 조건을 알려주세요" });
+    steps.push({ id: "ind_location", title: "거주 지역을 알려주세요", subtitle: "공고 지역 필터링에 사용합니다" });
+    steps.push({ id: "ind_basic", title: "기본 정보를 알려주세요", subtitle: "성별·연령·소득 조건 매칭에 사용합니다" });
+    steps.push({ id: "ind_life", title: "생활 정보를 알려주세요", subtitle: "가구유형·취업상태 매칭에 사용합니다" });
+  }
+  if (userType === "business") {
+    steps.push({ id: "biz_location", title: "사업장 소재지를 알려주세요", subtitle: "공고 지역 필터링에 사용합니다" });
   }
   if (userType === "business" || userType === "both") {
-    steps.push({ id: "business", title: "기업 정보를 알려주세요", subtitle: "사업장 소재지와 기업 조건을 알려주세요" });
+    steps.push({ id: "biz_info1", title: "기업 기본 정보", subtitle: "기업명·매출·직원수를 알려주세요" });
+    steps.push({ id: "biz_info2", title: "기업 상세 정보", subtitle: "설립일·보유인증을 알려주세요" });
   }
   steps.push({ id: "interests", title: "관심분야를 선택해주세요", subtitle: "키워드를 골라주시면 AI가 매칭해요" });
+  steps.push({ id: "notify", title: "알림 설정", subtitle: "맞춤 공고를 어떻게 받으실건가요?" });
   return steps;
 }
 
@@ -129,11 +136,10 @@ function getSteps(userType: UserType) {
 
 type TagSuggestion = { tag: string; category?: string; similarity: number };
 
-function InterestAutocomplete({ options, selected, onSelect, userType }: { options: string[]; selected: string[]; onSelect: (opt: string) => void; userType?: string }) {
+function InterestAutocomplete({ options, selected, onSelect, onRemove, userType }: { options: string[]; selected: string[]; onSelect: (opt: string) => void; onRemove?: (opt: string) => void; userType?: string }) {
   const [input, setInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [showPanel, setShowPanel] = useState(false);
   const localFiltered = input ? options.filter(opt => opt.toLowerCase().includes(input.toLowerCase()) && !selected.includes(opt)) : [];
 
@@ -152,10 +158,8 @@ function InterestAutocomplete({ options, selected, onSelect, userType }: { optio
         const sugg = (data.suggestions || []) as TagSuggestion[];
         const filtered = sugg.filter(s => !selected.includes(s.tag));
         setSuggestions(filtered);
-        // 유사도 0.7 이상은 자동 체크
-        const auto = new Set<string>();
-        filtered.forEach(s => { if (s.similarity >= 0.7) auto.add(s.tag); });
-        setChecked(auto);
+        // 유사도 0.7 이상은 자동 선택 (부모 interests에 즉시 반영)
+        filtered.forEach(s => { if (s.similarity >= 0.7 && !selected.includes(s.tag)) onSelect(s.tag); });
         setShowPanel(true);
       }
     } catch {
@@ -167,31 +171,28 @@ function InterestAutocomplete({ options, selected, onSelect, userType }: { optio
     }
   };
 
+  // 체크 토글 시 즉시 부모 interests에 반영 → canNext()가 실시간으로 true가 됨
   const toggleCheck = (tag: string) => {
-    setChecked(prev => {
-      const next = new Set(prev);
-      if (next.has(tag)) next.delete(tag);
-      else next.add(tag);
-      return next;
-    });
+    if (selected.includes(tag)) {
+      onRemove?.(tag);
+    } else {
+      onSelect(tag);
+    }
   };
 
   const confirmSelection = () => {
-    checked.forEach(tag => { if (!selected.includes(tag)) onSelect(tag); });
-    // 사용자 원문도 추가 (중복/포함 제외)
+    // 사용자 원문도 추가 (중복 제외)
     const raw = input.trim();
-    if (raw && !selected.includes(raw) && !checked.has(raw)) {
+    if (raw && !selected.includes(raw)) {
       onSelect(raw);
     }
     setInput("");
     setSuggestions([]);
-    setChecked(new Set());
     setShowPanel(false);
   };
 
   const cancelPanel = () => {
     setSuggestions([]);
-    setChecked(new Set());
     setShowPanel(false);
   };
 
@@ -248,7 +249,7 @@ function InterestAutocomplete({ options, selected, onSelect, userType }: { optio
             <div className="space-y-1">
               {suggestions.map(s => (
                 <label key={s.tag} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-indigo-50 cursor-pointer">
-                  <input type="checkbox" checked={checked.has(s.tag)} onChange={() => toggleCheck(s.tag)}
+                  <input type="checkbox" checked={selected.includes(s.tag)} onChange={() => toggleCheck(s.tag)}
                     className="w-4 h-4 accent-indigo-600" />
                   <span className="text-sm text-slate-700 flex-1">{s.tag}</span>
                   {s.category && <span className="text-[10px] text-slate-400">{s.category}</span>}
@@ -260,7 +261,7 @@ function InterestAutocomplete({ options, selected, onSelect, userType }: { optio
           <div className="flex gap-2 mt-3 pt-2 border-t border-slate-100">
             <button onClick={confirmSelection}
               className="flex-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">
-              선택 확정 ({checked.size})
+              확인
             </button>
             <button onClick={cancelPanel}
               className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200">
@@ -342,42 +343,75 @@ export default function NotificationModal({
   useEffect(() => {
     if (!isOpen || !businessNumber) return;
     setStep(shortcutMode ? steps.length - 1 : 0);
-    fetch(`${API}/api/notification-settings/${businessNumber}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.status === "SUCCESS" && d.data) {
-          if (d.data.email) setEmail(d.data.email);
-          if (d.data.kakao_enabled) setKakaoEnabled(true);
-        }
+
+    // 알림 설정 로드 (인증 필요)
+    const _tok = localStorage.getItem("auth_token");
+    if (_tok) {
+      fetch(`${API}/api/notification-settings/${businessNumber}`, {
+        headers: { Authorization: `Bearer ${_tok}` },
       })
-      .catch(() => {});
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.status === "SUCCESS" && d.data) {
+            if (d.data.email) setEmail(d.data.email);
+            if (d.data.kakao_enabled) setKakaoEnabled(true);
+          }
+        })
+        .catch(() => {});
+    }
     isPushSubscribed().then(setPushEnabled);
 
-    if (profile) {
-      setUserType(profile.user_type || "individual");
-      // 소재지/관심지역 분리 로드
-      const cities = profile.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국") : [];
-      setHomeCity(cities[0] || "");
-      setInterestRegions(profile.interest_regions ? String(profile.interest_regions).split(",").filter(Boolean) : []);
-      setGender(profile.gender || "");
-      setAgeRange(profile.age_range || "");
-      setIncomeLevel(profile.income_level || "");
-      setFamilyType(profile.family_type || "");
-      setEmploymentStatus(profile.employment_status || "");
-      setCompanyName(profile.company_name || "");
-      setRevenueBracket(profile.revenue_bracket || "");
-      setEmployeeBracket(profile.employee_count_bracket || "");
-      setFoundedDate(profile.founded_date || "");
-      setIsPreFounder(profile.is_pre_founder || false);
-      setCertifications(profile.certifications ? String(profile.certifications).split(",").filter(Boolean) : []);
-      setInterests(profile.interests ? String(profile.interests).split(",").filter(Boolean) : []);
-      setCustomKeywords(profile.custom_keywords ? String(profile.custom_keywords).split(",").filter(Boolean) : []);
-      if (!email && profile.email && !profile.email.endsWith(".local")) {
-        setEmail(profile.email);
-      }
-      if (isKakaoUser) setKakaoEnabled(true);
+    // 프로필을 항상 DB에서 직접 fetch — prop 타이밍 이슈 방지
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const p = data?.user || profile;
+          if (!p) return;
+          setUserType(p.user_type || "individual");
+          const cities = p.address_city ? String(p.address_city).split(",").filter((c: string) => c && c !== "전국") : [];
+          setHomeCity(cities[0] || "");
+          setInterestRegions(p.interest_regions ? String(p.interest_regions).split(",").filter(Boolean) : []);
+          setGender(p.gender || "");
+          setAgeRange(p.age_range || "");
+          setIncomeLevel(p.income_level || "");
+          setFamilyType(p.family_type || "");
+          setEmploymentStatus(p.employment_status || "");
+          setCompanyName(p.company_name || "");
+          setRevenueBracket(p.revenue_bracket || "");
+          setEmployeeBracket(p.employee_count_bracket || "");
+          setFoundedDate(p.founded_date || "");
+          setIsPreFounder(p.is_pre_founder || false);
+          setCertifications(p.certifications ? String(p.certifications).split(",").filter(Boolean) : []);
+          setInterests(p.interests ? String(p.interests).split(",").filter(Boolean) : []);
+          setCustomKeywords(p.custom_keywords ? String(p.custom_keywords).split(",").filter(Boolean) : []);
+          if (!email && p.email && !p.email.endsWith(".local")) setEmail(p.email);
+          if (p.social_provider === "kakao") setKakaoEnabled(true);
+        })
+        .catch(() => {
+          // fetch 실패 시 prop으로 폴백
+          if (!profile) return;
+          const p = profile;
+          setUserType(p.user_type || "individual");
+          const cities = p.address_city ? String(p.address_city).split(",").filter((c: string) => c && c !== "전국") : [];
+          setHomeCity(cities[0] || "");
+          setInterestRegions(p.interest_regions ? String(p.interest_regions).split(",").filter(Boolean) : []);
+          setGender(p.gender || ""); setAgeRange(p.age_range || ""); setIncomeLevel(p.income_level || "");
+          setFamilyType(p.family_type || ""); setEmploymentStatus(p.employment_status || "");
+          setCompanyName(p.company_name || ""); setRevenueBracket(p.revenue_bracket || "");
+          setEmployeeBracket(p.employee_count_bracket || ""); setFoundedDate(p.founded_date || "");
+          setIsPreFounder(p.is_pre_founder || false);
+          setCertifications(p.certifications ? String(p.certifications).split(",").filter(Boolean) : []);
+          setInterests(p.interests ? String(p.interests).split(",").filter(Boolean) : []);
+          setCustomKeywords(p.custom_keywords ? String(p.custom_keywords).split(",").filter(Boolean) : []);
+        });
+    } else if (profile) {
+      // 비로그인 폴백 (실제로는 발생 안 함)
+      const p = profile;
+      setUserType(p.user_type || "individual");
     }
-  }, [isOpen, businessNumber, profile]);
+  }, [isOpen, businessNumber]);
 
   // ── 토글 헬퍼 (deprecated — UI에서 직접 setHomeCity/setInterestRegions 사용) ──
   const toggleCity = (_city: string) => {};
@@ -490,10 +524,15 @@ export default function NotificationModal({
   const canNext = (): boolean => {
     switch (currentStep.id) {
       case "type": return !!userType;
-      case "individual": return true; // 선택사항
-      case "business": return true;
+      case "ind_location": return true;
+      case "ind_basic": return true;
+      case "ind_life": return true;
+      case "biz_location": return true;
+      case "biz_info1": return true;
+      case "biz_info2": return true;
       case "interests": return interests.length > 0;
-      default: return false;
+      case "notify": return true;
+      default: return true;
     }
   };
 
@@ -516,7 +555,8 @@ export default function NotificationModal({
           </div>
         )}
 
-        <div className="p-5 sm:p-7 overflow-y-auto flex-1">
+        <div className="relative flex-1 overflow-hidden">
+          <div className="p-5 sm:p-7">
           {/* 헤더 */}
           <div className="flex items-center justify-between mb-5 sm:mb-7">
             <div className="flex items-center gap-3">
@@ -567,10 +607,9 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 개인 정보 (+ 거주 지역) ===== */}
-            {currentStep.id === "individual" && (
+            {/* ===== Step: 개인 — 거주지역 + 관심지역 ===== */}
+            {currentStep.id === "ind_location" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-                {/* 거주 지역 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-bold text-slate-600">거주 지역 <span className="font-normal text-slate-400">(1개 선택)</span></p>
@@ -580,7 +619,6 @@ export default function NotificationModal({
                     {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
                   </div>
                 </div>
-                {/* 관심 지역 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수, 선택사항)</span></p>
@@ -593,35 +631,43 @@ export default function NotificationModal({
                     ))}
                   </div>
                 </div>
-                {/* 성별 */}
+              </div>
+            )}
+
+            {/* ===== Step: 개인 — 기본정보 (성별·연령대·소득수준) ===== */}
+            {currentStep.id === "ind_basic" && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">성별</p>
                   <div className="flex gap-2">
                     {GENDERS.map(g => <ChipRect key={g} label={g} selected={gender === g} onClick={() => setGender(gender === g ? "" : g)} />)}
                   </div>
                 </div>
-                {/* 연령대 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">연령대</p>
                   <div className="flex flex-wrap gap-2">
                     {AGE_RANGES.map(a => <ChipRect key={a} label={a} selected={ageRange === a} onClick={() => setAgeRange(ageRange === a ? "" : a)} />)}
                   </div>
                 </div>
-                {/* 소득수준 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">소득수준</p>
                   <div className="flex flex-wrap gap-2">
                     {INCOME_DISPLAY.map(({ label, value }) => <ChipRect key={value} label={label} selected={incomeLevel === value} onClick={() => setIncomeLevel(incomeLevel === value ? "" : value)} />)}
                   </div>
                 </div>
-                {/* 가구유형 */}
+                <p className="text-xs text-slate-400">선택하지 않은 항목은 전체 대상으로 매칭됩니다</p>
+              </div>
+            )}
+
+            {/* ===== Step: 개인 — 생활정보 (가구유형·취업상태) ===== */}
+            {currentStep.id === "ind_life" && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">가구유형</p>
                   <div className="flex flex-wrap gap-2">
                     {FAMILY_TYPES.map(f => <ChipRect key={f} label={f} selected={familyType === f} onClick={() => setFamilyType(familyType === f ? "" : f)} />)}
                   </div>
                 </div>
-                {/* 취업상태 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">취업상태</p>
                   <div className="flex flex-wrap gap-2">
@@ -632,69 +678,67 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 기업 정보 (+ 사업장 소재지) ===== */}
-            {currentStep.id === "business" && (
+            {/* ===== Step: 기업 — 사업장 소재지 + 관심지역 ===== */}
+            {currentStep.id === "biz_location" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-                {/* 사업장 소재지 — 개인+기업(both)일 때는 개인 스텝에서 이미 거주지역을 받았으므로 생략 */}
-                {userType === "business" && (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-bold text-slate-600">사업장 소재지 <span className="font-normal text-slate-400">(1개 선택)</span></p>
-                        {homeCity && <p className="text-xs text-indigo-500 font-semibold">{homeCity}</p>}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수, 선택사항)</span></p>
-                        {interestRegions.length > 0 && <p className="text-xs text-violet-500 font-semibold">{interestRegions.join(", ")}</p>}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {CITIES.filter(c => c !== homeCity).map(city => (
-                          <ChipRect key={city} label={city} selected={interestRegions.includes(city)}
-                            onClick={() => setInterestRegions(prev => prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city])} />
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-                {/* 기업명 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-slate-600">사업장 소재지 <span className="font-normal text-slate-400">(1개 선택)</span></p>
+                    {homeCity && <p className="text-xs text-indigo-500 font-semibold">{homeCity}</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {CITIES.map(city => <ChipRect key={city} label={city} selected={homeCity === city} onClick={() => setHomeCity(homeCity === city ? "" : city)} />)}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-slate-600">관심 지역 <span className="font-normal text-slate-400">(복수, 선택사항)</span></p>
+                    {interestRegions.length > 0 && <p className="text-xs text-violet-500 font-semibold">{interestRegions.join(", ")}</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {CITIES.filter(c => c !== homeCity).map(city => (
+                      <ChipRect key={city} label={city} selected={interestRegions.includes(city)}
+                        onClick={() => setInterestRegions(prev => prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city])} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===== Step: 기업 — 기본정보 (기업명·매출·직원수) ===== */}
+            {currentStep.id === "biz_info1" && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">기업명 (상호명) <span className="font-normal text-slate-400">(선택)</span></p>
                   <input
-                    type="text"
-                    value={companyName}
-                    onChange={e => setCompanyName(e.target.value)}
+                    type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
                     placeholder="예: 지원금AI"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-indigo-200"
                   />
                 </div>
-                {/* 매출 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">매출 규모</p>
                   <div className="flex flex-wrap gap-2">
                     {REVENUE.map(r => <ChipRect key={r} label={r} selected={revenueBracket === r} onClick={() => setRevenueBracket(revenueBracket === r ? "" : r)} />)}
                   </div>
                 </div>
-                {/* 직원수 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">직원 수</p>
                   <div className="flex flex-wrap gap-2">
                     {EMPLOYEE.map(e => <ChipRect key={e} label={e} selected={employeeBracket === e} onClick={() => setEmployeeBracket(employeeBracket === e ? "" : e)} />)}
                   </div>
                 </div>
-                {/* 설립일 — 숫자 8자리 자동 포맷 */}
+              </div>
+            )}
+
+            {/* ===== Step: 기업 — 상세정보 (설립일·보유인증) ===== */}
+            {currentStep.id === "biz_info2" && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">설립일</p>
                   {!isPreFounder && (
                     <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
-                      value={foundedDate}
+                      type="text" inputMode="numeric" maxLength={10} value={foundedDate}
                       onChange={e => {
                         const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 8);
                         let formatted = raw;
@@ -708,15 +752,13 @@ export default function NotificationModal({
                   )}
                   <label className="flex items-center gap-2 mt-2 cursor-pointer">
                     <input
-                      type="checkbox"
-                      checked={isPreFounder}
+                      type="checkbox" checked={isPreFounder}
                       onChange={e => { setIsPreFounder(e.target.checked); if (e.target.checked) setFoundedDate(""); }}
                       className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-200"
                     />
                     <span className="text-sm text-slate-600">아직 창업 전입니다 (예비창업자)</span>
                   </label>
                 </div>
-                {/* 보유인증 */}
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">보유 인증 <span className="font-normal text-slate-400">(복수 선택)</span></p>
                   <div className="flex flex-wrap gap-2">
@@ -726,105 +768,100 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 관심분야 + 맞춤키워드 + 알림 ===== */}
+            {/* ===== Step: 관심분야 ===== */}
             {currentStep.id === "interests" && (
-              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-                {/* 관심분야 — shortcut 모드에선 숨김 (기존 프로필 값 유지) */}
-                {!shortcutMode && (
-                  <div>
-                    <p className="text-sm font-bold text-slate-700 mb-2">관심분야를 입력하세요</p>
-                    {/* 선택된 태그 */}
-                    {interests.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {interests.map((tag) => (
-                          <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[13px] font-semibold">
-                            {tag}
-                            <button type="button" onClick={() => setInterests(prev => prev.filter(t => t !== tag))} className="hover:text-indigo-900 text-indigo-400">×</button>
-                          </span>
-                        ))}
-                      </div>
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <p className="text-sm font-bold text-slate-700 mb-2">관심분야를 입력하세요</p>
+                {interests.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {interests.map((tag) => (
+                      <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[13px] font-semibold">
+                        {tag}
+                        <button type="button" onClick={() => setInterests(prev => prev.filter(t => t !== tag))} className="hover:text-indigo-900 text-indigo-400">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <InterestAutocomplete
+                  options={[
+                    ...(isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS),
+                    ...(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS),
+                  ]}
+                  selected={interests}
+                  onSelect={(opt) => setInterests(prev => [...prev, opt])}
+                  onRemove={(opt) => setInterests(prev => prev.filter(t => t !== opt))}
+                  userType={isInd ? "individual" : "business"}
+                />
+                <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
+              </div>
+            )}
+
+            {/* ===== Step: 알림 설정 ===== */}
+            {currentStep.id === "notify" && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* 이메일 */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📧</span>
+                    <span className="text-sm font-semibold text-slate-700">이메일</span>
+                    {profile?.email && !profile.email.endsWith(".local") && email === profile.email && (
+                      <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-semibold">자동</span>
                     )}
-                    {/* 입력 + 드롭다운 (관심분야 + 맞춤키워드 통합) */}
-                    <InterestAutocomplete
-                      options={[
-                        ...(isBoth ? [...IND_INTERESTS, ...BIZ_INTERESTS] : isInd ? IND_INTERESTS : BIZ_INTERESTS),
-                        ...(isBoth ? [...IND_KEYWORDS, ...BIZ_KEYWORDS] : isInd ? IND_KEYWORDS : BIZ_KEYWORDS),
-                      ]}
-                      selected={interests}
-                      onSelect={(opt) => setInterests(prev => [...prev, opt])}
-                      userType={isInd ? "individual" : "business"}
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">키워드를 입력하면 추천 목록이 나타납니다</p>
+                  </div>
+                  <input
+                    type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="email@example.com"
+                    className="w-48 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200 text-right"
+                  />
+                </div>
+
+                {/* 푸시 */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🔔</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-slate-700">브라우저 푸시</span>
+                      {pushLoading && (
+                        <span className="text-[10px] text-indigo-500 font-medium animate-pulse">설정 중... (최대 10초)</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    disabled={pushLoading}
+                    onClick={() => handlePushToggle(!pushEnabled)}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
+                  >
+                    {pushLoading ? (
+                      <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                    )}
+                  </button>
+                </div>
+
+                {/* 카카오톡 */}
+                {isKakaoUser && (
+                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">💬</span>
+                      <span className="text-sm font-semibold text-slate-700">카카오톡</span>
+                    </div>
+                    <button
+                      onClick={() => setKakaoEnabled(!kakaoEnabled)}
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${kakaoEnabled ? "bg-yellow-500" : "bg-slate-300"}`}
+                    >
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${kakaoEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                    </button>
                   </div>
                 )}
 
-                {/* 알림 on/off */}
-                <div className={`${shortcutMode ? "" : "border-t border-slate-100 pt-4"} space-y-3`}>
-                  <p className="text-sm font-bold text-slate-600">알림 받기</p>
-
-                  {/* 이메일 */}
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">📧</span>
-                      <span className="text-sm font-semibold text-slate-700">이메일</span>
-                      {profile?.email && !profile.email.endsWith(".local") && email === profile.email && (
-                        <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-semibold">자동</span>
-                      )}
-                    </div>
-                    <input
-                      type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="email@example.com"
-                      className="w-48 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200 text-right"
-                    />
-                  </div>
-
-                  {/* 푸시 */}
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">🔔</span>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-700">브라우저 푸시</span>
-                        {pushLoading && (
-                          <span className="text-[10px] text-indigo-500 font-medium animate-pulse">설정 중... (최대 10초)</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      disabled={pushLoading}
-                      onClick={() => handlePushToggle(!pushEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
-                    >
-                      {pushLoading ? (
-                        <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* 카카오톡 */}
-                  {isKakaoUser && (
-                    <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">💬</span>
-                        <span className="text-sm font-semibold text-slate-700">카카오톡</span>
-                      </div>
-                      <button
-                        onClick={() => setKakaoEnabled(!kakaoEnabled)}
-                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${kakaoEnabled ? "bg-yellow-500" : "bg-slate-300"}`}
-                      >
-                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${kakaoEnabled ? "translate-x-6" : "translate-x-1"}`} />
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-slate-400">평일 오전 9시에 맞춤 공고를 보내드려요</p>
-                </div>
+                <p className="text-xs text-slate-400">평일 오전 9시에 맞춤 공고를 보내드려요</p>
               </div>
             )}
+          </div>
           </div>
         </div>
 

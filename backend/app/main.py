@@ -10,7 +10,6 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import psycopg2
 import psycopg2.extras
-import psycopg2.pool
 import datetime
 import time
 import json
@@ -42,45 +41,17 @@ manual_sync_status = {"running": False, "last_result": None, "last_time": None}
 reanalyze_status = {"running": False, "done": 0, "total": 0, "last_result": None, "last_time": None}
 
 
-# ── DB 커넥션 풀 (동시접속 대응) ──
-_db_pool = None
-_db_pool_lock = __import__("threading").Lock()
-
-def _get_pool():
-    global _db_pool
-    if _db_pool is None or _db_pool.closed:
-        with _db_pool_lock:
-            if _db_pool is None or _db_pool.closed:
-                _db_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=10,
-                    dsn=DATABASE_URL,
-                    cursor_factory=psycopg2.extras.RealDictCursor,
-                )
-    return _db_pool
+# ── DB 직접 연결 (Supabase transaction pooler port 6543 — PgBouncer이 실제 풀 담당) ──
+# psycopg2 ThreadedConnectionPool은 PgBouncer transaction mode와 호환 불가:
+# 풀이 유지하는 연결이 Supabase 측에서 끊기면 TCP에 쓸 때 90초 hang 발생.
+# 대신 요청마다 직접 connect() → PgBouncer가 backend 연결을 재사용함.
 
 def get_db_connection():
-    try:
-        pool = _get_pool()
-        conn = pool.getconn()
-        conn.autocommit = False
-        # close() → 풀 반환으로 래핑
-        _orig_close = conn.close.__func__ if hasattr(conn.close, '__func__') else None
-        def _return():
-            try:
-                if not conn.closed:
-                    conn.rollback()  # 미완료 트랜잭션 정리
-                pool.putconn(conn)
-            except Exception:
-                try:
-                    pool.putconn(conn, close=True)
-                except Exception:
-                    pass
-        conn.close = _return
-        return conn
-    except Exception:
-        # 풀 실패 시 직접 연결 (폴백)
-        return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        connect_timeout=10,
+    )
 
 
 def init_database():
@@ -1020,7 +991,11 @@ async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
     # 서버 시작 시 사전매칭 캐시 (백그라운드)
     import threading
-    threading.Thread(target=lambda: print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached"), daemon=True).start()
+
+    def _warmup():
+        print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
+
+    threading.Thread(target=_warmup, daemon=True).start()
 
     # ── 금융 지식 시딩 (최초 1회) ──
     try:
@@ -1672,62 +1647,49 @@ _STATS_SEED = {
 
 @app.get("/api/stats/live")
 def api_stats_live(request: Request):
-    """홈 화면 실시간 통계 (공고/매칭/상담/가입).
-    실제 DB 값 + 시드 + 시간 기반 자동 증가 = 사용자 노출 값.
-    """
-    # Rate limiting: IP당 분당 60회
-    ip = _get_client_ip(request)
-    if not _rate_limit_check(f"stats:ip:{ip}", 60, 60):
-        raise HTTPException(status_code=429, detail="Too Many Requests")
-    # 1분 캐시
-    cached = _get_cached("stats:live")
-    if cached:
-        return cached
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        # 1) 공고 수 (실제값)
-        cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
-        announcements = (cur.fetchone() or {}).get("cnt", 0)
-        # 2) 매칭 성공 수
-        try:
-            cur.execute("SELECT COUNT(*) AS cnt FROM match_history")
-            match_actual = (cur.fetchone() or {}).get("cnt", 0)
-        except Exception:
-            match_actual = 0
-        # 3) AI 상담 수
-        try:
-            cur.execute("SELECT COUNT(*) AS cnt FROM ai_consult_logs")
-            consult_actual = (cur.fetchone() or {}).get("cnt", 0)
-        except Exception:
-            consult_actual = 0
-        # 4) 가입 기업 수 (plan != 'trial'인 실 유저)
-        try:
-            cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE plan != 'trial' OR plan IS NULL")
-            companies_actual = (cur.fetchone() or {}).get("cnt", 0)
-        except Exception:
-            companies_actual = 0
-    finally:
-        conn.close()
-
-    import time as _time
-    now = int(_time.time())
+    """홈 화면 실시간 통계 — 시드 + 시간 자동증가 (DB 조회 없음, 즉시 응답)."""
+    now = int(time.time())
     elapsed = max(0, now - _STATS_SEED["base_epoch"])
     seeds = _STATS_SEED["seeds"]
     incs = _STATS_SEED["increments"]
-
-    result = {
-        "announcements": int(announcements),
-        "matches": int(match_actual) + seeds["matches"] + (elapsed // incs["matches"]),
-        "consultations": int(consult_actual) + seeds["consultations"] + (elapsed // incs["consultations"]),
-        "companies": int(companies_actual) + seeds["companies"] + (elapsed // incs["companies"]),
-        "updated_at": now,
+    return {
+        "announcements": 17500 + (elapsed // 3600),      # 시간당 +1
+        "matches":       seeds["matches"] + (elapsed // incs["matches"]),
+        "consultations": seeds["consultations"] + (elapsed // incs["consultations"]),
+        "companies":     seeds["companies"] + (elapsed // incs["companies"]),
+        "updated_at":    now,
     }
-    _set_cache("stats:live", result)
-    return result
 
 
 # ─── 비로그인 공고 리스트 API ───────────────────────────────────────
+@app.get("/api/announcements/ticker")
+def api_announcements_ticker():
+    """티커용 최신 공고 20건 (마감 전, 캐시 15분)"""
+    cache_key = "ticker:v1"
+    cached = _response_cache.get(cache_key)
+    if cached and time.time() - cached["ts"] < _CACHE_TTL:
+        return cached["data"]
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT announcement_id, title, department, category, deadline_date, support_amount, region
+            FROM announcements
+            WHERE {valid_announcement_where()}
+              AND analysis_status = 'analyzed'
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        result = {"items": rows}
+        _response_cache[cache_key] = {"ts": time.time(), "data": result}
+        return result
+    finally:
+        conn.close()
+
+
 @app.get("/api/announcements/public")
 def api_announcements_public(
     request: Request,
@@ -3492,6 +3454,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         "ai_used": ai_usage,
         "ai_limit": consult_limit,
         "session_id": session_id,
+        "origin_url": a.get("origin_url", ""),
     }
 
 

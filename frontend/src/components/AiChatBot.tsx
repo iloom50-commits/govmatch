@@ -7,6 +7,27 @@ import DOMPurify from "dompurify";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
+// 지원금액 문자열 → 숫자 파싱 → 한국어 포맷 ("3억원", "1,200만원")
+function formatSupportAmount(raw: string | number | undefined | null): string {
+  if (!raw) return "";
+  const s = String(raw).replace(/,/g, "");
+  let n = 0;
+  const m억 = s.match(/(\d+\.?\d*)\s*억/);
+  const m만 = s.match(/(\d+\.?\d*)\s*만/);
+  if (m억) n += parseFloat(m억[1]) * 100000000;
+  if (m만) n += parseFloat(m만[1]) * 10000;
+  if (n === 0) {
+    const m숫자 = s.match(/(\d{4,})/);
+    if (m숫자) n = parseFloat(m숫자[1]);
+  }
+  if (n === 0) return String(raw).slice(0, 15); // 숫자 추출 실패 시 원문
+  const 억 = Math.floor(n / 100000000);
+  const 만 = Math.floor((n % 100000000) / 10000);
+  if (억 > 0 && 만 > 0) return `${억}억 ${만.toLocaleString()}만원`;
+  if (억 > 0) return `${억}억원`;
+  return `${만.toLocaleString()}만원`;
+}
+
 // FAB 버튼 + 라벨 (PRO 도구 항상 명시)
 function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
   return (
@@ -179,17 +200,38 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     }
   }, [messages.length, isDone]);
 
-  useModalBack(open, handleBackPress);
+  // PRO 모드는 ProSecretary가 자체 popstate 핸들러를 가짐 — 중복 방지
+  useModalBack(open && !isPro, handleBackPress);
   const [mode, setMode] = useState<ChatMode>("select");
   // LITE 자금 전문 모드 (기업/개인) — currentTab 우선, 없으면 user_type 기반
   const [fundMode, setFundMode] = useState<"business_fund" | "individual_fund">(
     typeof window !== "undefined" && isIndividual ? "individual_fund" : "business_fund"
   );
+  const [pendingFundMode, setPendingFundMode] = useState<"business_fund" | "individual_fund" | null>(null);
   // 탭 전환 시 fundMode 자동 동기화 (상담 진행 중이 아닐 때만)
   useEffect(() => {
     if (!currentTab || messages.length > 0) return;
     setFundMode(currentTab === "individual" ? "individual_fund" : "business_fund");
   }, [currentTab]);
+
+  const handleFundModeSwitch = (next: "business_fund" | "individual_fund") => {
+    if (next === fundMode) return;
+    if (messages.length > 0) {
+      setPendingFundMode(next);
+    } else {
+      setFundMode(next);
+    }
+  };
+
+  const confirmFundModeSwitch = () => {
+    if (!pendingFundMode) return;
+    const next = pendingFundMode;
+    setPendingFundMode(null);
+    setFundMode(next);
+    setMessages([]);
+    // 새 탭 인사말로 재시작 (fundMode state 업데이트 후 다음 tick에)
+    setTimeout(() => startModeWithFundMode("free", next), 0);
+  };
   const [consultantTab, setConsultantTab] = useState<ConsultantTab>("form");
   const [clientCategory, setClientCategory] = useState<"" | "individual_biz" | "corporate" | "individual" | "unknown">("");
   const [selectedExistingClient, setSelectedExistingClient] = useState<number | null>(null);
@@ -271,6 +313,18 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     return () => window.removeEventListener("consult-result", handler);
   }, [mode, open]);
 
+  // 프로필 저장 후 자금상담 자동 재오픈 (B안)
+  useEffect(() => {
+    const handler = () => {
+      setMode("free");
+      setMessages([]);
+      setOpen(true);
+      setTimeout(() => startMode("free"), 100);
+    };
+    window.addEventListener("profile-saved-reopen-fund-chat", handler);
+    return () => window.removeEventListener("profile-saved-reopen-fund-chat", handler);
+  }, []);
+
   // 로그인된 사용자 프로필 가져오기
   const fetchUserProfile = async (): Promise<Record<string, any> | null> => {
     const token = localStorage.getItem("auth_token");
@@ -302,20 +356,19 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     return parts.join(" | ");
   };
 
-  // 모드 시작
-  const startMode = async (selectedMode: "free" | "consultant") => {
+  // 모드 시작 (overrideFundMode: 탭 전환 확인 후 호출 시 사용)
+  const startModeWithFundMode = async (selectedMode: "free" | "consultant", overrideFundMode?: "business_fund" | "individual_fund") => {
+    const activeFundMode = overrideFundMode ?? fundMode;
     setMode(selectedMode);
     setMessages([]);
     setConsultantProfile(null);
     setFormProfile({ ...EMPTY_FORM });
 
     if (selectedMode === "free") {
-      // 프로필 조회 후 첫 메시지에 반영
       const userProfile = await fetchUserProfile();
       const profileSummary = userProfile ? buildProfileSummary(userProfile) : null;
       const hasProfile = profileSummary && profileSummary.trim().length > 0;
 
-      // 부족한 핵심 필드 감지
       const bizRequiredFields: { key: string; label: string }[] = [
         { key: "company_name", label: "기업명" },
         { key: "industry_code", label: "업종" },
@@ -327,12 +380,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
         { key: "income_level", label: "소득 수준" },
         { key: "employment_status", label: "고용 상태" },
       ];
-      const requiredFields = fundMode === "individual_fund" ? indivRequiredFields : bizRequiredFields;
+      const requiredFields = activeFundMode === "individual_fund" ? indivRequiredFields : bizRequiredFields;
       const missingFields = userProfile
         ? requiredFields.filter(f => !userProfile[f.key]).map(f => f.label)
         : requiredFields.map(f => f.label);
 
-      const baseText = fundMode === "individual_fund"
+      const baseText = activeFundMode === "individual_fund"
         ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."
         : "안녕하세요! 중소기업 정책자금·보증 전문 상담사입니다.\n\n정책자금, 신용보증(KODIT/KIBO), 창업자금, 시설·운전자금 등 기업 자금 관련 질문을 해주세요.";
 
@@ -345,7 +398,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
       setMessages([{
         role: "assistant",
         text: baseText + profileNote,
-        choices: fundMode === "individual_fund"
+        choices: activeFundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
           : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
         profilePrompt: missingFields.length > 0,
@@ -369,6 +422,8 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
       } catch { /* */ }
     }
   };
+
+  const startMode = (selectedMode: "free" | "consultant") => startModeWithFundMode(selectedMode);
 
   // 컨설턴트 대화 탭 전환 시 — 등록 프로필 요약 포함
   const switchToConsultantChat = async () => {
@@ -1733,7 +1788,7 @@ ${convHtml}
             )}
 
             {/* Chat + Tool Panel wrapper */}
-            <div className={`flex-1 flex ${mode === "consultant" && clientCategory ? "flex-row" : "flex-col"} overflow-hidden`}>
+            <div className={`flex-1 flex ${mode === "consultant" && clientCategory ? "flex-row" : "flex-col"} overflow-hidden relative`}>
 
             {/* 우측 도구 패널 — consultant 전체화면일 때만 */}
             {mode === "consultant" && clientCategory && (
@@ -1766,7 +1821,7 @@ ${convHtml}
                 <div className="flex gap-1.5 bg-white rounded-full p-1 border border-slate-200 max-w-[280px]">
                   <button
                     type="button"
-                    onClick={() => setFundMode("business_fund")}
+                    onClick={() => handleFundModeSwitch("business_fund")}
                     className={`flex-1 py-1.5 px-3 rounded-full text-[12px] font-bold transition-all ${
                       fundMode === "business_fund"
                         ? "bg-indigo-600 text-white shadow"
@@ -1777,7 +1832,7 @@ ${convHtml}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFundMode("individual_fund")}
+                    onClick={() => handleFundModeSwitch("individual_fund")}
                     className={`flex-1 py-1.5 px-3 rounded-full text-[12px] font-bold transition-all ${
                       fundMode === "individual_fund"
                         ? "bg-indigo-600 text-white shadow"
@@ -1790,6 +1845,32 @@ ${convHtml}
                 <p className="text-[10px] text-slate-400 mt-1 ml-1">
                   {fundMode === "business_fund" ? "정책자금·보증·창업자금·시설/운전자금" : "버팀목·디딤돌·햇살론·학자금·긴급생계"}
                 </p>
+              </div>
+            )}
+
+            {/* 탭 전환 확인 팝업 */}
+            {pendingFundMode && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 rounded-2xl">
+                <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-xs w-full text-center">
+                  <p className="text-sm font-bold text-slate-800 mb-1">
+                    {pendingFundMode === "individual_fund" ? "👤 개인 자금" : "🏢 기업 자금"}으로 전환할까요?
+                  </p>
+                  <p className="text-xs text-slate-400 mb-5">현재 대화 내용이 초기화됩니다.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPendingFundMode(null)}
+                      className="flex-1 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-all"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={confirmFundModeSwitch}
+                      className="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
+                    >
+                      전환하기
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1814,6 +1895,10 @@ ${convHtml}
                       <div className="mt-3 space-y-1.5">
                         {msg.announcements.slice(0, 5).map((ann) => {
                           const annId = ann.announcement_id || ann.id;
+                          // RAG results use 'amount'/'deadline'/'dept'; announcement objects use standard field names
+                          const displayAmount = ann.support_amount || ann.amount;
+                          const displayDeadline = ann.deadline_date || ann.deadline;
+                          const displayDept = ann.department || ann.dept;
                           return (
                           <div key={annId} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 transition-all cursor-pointer group"
                             onClick={() => {
@@ -1821,9 +1906,9 @@ ${convHtml}
                                 detail: { announcement: {
                                   announcement_id: annId,
                                   title: ann.title,
-                                  support_amount: ann.support_amount,
-                                  deadline_date: ann.deadline_date,
-                                  department: ann.department,
+                                  support_amount: displayAmount,
+                                  deadline_date: displayDeadline,
+                                  department: displayDept,
                                   category: ann.category,
                                 }}
                               }));
@@ -1832,9 +1917,9 @@ ${convHtml}
                             <div className="flex-1 min-w-0">
                               <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
                               <div className="flex items-center gap-2 mt-0.5 text-[11px] md:text-[9px] text-slate-400">
-                                {ann.department && <span>{String(ann.department).slice(0, 10)}</span>}
-                                {ann.support_amount && <span className="text-rose-500 font-bold">{String(ann.support_amount).slice(0, 15)}</span>}
-                                {ann.deadline_date && <span>~{String(ann.deadline_date).slice(5, 10)}</span>}
+                                {displayDept && <span>{String(displayDept).slice(0, 10)}</span>}
+                                {displayAmount && <span className="text-rose-500 font-bold">{formatSupportAmount(displayAmount)}</span>}
+                                {displayDeadline && <span>~{String(displayDeadline).slice(5, 10)}</span>}
                               </div>
                             </div>
                             <span className="text-[11px] md:text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">공고 상세 분석 →</span>
@@ -1852,8 +1937,10 @@ ${convHtml}
                         </p>
                         <button
                           onClick={() => {
+                            localStorage.setItem("reopen_fund_chat_after_profile", "1");
+                            setMessages([]);
                             setOpen(false);
-                            setTimeout(() => window.dispatchEvent(new CustomEvent("open-profile-settings")), 100);
+                            setTimeout(() => window.dispatchEvent(new CustomEvent("open-notification-modal")), 100);
                           }}
                           className="px-4 py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
                         >

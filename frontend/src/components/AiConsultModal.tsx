@@ -138,6 +138,7 @@ interface Announcement {
   deadline_date?: string;
   department?: string;
   category?: string;
+  origin_url?: string;
 }
 
 interface ChatMessage {
@@ -167,6 +168,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   const [isDone, setIsDone] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [originUrl, setOriginUrl] = useState<string | null>(null);
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   // sendToAI 콜백이 useCallback deps 누락으로 stale closure가 되는 것을 방지하기 위한 ref
@@ -214,6 +216,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         setFeedbackSent(false);
         setConsultLogId(null);
         setDragPos(null);
+        setOriginUrl(detail.announcement.origin_url || null);
         // 같은 공고 재진입 시 기존 세션 복원 (24시간 이내)
         const storedSession = localStorage.getItem(`consult_session_${detail.announcement.announcement_id}`);
         if (storedSession) {
@@ -335,9 +338,10 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       }
 
       const data = await res.json();
+      if (data.origin_url && !originUrl) setOriginUrl(data.origin_url);
       const aiMsg: ChatMessage = {
         role: "assistant",
-        text: data.reply || "응답을 처리할 수 없습니다.",
+        text: data.reply || "분석 중 오류가 발생했습니다. 다시 시도해 주세요.",
         choices: data.choices || [],
         done: data.done || false,
       };
@@ -398,6 +402,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     setFeedbackSent(false);
     setConsultLogId(null);
     setShowSaveDialog(false);
+    setOriginUrl(null);
     // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
   }, []);
 
@@ -534,7 +539,23 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-indigo-700 truncate">AI 지원대상 상담</p>
-                <p className="text-[11px] text-slate-500 font-medium truncate">{announcement.title}</p>
+                {originUrl ? (
+                  <a
+                    href={originUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-indigo-600 font-medium truncate flex items-center gap-1 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <span className="truncate">{announcement.title}</span>
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                ) : (
+                  <p className="text-[11px] text-slate-500 font-medium truncate">{announcement.title}</p>
+                )}
               </div>
             </div>
             <button onClick={handleClose} className="p-1.5 hover:bg-white/60 rounded-lg transition-all flex-shrink-0">

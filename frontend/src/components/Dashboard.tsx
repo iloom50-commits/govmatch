@@ -91,17 +91,40 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-// 마이페이지 버튼 + 프로필 미완성 말풍선
-function ProfileNudgeButton({ profile, onClick }: { profile: any; onClick: () => void }) {
+// 뉴스 티커 — 공고 리스트 최상단 가로 스크롤
+
+
+// 마이페이지 버튼 + 스마트 말풍선 (D-3 업그레이드 / 새 맞춤 공고 / 프로필 미완성)
+function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { profile: any; planStatus?: any; newMatchCount?: number; onClick: () => void }) {
   const [showBubble, setShowBubble] = useState(false);
+  const [bubbleMsg, setBubbleMsg] = useState("");
+
   const isIncomplete = !profile?.user_type || (
     profile?.user_type !== "individual" && (
       !profile?.industry_code || profile?.industry_code === "00000"
     )
   );
 
+  // 우선순위: D-3 > 새 공고 N건 > 프로필 미완성
+  const getMsg = (): string | null => {
+    const plan = planStatus?.plan;
+    const daysLeft = planStatus?.days_left;
+    if ((plan === "lite" || plan === "lite_trial") && typeof daysLeft === "number" && daysLeft <= 3) {
+      return `LITE D-${daysLeft}! 지금 업그레이드하세요`;
+    }
+    if (newMatchCount && newMatchCount > 0) {
+      return `새 맞춤 공고 ${newMatchCount}건 업데이트됐어요`;
+    }
+    if (isIncomplete) {
+      return "프로필 설정하면 맞춤 추천!";
+    }
+    return null;
+  };
+
   useEffect(() => {
-    if (!isIncomplete) return;
+    const msg = getMsg();
+    if (!msg) return;
+    setBubbleMsg(msg);
     let count = 0;
     const show = () => {
       if (count >= 3) return;
@@ -112,13 +135,13 @@ function ProfileNudgeButton({ profile, onClick }: { profile: any; onClick: () =>
     const timer1 = setTimeout(show, 20000);
     const timer2 = setInterval(show, 180000);
     return () => { clearTimeout(timer1); clearInterval(timer2); };
-  }, [isIncomplete]);
+  }, [isIncomplete, planStatus?.days_left, newMatchCount]);
 
   return (
     <div className="relative">
-      {showBubble && (
+      {showBubble && bubbleMsg && (
         <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
-          프로필 설정하면 맞춤 추천!
+          {bubbleMsg}
           <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
         </div>
       )}
@@ -310,7 +333,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   );
 }
 
-export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate, onProfileRefresh, onMajorTabChange }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void, onProfileRefresh?: () => void, onMajorTabChange?: (tab: MajorTab) => void }) {
+export default function Dashboard({ matches, profile, onEditProfile, onLogout, planStatus, onUpgrade, consultantResult, onClearConsultant, isPublic, onLoginRequired, onRefresh, categoryCountsBiz, categoryCountsInd, defaultMajorTab, autoOpenNotify, onNotifyOpened, onPlanUpdate, onProfileRefresh, onMajorTabChange, onCategoryCountsLoaded }: { matches: MatchItem[], profile: any, onEditProfile: () => void, onLogout: () => void, planStatus?: PlanStatus | null, onUpgrade?: () => void, consultantResult?: { matches: any[]; profile: any } | null, onClearConsultant?: () => void, isPublic?: boolean, onLoginRequired?: () => void, onRefresh?: () => void, categoryCountsBiz?: Record<string, number>, categoryCountsInd?: Record<string, number>, defaultMajorTab?: MajorTab, autoOpenNotify?: boolean, onNotifyOpened?: () => void, onPlanUpdate?: (updated: any) => void, onProfileRefresh?: () => void, onMajorTabChange?: (tab: MajorTab) => void, onCategoryCountsLoaded?: (counts: Record<string, number>, tab: "business" | "individual") => void }) {
   const { toast } = useToast();
   // 사용자 유형에 따라 초기 대분류 탭 결정
   const userType = profile?.user_type || "both";
@@ -387,10 +410,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const handleLoginRequired = () => {
     if (profile) { setIsNotifyOpen(true); setNotifyShortcut(false); } else { onLoginRequired?.(); }
   };
-  // 외부에서 NotificationModal 열기 요청
+  // 외부에서 NotificationModal 열기 요청 (props)
   useEffect(() => {
     if (autoOpenNotify) { setIsNotifyOpen(true); setNotifyShortcut(false); onNotifyOpened?.(); }
   }, [autoOpenNotify]);
+
+  // AI챗봇 "지금 채우기" 버튼 → NotificationModal 열기
+  useEffect(() => {
+    const handler = () => { setIsNotifyOpen(true); setNotifyShortcut(false); };
+    window.addEventListener("open-notification-modal", handler);
+    return () => window.removeEventListener("open-notification-modal", handler);
+  }, []);
 
   // 맞춤알림 설정 여부 체크 — 미설정 시 빨간 점/배지 노출
   useEffect(() => {
@@ -435,37 +465,31 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [showMyMenu, setShowMyMenu] = useState(false);
   const [totalAnnouncementCount, setTotalAnnouncementCount] = useState(0);
 
-  // 공유 링크로 접속 시 해당 카드로 스크롤 + 하이라이트
+  // 이메일 ?aid= 링크 접속 시 해당 공고 fetch → 목록 최상단 고정 + 스크롤
+  const [pinnedAnnouncement, setPinnedAnnouncement] = useState<MatchItem | null>(null);
   useEffect(() => {
     if (!highlightAid) return;
-    // 여러 번 시도 (데이터 로드 타이밍에 따라)
+    // 1) 해당 공고 단건 fetch (목록에 없을 수 있으므로)
+    fetch(`${API}/api/announcements/${highlightAid}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (json?.data) setPinnedAnnouncement(json.data as MatchItem);
+      })
+      .catch(() => {});
+    // 2) 스크롤 — 여러 번 시도 (데이터 로드 타이밍)
     const tryScroll = (delay: number) => setTimeout(() => {
       const el = document.querySelector(`[data-aid="${highlightAid}"]`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     }, delay);
-    const t1 = tryScroll(1500);
-    const t2 = tryScroll(3000);
-    const t3 = tryScroll(5000);
-    const fadeTimer = setTimeout(() => setHighlightAid(0), 8000);
+    const t1 = tryScroll(300);
+    const t2 = tryScroll(1500);
+    const t3 = tryScroll(3000);
+    const fadeTimer = setTimeout(() => { setHighlightAid(0); setPinnedAnnouncement(null); }, 12000);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
   // 오늘의 인기 공고 state/fetch 제거 (사장님 요청)
 
-  // DB 전체 공고 수 조회
-  useEffect(() => {
-    (async () => {
-      try {
-        const [r1, r2] = await Promise.all([
-          fetch(`${API}/api/announcements/public?page=1&size=1&target_type=business`),
-          fetch(`${API}/api/announcements/public?page=1&size=1&target_type=individual`),
-        ]);
-        const d1 = await r1.json();
-        const d2 = await r2.json();
-        setTotalAnnouncementCount((d1.total || 0) + (d2.total || 0));
-      } catch {}
-    })();
-  }, []);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -643,6 +667,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭/검색 변경 시 페이지 리셋
   useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
 
+  // 새 맞춤 공고 배지 — 마지막 확인 시점과 현재 smartMatches 비교
+  const [newMatchCount, setNewMatchCount] = useState(0);
+  useEffect(() => {
+    if (smartMatches.length === 0) return;
+    const stored = Number(localStorage.getItem("smart_match_last_count") || "0");
+    if (smartMatches.length > stored) {
+      setNewMatchCount(smartMatches.length - stored);
+    }
+  }, [smartMatches]);
+  // "맞춤 추천" 탭 진입 시 카운트 초기화
+  useEffect(() => {
+    if (activeTab === "smart" && smartMatches.length > 0) {
+      localStorage.setItem("smart_match_last_count", String(smartMatches.length));
+      setNewMatchCount(0);
+    }
+  }, [activeTab, smartMatches.length]);
+
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
   const [publicServerTotal, setPublicServerTotal] = useState(0);
@@ -689,6 +730,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           setPublicData(d.data || []);
           setPublicServerTotal(d.total || 0);
           publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
+          if (d.total) setTotalAnnouncementCount(prev => prev || d.total);
+          if (d.category_counts && onCategoryCountsLoaded) {
+            onCategoryCountsLoaded(d.category_counts, targetType as "business" | "individual");
+          }
         }
       })
       .catch(() => {});
@@ -966,33 +1011,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </button>
             </div>
           </div>
-        ) : (
-          <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
-                <button
-                  onClick={() => {
-                    setSidebarOpen(false);
-                    if (!hasProfile) {
-                      // 프로필 미완성 → 프로필 설정 폼으로 이동
-                      onEditProfile();
-                    } else {
-                      // 프로필 완성 → 알림 설정 모달 바로 열기
-                      setNotifyShortcut(true);
-                      setIsNotifyOpen(true);
-                    }
-                  }}
-                  className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
-                >
-                  1분만에 설정하기
-                </button>
-              </div>
-            </div>
-          </div>
-        )
+        ) : null
       )}
 
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
@@ -1007,21 +1026,19 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           (profile?.interests && String(profile.interests).length > 0)
         );
         if (!hasProfile) return (
-          <div className="relative z-10 p-5 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100/80 shadow-sm">
-            <div className="text-center space-y-3">
-              <div className="w-12 h-12 mx-auto bg-indigo-100 rounded-xl flex items-center justify-center text-2xl">
-                {ut === "individual" ? "👤" : "🏢"}
+          <div className="relative z-10 p-4 bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100/80 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔔</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-slate-900">맞춤 알림 켜기</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">평일 오전 9시에 내 조건에 맞는 공고를 이메일·푸시로 받아보세요</p>
+                <button
+                  onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
+                  className="mt-2.5 w-full py-2 bg-rose-500 text-white rounded-lg font-bold text-[12px] hover:bg-rose-600 transition-all active:scale-95 shadow-sm"
+                >
+                  1분만에 설정하기
+                </button>
               </div>
-              <div>
-                <p className="text-[15px] font-bold text-slate-900">프로필을 설정해보세요</p>
-                <p className="text-[12px] text-slate-500 mt-1">내 조건을 입력하면 AI가 딱 맞는 지원금을 찾아드려요</p>
-              </div>
-              <button
-                onClick={() => { setIsNotifyOpen(true); setSidebarOpen(false); }}
-                className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all active:scale-95 shadow-sm"
-              >
-                프로필 설정하기
-              </button>
             </div>
           </div>
         );
@@ -1215,6 +1232,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className="grid grid-cols-2 gap-2">
           <ProfileNudgeButton
             profile={profile}
+            planStatus={planStatus}
+            newMatchCount={newMatchCount}
             onClick={() => { onEditProfile(); setSidebarOpen(false); }}
           />
           <a
@@ -1380,7 +1399,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {/* 🔔 맞춤 알림 켜기 — 데스크탑 전용 compact (미설정 시만, 모바일은 빨간 점 뱃지로 대체) */}
                 {profile && !hasNotificationSet && (
                   <button
-                    onClick={() => { setNotifyShortcut(true); setIsNotifyOpen(true); }}
+                    onClick={() => { setNotifyShortcut(hasProfile); setIsNotifyOpen(true); }}
                     className="hidden sm:flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-rose-600 hover:text-white hover:bg-rose-500 bg-rose-50 border border-rose-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none relative"
                     title="맞춤 알림 켜기"
                   >
@@ -1634,6 +1653,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             )}
 
+            {/* 이메일 ?aid= 접속 시 해당 공고 최상단 고정 */}
+            {pinnedAnnouncement && highlightAid && activeTab !== "smart" && (
+              <div className="mb-3 animate-in fade-in slide-in-from-top-4 duration-500">
+                <p className="text-[11px] text-indigo-500 font-bold mb-2 flex items-center gap-1">
+                  <span>📌</span> 이메일에서 선택한 공고
+                </p>
+                <ResultCard
+                  res={pinnedAnnouncement}
+                  selected={false}
+                  planStatus={isPublic && !profile ? null : planStatus}
+                  onUpgrade={isPublic && !profile ? undefined : onUpgrade}
+                  onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
+                  highlight={true}
+                />
+              </div>
+            )}
+
             <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden ${activeTab === "smart" ? "hidden" : ""}`}>
               {(() => {
                 // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
@@ -1754,7 +1790,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         isOpen={isNotifyOpen}
         onClose={() => { setIsNotifyOpen(false); setNotifyShortcut(false); }}
         businessNumber={profile?.business_number}
-        onSave={() => { onProfileRefresh?.(); onRefresh?.(); }}
+        onSave={() => {
+          onProfileRefresh?.(); onRefresh?.();
+          if (localStorage.getItem("reopen_fund_chat_after_profile")) {
+            localStorage.removeItem("reopen_fund_chat_after_profile");
+            setTimeout(() => window.dispatchEvent(new CustomEvent("profile-saved-reopen-fund-chat")), 300);
+          }
+        }}
         profile={profile}
         shortcutMode={notifyShortcut}
       />

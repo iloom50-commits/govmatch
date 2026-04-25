@@ -141,34 +141,63 @@ class NotificationService:
         reasoning = f"고객 관심사와 {kw_hits}개 키워드 일치" if kw_hits else "전국 공통 지원사업"
         return {"score": score, "reasoning": reasoning}
 
-    def _build_email_html(self, company_name: str, matches: List[Dict]) -> str:
-        """매칭 결과를 HTML 이메일 본문으로 변환"""
+    def _build_email_html(self, company_name: str, matches: List[Dict], user_type: str = "business") -> str:
+        """매칭 결과를 HTML 이메일 본문으로 변환 — 기업/개인 섹션 분리"""
         today_str = datetime.date.today().strftime("%Y년 %m월 %d일")
-
         APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
 
-        # 맞춤 공고 (최대 5건) - 클릭 가능한 카드 형식
-        top_matches = matches[:5]
-        custom_rows = ""
-        for m in top_matches:
-            title = m['program_title']
-            announcement_id = m.get('announcement_id', m.get('id'))
+        def _card_html(m: dict) -> str:
+            title = m.get("program_title", "")
+            ann_id = m.get("announcement_id") or m.get("id")
+            amount = m.get("support_amount") or ""
+            deadline = str(m.get("deadline_date") or "")[:10]
+            link = f"{APP_URL}?aid={ann_id}" if ann_id else APP_URL
 
-            # 금액/D-day 정보가 있으면 표시
-            extra = []
-            if m.get('support_amount'):
-                extra.append(m['support_amount'])
-            if m.get('d_day'):
-                extra.append(m['d_day'])
-            extra_text = f" ({', '.join(extra)})" if extra else ""
+            amount_html = f'<span style="color:#e11d48; font-weight:700; margin-right:8px;">{amount}</span>' if amount else ""
+            deadline_html = f'<span style="color:#475569;">마감 {deadline[2:].replace("-", ".")}</span>' if deadline else ""
+            meta_html = f'<p style="margin:4px 0 10px; font-size:12px;">{amount_html}{deadline_html}</p>' if (amount or deadline) else ""
 
-            # 공고별 링크 (공고 카드 클릭 시 해당 공고로 이동)
-            announcement_url = f"{APP_URL}?aid={announcement_id}" if announcement_id else APP_URL
-
-            custom_rows += f'''<a href="{announcement_url}" style="display:block; margin:0 0 12px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; text-decoration:none; transition:all 0.2s;">
+            return f'''<div style="margin:0 0 12px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
   <p style="margin:0 0 4px; color:#1e293b; font-size:14px; font-weight:600; line-height:1.6;">{title}</p>
-  <p style="margin:0; color:#64748b; font-size:12px;">{extra_text}</p>
-</a>\n'''
+  {meta_html}
+  <a href="{link}" style="display:inline-block; padding:6px 14px; background:#2563eb; color:white; text-decoration:none; border-radius:6px; font-size:12px; font-weight:600;">공고 바로가기 →</a>
+</div>\n'''
+
+        # 기업/개인 섹션 분리
+        biz_matches = [m for m in matches if m.get("target_type") not in ("individual",)]
+        indiv_matches = [m for m in matches if m.get("target_type") == "individual"]
+
+        # user_type이 both면 두 섹션 모두, 아니면 해당 타입만
+        show_biz = user_type != "individual"
+        show_indiv = user_type != "business"
+
+        # 두 타입 모두 있으면 강제로 both 처리
+        if biz_matches and indiv_matches:
+            show_biz = True
+            show_indiv = True
+
+        sections_html = ""
+        total_count = 0
+
+        if show_biz and biz_matches:
+            label = "🏢 기업 맞춤 공고" if show_indiv else "맞춤 공고"
+            top = biz_matches[:5]
+            total_count += len(top)
+            sections_html += f'<p style="margin:0 0 12px; font-size:15px; font-weight:700;">{label} {len(top)}건</p>'
+            sections_html += "".join(_card_html(m) for m in top)
+
+        if show_indiv and indiv_matches:
+            top = indiv_matches[:5]
+            total_count += len(top)
+            margin_top = "margin-top:24px;" if sections_html else ""
+            sections_html += f'<p style="{margin_top}margin-bottom:12px; font-size:15px; font-weight:700;">👤 개인 맞춤 공고 {len(top)}건</p>'
+            sections_html += "".join(_card_html(m) for m in top)
+
+        if not sections_html:
+            top = matches[:5]
+            total_count = len(top)
+            sections_html = f'<p style="margin:0 0 12px; font-size:15px; font-weight:700;">맞춤 공고 {total_count}건</p>'
+            sections_html += "".join(_card_html(m) for m in top)
 
         return f"""
         <div style="max-width:520px; margin:0 auto; font-family:-apple-system,'Pretendard',sans-serif; color:#1e293b;">
@@ -177,11 +206,9 @@ class NotificationService:
             <p style="margin:4px 0 0; font-size:13px; color:#64748b;">{today_str} | {company_name}</p>
           </div>
           <div style="padding:24px;">
-            <p style="margin:0 0 16px; font-size:15px; font-weight:700;">맞춤 공고 {len(top_matches)}건</p>
-            {custom_rows}
-            {f'<p style="margin:16px 0; font-size:15px; font-weight:700;">추천 공고도 확인해보세요</p>' if len(matches) > 5 else ''}
+            {sections_html}
             <div style="margin:24px 0; text-align:center;">
-              <a href="{APP_URL}" style="display:inline-block; padding:12px 32px; background:#2563eb; color:white; text-decoration:none; border-radius:8px; font-size:14px; font-weight:700;">자세히 보기</a>
+              <a href="{APP_URL}" style="display:inline-block; padding:12px 32px; background:#2563eb; color:white; text-decoration:none; border-radius:8px; font-size:14px; font-weight:700;">전체 공고 보기</a>
             </div>
           </div>
           <div style="padding:16px 24px; border-top:1px solid #f1f5f9; text-align:center;">
@@ -189,7 +216,7 @@ class NotificationService:
           </div>
         </div>"""
 
-    def send_email(self, to_email: str, company_name: str, matches: List[Dict]) -> bool:
+    def send_email(self, to_email: str, company_name: str, matches: List[Dict], user_type: str = "business") -> bool:
         """Resend HTTP API를 통해 매칭 결과 이메일 발송.
 
         Railway가 SMTP(25/587/465)를 차단하므로 Resend HTTPS API 사용.
@@ -200,7 +227,7 @@ class NotificationService:
             except Exception: pass
             return False
 
-        html_body = self._build_email_html(company_name, matches)
+        html_body = self._build_email_html(company_name, matches, user_type)
         subject = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
 
         try:
@@ -433,7 +460,11 @@ class NotificationService:
                             "program_title": program['title'],
                             "score": match_result['score'],
                             "reasoning": match_result.get('reasoning', ''),
-                            "url": program['origin_url'] if program['origin_url'] else '#'
+                            "url": program.get('origin_url') or '',
+                            "announcement_id": program.get('announcement_id'),
+                            "support_amount": program.get('support_amount') or '',
+                            "deadline_date": str(program.get('deadline_date') or '')[:10],
+                            "target_type": program.get('target_type') or '',
                         })
 
                 if matches:
@@ -453,7 +484,8 @@ class NotificationService:
 
                     if email:
                         try:
-                            entry["email_sent"] = self.send_email(email, company_name, matches)
+                            u_type = user_dict.get('user_type') or 'business'
+                            entry["email_sent"] = self.send_email(email, company_name, matches, user_type=u_type)
                         except Exception as e:
                             print(f"  [digest] email send error: {e}")
 

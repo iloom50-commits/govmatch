@@ -1900,42 +1900,52 @@ ${convHtml}
                           const displayDeadline = ann.deadline_date || ann.deadline;
                           const displayDept = ann.department || ann.dept;
                           return (
-                          <div key={annId} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 transition-all cursor-pointer group"
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent("open-ai-consult", {
-                                detail: { announcement: {
-                                  announcement_id: annId,
-                                  title: ann.title,
-                                  support_amount: displayAmount,
-                                  deadline_date: displayDeadline,
-                                  department: displayDept,
-                                  category: ann.category,
-                                  origin_url: ann.origin_url,
-                                }}
-                              }));
-                            }}
-                          >
-                            <div className="flex-1 min-w-0">
-                              {ann.origin_url ? (
+                          <div key={annId} className="p-2.5 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 transition-all">
+                            {/* 제목 */}
+                            <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug line-clamp-2 mb-1">{ann.title}</p>
+                            {/* 금액 · 마감일 */}
+                            <div className="flex items-center gap-2 text-[11px] md:text-[10px] mb-2">
+                              {displayDept && <span className="text-slate-400 truncate max-w-[80px]">{String(displayDept).slice(0, 12)}</span>}
+                              {displayAmount && <span className="text-rose-500 font-bold">{formatSupportAmount(displayAmount)}</span>}
+                              {displayDeadline && (
+                                <span className="text-slate-500 font-medium">
+                                  마감 {String(displayDeadline).slice(2, 10).replace(/-/g, ".")}
+                                </span>
+                              )}
+                            </div>
+                            {/* 버튼 2개 */}
+                            <div className="flex items-center gap-1.5">
+                              {ann.origin_url && (
                                 <a
                                   href={ann.origin_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate block hover:text-indigo-600 hover:underline"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[11px] md:text-[10px] font-medium hover:bg-slate-200 active:scale-95 transition-all"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  {ann.title}
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                  공고 바로가기
                                 </a>
-                              ) : (
-                                <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug truncate">{ann.title}</p>
                               )}
-                              <div className="flex items-center gap-2 mt-0.5 text-[11px] md:text-[9px] text-slate-400">
-                                {displayDept && <span>{String(displayDept).slice(0, 10)}</span>}
-                                {displayAmount && <span className="text-rose-500 font-bold">{formatSupportAmount(displayAmount)}</span>}
-                                {displayDeadline && <span>~{String(displayDeadline).slice(5, 10)}</span>}
-                              </div>
+                              <button
+                                className="flex-1 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 text-[11px] md:text-[10px] font-bold hover:bg-indigo-100 active:scale-95 transition-all text-center"
+                                onClick={() => {
+                                  window.dispatchEvent(new CustomEvent("open-ai-consult", {
+                                    detail: { announcement: {
+                                      announcement_id: annId,
+                                      title: ann.title,
+                                      support_amount: displayAmount,
+                                      deadline_date: displayDeadline,
+                                      department: displayDept,
+                                      category: ann.category,
+                                      origin_url: ann.origin_url,
+                                    }}
+                                  }));
+                                }}
+                              >
+                                공고 상세 분석 →
+                              </button>
                             </div>
-                            <span className="text-[11px] md:text-[9px] text-indigo-500 font-bold whitespace-nowrap group-hover:text-indigo-700">공고 상세 분석 →</span>
                           </div>
                           );
                         })}

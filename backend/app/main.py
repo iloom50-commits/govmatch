@@ -7949,8 +7949,55 @@ def _run_reanalyze_in_thread(limit: int):
         text = _re.sub(r'\s+', ' ', text)
         return text.strip()
 
+    _GOV24_URL_PAT = _re.compile(r"gov\.kr/portal/rcv[a-zA-Z]*Svc/dtlEx/([A-Z0-9]+)", _re.IGNORECASE)
+
+    def _fetch_gov24_api(serv_id: str) -> str:
+        """gov24 /v3/serviceDetail API로 탭 내용 전체 수집 (지원대상/지원내용/신청방법 등)"""
+        api_key = os.environ.get("GOV24_API_KEY", "")
+        if not api_key:
+            return ""
+        try:
+            resp = requests.get(
+                "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
+                params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return ""
+            detail = resp.json().get("data", [{}])
+            if isinstance(detail, list) and detail:
+                detail = detail[0]
+            elif not isinstance(detail, dict):
+                return ""
+            field_map = [
+                ("지원대상", ["지원대상", "tgtrDtlCn"]),
+                ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
+                ("신청방법", ["신청방법", "aplyMtdCn"]),
+                ("선정기준", ["선정기준", "slctCritCn"]),
+                ("구비서류", ["구비서류", "psblDocCn"]),
+                ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
+                ("지원형태", ["지원형태", "sprtTypeNm"]),
+            ]
+            parts = []
+            for label, keys in field_map:
+                for k in keys:
+                    val = str(detail.get(k, "") or "").strip()
+                    if val and val not in ("null", "[]", "{}"):
+                        parts.append(f"[{label}]\n{val}")
+                        break
+            return "\n\n".join(parts)
+        except Exception:
+            return ""
+
     def _fetch_detail(url, max_chars=8000):
-        """상세 페이지 크롤링하여 본문 텍스트 추출"""
+        """상세 페이지 크롤링 — gov.kr 탭 페이지는 gov24 API 우선 호출"""
+        # gov.kr 개인지원사업: HTML 크롤링 대신 API로 탭 전체 수집
+        m = _GOV24_URL_PAT.search(url or "")
+        if m:
+            api_text = _fetch_gov24_api(m.group(1))
+            if api_text and len(api_text) > 100:
+                return api_text[:max_chars]
+        # 일반 HTML 크롤링 fallback
         try:
             resp = requests.get(url, headers=_HEADERS, timeout=12, allow_redirects=True)
             resp.encoding = resp.apparent_encoding or "utf-8"

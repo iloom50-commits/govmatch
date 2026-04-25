@@ -599,6 +599,61 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
     source_type = "html"
     attachment_names = []
 
+    # ── gov.kr 개인지원사업 탭 API 특별처리 ──────────────────────────────
+    # HTML 크롤링으로는 탭 내용을 가져올 수 없으므로 gov24 공개 API 직접 호출
+    _gov24_url_pat = re.compile(r"gov\.kr/portal/rcv[a-zA-Z]*Svc/dtlEx/([A-Z0-9]+)", re.IGNORECASE)
+    _m = _gov24_url_pat.search(page_url or "")
+    if _m:
+        serv_id = _m.group(1)
+        _api_key = os.environ.get("GOV24_API_KEY", "")
+        if _api_key:
+            try:
+                _resp = requests.get(
+                    "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
+                    params={"serviceKey": _api_key, "serviceId": serv_id, "returnType": "JSON"},
+                    timeout=15,
+                )
+                if _resp.status_code == 200:
+                    _data = _resp.json()
+                    _detail = _data.get("data", [{}])
+                    if isinstance(_detail, list) and _detail:
+                        _detail = _detail[0]
+                    elif not isinstance(_detail, dict):
+                        _detail = {}
+
+                    _parts = []
+                    _field_map = [
+                        ("지원대상", ["지원대상", "tgtrDtlCn", "srvcClsfNm"]),
+                        ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
+                        ("신청방법", ["신청방법", "aplyMtdCn"]),
+                        ("선정기준", ["선정기준", "slctCritCn"]),
+                        ("구비서류", ["구비서류", "psblDocCn"]),
+                        ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
+                        ("지원형태", ["지원형태", "sprtTypeNm"]),
+                        ("서비스분야", ["서비스분야", "lifeNmList", "intrsThemaNmList"]),
+                    ]
+                    for label, keys in _field_map:
+                        val = ""
+                        for k in keys:
+                            val = str(_detail.get(k, "") or "").strip()
+                            if val and val not in ("null", "[]", "{}"):
+                                break
+                        if val:
+                            _parts.append(f"[{label}]\n{val}")
+
+                    if _parts:
+                        gov24_text = "\n\n".join(_parts)
+                        print(f"[DocAnalysis] gov24 API success for {serv_id}: {len(gov24_text)}chars, {len(_parts)} sections")
+                        return gov24_text, "gov24-api", []
+                    else:
+                        print(f"[DocAnalysis] gov24 API returned empty fields for {serv_id}")
+                else:
+                    print(f"[DocAnalysis] gov24 API HTTP {_resp.status_code} for {serv_id}")
+            except Exception as _e:
+                print(f"[DocAnalysis] gov24 API error for {serv_id}: {_e}")
+        # API 실패 시 아래 일반 크롤링으로 fallback
+    # ──────────────────────────────────────────────────────────────────────
+
     def _process_attachments(url: str, label: str = ""):
         """주어진 URL에서 첨부파일을 찾아 텍스트 추출"""
         nonlocal source_type

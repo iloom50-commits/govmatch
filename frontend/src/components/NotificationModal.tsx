@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
+import IndustryPicker from "@/components/shared/IndustryPicker";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -108,6 +109,19 @@ async function isPushSubscribed(): Promise<boolean> {
     return !!(reg && await reg.pushManager.getSubscription());
   } catch { return false; }
 }
+
+// ── 스텝 테마: 개인=emerald, 기업=blue, 공통=indigo ──
+type StepTheme = "indigo" | "emerald" | "blue";
+function getStepTheme(stepId: StepId): StepTheme {
+  if (stepId?.startsWith("ind_")) return "emerald";
+  if (stepId?.startsWith("biz_")) return "blue";
+  return "indigo";
+}
+const THEME = {
+  indigo: { bar: "bg-indigo-600", btn: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200", num: "text-indigo-500", badge: null },
+  emerald: { bar: "bg-emerald-500", btn: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200", num: "text-emerald-600", badge: { text: "개인 정보", cls: "bg-emerald-100 text-emerald-700" } },
+  blue:    { bar: "bg-blue-600",    btn: "bg-blue-600 hover:bg-blue-700 shadow-blue-200",       num: "text-blue-600",    badge: { text: "기업 정보", cls: "bg-blue-100 text-blue-700" } },
+};
 
 // ── 동적 스텝 계산 (페이지당 2~3항목, 스크롤 없음) ──
 type StepId = "type" | "ind_location" | "ind_basic" | "ind_life" | "biz_location" | "biz_info1" | "biz_info2" | "interests" | "notify";
@@ -318,6 +332,8 @@ export default function NotificationModal({
 
   // 기업 필드
   const [companyName, setCompanyName] = useState("");
+  const [industryCode, setIndustryCode] = useState("");
+  const [industryName, setIndustryName] = useState("");
   const [revenueBracket, setRevenueBracket] = useState("");
   const [employeeBracket, setEmployeeBracket] = useState("");
   const [foundedDate, setFoundedDate] = useState("");
@@ -379,6 +395,8 @@ export default function NotificationModal({
           setFamilyType(p.family_type || "");
           setEmploymentStatus(p.employment_status || "");
           setCompanyName(p.company_name || "");
+          setIndustryCode(p.industry_code || "");
+          setIndustryName(p.industry_name || "");
           setRevenueBracket(p.revenue_bracket || "");
           setEmployeeBracket(p.employee_count_bracket || "");
           setFoundedDate(p.founded_date || "");
@@ -399,7 +417,10 @@ export default function NotificationModal({
           setInterestRegions(p.interest_regions ? String(p.interest_regions).split(",").filter(Boolean) : []);
           setGender(p.gender || ""); setAgeRange(p.age_range || ""); setIncomeLevel(p.income_level || "");
           setFamilyType(p.family_type || ""); setEmploymentStatus(p.employment_status || "");
-          setCompanyName(p.company_name || ""); setRevenueBracket(p.revenue_bracket || "");
+          setCompanyName(p.company_name || "");
+          setIndustryCode(p.industry_code || "");
+          setIndustryName(p.industry_name || "");
+          setRevenueBracket(p.revenue_bracket || "");
           setEmployeeBracket(p.employee_count_bracket || ""); setFoundedDate(p.founded_date || "");
           setIsPreFounder(p.is_pre_founder || false);
           setCertifications(p.certifications ? String(p.certifications).split(",").filter(Boolean) : []);
@@ -480,6 +501,8 @@ export default function NotificationModal({
           employment_status: (userType !== "business") ? employmentStatus : undefined,
           // 기업
           company_name: (userType !== "individual" && companyName.trim()) ? companyName.trim() : undefined,
+          industry_code: (userType !== "individual" && industryCode) ? industryCode : undefined,
+          industry_name: (userType !== "individual" && industryName) ? industryName : undefined,
           revenue_bracket: (userType !== "individual") ? revenueBracket : undefined,
           employee_count_bracket: (userType !== "individual") ? employeeBracket : undefined,
           founded_date: (userType !== "individual" && !isPreFounder) ? foundedDate : undefined,
@@ -542,6 +565,7 @@ export default function NotificationModal({
   const isBoth = userType === "both";
   const progressPct = ((step + 1) / totalSteps) * 100;
   const isLastStep = step === totalSteps - 1;
+  const theme = THEME[getStepTheme(currentStep.id)];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3">
@@ -551,7 +575,7 @@ export default function NotificationModal({
         {/* 진행률 바 — shortcut에선 숨김 */}
         {!shortcutMode && (
           <div className="h-1.5 bg-slate-100 shrink-0">
-            <div className="h-full bg-indigo-600 transition-all duration-500 ease-out rounded-r-full" style={{ width: `${progressPct}%` }} />
+            <div className={`h-full ${theme.bar} transition-all duration-500 ease-out rounded-r-full`} style={{ width: `${progressPct}%` }} />
           </div>
         )}
 
@@ -576,7 +600,12 @@ export default function NotificationModal({
                   </>
                 ) : (
                   <>
-                    <p className="text-xs font-bold text-indigo-500 tracking-wider">{step + 1} / {totalSteps}</p>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className={`text-xs font-bold tracking-wider ${theme.num}`}>{step + 1} / {totalSteps}</p>
+                      {theme.badge && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${theme.badge.cls}`}>{theme.badge.text}</span>
+                      )}
+                    </div>
                     <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{currentStep.title}</h2>
                     <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{currentStep.subtitle}</p>
                   </>
@@ -705,7 +734,7 @@ export default function NotificationModal({
               </div>
             )}
 
-            {/* ===== Step: 기업 — 기본정보 (기업명·매출·직원수) ===== */}
+            {/* ===== Step: 기업 — 기본정보 (기업명·업종·매출·직원수) ===== */}
             {currentStep.id === "biz_info1" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div>
@@ -713,9 +742,17 @@ export default function NotificationModal({
                   <input
                     type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
                     placeholder="예: 지원금AI"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-indigo-200"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
+                <IndustryPicker
+                  value={industryName}
+                  selectedCode={industryCode}
+                  onSelect={(code, name) => { setIndustryCode(code); setIndustryName(name); }}
+                  label="업종"
+                  sublabel="(AI가 유사 업종 추천)"
+                  dark={false}
+                />
                 <div>
                   <p className="text-sm font-bold text-slate-600 mb-2">매출 규모</p>
                   <div className="flex flex-wrap gap-2">
@@ -871,7 +908,7 @@ export default function NotificationModal({
             <button
               onClick={goNext}
               disabled={!canNext()}
-              className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-200"
+              className={`w-full py-4 text-white rounded-xl font-bold text-base transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed shadow-lg ${theme.btn}`}
             >
               다음
             </button>
@@ -879,7 +916,7 @@ export default function NotificationModal({
             <button
               onClick={handleSave}
               disabled={loading}
-              className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-indigo-200"
+              className={`w-full py-4 text-white rounded-xl font-bold text-base transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg ${theme.btn}`}
             >
               {loading ? "설정 중..." : "맞춤 알림 설정 완료"}
             </button>

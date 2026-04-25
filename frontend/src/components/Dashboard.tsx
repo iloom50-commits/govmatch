@@ -396,16 +396,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
   const [showPromoModal, setShowPromoModal] = useState(false);
 
-  // 프로필 완성도 체크 (사이드바/알림 버튼 공통 사용)
-  // founded_date·is_pre_founder는 가입 시 자동 세팅되므로 제외 — 사용자가 능동적으로 입력한 필드만 체크
+  // 프로필 완성도 체크 — user_type별로 분리
   const profileCity = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
-  const hasProfile = !!(
-    profileCity || profile?.age_range || profile?.gender || profile?.income_level ||
-    profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
-    profile?.employee_count_bracket ||
-    (profile?.certifications && String(profile.certifications).replace("없음", "").length > 0) ||
-    (profile?.interests && String(profile.interests).length > 0)
-  );
+  const profileUserType = profile?.user_type || "individual";
+  const hasProfile = (() => {
+    if (!profile) return false;
+    if (profileUserType === "business") {
+      // 기업: 소재지·매출·직원수·업종 중 하나라도 있어야 완성
+      return !!(profileCity || profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code);
+    }
+    if (profileUserType === "individual") {
+      return !!(profile.age_range || profile.income_level || profile.family_type || profile.employment_status || profile.gender);
+    }
+    // both
+    const bizOk = !!(profileCity || profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code);
+    const indOk = !!(profile.age_range || profile.income_level || profile.family_type || profile.employment_status || profile.gender);
+    return bizOk || indOk;
+  })();
 
   // 프로필 미완성(로그인O) → NotificationModal, 비로그인 → onLoginRequired
   const handleLoginRequired = () => {
@@ -1033,14 +1040,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 🔔 맞춤 알림 카드 — 프로필+알림 둘 다 완료 시 녹색, 하나라도 미완성 시 핑크 CTA */}
       {(() => {
         const _city = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
-        // founded_date·is_pre_founder는 가입 시 자동 세팅되므로 제외 — 사용자가 능동적으로 입력한 필드만 체크
-        const hasProfile = !!(
-          _city || profile?.age_range || profile?.gender || profile?.income_level ||
-          profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
-          profile?.employee_count_bracket ||
-          (profile?.certifications && String(profile.certifications).replace("없음","").length > 0) ||
-          (profile?.interests && String(profile.interests).length > 0)
-        );
+        const _ut = profile?.user_type || "individual";
+        const hasProfile = (() => {
+          if (!profile) return false;
+          if (_ut === "business") return !!(_city || profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code);
+          if (_ut === "individual") return !!(profile.age_range || profile.income_level || profile.family_type || profile.employment_status || profile.gender);
+          return !!(_city || profile.revenue_bracket || profile.industry_code || profile.age_range || profile.income_level);
+        })();
         const allDone = hasProfile && hasNotificationSet;
 
         if (!profile) return null;
@@ -1097,13 +1103,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {(() => {
         const ut = profile?.user_type || "both";
         const _city = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
-        const hasProfile = !!(
-          _city || profile?.age_range || profile?.gender || profile?.income_level ||
-          profile?.family_type || profile?.employment_status || profile?.revenue_bracket ||
-          profile?.employee_count_bracket ||
-          (profile?.certifications && String(profile.certifications).replace("없음","").length > 0) ||
-          (profile?.interests && String(profile.interests).length > 0)
-        );
+        const hasProfile = (() => {
+          if (!profile) return false;
+          if (ut === "business") return !!(_city || profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code);
+          if (ut === "individual") return !!(profile.age_range || profile.income_level || profile.family_type || profile.employment_status || profile.gender);
+          return !!(_city || profile.revenue_bracket || profile.industry_code || profile.age_range || profile.income_level);
+        })();
         if (!hasProfile) return null;
         // 개인 사용자: 개인 정보 카드
         if (ut === "individual") return (

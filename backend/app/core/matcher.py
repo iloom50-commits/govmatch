@@ -10,6 +10,14 @@ def get_db_connection(database_url=DATABASE_URL):
     conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
 
+def _to_str(val) -> str:
+    """DB 필드가 list 또는 str로 올 수 있음 — 항상 콤마 구분 문자열로 반환"""
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        return ",".join(str(v) for v in val)
+    return str(val)
+
 def _strip_html(text: str) -> str:
     if not text:
         return ""
@@ -333,7 +341,7 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
     Returns: (passed: list, excluded: list of {ad, reasons})
     """
     user_industry = user_profile.get("industry_code") or ""
-    raw_city = user_profile.get("address_city") or ""
+    raw_city = _to_str(user_profile.get("address_city"))
     user_city_norm = ""
     if raw_city:
         first_city = raw_city.split(",")[0].strip()
@@ -386,7 +394,7 @@ def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) 
     - 연령 제한: eligibility_logic에 max_age/min_age 있으면 확인
     - exclusion_rules 기반 제외 (개인 대상 사업도 제외 조건 있음)
     """
-    raw_city = user_profile.get("address_city") or ""
+    raw_city = _to_str(user_profile.get("address_city"))
     user_city_norm = ""
     if raw_city:
         first_city = raw_city.split(",")[0].strip()
@@ -497,7 +505,7 @@ def get_matches_for_user(user_profile):
         return []
 
     # 사용자 정보 준비
-    user_interests_raw = user_profile.get("interests") or ""
+    user_interests_raw = _to_str(user_profile.get("interests"))
     user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
 
     # 관심분야 → 확장 키워드
@@ -514,14 +522,14 @@ def get_matches_for_user(user_profile):
             interest_keywords.append(tag)
 
     # 맞춤 키워드 추가 (custom_keywords)
-    custom_kw_raw = user_profile.get("custom_keywords") or ""
+    custom_kw_raw = _to_str(user_profile.get("custom_keywords"))
     custom_kw_list = [k.strip() for k in custom_kw_raw.split(",") if k.strip()]
     interest_keywords.extend(custom_kw_list)
 
     is_soho = _is_soho(user_profile)
 
     # 사용자 보유 인증/자격 (certifications) — 복수, 콤마 구분 문자열
-    user_certs_raw = user_profile.get("certifications") or ""
+    user_certs_raw = _to_str(user_profile.get("certifications"))
     user_certs = [c.strip() for c in user_certs_raw.split(",") if c.strip() and c.strip() != "없음"]
     has_female = any("여성" in c for c in user_certs)
     has_disabled = any("장애" in c for c in user_certs)
@@ -547,7 +555,7 @@ def get_matches_for_user(user_profile):
     home_city = next((c for c in user_cities if c not in ("전국", "")), "")
 
     # 관심 지역 (복수, 보너스용) — interest_regions 필드
-    raw_interest_regions = user_profile.get("interest_regions", "")
+    raw_interest_regions = _to_str(user_profile.get("interest_regions"))
     interest_regions = [_normalize_region(c.strip()) for c in raw_interest_regions.split(",") if c.strip() and c.strip() != "전국"] if raw_interest_regions else []
 
     # 소재지가 없으면 전국 취급 (모든 지역 공고 통과)
@@ -1104,19 +1112,19 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     user_income = user_profile.get("income_level") or "해당없음"
     user_family = user_profile.get("family_type") or "해당없음"
     user_employment = user_profile.get("employment_status") or "해당없음"
-    raw_city = user_profile.get("address_city") or ""
+    raw_city = _to_str(user_profile.get("address_city"))
     user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
     home_city = next((c for c in user_cities if c not in ("전국", "")), "")
     has_home = bool(home_city)
-    raw_interest_regions = user_profile.get("interest_regions", "")
+    raw_interest_regions = _to_str(user_profile.get("interest_regions"))
     interest_regions = [_normalize_region(c.strip()) for c in raw_interest_regions.split(",") if c.strip() and c.strip() != "전국"] if raw_interest_regions else []
     bonus_cities = [home_city] if home_city else []
     bonus_cities.extend([r for r in interest_regions if r not in bonus_cities])
-    user_interests_raw = user_profile.get("interests") or ""
+    user_interests_raw = _to_str(user_profile.get("interests"))
     user_interest_tags = [t.strip() for t in user_interests_raw.split(",") if t.strip()]
 
     # 맞춤 키워드
-    custom_kw_raw = user_profile.get("custom_keywords") or ""
+    custom_kw_raw = _to_str(user_profile.get("custom_keywords"))
     custom_kw_list = [k.strip() for k in custom_kw_raw.split(",") if k.strip()]
 
     # 키워드 리스트 준비
@@ -1471,8 +1479,10 @@ def _classify_bucket(match_item: dict, user_profile: dict, bucket_order: list = 
     # 각 버킷 매칭 여부를 미리 계산
     # interest 매칭
     is_interest = False
-    user_interests = (user_profile.get("interests") or "").split(",") if user_profile.get("interests") else []
-    user_kws = (user_profile.get("custom_keywords") or "").split(",") if user_profile.get("custom_keywords") else []
+    _interests_raw = _to_str(user_profile.get("interests"))
+    user_interests = [t.strip() for t in _interests_raw.split(",") if t.strip()]
+    _kws_raw = _to_str(user_profile.get("custom_keywords"))
+    user_kws = [k.strip() for k in _kws_raw.split(",") if k.strip()]
     for tag in user_interests + user_kws:
         tag = (tag or "").strip()
         if not tag:
@@ -1487,7 +1497,7 @@ def _classify_bucket(match_item: dict, user_profile: dict, bucket_order: list = 
 
     # region 매칭 — DB region 필드 + 제목 [도시명] 패턴 모두 체크
     is_region = False
-    addr_raw = (user_profile.get("address_city") or "")
+    addr_raw = _to_str(user_profile.get("address_city"))
     user_cities = [c.strip() for c in addr_raw.split(",") if c.strip() and c.strip() != "전국"]
     if user_cities:
         if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):

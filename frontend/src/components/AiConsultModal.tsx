@@ -702,17 +702,32 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
           {/* Loading indicator — 프로그레스 바 + 단계별 메시지 */}
           {loading && (
             <div className="flex justify-start">
-              <div className="w-full max-w-[280px] px-4 py-3.5 bg-slate-100 rounded-2xl rounded-bl-md space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-semibold text-indigo-600">{loadingMessage || "준비 중..."}</p>
-                  <span className="text-[11px] font-bold text-indigo-400 tabular-nums">{loadingProgress}%</span>
+              <div className="w-full max-w-sm px-4 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl rounded-bl-md space-y-3">
+                {/* 아이콘 + 메시지 + % */}
+                <div className="flex items-center gap-2">
+                  <span className="text-base animate-spin" style={{ display: "inline-block", animationDuration: "2s" }}>⚙️</span>
+                  <p className="flex-1 text-[13px] font-semibold text-indigo-700 leading-snug">{loadingMessage || "준비 중..."}</p>
+                  <span className="text-[12px] font-bold text-indigo-400 tabular-nums">{loadingProgress}%</span>
                 </div>
-                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                {/* 진행바 */}
+                <div className="w-full h-2.5 bg-indigo-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-700 ease-out"
-                    style={{ width: `${loadingProgress}%` }}
-                  />
+                    className="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden"
+                    style={{ width: `${loadingProgress}%`, background: "linear-gradient(90deg, #6366f1, #8b5cf6)" }}
+                  >
+                    {/* 셔머 효과 — 멈추지 않고 계속 움직임 */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                  </div>
                 </div>
+                {/* 점 애니메이션 */}
+                <p className="text-[11px] text-indigo-400 font-medium">
+                  AI가 공고 내용을 분석하고 있어요
+                  <span className="inline-flex gap-0.5 ml-1">
+                    <span className="animate-bounce" style={{ animationDelay: "0ms" }}>·</span>
+                    <span className="animate-bounce" style={{ animationDelay: "150ms" }}>·</span>
+                    <span className="animate-bounce" style={{ animationDelay: "300ms" }}>·</span>
+                  </span>
+                </p>
               </div>
             </div>
           )}

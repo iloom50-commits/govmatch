@@ -381,7 +381,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [loading]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult" | "detail_analysis"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -1128,12 +1128,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                           <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
                                         )}
                                         {m.deadline_date && m.deadline_date !== "None" && <span className={t.muted}>📅 {String(m.deadline_date).slice(0,10)}</span>}
-                                        {m.eligibility_status === "ineligible" ? (
-                                          <span className="text-slate-400 font-semibold">⊘ 대상 아님</span>
+                                        {m.ai_verdict ? (
+                                          <span className={`font-bold ${m.ai_verdict === "eligible" ? "text-emerald-600" : m.ai_verdict === "ineligible" ? "text-red-400" : "text-amber-500"}`}>
+                                            {m.ai_verdict === "eligible" ? "✅ 신청 가능" : m.ai_verdict === "ineligible" ? "❌ 대상 아님" : "⚠️ 조건 확인"}
+                                          </span>
                                         ) : (
-                                          <span className="text-violet-500 font-semibold">✓ 신청 가능</span>
+                                          <span className="text-violet-500 font-semibold">✓ 후보</span>
                                         )}
                                       </div>
+                                      {m.ai_reason && (
+                                        <p className={`mt-1 text-[11px] ${dark ? "text-slate-400" : "text-slate-500"}`}>
+                                          {m.ai_reason}
+                                        </p>
+                                      )}
                                     </div>
                                     <button onClick={consultAnnouncement}
                                       className={`text-[10px] flex-shrink-0 px-2 py-1 rounded-lg transition-colors ${dark ? "text-violet-400 hover:bg-violet-500/20" : "text-violet-600 hover:bg-violet-50"}`}>
@@ -1143,6 +1150,22 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                 </div>
                               );
                               })}
+                              {/* AI 상세 분석 버튼 — 아직 분석 안 된 경우만 */}
+                              {msg.showReportButton && !msg.matched?.some((m: any) => m.ai_verdict) && (
+                                <button
+                                  onClick={() => {
+                                    if (loading || typing) return;
+                                    const analysisMsg = "AI 상세 분석을 실행합니다.";
+                                    const newHistory = [...messages, { role: "user" as const, text: analysisMsg }];
+                                    setMessages(newHistory);
+                                    sendToAI(newHistory, { action: "detail_analysis" });
+                                  }}
+                                  disabled={loading || typing}
+                                  className={`w-full py-2.5 rounded-xl text-[13px] font-bold transition-all border-2 border-dashed active:scale-[0.98] disabled:opacity-40 ${dark ? "border-violet-500/40 text-violet-400 hover:bg-violet-500/10" : "border-violet-400 text-violet-600 hover:bg-violet-50"}`}
+                                >
+                                  🔍 AI 상세 분석 — 신청 가능 여부 정밀 판정
+                                </button>
+                              )}
                               {msg.showReportButton && (
                                 <button
                                   onClick={async () => {

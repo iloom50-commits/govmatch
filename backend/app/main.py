@@ -3779,7 +3779,9 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
         return _handle_pro_consult(req, current_user)
     if action == "fund_consult":
         return _handle_pro_fund_consult(req, current_user)
-    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult | fund_consult)")
+    if action == "detail_analysis":
+        return _handle_pro_detail_analysis(req, current_user)
+    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult | fund_consult | detail_analysis)")
 
 
 def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
@@ -3960,6 +3962,129 @@ def _load_client(db, client_id, bn):
         try: db.rollback()
         except: pass
         return None
+
+
+def _handle_pro_detail_analysis(req: AiConsultantChatRequest, current_user: dict):
+    """action=detail_analysis: 매칭된 공고 상위 10개를 Gemini로 정밀 분석."""
+    import google.generativeai as genai
+    db = get_db_connection()
+    try:
+        session_state = _load_or_create_session(db, current_user, req.session_id, req.client_category)
+        matched_snap = (session_state or {}).get("matched_snapshot") or []
+        profile = (session_state or {}).get("collected") or req.profile_override or {}
+
+        if not matched_snap:
+            return {
+                "status": "SUCCESS",
+                "reply": "분석할 매칭 결과가 없습니다. 먼저 매칭을 실행해주세요.",
+                "choices": ["🔄 조건 수정 후 재매칭"],
+                "matched_announcements": [],
+            }
+
+        top = matched_snap[:10]
+
+        # 프로필 요약
+        label_map = {
+            "company_name": "기업명/이름", "industry_code": "업종", "address_city": "지역",
+            "revenue_bracket": "매출", "employee_count_bracket": "직원수",
+            "age_range": "연령대", "income_level": "소득", "family_type": "가구유형",
+            "employment_status": "고용상태", "interests": "관심분야",
+        }
+        profile_lines = [f"- {label_map.get(k, k)}: {v}" for k, v in profile.items() if v and k in label_map]
+        profile_text = "\n".join(profile_lines) or "프로필 정보 없음"
+
+        # 공고 목록 요약
+        ann_lines = []
+        for i, a in enumerate(top):
+            line = f"{i+1}. [ID:{a['announcement_id']}] {a['title']}"
+            if a.get("eligibility"):
+                line += f"\n   자격요건: {str(a['eligibility'])[:250]}"
+            ann_lines.append(line)
+        ann_text = "\n".join(ann_lines)
+
+        prompt = f"""당신은 정부지원사업 전문 컨설턴트입니다. 아래 고객 프로필과 공고 목록을 보고, 각 공고에 대한 신청 가능 여부를 판정하세요.
+
+[고객 프로필]
+{profile_text}
+
+[매칭 공고 목록]
+{ann_text}
+
+각 공고에 대해 판정하세요. 반드시 아래 JSON 배열 형식으로만 응답하세요:
+[
+  {{
+    "announcement_id": 숫자,
+    "verdict": "eligible" | "conditional" | "ineligible",
+    "reason": "판정 근거 한 줄 (40자 이내, 구체적으로)"
+  }}
+]
+- eligible: 프로필 기준 명백히 신청 가능
+- conditional: 일부 조건 확인 필요 또는 판단 근거 부족
+- ineligible: 프로필 기준 명백히 대상 아님
+- reason은 근거를 구체적으로: "업종 일치, 매출 조건 충족" / "연령 조건(만 39세 이하) 미충족" 등
+반드시 순수 JSON 배열만 반환하세요."""
+
+        api_key = os.environ.get("GEMINI_API_KEY")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config={"max_output_tokens": 2048, "temperature": 0.2}
+        )
+        resp = model.generate_content(prompt)
+        raw = resp.text.strip()
+        # JSON 추출
+        import re as _re
+        arr_match = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        verdicts = json.loads(arr_match.group(0)) if arr_match else []
+        verdict_map = {int(v["announcement_id"]): v for v in verdicts if "announcement_id" in v}
+
+        # 매칭 결과에 AI 판정 병합
+        enriched = []
+        for a in top:
+            item = dict(a)
+            aid = a.get("announcement_id")
+            if aid and int(aid) in verdict_map:
+                vd = verdict_map[int(aid)]
+                item["ai_verdict"] = vd.get("verdict", "conditional")
+                item["ai_reason"] = vd.get("reason", "")
+            else:
+                item["ai_verdict"] = "conditional"
+                item["ai_reason"] = "분석 데이터 부족"
+            enriched.append(item)
+
+        # eligible 우선 정렬
+        order = {"eligible": 0, "conditional": 1, "ineligible": 2}
+        enriched.sort(key=lambda x: order.get(x.get("ai_verdict", "conditional"), 1))
+
+        eligible_cnt = sum(1 for e in enriched if e.get("ai_verdict") == "eligible")
+        conditional_cnt = sum(1 for e in enriched if e.get("ai_verdict") == "conditional")
+
+        reply = (
+            f"**AI 정밀 분석 완료** — 상위 {len(enriched)}개 공고 판정 결과:\n\n"
+            f"✅ 신청 가능 **{eligible_cnt}건** · ⚠️ 조건 확인 필요 **{conditional_cnt}건** · "
+            f"❌ 대상 아님 **{len(enriched)-eligible_cnt-conditional_cnt}건**\n\n"
+            "공고 카드에서 상세 판정 근거를 확인하세요."
+        )
+
+        return {
+            "status": "SUCCESS",
+            "reply": reply,
+            "matched_announcements": enriched,
+            "choices": ["신청 가능 공고 상세 상담", "🔄 조건 수정 후 재매칭"],
+            "done": False,
+            "session_id": (session_state or {}).get("session_id"),
+        }
+    except Exception as e:
+        print(f"[detail_analysis] error: {e}")
+        import traceback; traceback.print_exc()
+        return {
+            "status": "SUCCESS",
+            "reply": "AI 상세 분석 중 오류가 발생했습니다. 다시 시도해주세요.",
+            "choices": ["🔄 다시 시도"],
+            "matched_announcements": [],
+        }
+    finally:
+        db.close()
 
 
 def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):

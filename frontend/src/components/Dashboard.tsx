@@ -385,7 +385,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   };
   const baseTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
   // "맞춤 추천" 탭 — 항상 표시
-  const currentTabs = [...baseTabs, { label: "⭐ 맞춤", key: "smart", categories: [] }];
+  const currentTabs = [...baseTabs];
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
@@ -720,46 +720,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭/검색 변경 시 페이지 리셋
   useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
 
-  // 새 맞춤 공고 배지 — 마지막 확인 시점과 현재 smartMatches 비교
-  const [newMatchCount, setNewMatchCount] = useState(0);
-  useEffect(() => {
-    if (smartMatches.length === 0) return;
-    const stored = Number(localStorage.getItem("smart_match_last_count") || "0");
-    if (smartMatches.length > stored) {
-      setNewMatchCount(smartMatches.length - stored);
-    }
-  }, [smartMatches]);
-  // "맞춤 추천" 탭 진입 시 카운트 초기화
-  useEffect(() => {
-    if (activeTab === "smart" && smartMatches.length > 0) {
-      localStorage.setItem("smart_match_last_count", String(smartMatches.length));
-      setNewMatchCount(0);
-    }
-  }, [activeTab, smartMatches.length]);
+  const newMatchCount = 0;
 
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
   const [publicServerTotal, setPublicServerTotal] = useState(0);
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
-  const usePublicData = isPublic || (!isPublic && matches.length === 0);
+  const usePublicData = true;  // 전체 공고 항상 API 데이터 사용 (일별 로테이션 맞춤 정렬)
 
-  // "맞춤 추천" 탭 선택 시 API 호출
+  // 서버 데이터 로드
   useEffect(() => {
-    if (activeTab !== "smart") return;
-    setSmartLoading(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    if (!token) { setSmartLoading(false); return; }
-    const tt = majorTab === "individual" ? "individual" : "business";
-    fetch(`${API}/api/smart-matches?target_type=${tt}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setSmartMatches(d.data || []); setSmartLoading(false); })
-      .catch(() => setSmartLoading(false));
-  }, [activeTab, majorTab]);
-
-  // 모든 사용자 서버 데이터 로드 (맞춤 탭 제외)
-  useEffect(() => {
-    if (activeTab === "smart") return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
     const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
@@ -1548,7 +1519,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 >
                   {currentTabs.map((tab) => {
                     const count = tabCounts[tab.key] || 0;
-                    if (tab.key !== "all" && tab.key !== "smart" && count === 0) return null;
+                    if (tab.key !== "all" && count === 0) return null;
                     return (
                       <option key={tab.key} value={tab.key}>
                         {tab.label} ({count.toLocaleString()})
@@ -1565,7 +1536,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <div className="hidden sm:flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {currentTabs.map((tab) => {
                   const count = tabCounts[tab.key] || 0;
-                  if (tab.key !== "all" && tab.key !== "smart" && count === 0) return null;
+                  if (tab.key !== "all" && count === 0) return null;
                   return (
                     <button
                       key={tab.key}
@@ -1579,21 +1550,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       }`}
                     >
                       {tab.label}
-                      {tab.key === "smart" ? (
-                        smartMatches.length > 0 && (
-                          <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
-                            activeTab === tab.key ? "bg-white/20 text-white/80" : "bg-rose-100 text-rose-600"
-                          }`}>{smartMatches.length}</span>
-                        )
-                      ) : (
-                        <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
-                          activeTab === tab.key
-                            ? "bg-white/20 text-white/80"
-                            : "bg-slate-100 text-slate-400"
-                        }`}>
-                          {count.toLocaleString()}
-                        </span>
-                      )}
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+                        activeTab === tab.key
+                          ? "bg-white/20 text-white/80"
+                          : "bg-slate-100 text-slate-400"
+                      }`}>
+                        {count.toLocaleString()}
+                      </span>
                     </button>
                   );
                 })}
@@ -1703,39 +1666,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <>
             {/* 오늘의 인기 공고 섹션 제거 (사장님 요청) */}
 
-            {/* 맞춤 추천 탭 — AI가 선별한 공고 */}
-            {activeTab === "smart" && (
-              <div className="pb-6">
-                {smartLoading ? (
-                  <div className="text-center py-10 text-slate-400">AI 맞춤 공고를 불러오는 중...</div>
-                ) : smartMatches.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {smartMatches.map((res: any, idx: number) => (
-                      <div key={`smart-${res.announcement_id || idx}`} className="animate-in fade-in slide-in-from-bottom-6 duration-700" style={{ animationDelay: `${idx * 80}ms` }}>
-                        {res.match_reason && (
-                          <div className="mb-1 px-2 py-1 bg-indigo-50 rounded-lg text-[11px] text-indigo-600 font-medium">
-                            ⭐ {res.match_reason}
-                          </div>
-                        )}
-                        <ResultCard
-                          res={res}
-                          planStatus={planStatus}
-                          onUpgrade={onUpgrade}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-10">
-                    <p className="text-slate-500 text-sm">아직 맞춤 추천이 준비되지 않았습니다.</p>
-                    <p className="text-slate-400 text-xs mt-1">매일 새벽에 AI가 공고를 분석하여 맞춤 추천을 준비합니다.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* 이메일 ?aid= 접속 시 해당 공고 최상단 고정 */}
-            {pinnedAnnouncement && highlightAid && activeTab !== "smart" && (
+            {pinnedAnnouncement && highlightAid && (
               <div className="mb-3 animate-in fade-in slide-in-from-top-4 duration-500">
                 <p className="text-[11px] text-indigo-500 font-bold mb-2 flex items-center gap-1">
                   <span>📌</span> 이메일에서 선택한 공고
@@ -1751,7 +1683,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
             )}
 
-            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden ${activeTab === "smart" ? "hidden" : ""}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden">
               {(() => {
                 // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
                 if (publicData.length > 0) {

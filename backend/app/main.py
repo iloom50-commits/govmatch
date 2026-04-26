@@ -1875,23 +1875,24 @@ def api_announcements_public(
                         interest_sql = "FALSE"
                         interest_params = []
 
-                    # 맞춤 정렬 우선순위:
-                    # 0 = 내 지역 공고 (적합)
-                    # 1 = 관심분야 매칭 (적합)
-                    # 2 = 전국 + 지원금 있음 (적합)
-                    # 3 = 기타 적합
-                    # 4 = 타겟 불일치 (후순위)
-                    sort_case = f"""
+                    # 일별 로테이션 bucket 정렬
+                    # bucket 0 = 지역+자금, 1 = 전국+자금, 2 = 관심+자금, 3 = 후순위(해당없음)
+                    # 오늘의 우선 bucket: day_of_year % 3  → 매일 0→1→2→0... 순환
+                    import datetime as _dt
+                    today_bucket = _dt.date.today().timetuple().tm_yday % 3
+
+                    has_amount_sql = "(support_amount IS NOT NULL AND support_amount != '')"
+                    bucket_sql = f"""
                         CASE
-                            WHEN COALESCE(target_type, 'business') != %s THEN 4
-                            WHEN {region_sql} THEN 0
-                            WHEN {interest_sql} THEN 1
-                            WHEN region IN ('전국', '', '전국 및 각 지역')
-                                 AND support_amount IS NOT NULL AND support_amount != '' THEN 2
+                            WHEN COALESCE(target_type, 'business') != %s THEN 3
+                            WHEN {region_sql} AND {has_amount_sql} THEN 0
+                            WHEN region IN ('전국', '', '전국 및 각 지역') AND {has_amount_sql} THEN 1
+                            WHEN {interest_sql} AND {has_amount_sql} THEN 2
                             ELSE 3
                         END
                     """
-                    sort_params = [user_target] + region_params + interest_params
+                    # bucket 파라미터: user_target + region_params + interest_params
+                    bucket_params = [user_target] + region_params + interest_params
 
                     valid_where = valid_announcement_where()
                     # 기업/개인 탭 구분 필터
@@ -1910,22 +1911,28 @@ def api_announcements_public(
                     _pcur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {full_where}", type_params)
                     total = _pcur.fetchone()["cnt"]
 
-                    # 맞춤 정렬 후 페이지 반환
+                    # 일별 로테이션 정렬: CTE로 bucket 계산 후 오늘 기준 상대 순위
                     _pcur.execute(
-                        f"""SELECT announcement_id, title, region, category, department,
-                                   support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                   deadline_date, origin_source, created_at,
-                                   COALESCE(target_type, 'business') AS target_type,
-                                   origin_url, summary_text, eligibility_logic,
-                                   established_years_limit, revenue_limit, employee_limit
-                            FROM announcements
-                            WHERE {full_where}
+                        f"""WITH ann AS (
+                                SELECT announcement_id, title, region, category, department,
+                                       support_amount, support_amount_max, support_amount_min, support_amount_type,
+                                       deadline_date, origin_source, created_at,
+                                       COALESCE(target_type, 'business') AS target_type,
+                                       origin_url, summary_text, eligibility_logic,
+                                       established_years_limit, revenue_limit, employee_limit,
+                                       {bucket_sql} AS bucket
+                                FROM announcements
+                                WHERE {full_where}
+                            )
+                            SELECT * FROM ann
                             ORDER BY
-                                {sort_case},
+                                CASE WHEN bucket = 3 THEN 10
+                                     ELSE (bucket - %s + 3) % 3
+                                END,
                                 deadline_date ASC NULLS LAST,
                                 created_at DESC
                             LIMIT %s OFFSET %s""",
-                        type_params + sort_params + [size, offset],
+                        type_params + bucket_params + [today_bucket, size, offset],
                     )
                     rows = [dict(r) for r in _pcur.fetchall()]
                     _pc.close()

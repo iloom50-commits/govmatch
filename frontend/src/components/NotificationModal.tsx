@@ -250,39 +250,43 @@ function InterestAutocomplete({ options, selected, onSelect, onRemove, userType 
           </button>
         </div>
       )}
-      {/* AI 제안 패널 — 체크박스 선택 */}
+      {/* AI 제안 패널 — 모바일: fixed 하단 시트 / 데스크탑: absolute 드롭다운 */}
       {showPanel && (
-        <div className="absolute z-30 w-full mt-1 bg-white border border-indigo-300 rounded-xl shadow-xl p-3 max-h-96 overflow-y-auto">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[12px] font-bold text-indigo-700">AI가 찾은 유사 태그 ({suggestions.length}개)</p>
-            <button onClick={cancelPanel} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
-          </div>
-          {suggestions.length === 0 ? (
-            <p className="text-[12px] text-slate-500 py-3 text-center">유사한 태그를 찾지 못했습니다. 입력한 내용을 그대로 추가하시려면 확정을 누르세요.</p>
-          ) : (
-            <div className="space-y-1">
-              {suggestions.map(s => (
-                <label key={s.tag} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-indigo-50 cursor-pointer">
-                  <input type="checkbox" checked={selected.includes(s.tag)} onChange={() => toggleCheck(s.tag)}
-                    className="w-4 h-4 accent-indigo-600" />
-                  <span className="text-sm text-slate-700 flex-1">{s.tag}</span>
-                  {s.category && <span className="text-[10px] text-slate-400">{s.category}</span>}
-                  <span className="text-[10px] text-indigo-500 font-mono">{Math.round(s.similarity * 100)}%</span>
-                </label>
-              ))}
+        <>
+          {/* 모바일 배경 딤 */}
+          <div className="fixed inset-0 z-40 bg-black/20 sm:hidden" onClick={cancelPanel} />
+          <div className="fixed left-0 right-0 bottom-0 z-50 rounded-t-2xl sm:absolute sm:bottom-auto sm:top-full sm:left-0 sm:right-0 sm:rounded-xl sm:z-30 bg-white border-t border-indigo-200 sm:border sm:border-indigo-300 shadow-2xl sm:shadow-xl p-4 sm:p-3 max-h-[60vh] sm:max-h-96 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[13px] font-bold text-indigo-700">AI가 찾은 유사 태그 ({suggestions.length}개)</p>
+              <button onClick={cancelPanel} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
             </div>
-          )}
-          <div className="flex gap-2 mt-3 pt-2 border-t border-slate-100">
-            <button onClick={confirmSelection}
-              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">
-              확인
-            </button>
-            <button onClick={cancelPanel}
-              className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200">
-              취소
-            </button>
+            {suggestions.length === 0 ? (
+              <p className="text-sm text-slate-500 py-3 text-center">유사한 태그를 찾지 못했습니다.<br/>입력한 내용을 그대로 추가하려면 확인을 누르세요.</p>
+            ) : (
+              <div className="space-y-1">
+                {suggestions.map(s => (
+                  <label key={s.tag} className="flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer">
+                    <input type="checkbox" checked={selected.includes(s.tag)} onChange={() => toggleCheck(s.tag)}
+                      className="w-5 h-5 accent-indigo-600 flex-shrink-0" />
+                    <span className="text-sm text-slate-700 flex-1">{s.tag}</span>
+                    {s.category && <span className="text-[11px] text-slate-400">{s.category}</span>}
+                    <span className="text-[11px] text-indigo-400 font-mono w-8 text-right">{Math.round(s.similarity * 100)}%</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 mt-4 pt-3 border-t border-slate-100">
+              <button onClick={confirmSelection}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 active:scale-95">
+                확인
+              </button>
+              <button onClick={cancelPanel}
+                className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-200 active:scale-95">
+                취소
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

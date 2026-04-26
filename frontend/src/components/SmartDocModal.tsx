@@ -21,6 +21,11 @@ export default function SmartDocModal() {
     return () => window.removeEventListener("open-smartdoc-modal", handler);
   }, []);
 
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
   if (!open || !announcement) return null;
 
   return (

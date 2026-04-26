@@ -9,6 +9,11 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
   useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  useEffect(() => {
     const fetchReferralCode = async () => {
       try {
         const token = localStorage.getItem("auth_token");

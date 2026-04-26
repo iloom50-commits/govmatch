@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
 
 interface ProfileSettingsProps {
@@ -14,6 +14,10 @@ interface ProfileSettingsProps {
 
 export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, planStatus }: ProfileSettingsProps) {
   useModalBack(true, onClose);
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
   const [showPwChange, setShowPwChange] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");

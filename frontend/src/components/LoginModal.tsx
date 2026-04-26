@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/Toast";
 import EmailInput from "@/components/ui/EmailInput";
 
@@ -14,6 +14,10 @@ interface LoginModalProps {
 
 export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: LoginModalProps) {
   const { toast } = useToast();
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
   const [loading, setLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [showReset, setShowReset] = useState(false);

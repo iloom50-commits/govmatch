@@ -205,6 +205,11 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
 
   // 이벤트 리스너
   useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.announcement) {

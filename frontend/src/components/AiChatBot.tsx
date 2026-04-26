@@ -213,6 +213,11 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
   const [pendingFundMode, setPendingFundMode] = useState<"business_fund" | "individual_fund" | null>(null);
   // 탭 전환 시 fundMode 자동 동기화 (상담 진행 중이 아닐 때만)
   useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  useEffect(() => {
     if (!currentTab || messages.length > 0) return;
     setFundMode(currentTab === "individual" ? "individual_fund" : "business_fund");
   }, [currentTab]);

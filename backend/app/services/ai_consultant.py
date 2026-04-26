@@ -1878,10 +1878,32 @@ def chat_lite_fund_expert(
         except Exception as e:
             logger.warning(f"[AI_ENGINE_V2] LITE extract/save error (비차단): {e}")
 
+    # [ANN:id] 마커 파싱 → matched 배열 (이유 텍스트 + 공고 카드 쌍)
+    import re as _re
+    matched = []
+    clean_reply = reply_text
+    ann_blocks = _re.split(r'\[ANN:(\d+)\]', reply_text)
+    if len(ann_blocks) >= 3:
+        # ann_blocks = [intro, id1, reason1, id2, reason2, ...]
+        clean_reply = ann_blocks[0].strip()
+        for i in range(1, len(ann_blocks) - 1, 2):
+            try:
+                ann_id = int(ann_blocks[i])
+                reason = ann_blocks[i + 1].strip()
+                ann = next((
+                    a for a in _referenced_announcements
+                    if (a.get("id") or a.get("announcement_id")) == ann_id
+                ), None)
+                if ann and reason:
+                    matched.append({"reason": reason, "announcement": ann})
+            except (ValueError, IndexError):
+                pass
+
     return {
-        "reply": reply_text,
+        "reply": clean_reply if matched else reply_text,
         "choices": parsed_choices,
-        "announcements": _referenced_announcements[:5],  # 검색된 공고 미니카드용
+        "announcements": _referenced_announcements[:5],
+        "matched": matched,  # 이유+공고 쌍 (프론트에서 paired 렌더링)
         "done": False,
         "mode": "individual_fund" if is_individual else "business_fund",
         "tool_calls": tool_calls,

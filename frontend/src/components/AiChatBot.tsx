@@ -71,11 +71,17 @@ interface RelatedAnnouncement {
   origin_url?: string;
 }
 
+interface MatchedAnnouncement {
+  reason: string;
+  announcement: RelatedAnnouncement;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   choices?: string[];
   announcements?: RelatedAnnouncement[];
+  matched?: MatchedAnnouncement[];
   done?: boolean;
 }
 
@@ -437,11 +443,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
 
       const data = await res.json();
       const announcements = data.announcements || [];
+      const matched = data.matched || [];
       const aiMsg: ChatMessage = {
         role: "assistant",
         text: data.reply || "응답을 처리할 수 없습니다.",
         choices: data.choices || [],
         announcements,
+        matched,
         done: data.done || false,
       };
 
@@ -1836,8 +1844,52 @@ ${convHtml}
                       )}
                     </div>
 
-                    {/* 미니 공고 카드 — 채팅 내 콤팩트 표시 */}
-                    {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
+                    {/* matched: 이유 텍스트 + 공고 카드 쌍 렌더링 */}
+                    {msg.role === "assistant" && msg.matched && msg.matched.length > 0 && (
+                      <div className="mt-3 space-y-3">
+                        {msg.matched.map((item, idx) => {
+                          const ann = item.announcement;
+                          const annId = ann.announcement_id || ann.id;
+                          const displayAmount = ann.support_amount || ann.amount;
+                          const displayDeadline = ann.deadline_date || ann.deadline;
+                          const displayDept = ann.department || ann.dept;
+                          return (
+                            <div key={idx}>
+                              {/* 이유 텍스트 */}
+                              <div className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl rounded-bl-md text-base md:text-[15px] leading-relaxed text-slate-800 mb-1.5">
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(item.reason)) }} />
+                              </div>
+                              {/* 공고 카드 */}
+                              <div className="bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition-all overflow-hidden ml-2">
+                                <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
+                                  {displayAmount ? <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{formatSupportAmount(displayAmount)}</span> : <span />}
+                                  {displayDeadline && <span className="text-[11px] text-slate-400 font-medium">마감 {String(displayDeadline).slice(2, 10).replace(/-/g, ".")}</span>}
+                                </div>
+                                <p className="px-3 text-sm font-bold text-slate-800 leading-snug line-clamp-2">{ann.title}</p>
+                                {displayDept && <p className="px-3 pt-0.5 pb-2 text-[11px] text-slate-400 truncate">{String(displayDept).slice(0, 20)}</p>}
+                                <div className="flex border-t border-slate-100">
+                                  {ann.origin_url && (
+                                    <a href={ann.origin_url} target="_blank" rel="noopener noreferrer"
+                                      className="flex-1 flex items-center justify-center gap-1 py-2 text-[12px] text-slate-500 font-medium hover:bg-slate-50 border-r border-slate-100"
+                                      onClick={(e) => e.stopPropagation()}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                      원문 보기
+                                    </a>
+                                  )}
+                                  <button className="flex-1 py-2 text-[12px] text-indigo-600 font-bold hover:bg-indigo-50 text-center"
+                                    onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("request-ai-consult", { detail: { announcement: { announcement_id: annId, title: ann.title, support_amount: displayAmount, deadline_date: displayDeadline, department: displayDept, category: ann.category, origin_url: ann.origin_url } } })); }}>
+                                    상세 분석 →
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 기존 announcements 카드 — matched 없을 때 폴백 */}
+                    {msg.role === "assistant" && (!msg.matched || msg.matched.length === 0) && msg.announcements && msg.announcements.length > 0 && (
                       <div className="mt-3 space-y-2">
                         {msg.announcements.slice(0, 5).map((ann) => {
                           const annId = ann.announcement_id || ann.id;

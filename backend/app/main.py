@@ -3371,6 +3371,7 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         "reply": result.get("reply", ""),
         "choices": result.get("choices", []),
         "announcements": result.get("announcements", []),
+        "matched": result.get("matched", []),
         "done": result.get("done", False),
         "ai_used": usage,
         "ai_limit": limit,

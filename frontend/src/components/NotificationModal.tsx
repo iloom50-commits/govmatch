@@ -300,7 +300,7 @@ function ChipRect({ label, selected, onClick }: { label: string; selected: boole
 }
 
 export default function NotificationModal({
-  isOpen, onClose, businessNumber, onSave, profile, shortcutMode = false,
+  isOpen, onClose, businessNumber, onSave, profile, shortcutMode = false, contextMessage,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -308,6 +308,7 @@ export default function NotificationModal({
   onSave: (data: any) => void;
   profile?: any;
   shortcutMode?: boolean;  // true면 프로필 스텝 스킵 — 알림 설정만 바로 보여줌
+  contextMessage?: string; // AI 상담 게이트 등에서 열릴 때 상단에 표시할 안내 문구
 }) {
   useModalBack(isOpen, onClose);
   const { toast } = useToast();
@@ -585,6 +586,16 @@ export default function NotificationModal({
         {!shortcutMode && (
           <div className="h-1.5 bg-slate-100 shrink-0">
             <div className={`h-full ${theme.bar} transition-all duration-500 ease-out rounded-r-full`} style={{ width: `${progressPct}%` }} />
+          </div>
+        )}
+
+        {/* 컨텍스트 배너 — AI 상담 게이트 등 진입 시 안내 */}
+        {contextMessage && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 shrink-0">
+            <svg className="w-4 h-4 text-indigo-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span className="text-xs font-medium text-indigo-700">{contextMessage}</span>
           </div>
         )}
 

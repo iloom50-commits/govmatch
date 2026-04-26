@@ -435,6 +435,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 기업/both 사용자가 업종 미설정인 경우 ('00000'도 미설정으로 처리)
   const industryNotSet = !profile?.industry_code || profile?.industry_code === "00000";
   const bizNeedsIndustry = (profileUserType === "business" || profileUserType === "both") && industryNotSet;
+  const [notifyFromGate, setNotifyFromGate] = useState(false);
   const checkProfileThenRun = useCallback((action: () => void) => {
     if (hasProfile && !bizNeedsIndustry) {
       action();
@@ -442,6 +443,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       pendingActionRef.current = action;
       setIsNotifyOpen(true);
       setNotifyShortcut(false);
+      setNotifyFromGate(true);
       setSidebarOpen(false);
     }
   }, [hasProfile, bizNeedsIndustry]);
@@ -1866,13 +1868,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       <NotificationModal
         isOpen={isNotifyOpen}
-        onClose={() => { setIsNotifyOpen(false); setNotifyShortcut(false); }}
+        onClose={() => { setIsNotifyOpen(false); setNotifyShortcut(false); setNotifyFromGate(false); }}
+        contextMessage={notifyFromGate ? "정확한 매칭을 위해 정보가 필요해요" : undefined}
         businessNumber={profile?.business_number}
         onSave={() => {
+          setNotifyFromGate(false);
           onRefresh?.();
           (async () => {
             await onProfileRefresh?.();
-            // 프로필 게이트에서 저장된 액션 실행
             if (pendingActionRef.current) {
               pendingActionRef.current();
               pendingActionRef.current = null;

@@ -1601,6 +1601,10 @@ def chat_lite_fund_expert(
             rev = u.get("revenue_bracket", "") or ""
             if any(x in rev for x in ["500억", "1000억", "5000억", "1조"]):
                 _profile_warnings.append(f"⚠ 매출 {rev} — 중견/대기업. '소상공인' 전용 공고는 해당 안 됨.")
+            # 기업 탭에서도 age_range 있으면 청년 제한 체크
+            age = u.get("age_range", "") or ""
+            if any(a in age for a in ["40대", "50대", "60대"]):
+                _profile_warnings.append(f"⚠ 사용자 {age} — 만 34세 이하 '청년' 지원사업은 해당 안 됨. 절대 추천 금지.")
             if parts:
                 profile_ctx += "[사용자 프로필]\n- " + "\n- ".join(parts) + "\n"
 

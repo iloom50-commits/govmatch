@@ -3322,7 +3322,7 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     if req.mode == "individual_fund":
         filtered_profile = {k: v for k, v in u.items() if k in (_INDIV_FIELDS | _COMMON_FIELDS) and v}
     elif req.mode == "business_fund":
-        filtered_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
+        filtered_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS | {"age_range"}) and v}
     else:
         filtered_profile = u
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=filtered_profile, mode=req.mode)

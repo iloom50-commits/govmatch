@@ -1885,45 +1885,48 @@ ${convHtml}
 
                     {/* 미니 공고 카드 — 채팅 내 콤팩트 표시 */}
                     {msg.role === "assistant" && msg.announcements && msg.announcements.length > 0 && (
-                      <div className="mt-3 space-y-1.5">
+                      <div className="mt-3 space-y-2">
                         {msg.announcements.slice(0, 5).map((ann) => {
                           const annId = ann.announcement_id || ann.id;
-                          // RAG results use 'amount'/'deadline'/'dept'; announcement objects use standard field names
                           const displayAmount = ann.support_amount || ann.amount;
                           const displayDeadline = ann.deadline_date || ann.deadline;
                           const displayDept = ann.department || ann.dept;
                           return (
-                          <div key={annId} className="p-2.5 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 transition-all">
-                            {/* 제목 */}
-                            <p className="text-[13px] md:text-[11px] font-bold text-slate-800 leading-snug line-clamp-2 mb-1">{ann.title}</p>
-                            {/* 금액 · 마감일 */}
-                            <div className="flex items-center gap-2 text-[11px] md:text-[10px] mb-2">
-                              {displayDept && <span className="text-slate-400 truncate max-w-[80px]">{String(displayDept).slice(0, 12)}</span>}
-                              {displayAmount && <span className="text-rose-500 font-bold">{formatSupportAmount(displayAmount)}</span>}
+                          <div key={annId} className="bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition-all overflow-hidden">
+                            {/* 상단: 금액 배지 + 마감일 */}
+                            <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
+                              {displayAmount
+                                ? <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{formatSupportAmount(displayAmount)}</span>
+                                : <span />
+                              }
                               {displayDeadline && (
-                                <span className="text-slate-500 font-medium">
+                                <span className="text-[11px] text-slate-400 font-medium">
                                   마감 {String(displayDeadline).slice(2, 10).replace(/-/g, ".")}
                                 </span>
                               )}
                             </div>
-                            {/* 버튼 2개 */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {/* 원문 바로가기 (origin_url 있을 때만) */}
+                            {/* 제목 */}
+                            <p className="px-3 text-sm font-bold text-slate-800 leading-snug line-clamp-2">{ann.title}</p>
+                            {/* 기관명 */}
+                            {displayDept && (
+                              <p className="px-3 pt-0.5 pb-2 text-[11px] text-slate-400 truncate">{String(displayDept).slice(0, 20)}</p>
+                            )}
+                            {/* 버튼 영역 */}
+                            <div className="flex border-t border-slate-100">
                               {ann.origin_url && (
                                 <a
                                   href={ann.origin_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[11px] md:text-[10px] font-medium hover:bg-slate-200 active:scale-95 transition-all"
+                                  className="flex-1 flex items-center justify-center gap-1 py-2 text-[12px] text-slate-500 font-medium hover:bg-slate-50 active:scale-95 transition-all border-r border-slate-100"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                   원문 보기
                                 </a>
                               )}
-                              {/* AI 상세 분석 */}
                               <button
-                                className="flex-1 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 text-[11px] md:text-[10px] font-bold hover:bg-indigo-100 active:scale-95 transition-all text-center"
+                                className="flex-1 py-2 text-[12px] text-indigo-600 font-bold hover:bg-indigo-50 active:scale-95 transition-all text-center"
                                 onClick={() => {
                                   setOpen(false);
                                   window.dispatchEvent(new CustomEvent("request-ai-consult", {
@@ -1939,7 +1942,7 @@ ${convHtml}
                                   }));
                                 }}
                               >
-                                공고 상세 분석 →
+                                상세 분석 →
                               </button>
                             </div>
                           </div>

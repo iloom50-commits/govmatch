@@ -1073,7 +1073,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
               <button
                 onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
-                className="flex-shrink-0 text-[11px] font-bold text-emerald-600 hover:text-emerald-800 underline underline-offset-2 transition-colors"
+                className="flex-shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
               >
                 수정
               </button>

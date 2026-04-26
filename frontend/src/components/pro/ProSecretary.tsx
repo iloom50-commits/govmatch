@@ -1096,11 +1096,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   };
                                 return (
                                 <div key={mi}
-                                  className={`w-full text-left p-3 rounded-xl border transition-all hover:shadow-md ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      {/* 상단: 버킷 배지 + 관심 태그 */}
-                                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                  className={`w-full text-left rounded-xl border transition-all hover:shadow-md overflow-hidden ${dark ? "bg-white/[0.03] border-white/[0.08] hover:border-violet-500/30" : "bg-white border-slate-200 hover:border-violet-400"}`}>
+                                  {/* 카드 본문 */}
+                                  <div className="p-3">
+                                    {/* 버킷 배지 + 관심 태그 */}
+                                    {(bucketBadge || interestTags.length > 0) && (
+                                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                                         {bucketBadge && (
                                           <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold ${bucketBadge.color}`}>
                                             <span>{bucketBadge.icon}</span><span>{bucketBadge.label}</span>
@@ -1112,39 +1113,46 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                           </span>
                                         ))}
                                       </div>
-                                      {/* 제목: origin_url 있으면 새 탭 링크, 없으면 일반 텍스트 */}
-                                      {m.origin_url ? (
-                                        <a href={m.origin_url} target="_blank" rel="noopener noreferrer"
-                                          className={`text-[13px] font-bold block truncate ${dark ? "text-slate-100 hover:text-violet-300" : "text-slate-800 hover:text-violet-700"} hover:underline`}>
-                                          {m.title || m.program_title || "공고"}
-                                        </a>
-                                      ) : (
-                                        <p className={`text-[13px] font-bold ${dark ? "text-slate-100" : "text-slate-800"} truncate`}>
-                                          {m.title || m.program_title || "공고"}
-                                        </p>
+                                    )}
+                                    {/* 제목 */}
+                                    <p className={`text-[13px] font-bold leading-snug line-clamp-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>
+                                      {m.title || m.program_title || "공고"}
+                                    </p>
+                                    {/* 지원금 / 마감일 / 판정 */}
+                                    <div className="flex flex-wrap gap-2 mt-1.5 text-[11px]">
+                                      {(m.support_amount || m.support_amount_max) && (
+                                        <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
                                       )}
-                                      <div className="flex flex-wrap gap-2 mt-1 text-[11px]">
-                                        {(m.support_amount || m.support_amount_max) && (
-                                          <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
-                                        )}
-                                        {m.deadline_date && m.deadline_date !== "None" && <span className={t.muted}>📅 {String(m.deadline_date).slice(0,10)}</span>}
-                                        {m.ai_verdict ? (
-                                          <span className={`font-bold ${m.ai_verdict === "eligible" ? "text-emerald-600" : m.ai_verdict === "ineligible" ? "text-red-400" : "text-amber-500"}`}>
-                                            {m.ai_verdict === "eligible" ? "✅ 신청 가능" : m.ai_verdict === "ineligible" ? "❌ 대상 아님" : "⚠️ 조건 확인"}
-                                          </span>
-                                        ) : (
-                                          <span className="text-violet-500 font-semibold">✓ 후보</span>
-                                        )}
-                                      </div>
-                                      {m.ai_reason && (
-                                        <p className={`mt-1 text-[11px] ${dark ? "text-slate-400" : "text-slate-500"}`}>
-                                          {m.ai_reason}
-                                        </p>
+                                      {m.deadline_date && m.deadline_date !== "None" && (
+                                        <span className={t.muted}>📅 {String(m.deadline_date).slice(0, 10)}</span>
+                                      )}
+                                      {m.ai_verdict ? (
+                                        <span className={`font-bold ${m.ai_verdict === "eligible" ? "text-emerald-600" : m.ai_verdict === "ineligible" ? "text-red-400" : "text-amber-500"}`}>
+                                          {m.ai_verdict === "eligible" ? "✅ 신청 가능" : m.ai_verdict === "ineligible" ? "❌ 대상 아님" : "⚠️ 조건 확인"}
+                                        </span>
+                                      ) : (
+                                        <span className="text-violet-500 font-semibold">✓ 후보</span>
                                       )}
                                     </div>
+                                    {m.ai_reason && (
+                                      <p className={`mt-1 text-[11px] ${dark ? "text-slate-400" : "text-slate-500"}`}>
+                                        {m.ai_reason}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {/* 하단 버튼 바 */}
+                                  <div className={`flex border-t ${dark ? "border-white/[0.06]" : "border-slate-100"}`}>
+                                    {m.origin_url && (
+                                      <a href={m.origin_url} target="_blank" rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className={`flex-1 flex items-center justify-center gap-1 py-2 text-[12px] font-medium border-r transition-colors ${dark ? "text-slate-400 hover:bg-white/[0.04] border-white/[0.06]" : "text-slate-500 hover:bg-slate-50 border-slate-100"}`}>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                        원문 바로가기
+                                      </a>
+                                    )}
                                     <button onClick={consultAnnouncement}
-                                      className={`text-[10px] flex-shrink-0 px-2 py-1 rounded-lg transition-colors ${dark ? "text-violet-400 hover:bg-violet-500/20" : "text-violet-600 hover:bg-violet-50"}`}>
-                                      상담 →
+                                      className={`flex-1 py-2 text-[12px] font-bold transition-colors ${dark ? "text-violet-400 hover:bg-violet-500/10" : "text-indigo-600 hover:bg-indigo-50"}`}>
+                                      상담하기 →
                                     </button>
                                   </div>
                                 </div>

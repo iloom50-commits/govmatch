@@ -1159,12 +1159,86 @@ def _deactivate_dead_urls():
         print(f"[cleanup] 오류: {e}")
 
 
+def _db_keepalive():
+    """Supabase PgBouncer 콜드스타트 방지용 keepalive ping."""
+    try:
+        conn = get_db_connection()
+        conn.cursor().execute("SELECT 1")
+        conn.close()
+    except Exception as e:
+        print(f"[Keepalive] ping error: {e}")
+
+
+def _prewarm_response_cache():
+    """서버 시작 시 비로그인 공고 목록 응답 캐시 선제 채우기."""
+    import time as _t
+    _t.sleep(3)  # lifespan 완전 초기화 후 실행
+    for tt in ("business", "individual", None):
+        try:
+            cache_key = f"pub:v2:{tt}:1:20"
+            if not _get_cached(cache_key):
+                conn = get_db_connection()
+                cur = conn.cursor()
+                valid_where = valid_announcement_where()
+                type_clause = ""
+                type_params: list = []
+                if tt:
+                    type_clause = "AND (target_type = %s OR target_type = 'both')"
+                    type_params = [tt]
+                full_where = f"{valid_where} {type_clause}"
+
+                cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {full_where}", type_params)
+                total = cur.fetchone()["cnt"]
+
+                cur.execute(
+                    f"""SELECT announcement_id, title, region, category, department,
+                               support_amount, support_amount_max, support_amount_min, support_amount_type,
+                               deadline_date, origin_source, created_at,
+                               COALESCE(target_type, 'business') AS target_type,
+                               origin_url, summary_text, eligibility_logic,
+                               established_years_limit, revenue_limit, employee_limit
+                        FROM announcements
+                        WHERE {full_where}
+                        ORDER BY
+                            CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 2
+                                 WHEN deadline_date IS NULL THEN 1 ELSE 0 END,
+                            CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
+                            CASE WHEN region = '전국' OR region IS NULL THEN 0 ELSE 1 END,
+                            created_at DESC, deadline_date ASC NULLS LAST
+                        LIMIT 20 OFFSET 0""",
+                    type_params,
+                )
+                rows = [dict(r) for r in cur.fetchall()]
+
+                cat_cache_key = f"cat_counts:{tt or 'all'}"
+                category_counts = _get_cached(cat_cache_key)
+                if not category_counts:
+                    cur.execute(
+                        f"SELECT category, COUNT(*) cnt FROM announcements WHERE {full_where} GROUP BY category ORDER BY cnt DESC",
+                        type_params,
+                    )
+                    category_counts = {r["category"]: r["cnt"] for r in cur.fetchall() if r["category"]}
+                    _set_cache(cat_cache_key, category_counts)
+
+                payload = {
+                    "status": "SUCCESS", "data": rows, "total": total,
+                    "page": 1, "size": 20, "regions": [], "categories": [],
+                    "category_counts": category_counts, "personalized": False, "source": "cache",
+                }
+                _set_cache(cache_key, payload)
+                conn.close()
+                print(f"[Prewarm] {tt or 'all'}: {len(rows)}건 캐시 완료")
+        except Exception as e:
+            print(f"[Prewarm] {tt} error: {e}")
+
+
 async def lifespan(app):
     _log_expired_announcements()  # 시작 시 현황만 로그
     # 서버 시작 시 사전매칭 캐시 (백그라운드)
     import threading
 
     def _warmup():
+        _prewarm_response_cache()  # 비로그인 응답 캐시 선제 채우기
         print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
 
     threading.Thread(target=_warmup, daemon=True).start()
@@ -1203,6 +1277,8 @@ async def lifespan(app):
                 except Exception as e:
                     print(f"[Pipeline] Error: {e}")
 
+            from apscheduler.triggers.interval import IntervalTrigger
+
             pipeline_scheduler = AsyncIOScheduler()
             pipeline_scheduler.add_job(
                 _daily_pipeline_job,
@@ -1211,8 +1287,15 @@ async def lifespan(app):
                 name="일일 통합 파이프라인 (03:00 KST)",
                 replace_existing=True,
             )
+            pipeline_scheduler.add_job(
+                _db_keepalive,
+                IntervalTrigger(minutes=2),
+                id="db_keepalive",
+                name="DB PgBouncer keepalive (2분마다)",
+                replace_existing=True,
+            )
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started — daily at 03:00 KST (UTC 18:00)")
+            print("[Pipeline] APScheduler started — daily at 03:00 KST (UTC 18:00) + keepalive every 2min")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -2224,11 +2307,17 @@ def api_announcements_public(
     )
     rows = cursor.fetchall()
 
-    # 필터용 메타: 지역/카테고리 목록
-    cursor.execute("SELECT DISTINCT region FROM announcements WHERE region IS NOT NULL ORDER BY region")
-    regions = [r["region"] for r in cursor.fetchall()]
-    cursor.execute("SELECT DISTINCT category FROM announcements WHERE category IS NOT NULL ORDER BY category")
-    categories = [r["category"] for r in cursor.fetchall()]
+    # 필터용 메타: 지역/카테고리 목록 — 15분 캐시 (거의 변하지 않음)
+    regions = _get_cached("meta:regions") or []
+    if not regions:
+        cursor.execute("SELECT DISTINCT region FROM announcements WHERE region IS NOT NULL ORDER BY region")
+        regions = [r["region"] for r in cursor.fetchall()]
+        _set_cache("meta:regions", regions)
+    categories = _get_cached("meta:categories") or []
+    if not categories:
+        cursor.execute("SELECT DISTINCT category FROM announcements WHERE category IS NOT NULL ORDER BY category")
+        categories = [r["category"] for r in cursor.fetchall()]
+        _set_cache("meta:categories", categories)
 
     # 카테고리별 건수 — 캐시 활용 (5분)
     cat_cache_key = f"cat_counts:{target_type or 'all'}"

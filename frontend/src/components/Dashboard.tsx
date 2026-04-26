@@ -432,8 +432,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 프로필 게이트: 프로필 미완성 또는 기업 업종 미설정 시 폼 먼저 → 저장 후 원래 액션 자동 실행
   const pendingActionRef = useRef<(() => void) | null>(null);
-  // 기업/both 사용자가 업종 미설정인 경우
-  const bizNeedsIndustry = (profileUserType === "business" || profileUserType === "both") && !profile?.industry_code;
+  // 기업/both 사용자가 업종 미설정인 경우 ('00000'도 미설정으로 처리)
+  const industryNotSet = !profile?.industry_code || profile?.industry_code === "00000";
+  const bizNeedsIndustry = (profileUserType === "business" || profileUserType === "both") && industryNotSet;
   const checkProfileThenRun = useCallback((action: () => void) => {
     if (hasProfile && !bizNeedsIndustry) {
       action();

@@ -505,7 +505,7 @@ export default function NotificationModal({
           industry_name: (userType !== "individual" && industryName) ? industryName : undefined,
           revenue_bracket: (userType !== "individual") ? revenueBracket : undefined,
           employee_count_bracket: (userType !== "individual") ? employeeBracket : undefined,
-          founded_date: (userType !== "individual" && !isPreFounder) ? foundedDate : undefined,
+          founded_date: (userType !== "individual" && !isPreFounder && foundedDate) ? foundedDate : undefined,
           is_pre_founder: (userType !== "individual") ? isPreFounder : undefined,
           certifications: (userType !== "individual") ? certifications.join(",") : undefined,
           // 관심

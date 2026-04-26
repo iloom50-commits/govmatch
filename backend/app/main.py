@@ -8333,7 +8333,7 @@ def api_fetch_company(request: BusinessNumberRequest):
             "company_name": "(신규 기업 등록 중)",
             "establishment_date": datetime.date.today().isoformat(),
             "address_city": "전국",
-            "industry_code": "00000",
+            "industry_code": "",
             "revenue": "UNDER_1B",
             "employees": "UNDER_10",
             "is_corp": is_corp
@@ -8446,16 +8446,22 @@ def api_update_profile(req: dict, current_user: dict = Depends(_get_current_user
         "interests", "custom_needs", "custom_keywords", "company_name",
         "gender", "age_range", "income_level", "family_type", "employment_status",
         "founded_date", "is_pre_founder", "certifications",
+        "industry_code", "industry_name",
     ]
     # user_type 값 검증
     if "user_type" in req and req["user_type"] not in ("individual", "business", "both", None):
         conn.close()
         raise HTTPException(status_code=400, detail="유효하지 않은 user_type입니다. (individual, business, both 중 선택)")
 
+    date_keys = {"founded_date", "establishment_date"}
     for key in allowed_keys:
-        if key in req and req[key] is not None:
-            fields.append(f"{key} = %s")
-            params.append(req[key])
+        val = req.get(key)
+        if val is None:
+            continue
+        if key in date_keys and val == "":
+            continue
+        fields.append(f"{key} = %s")
+        params.append(val)
     if not fields:
         conn.close()
         return {"status": "SUCCESS"}

@@ -117,11 +117,18 @@ def setup_browser(driver, token):
 
     driver.execute_script(f"localStorage.setItem('auth_token', '{token}');")
     driver.refresh()
-    time.sleep(4)
+
+    # 대시보드 공고 목록이 뜰 때까지 최대 20초 대기
+    for _ in range(20):
+        b = body(driver)
+        if ("나도 받을 수 있나" in b or "AI 신청서" in b) and "기업 지원금" in b:
+            log("대시보드", "공고 목록 로드 완료", "PASS"); passed += 1
+            return True
+        time.sleep(1)
 
     b = body(driver)
-    if "지원금AI" in b or "기업 지원금" in b or "전체" in b:
-        log("대시보드", "진입 확인", "PASS"); passed += 1
+    if "지원금AI" in b or "기업 지원금" in b:
+        log("대시보드", "진입 확인 (공고 미완료)", "PASS"); passed += 1
         return True
     else:
         log("대시보드", f"진입 실패: {b[:120]}", "FAIL"); failed += 1

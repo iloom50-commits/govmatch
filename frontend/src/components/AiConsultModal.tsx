@@ -224,10 +224,12 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         setOriginUrl(detail.announcement.origin_url || null);
         // 같은 공고 재진입 시 기존 세션 복원 (24시간 이내)
         const storedSession = localStorage.getItem(`consult_session_${detail.announcement.announcement_id}`);
+        let restoredSessionId: string | null = null;
         if (storedSession) {
           try {
             const s = JSON.parse(storedSession);
             if (Date.now() - s.ts < 24 * 60 * 60 * 1000) {
+              restoredSessionId = s.id;
               sessionIdRef.current = s.id;
               setSessionId(s.id);
             } else {
@@ -240,6 +242,37 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
           sessionIdRef.current = null;
           setSessionId(null);
         }
+
+        // 복원된 세션이 있으면 서버에서 이전 대화 내용 가져오기
+        if (restoredSessionId) {
+          const token = localStorage.getItem("auth_token");
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/consult/session/${restoredSessionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (data?.messages?.length > 0) {
+                const restored = data.messages
+                  .filter((m: any) => m.role === "assistant" && m.text)
+                  .map((m: any) => ({ role: "assistant" as const, text: m.text, done: true }));
+                if (restored.length > 0) {
+                  setMessages(restored);
+                  return;
+                }
+              }
+              // 복원 실패 → 새 세션으로 시작
+              sessionIdRef.current = null;
+              setSessionId(null);
+              sendToAI([{ role: "user", text: "이 공고에 대해 상담을 시작합니다." }]);
+            })
+            .catch(() => {
+              // 네트워크 오류 → 새 세션으로 시작
+              sessionIdRef.current = null;
+              setSessionId(null);
+              sendToAI([{ role: "user", text: "이 공고에 대해 상담을 시작합니다." }]);
+            });
+        }
+
         setOpen(true);
       }
     };
@@ -247,9 +280,9 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     return () => window.removeEventListener("open-ai-consult", handler);
   }, []);
 
-  // 모달 열리면 첫 AI 메시지 요청
+  // 모달 열리면 첫 AI 메시지 요청 (복원된 세션이면 스킵)
   useEffect(() => {
-    if (open && announcement && messages.length === 0) {
+    if (open && announcement && messages.length === 0 && !sessionIdRef.current) {
       sendToAI([{ role: "user", text: "이 공고에 대해 상담을 시작합니다." }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

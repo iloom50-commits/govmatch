@@ -4477,6 +4477,27 @@ def api_consult_feedback(req: ConsultFeedbackRequest, current_user: dict = Depen
 
 # ══════════════════════════════════════════
 # 내 상담 기록 (사용자 본인의 ai_consult_logs 열람)
+@app.get("/api/ai/consult/session/{session_id}")
+def api_get_consult_session(session_id: str, current_user: dict = Depends(_get_current_user)):
+    """세션 ID로 이전 대화 복원 (모바일 앱 전환 후 복귀 시 사용)"""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT messages, updated_at
+           FROM ai_consult_logs
+           WHERE session_id = %s AND business_number = %s
+             AND updated_at > NOW() - INTERVAL '24 hours'""",
+        (session_id, bn)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없거나 만료됐습니다.")
+    msgs = row["messages"] or []
+    return {"status": "SUCCESS", "messages": msgs, "updated_at": str(row["updated_at"])}
+
+
 # ══════════════════════════════════════════
 
 @app.get("/api/my/consults")

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
+import { renderMarkdown as _renderMarkdownShared } from "@/lib/markdown";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -51,55 +52,7 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
 }
 
 /** 마크다운 → 보고서 스타일 HTML 변환 */
-function renderMarkdown(text: string): string {
-  // 0) (None) 링크 패턴 제거
-  text = text.replace(/\(\[.*?\]\(None\)\)/g, "").replace(/\[.*?\]\(None\)/g, "");
-
-  // 1) 이스케이프
-  let html = text
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  // 2) 인라인: bold, 이모지 보존
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>');
-
-  const lines = html.split("\n");
-  const result: string[] = [];
-  let listType: "ul" | "ol" | null = null;
-
-  const closeList = () => {
-    if (listType) { result.push(listType === "ol" ? "</ol>" : "</ul>"); listType = null; }
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // 번호 리스트: 1. or 1) — 공고 항목 등
-    const olMatch = trimmed.match(/^(\d+)[.\)]\s+(.*)/);
-    // 불릿 리스트: * or - (앞에 공백 허용)
-    const ulMatch = !olMatch && trimmed.match(/^[*\-•]\s+(.*)/);
-
-    if (olMatch) {
-      if (listType !== "ol") { closeList(); result.push('<ol class="ml-4 mt-2 mb-2 space-y-1.5 list-decimal list-outside">'); listType = "ol"; }
-      result.push(`<li class="text-slate-700 leading-relaxed">${olMatch[2]}</li>`);
-    } else if (ulMatch) {
-      if (listType !== "ul") { closeList(); result.push('<ul class="ml-4 mt-1 mb-1 space-y-1 list-disc list-outside">'); listType = "ul"; }
-      result.push(`<li class="text-slate-700 leading-relaxed">${ulMatch[1]}</li>`);
-    } else {
-      closeList();
-      // 섹션 제목: bold만으로 구성된 줄
-      if (/^<strong.*<\/strong>[:\s]*$/.test(trimmed) || /^#{1,3}\s/.test(trimmed)) {
-        const title = trimmed.replace(/^#{1,3}\s/, "");
-        result.push(`<div class="mt-4 mb-1.5 pb-1 border-b border-indigo-100 text-[13px] font-bold text-indigo-700">${title}</div>`);
-      } else if (trimmed === "") {
-        result.push('<div class="h-1.5"></div>');
-      } else {
-        result.push(`<p class="text-slate-700 leading-relaxed mb-1">${trimmed}</p>`);
-      }
-    }
-  }
-  closeList();
-  return result.join("");
-}
+const renderMarkdown = _renderMarkdownShared;
 
 interface RelatedAnnouncement {
   announcement_id?: number;

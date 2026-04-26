@@ -894,7 +894,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return result;
     }
 
-    if (usePublicData && publicData.length > 0) {
+    // usePublicData = true 이면 무조건 publicData만 사용 (로딩 중이면 빈 배열 → 플래시 방지)
+    if (usePublicData) {
       let result = [...publicData];
       if (sortKey === "amount") {
         result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
@@ -936,10 +937,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const searchedMatches = baseMatches;
 
   const tabCounts = useMemo(() => {
-    // majorTab에 따라 해당 target_type의 카테고리 건수 사용
     const activeCounts = majorTab === "business" ? categoryCountsBiz : categoryCountsInd;
     if (activeCounts && Object.keys(activeCounts).length > 0) {
-      const counts: Record<string, number> = { all: Object.values(activeCounts).reduce((a, b) => a + b, 0) };
+      // 전체 건수: publicServerTotal 우선 (서버 집계가 더 정확)
+      const allCount = publicServerTotal > 0 ? publicServerTotal : Object.values(activeCounts).reduce((a, b) => a + b, 0);
+      const counts: Record<string, number> = { all: allCount };
       currentTabs.forEach((g: { key: string; categories: string[] }) => {
         if (g.key === "all") return;
         counts[g.key] = g.categories.reduce((sum, gc) => {
@@ -954,16 +956,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       });
       return counts;
     }
-    const counts: Record<string, number> = { all: searchedMatches.length };
+    // activeCounts 없으면 publicServerTotal 사용 (matches 폴백 금지)
+    const allCount = publicServerTotal > 0 ? publicServerTotal : 0;
+    const counts: Record<string, number> = { all: allCount };
     currentTabs.forEach((g: { key: string; categories: string[] }) => {
       if (g.key === "all") return;
-      counts[g.key] = searchedMatches.filter(m => {
+      counts[g.key] = publicData.filter(m => {
         const cat = (m.category || "").trim();
         return g.categories.some((gc: string) => cat.toLowerCase().includes(gc.toLowerCase()));
       }).length;
     });
     return counts;
-  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd]);
+  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd, publicServerTotal, publicData]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (

@@ -642,6 +642,13 @@ def search_announcements(query: str, db_conn, user_profile: dict = None, limit: 
         order_parts.append(f"CASE WHEN ({cat_case}) THEN 0 ELSE 1 END")
         order_params.extend([f"%{v}%" for v in cat_variants])
 
+    # 프로필 기반 SQL 제외 조건 (나이·업력·예비창업자 등) — ORDER BY 전에 추가
+    if user_profile:
+        profile_where, profile_params = _profile_exclusion_clause(user_profile)
+        if profile_where:
+            sql += f" AND {profile_where}"
+            params.extend(profile_params)
+
     order_parts.append("a.deadline_date ASC NULLS LAST")
     sql += " ORDER BY " + ", ".join(order_parts) + " LIMIT %s"
     params.extend(order_params)
@@ -661,6 +668,11 @@ def search_announcements(query: str, db_conn, user_profile: dict = None, limit: 
                 except (json.JSONDecodeError, TypeError):
                     r[field] = {}
         results.append(r)
+
+    # 2차 필터: _check_profile_match로 텍스트 기반 부적합 공고 제거
+    if user_profile and results:
+        results = _check_profile_match(results, user_profile)
+        results = [r for r in results if r.get("_profile_match", True)]
 
     return results
 
@@ -1162,8 +1174,9 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 except: pass
     except Exception as e:
         logger.warning(f"[tool fund] {e}")
-    # [Level 2] 결과 검증 — 프로필 부적합 플래그 부착
+    # [Level 2] 결과 검증 — 프로필 부적합 항목 제거 (플래그 후 필터)
     results = _validate_against_profile(results, profile)
+    results = [r for r in results if r.get("_profile_match", True)]
     return results
 
 

@@ -111,6 +111,11 @@ interface RelatedAnnouncement {
   category?: string;
   summary_text?: string;
   region?: string;
+  // RAG 결과 필드 (백엔드 alias)
+  amount?: string;
+  deadline?: string;
+  dept?: string;
+  origin_url?: string;
 }
 
 interface ChatMessage {

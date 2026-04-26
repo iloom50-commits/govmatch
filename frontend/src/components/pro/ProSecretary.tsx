@@ -1171,14 +1171,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     })}
                     {loading && (
                       <div className="flex justify-start">
-                        <div className={`px-4 py-3 rounded-2xl rounded-bl-md ${t.bubble}`}>
-                          <div className="flex items-center gap-2.5">
-                            <svg className="w-4 h-4 text-violet-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <div className={`w-full max-w-sm px-4 py-4 rounded-2xl rounded-bl-md space-y-3 ${dark ? "bg-violet-900/30 border border-violet-700/30" : "bg-violet-50 border border-violet-100"}`}>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-violet-500 animate-spin flex-shrink-0" style={{ animationDuration: "2s" }} fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                            <span className={`text-[13px] ${dark ? "text-violet-400" : "text-violet-600"}`}>AI가 분석하고 있습니다...</span>
+                            <span className={`flex-1 text-[13px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>AI가 분석하고 있습니다</span>
                           </div>
+                          {/* 인디케이터 바 — 왕복 애니메이션 */}
+                          <div className={`w-full h-2.5 rounded-full overflow-hidden ${dark ? "bg-violet-800/50" : "bg-violet-100"}`}>
+                            <div className="h-full w-2/5 rounded-full animate-indeterminate" style={{ background: "linear-gradient(90deg, #7c3aed, #a78bfa)" }} />
+                          </div>
+                          <p className={`text-[11px] font-medium ${dark ? "text-violet-400" : "text-violet-400"}`}>
+                            공고 매칭 중
+                            <span className="inline-flex gap-0.5 ml-1">
+                              <span className="animate-bounce" style={{ animationDelay: "0ms" }}>·</span>
+                              <span className="animate-bounce" style={{ animationDelay: "150ms" }}>·</span>
+                              <span className="animate-bounce" style={{ animationDelay: "300ms" }}>·</span>
+                            </span>
+                          </p>
                         </div>
                       </div>
                     )}

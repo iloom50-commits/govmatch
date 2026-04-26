@@ -474,8 +474,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => {
     const bn = profile?.business_number;
     if (!bn) return;
-    fetch(`${API}/api/notification-settings/${bn}`)
-      .then(r => r.json())
+    const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    fetch(`${API}/api/notification-settings/${bn}`, {
+      headers: _tok ? { Authorization: `Bearer ${_tok}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
       .then(d => {
         const active = d?.data?.is_active;
         const hasEmail = !!(d?.data?.email);

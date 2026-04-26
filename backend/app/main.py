@@ -1833,59 +1833,107 @@ def api_announcements_public(
         raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
     offset = (page - 1) * size
 
-    # ── 로그인 사용자 + 필터 없음 → 사전 캐시 정렬 적용 ──
+    # ── 로그인 사용자 + 필터 없음 → 실시간 맞춤 정렬 (전체 공고 표시) ──
     if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
         try:
             current_user = _decode_jwt(authorization.split(" ", 1)[1])
             bn = current_user.get("bn")
             if bn:
-                cache_type = "public_ind" if target_type == "individual" else "public_biz"
-                _cc = get_db_connection()
-                _cr = _cc.cursor()
-                _cr.execute(
-                    "SELECT match_data FROM user_match_cache WHERE business_number = %s AND target_type = %s",
-                    (bn, cache_type)
+                _uc = get_db_connection()
+                _ucur = _uc.cursor()
+                _ucur.execute(
+                    "SELECT address_city, interests FROM users WHERE business_number = %s", (bn,)
                 )
-                cached = _cr.fetchone()
-                _cc.close()
-                if cached:
-                    order_data = cached["match_data"]
-                    all_ids = order_data.get("eligible_ids", []) + order_data.get("ineligible_ids", [])
-                    total = len(all_ids)
-                    page_ids = all_ids[offset: offset + size]
-                    if page_ids:
-                        _fc = get_db_connection()
-                        _fcu = _fc.cursor()
-                        _fcu.execute(
-                            f"""SELECT announcement_id, title, region, category, department,
-                                       support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                       deadline_date, origin_source, created_at,
-                                       COALESCE(target_type, 'business') AS target_type,
-                                       origin_url, summary_text, eligibility_logic,
-                                       established_years_limit, revenue_limit, employee_limit
-                                FROM announcements
-                                WHERE announcement_id = ANY(%s)""",
-                            (page_ids,)
-                        )
-                        rows_map = {r["announcement_id"]: dict(r) for r in _fcu.fetchall()}
-                        _fc.close()
-                        rows = [rows_map[i] for i in page_ids if i in rows_map]
-                        # 카테고리 건수는 캐시 활용
-                        cat_cache_key = f"cat_counts:{target_type or 'all'}"
-                        category_counts = _get_cached(cat_cache_key) or {}
-                        return {
-                            "status": "SUCCESS",
-                            "data": rows,
-                            "total": total,
-                            "page": page,
-                            "size": size,
-                            "regions": [],
-                            "categories": [],
-                            "category_counts": category_counts,
-                            "personalized": True,
-                        }
+                urow = _ucur.fetchone()
+                _uc.close()
+
+                if urow:
+                    raw_city = str(urow.get("address_city", "") or "")
+                    cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
+                    user_city = cities[0] if cities else ""
+                    interests = [i.strip() for i in str(urow.get("interests", "") or "").split(",") if i.strip()]
+                    user_target = "individual" if target_type == "individual" else "business"
+
+                    # 지역 조건
+                    if user_city:
+                        region_sql = "(region ILIKE %s AND region NOT IN ('전국', '', '전국 및 각 지역'))"
+                        region_params = [f"%{user_city}%"]
+                    else:
+                        region_sql = "FALSE"
+                        region_params = []
+
+                    # 관심분야 조건
+                    if interests:
+                        interest_parts = " OR ".join(["(category ILIKE %s OR title ILIKE %s)" for _ in interests])
+                        interest_sql = f"({interest_parts})"
+                        interest_params = []
+                        for it in interests:
+                            interest_params.extend([f"%{it}%", f"%{it}%"])
+                    else:
+                        interest_sql = "FALSE"
+                        interest_params = []
+
+                    # 맞춤 정렬 우선순위:
+                    # 0 = 내 지역 공고 (적합)
+                    # 1 = 관심분야 매칭 (적합)
+                    # 2 = 전국 + 지원금 있음 (적합)
+                    # 3 = 기타 적합
+                    # 4 = 타겟 불일치 (후순위)
+                    sort_case = f"""
+                        CASE
+                            WHEN COALESCE(target_type, 'business') != %s THEN 4
+                            WHEN {region_sql} THEN 0
+                            WHEN {interest_sql} THEN 1
+                            WHEN region IN ('전국', '', '전국 및 각 지역')
+                                 AND support_amount IS NOT NULL AND support_amount != '' THEN 2
+                            ELSE 3
+                        END
+                    """
+                    sort_params = [user_target] + region_params + interest_params
+
+                    valid_where = valid_announcement_where()
+                    _pc = get_db_connection()
+                    _pcur = _pc.cursor()
+
+                    # 전체 개수 (필터 없음 → 모든 유효 공고)
+                    _pcur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {valid_where}")
+                    total = _pcur.fetchone()["cnt"]
+
+                    # 맞춤 정렬 후 페이지 반환
+                    _pcur.execute(
+                        f"""SELECT announcement_id, title, region, category, department,
+                                   support_amount, support_amount_max, support_amount_min, support_amount_type,
+                                   deadline_date, origin_source, created_at,
+                                   COALESCE(target_type, 'business') AS target_type,
+                                   origin_url, summary_text, eligibility_logic,
+                                   established_years_limit, revenue_limit, employee_limit
+                            FROM announcements
+                            WHERE {valid_where}
+                            ORDER BY
+                                {sort_case},
+                                deadline_date ASC NULLS LAST,
+                                created_at DESC
+                            LIMIT %s OFFSET %s""",
+                        sort_params + [size, offset],
+                    )
+                    rows = [dict(r) for r in _pcur.fetchall()]
+                    _pc.close()
+
+                    cat_cache_key = f"cat_counts:{target_type or 'all'}"
+                    category_counts = _get_cached(cat_cache_key) or {}
+                    return {
+                        "status": "SUCCESS",
+                        "data": rows,
+                        "total": total,
+                        "page": page,
+                        "size": size,
+                        "regions": [],
+                        "categories": [],
+                        "category_counts": category_counts,
+                        "personalized": True,
+                    }
         except Exception as _pe:
-            pass  # 캐시 실패 시 기존 SQL 방식으로 폴백
+            pass  # 실패 시 기존 SQL 방식으로 폴백
 
     # 검색 없는 기본 조회는 캐시 활용
     if not search and not region and not category:

@@ -750,11 +750,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     setSmartLoading(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (!token) { setSmartLoading(false); return; }
-    fetch(`${API}/api/smart-matches`, { headers: { Authorization: `Bearer ${token}` } })
+    const tt = majorTab === "individual" ? "individual" : "business";
+    fetch(`${API}/api/smart-matches?target_type=${tt}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { setSmartMatches(d.data || []); setSmartLoading(false); })
       .catch(() => setSmartLoading(false));
-  }, [activeTab]);
+  }, [activeTab, majorTab]);
 
   // 모든 사용자 서버 데이터 로드 (맞춤 탭 제외)
   useEffect(() => {

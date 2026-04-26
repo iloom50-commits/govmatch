@@ -9196,24 +9196,81 @@ def admin_push_test():
 
 
 @app.get("/api/smart-matches")
-def api_smart_matches(current_user: dict = Depends(_get_current_user)):
-    """AI 맞춤 추천 공고 — 새벽에 미리 계산된 결과 반환."""
+def api_smart_matches(
+    target_type: Optional[str] = None,
+    current_user: dict = Depends(_get_current_user),
+):
+    """AI 맞춤 추천 공고.
+    3단계 폴백:
+      1) user_smart_matches (배치 AI 결과)
+      2) user_match_cache business/individual (사전 매칭 캐시)
+      3) 실시간 get_matches_hybrid() (상위 30건)
+    """
+    from app.core.matcher import get_matches_hybrid
     bn = current_user["bn"]
+    tt = (target_type or "business").lower()
+    if tt not in ("business", "individual"):
+        tt = "business"
+
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT matches, created_at FROM user_smart_matches
-            WHERE business_number = %s
-        """, (bn,))
+
+        # 1단계: user_smart_matches (배치 결과)
+        cur.execute(
+            "SELECT matches, created_at FROM user_smart_matches WHERE business_number = %s",
+            (bn,)
+        )
         row = cur.fetchone()
-        if row:
-            return {
-                "status": "SUCCESS",
-                "data": row["matches"],
-                "updated_at": str(row["created_at"]),
-            }
-        return {"status": "SUCCESS", "data": [], "updated_at": None}
+        if row and row["matches"]:
+            data = row["matches"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            if data:
+                return {"status": "SUCCESS", "data": data, "updated_at": str(row["created_at"]), "source": "batch"}
+
+        # 2단계: user_match_cache (사전 매칭 캐시)
+        cur.execute(
+            """SELECT match_data, created_at FROM user_match_cache
+               WHERE business_number = %s AND target_type = %s
+               ORDER BY created_at DESC LIMIT 1""",
+            (bn, tt)
+        )
+        cache_row = cur.fetchone()
+        if cache_row and cache_row["match_data"]:
+            data = cache_row["match_data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            if data and len(data) > 0:
+                return {"status": "SUCCESS", "data": data[:50], "updated_at": str(cache_row["created_at"]), "source": "cache"}
+
+        # 3단계: 실시간 매칭 (캐시 없을 때)
+        cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+        user_row = cur.fetchone()
+        if not user_row:
+            return {"status": "SUCCESS", "data": [], "source": "none"}
+
+        user_dict = dict(user_row)
+        is_individual = (tt == "individual")
+        matches = get_matches_hybrid(user_dict, is_individual=is_individual)
+        matches = matches[:30]
+
+        # 실시간 결과 캐시 저장 (다음 요청 속도 향상)
+        if matches:
+            try:
+                cur.execute(
+                    """INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                       VALUES (%s, %s, %s::jsonb, CURRENT_TIMESTAMP)
+                       ON CONFLICT (business_number, target_type)
+                       DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP""",
+                    (bn, tt, json.dumps(matches, ensure_ascii=False, default=str))
+                )
+                conn.commit()
+            except Exception:
+                pass
+
+        return {"status": "SUCCESS", "data": matches, "source": "realtime"}
+
     except Exception as e:
         return {"status": "SUCCESS", "data": [], "error": str(e)[:100]}
     finally:

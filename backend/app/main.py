@@ -788,6 +788,8 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     user_city = _normalize_region(cities[0]) if cities else ""
     interests = [i.strip() for i in str(user_profile.get("interests", "") or "").split(",") if i.strip()]
     gender = str(user_profile.get("gender", "") or "")
+    ind_major = str(user_profile.get("industry_code") or "")[:2]
+    is_farmer = ind_major in ("01", "02", "03")  # 농업/임업/어업 업종
 
     # 버킷 로테이션 순서 (오늘 날짜 + 사용자 해시)
     bucket_order = _rotate_buckets(user_profile)  # ['region'|'interest'|'national_fund', 'deadline', 'fresh']
@@ -827,6 +829,11 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
             excluded, _ = _check_region_exclusion(user_city, region, title)
             if excluded:
                 ineligible_ids.append(ann_id); continue
+
+        # 농림/수산 전용 카테고리인데 비농업인 → 후순위
+        _AGRI_CATS = ("농림", "수산", "임업", "축산")
+        if not is_farmer and any(ac in category for ac in _AGRI_CATS):
+            ineligible_ids.append(ann_id); continue
 
         # 항상 제외 대상 (업종 관계없이) → 후순위
         if any(kw in title for kw in RESTRICTED_ALWAYS):
@@ -1200,11 +1207,18 @@ def _prewarm_response_cache():
                         FROM announcements
                         WHERE {full_where}
                         ORDER BY
-                            CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 2
-                                 WHEN deadline_date IS NULL THEN 1 ELSE 0 END,
-                            CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
-                            CASE WHEN region = '전국' OR region IS NULL THEN 0 ELSE 1 END,
-                            created_at DESC, deadline_date ASC NULLS LAST
+                            CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 9
+                                 ELSE 0 END,
+                            CASE
+                                WHEN deadline_date IS NOT NULL
+                                     AND deadline_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+                                     AND support_amount IS NOT NULL AND support_amount != '' THEN 0
+                                WHEN (region IN ('전국', '', '전국 및 각 지역') OR region IS NULL)
+                                     AND support_amount IS NOT NULL AND support_amount != '' THEN 1
+                                WHEN support_amount IS NOT NULL AND support_amount != '' THEN 2
+                                ELSE 3
+                            END,
+                            deadline_date ASC NULLS LAST, created_at DESC
                         LIMIT 20 OFFSET 0""",
                     type_params,
                 )
@@ -2042,7 +2056,7 @@ def api_announcements_public(
                 # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──
                 # 사용자 지역·관심분야 조회 (같은 연결 재사용)
                 _pcur.execute(
-                    "SELECT address_city, interests, gender FROM users WHERE business_number = %s", (bn,)
+                    "SELECT address_city, interests, gender, industry_code FROM users WHERE business_number = %s", (bn,)
                 )
                 urow = _pcur.fetchone()
 
@@ -2052,6 +2066,8 @@ def api_announcements_public(
                     user_city = cities[0] if cities else ""
                     interests = [i.strip() for i in str(urow.get("interests", "") or "").split(",") if i.strip()]
                     gender = str(urow.get("gender", "") or "")
+                    rt_ind_major = str(urow.get("industry_code") or "")[:2]
+                    rt_is_farmer = rt_ind_major in ("01", "02", "03")
                     user_target = "individual" if target_type == "individual" else "business"
 
                     if user_city:
@@ -2084,6 +2100,10 @@ def api_announcements_public(
                     if gender != "여성":
                         female_ilike = " OR ".join(f"title ILIKE '%{kw}%'" for kw in _FEMALE_ONLY)
                         inelig_parts.append(f"({female_ilike})")
+                    if not rt_is_farmer:
+                        _AGRI_CATS_RT = ["농림", "수산", "임업", "축산"]
+                        agri_ilike = " OR ".join(f"category ILIKE '%{ac}%'" for ac in _AGRI_CATS_RT)
+                        inelig_parts.append(f"({agri_ilike})")
                     inelig_sql = " OR ".join(inelig_parts)
 
                     bucket_sql = f"""
@@ -2296,12 +2316,19 @@ def api_announcements_public(
             WHERE {where_sql}
             ORDER BY
                 {relevance_order}
-                CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 2
-                     WHEN deadline_date IS NULL THEN 1 ELSE 0 END,
-                CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
-                CASE WHEN region = '전국' OR region IS NULL THEN 0 ELSE 1 END,
-                created_at DESC,
-                deadline_date ASC NULLS LAST
+                CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 9
+                     ELSE 0 END,
+                CASE
+                    WHEN deadline_date IS NOT NULL
+                         AND deadline_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+                         AND support_amount IS NOT NULL AND support_amount != '' THEN 0
+                    WHEN (region IN ('전국', '', '전국 및 각 지역') OR region IS NULL)
+                         AND support_amount IS NOT NULL AND support_amount != '' THEN 1
+                    WHEN support_amount IS NOT NULL AND support_amount != '' THEN 2
+                    ELSE 3
+                END,
+                deadline_date ASC NULLS LAST,
+                created_at DESC
             LIMIT %s OFFSET %s""",
         params + relevance_params + [size, offset],
     )

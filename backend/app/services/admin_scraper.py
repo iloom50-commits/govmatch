@@ -25,6 +25,18 @@ _SKIP_LINK_TEXTS = {
     "공지사항", "새창", "새 창", "pdf", "인쇄", "공유", "좋아요", "스크랩",
 }
 
+# 제목 텍스트에 포함 시 지원사업 아닌 것으로 판단 — AI 분석 전 사전 차단
+_SKIP_TITLE_KEYWORDS = [
+    "포럼 개최", "포럼개최", "세미나 개최", "간담회 개최", "행사 개최",
+    "직원 채용", "직원채용", "인턴 채용", "인턴채용", "채용 공고", "채용공고",
+    "합격자 공고", "합격자공고", "서류전형 합격", "면접전형 안내", "최종합격자",
+    "당첨자 명단", "당첨자명단",
+    "기관 소개", "기관소개", "원장 인사말", "인사말",
+    "민원 안내", "민원안내", "정보공개 안내",
+    "통근버스", "수기 공모전", "수기공모전",
+    "컴퓨터 교육", "정보화교육",
+]
+
 # 공고 상세 링크일 가능성이 높은 URL 패턴
 _DETAIL_URL_PATTERNS = [
     r"view", r"detail", r"read", r"notice", r"board", r"bbs",
@@ -63,7 +75,11 @@ def _is_likely_detail_link(href: str, text: str) -> bool:
     text_clean = text.strip().lower()
     if text_clean in _SKIP_LINK_TEXTS or len(text_clean) < 4:
         return False
-    # 공고 제목처럼 보이는 텍스트 (보통 10자 이상)
+    # 비지원사업 제목 키워드 사전 차단
+    for kw in _SKIP_TITLE_KEYWORDS:
+        if kw in text:
+            return False
+    # 공고 제목처럼 보이는 텍스트 (보통 8자 이상)
     if len(text.strip()) >= 8:
         return True
     # URL 패턴으로 판별
@@ -328,6 +344,9 @@ class AdminScraper:
                         continue
                     details = await ai_service.extract_program_details(text)
                     if details and details.get("title"):
+                        if details.get("is_support_program") is False:
+                            print(f"      [스킵-비지원사업] {details['title'][:45]}")
+                            continue
                         details["url"] = link
                         results.append(details)
                         print(f"      {details['title'][:45]}")

@@ -1176,14 +1176,14 @@ def _db_keepalive():
         print(f"[Keepalive] ping error: {e}")
 
 
-def _prewarm_response_cache():
-    """서버 시작 시 비로그인 공고 목록 응답 캐시 선제 채우기."""
-    import time as _t
-    _t.sleep(3)  # lifespan 완전 초기화 후 실행
+def _prewarm_response_cache(startup: bool = False):
+    """비로그인 공고 목록 응답 캐시 갱신. startup=True면 3초 대기 후 실행."""
+    if startup:
+        import time as _t; _t.sleep(3)
     for tt in ("business", "individual", None):
         try:
             cache_key = f"pub:v2:{tt}:1:20"
-            if not _get_cached(cache_key):
+            if True:  # 항상 갱신 — TTL 만료 전 선제 교체
                 conn = get_db_connection()
                 cur = conn.cursor()
                 valid_where = valid_announcement_where()
@@ -1252,7 +1252,7 @@ async def lifespan(app):
     import threading
 
     def _warmup():
-        _prewarm_response_cache()  # 비로그인 응답 캐시 선제 채우기
+        _prewarm_response_cache(startup=True)  # 비로그인 응답 캐시 선제 채우기
         print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
 
     threading.Thread(target=_warmup, daemon=True).start()
@@ -1308,8 +1308,15 @@ async def lifespan(app):
                 name="DB PgBouncer keepalive (2분마다)",
                 replace_existing=True,
             )
+            pipeline_scheduler.add_job(
+                _prewarm_response_cache,
+                IntervalTrigger(minutes=10),
+                id="cache_prewarm",
+                name="비로그인 응답 캐시 갱신 (10분마다)",
+                replace_existing=True,
+            )
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started — daily at 03:00 KST (UTC 18:00) + keepalive every 2min")
+            print("[Pipeline] APScheduler started — daily 03:00 KST + keepalive 2min + cache prewarm 10min")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:

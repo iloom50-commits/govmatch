@@ -1834,11 +1834,13 @@ def api_announcements_public(
     offset = (page - 1) * size
 
     # ── 로그인 사용자 + 필터 없음 → 실시간 맞춤 정렬 (전체 공고 표시) ──
+    _is_logged_in = False  # 로그인 여부 — 공유 캐시 우회 판단용
     if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
         try:
             current_user = _decode_jwt(authorization.split(" ", 1)[1])
             bn = current_user.get("bn")
             if bn:
+                _is_logged_in = True
                 _uc = get_db_connection()
                 _ucur = _uc.cursor()
                 _ucur.execute(
@@ -1933,10 +1935,11 @@ def api_announcements_public(
                         "personalized": True,
                     }
         except Exception as _pe:
-            pass  # 실패 시 기존 SQL 방식으로 폴백
+            _is_logged_in = True  # 예외 시에도 로그인 사용자로 처리 — 공유 캐시 우회
+            print(f"[personalized] fallback to standard SQL: {_pe}")
 
-    # 검색 없는 기본 조회는 캐시 활용
-    if not search and not region and not category:
+    # 검색 없는 기본 조회는 캐시 활용 — 로그인 사용자는 공유 캐시 우회
+    if not _is_logged_in and not search and not region and not category:
         cache_key = f"pub:v2:{target_type}:{page}:{size}"
         cached = _get_cached(cache_key)
         if cached:

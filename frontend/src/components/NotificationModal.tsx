@@ -585,7 +585,7 @@ export default function NotificationModal({
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-3">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 h-[100dvh] sm:h-auto sm:max-h-[96vh] flex flex-col">
+      <div className="relative w-full sm:max-w-xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 h-[100dvh] sm:h-auto sm:min-h-[80vh] sm:max-h-[96vh] flex flex-col">
         {/* 진행률 바 — shortcut에선 숨김 */}
         {!shortcutMode && (
           <div className="h-1.5 bg-slate-100 shrink-0">

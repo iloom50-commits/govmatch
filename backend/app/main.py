@@ -5701,8 +5701,6 @@ def api_suggest_tags(req: SuggestTagsRequest):
             (vec_str, allowed_types, vec_str, limit),
         )
         rows = cur.fetchall()
-        # 짧은 영문 입력(ai, IT 등)은 한국어 발음 혼동 방지: 태그명 포함 or 고유사도 요구
-        is_short_ascii = len(text) <= 3 and all(c.isascii() for c in text)
         suggestions = [
             {
                 "tag": row["tag"],
@@ -5711,12 +5709,7 @@ def api_suggest_tags(req: SuggestTagsRequest):
                 "similarity": round(float(row["similarity"] or 0), 3),
             }
             for row in rows
-            if (row["similarity"] or 0) >= 0.65
-            and (
-                not is_short_ascii
-                or (row["similarity"] or 0) >= 0.75
-                or text.lower() in (row["tag"] or "").lower()
-            )
+            if (row["similarity"] or 0) >= 0.60
         ]
     finally:
         conn.close()

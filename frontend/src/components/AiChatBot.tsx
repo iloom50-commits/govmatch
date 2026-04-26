@@ -322,6 +322,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     return () => window.removeEventListener("open-fund-chat", handler);
   }, []);
 
+  // 공고 상세 분석 모달 열릴 때 챗봇 닫기
+  useEffect(() => {
+    const handler = () => { setOpen(false); };
+    window.addEventListener("close-fund-chat", handler);
+    return () => window.removeEventListener("close-fund-chat", handler);
+  }, []);
+
   // 로그인된 사용자 프로필 가져오기
   const fetchUserProfile = async (): Promise<Record<string, any> | null> => {
     const token = localStorage.getItem("auth_token");

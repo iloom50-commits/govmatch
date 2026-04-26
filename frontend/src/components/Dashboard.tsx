@@ -430,10 +430,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => window.removeEventListener("open-notification-modal", handler);
   }, []);
 
-  // 프로필 게이트: 프로필 미완성 시 폼 먼저 → 저장 후 원래 액션 자동 실행
+  // 프로필 게이트: 프로필 미완성 또는 기업 업종 미설정 시 폼 먼저 → 저장 후 원래 액션 자동 실행
   const pendingActionRef = useRef<(() => void) | null>(null);
+  // 기업/both 사용자가 업종 미설정인 경우
+  const bizNeedsIndustry = (profileUserType === "business" || profileUserType === "both") && !profile?.industry_code;
   const checkProfileThenRun = useCallback((action: () => void) => {
-    if (hasProfile) {
+    if (hasProfile && !bizNeedsIndustry) {
       action();
     } else {
       pendingActionRef.current = action;
@@ -441,13 +443,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       setNotifyShortcut(false);
       setSidebarOpen(false);
     }
-  }, [hasProfile]);
+  }, [hasProfile, bizNeedsIndustry]);
 
   // request-ai-consult → 프로필 게이트 → open-ai-consult
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       checkProfileThenRun(() => {
+        window.dispatchEvent(new CustomEvent("close-fund-chat")); // AiChatBot 닫기
         window.dispatchEvent(new CustomEvent("open-ai-consult", { detail }));
       });
     };

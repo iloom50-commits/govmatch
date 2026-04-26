@@ -695,7 +695,7 @@ def _run_prematch_cache() -> int:
         SELECT business_number, user_type, industry_code, address_city, interests,
                revenue_bracket, employee_count_bracket, establishment_date,
                age_range, income_level, family_type, employment_status,
-               custom_keywords, certifications, interest_regions, company_name
+               custom_keywords, certifications, interest_regions, company_name, gender
         FROM users
         WHERE plan IN ('lite', 'lite_trial', 'basic', 'pro', 'biz')
           AND (plan_expires_at IS NULL OR plan_expires_at > NOW())
@@ -770,7 +770,8 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     cur = conn.cursor()
     cur.execute(
         f"""SELECT announcement_id, title, region, category,
-                   support_amount, target_type, deadline_date
+                   support_amount, target_type, deadline_date,
+                   eligibility_logic
             FROM announcements
             WHERE {valid_announcement_where()}
             ORDER BY
@@ -828,6 +829,13 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         # 청년기업 전용 + 기업 탭 → 후순위
         if not is_individual and any(kw in title for kw in YOUTH_BIZ):
             ineligible_ids.append(ann_id); continue
+
+        # eligibility_logic AI 분석 결과 기반 추가 필터
+        el = ann.get("eligibility_logic")
+        if el and isinstance(el, dict):
+            el_gender = (el.get("gender_restriction") or "").strip()
+            if el_gender in ("여성", "여성전용", "여성기업", "여성창업자") and gender != "여성":
+                ineligible_ids.append(ann_id); continue
 
         # 버킷 분류
         has_amount = bool(ann.get("support_amount"))
@@ -1943,7 +1951,7 @@ def api_announcements_public(
                 # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──
                 # 사용자 지역·관심분야 조회 (같은 연결 재사용)
                 _pcur.execute(
-                    "SELECT address_city, interests FROM users WHERE business_number = %s", (bn,)
+                    "SELECT address_city, interests, gender FROM users WHERE business_number = %s", (bn,)
                 )
                 urow = _pcur.fetchone()
 
@@ -1952,6 +1960,7 @@ def api_announcements_public(
                     cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
                     user_city = cities[0] if cities else ""
                     interests = [i.strip() for i in str(urow.get("interests", "") or "").split(",") if i.strip()]
+                    gender = str(urow.get("gender", "") or "")
                     user_target = "individual" if target_type == "individual" else "business"
 
                     if user_city:
@@ -1975,9 +1984,21 @@ def api_announcements_public(
                     today_bucket = _dt.date.today().timetuple().tm_yday % 3
 
                     has_amount_sql = "(support_amount IS NOT NULL AND support_amount != '')"
+
+                    # 특정 대상 전용 키워드 → 후순위(bucket=4) — 하드코딩 상수이므로 직접 삽입 안전
+                    _RESTRICTED = ["장애인기업", "장애인창업", "농업인", "영농조합", "어업인", "수산업", "보훈", "제대군인"]
+                    _FEMALE_ONLY = ["여성기업", "여성창업", "여성경제인"]
+                    restricted_ilike = " OR ".join(f"title ILIKE '%{kw}%'" for kw in _RESTRICTED)
+                    inelig_parts = [f"({restricted_ilike})"]
+                    if gender != "여성":
+                        female_ilike = " OR ".join(f"title ILIKE '%{kw}%'" for kw in _FEMALE_ONLY)
+                        inelig_parts.append(f"({female_ilike})")
+                    inelig_sql = " OR ".join(inelig_parts)
+
                     bucket_sql = f"""
                         CASE
-                            WHEN COALESCE(target_type, 'business') != %s THEN 3
+                            WHEN COALESCE(target_type, 'business') != %s THEN 4
+                            WHEN {inelig_sql} THEN 4
                             WHEN {region_sql} AND {has_amount_sql} THEN 0
                             WHEN region IN ('전국', '', '전국 및 각 지역') AND {has_amount_sql} THEN 1
                             WHEN {interest_sql} AND {has_amount_sql} THEN 2
@@ -2012,7 +2033,8 @@ def api_announcements_public(
                             )
                             SELECT * FROM ann
                             ORDER BY
-                                CASE WHEN bucket = 3 THEN 10
+                                CASE WHEN bucket = 4 THEN 11
+                                     WHEN bucket = 3 THEN 10
                                      ELSE (bucket - %s + 3) % 3
                                 END,
                                 deadline_date ASC NULLS LAST,

@@ -1469,14 +1469,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             <p className={`text-[12px] mb-4 ${t.muted}`}>아래 정보로 공고 매칭을 진행합니다. 수정 가능합니다.</p>
 
             <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-              {[
+              {(clientCategory === "individual" ? [
+                { key: "company_name", label: "이름", placeholder: "(미입력)" },
+                { key: "age_range", label: "연령대", placeholder: "(미입력)" },
+                { key: "address_city", label: "거주지역", placeholder: "(미입력 — 전국)" },
+                { key: "interests", label: "관심분야", placeholder: "(미입력)" },
+              ] : [
                 { key: "company_name", label: "기업명", placeholder: "(미입력)" },
                 { key: "industry_code", label: "업종코드", placeholder: "(미입력 — 전체 검색)" },
                 { key: "revenue_bracket", label: "매출 규모", placeholder: "(미입력)" },
                 { key: "employee_count_bracket", label: "직원수", placeholder: "(미입력)" },
                 { key: "address_city", label: "소재지", placeholder: "(미입력 — 전국)" },
                 { key: "interests", label: "관심분야", placeholder: "(미입력)" },
-              ].map(field => (
+              ]).map(field => (
                 <div key={field.key}>
                   <label className={`block text-[11px] font-bold mb-1 ${dark ? "text-violet-400" : "text-violet-600"}`}>{field.label}</label>
                   <input

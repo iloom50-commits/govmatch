@@ -730,11 +730,132 @@ def _run_prematch_cache() -> int:
                     DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
                 """, (bn, json.dumps(ind, ensure_ascii=False, default=str)))
                 _save.commit(); _save.close()
+            # public_order 캐싱 (전체 탭 정렬용)
+            if user_type in ("business", "both"):
+                pub_biz = _compute_public_order_for_user(u, is_individual=False)
+                _s = get_db_connection()
+                _s.cursor().execute("""
+                    INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                    VALUES (%s, 'public_biz', %s::jsonb, CURRENT_TIMESTAMP)
+                    ON CONFLICT (business_number, target_type)
+                    DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
+                """, (bn, json.dumps(pub_biz, ensure_ascii=False, default=str)))
+                _s.commit(); _s.close()
+            if user_type in ("individual", "both"):
+                pub_ind = _compute_public_order_for_user(u, is_individual=True)
+                _s = get_db_connection()
+                _s.cursor().execute("""
+                    INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                    VALUES (%s, 'public_ind', %s::jsonb, CURRENT_TIMESTAMP)
+                    ON CONFLICT (business_number, target_type)
+                    DO UPDATE SET match_data = EXCLUDED.match_data, created_at = CURRENT_TIMESTAMP
+                """, (bn, json.dumps(pub_ind, ensure_ascii=False, default=str)))
+                _s.commit(); _s.close()
+
             count += 1
             import time; time.sleep(0.5)  # 커넥션 풀 여유
         except Exception as e:
             print(f"[prematch] {bn}: {e}")
     return count
+
+
+def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> dict:
+    """사용자별 전체 공고 정렬 순서 계산 (하루 1회 배치용).
+    eligible_ids(자격 가능, 버킷 로테이션 순) + ineligible_ids(후순위) 반환.
+    """
+    from app.core.matcher import _check_region_exclusion, _rotate_buckets
+    from app.services.rule_engine import _normalize_region
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        f"""SELECT announcement_id, title, region, category,
+                   support_amount, target_type, deadline_date
+            FROM announcements
+            WHERE {valid_announcement_where()}
+            ORDER BY
+                CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
+                deadline_date ASC NULLS LAST,
+                created_at DESC"""
+    )
+    all_anns = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    # 사용자 정보 추출
+    raw_city = str(user_profile.get("address_city", "") or "")
+    cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
+    user_city = _normalize_region(cities[0]) if cities else ""
+    interests = [i.strip() for i in str(user_profile.get("interests", "") or "").split(",") if i.strip()]
+    gender = str(user_profile.get("gender", "") or "")
+
+    # 버킷 로테이션 순서 (오늘 날짜 + 사용자 해시)
+    bucket_order = _rotate_buckets(user_profile)  # ['region'|'interest'|'national_fund', 'deadline', 'fresh']
+
+    buckets: dict = {b: [] for b in bucket_order}
+    buckets["other"] = []
+    ineligible_ids: list = []
+
+    # 특정 대상 제한 키워드
+    RESTRICTED_ALWAYS = ["장애인기업", "장애인창업", "농업인", "영농조합", "어업인", "수산업", "보훈", "제대군인"]
+    FEMALE_ONLY = ["여성기업", "여성창업", "여성경제인"]
+    YOUTH_BIZ = ["청년창업", "청년기업", "만39세", "만 39세"]
+
+    for ann in all_anns:
+        ann_id = ann["announcement_id"]
+        title = ann.get("title", "") or ""
+        region = ann.get("region", "") or ""
+        ann_target = (ann.get("target_type", "") or "").strip()
+        category = ann.get("category", "") or ""
+
+        # target_type 불일치 → 후순위
+        if is_individual and ann_target == "business":
+            ineligible_ids.append(ann_id); continue
+        if not is_individual and ann_target == "individual":
+            ineligible_ids.append(ann_id); continue
+
+        # 지역 전용인데 내 지역 아님 → 후순위
+        if user_city and region and region not in ("전국", "", "전국 및 각 지역"):
+            excluded, _ = _check_region_exclusion(user_city, region, title)
+            if excluded:
+                ineligible_ids.append(ann_id); continue
+
+        # 항상 제외 대상 (업종 관계없이) → 후순위
+        if any(kw in title for kw in RESTRICTED_ALWAYS):
+            ineligible_ids.append(ann_id); continue
+        # 여성 전용 + 비해당 → 후순위
+        if any(kw in title for kw in FEMALE_ONLY) and gender != "여성":
+            ineligible_ids.append(ann_id); continue
+        # 청년기업 전용 + 기업 탭 → 후순위
+        if not is_individual and any(kw in title for kw in YOUTH_BIZ):
+            ineligible_ids.append(ann_id); continue
+
+        # 버킷 분류
+        has_amount = bool(ann.get("support_amount"))
+        is_national = region in ("전국", "", None)
+        in_my_region = bool(user_city) and (user_city in region or region == user_city)
+        interest_hit = bool(interests) and any(
+            (it in category or it in title) for it in interests
+        )
+
+        if in_my_region:
+            bucket = "region"
+        elif interest_hit:
+            bucket = "interest"
+        elif is_national and has_amount:
+            bucket = "national_fund"
+        else:
+            bucket = "other"
+
+        target = buckets.get(bucket, buckets["other"])
+        target.append(ann_id)
+
+    # 버킷 로테이션 순서대로 합치기
+    eligible_ids: list = []
+    for b in bucket_order:
+        eligible_ids.extend(buckets.get(b, []))
+    eligible_ids.extend(buckets["other"])
+
+    return {"eligible_ids": eligible_ids, "ineligible_ids": ineligible_ids}
 
 
 def _log_expired_announcements():
@@ -1695,6 +1816,7 @@ def api_announcements_public(
     category: Optional[str] = None,
     search: Optional[str] = None,
     target_type: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
 ):
     """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
     # Rate limiting: IP당 분당 30회
@@ -1710,6 +1832,60 @@ def api_announcements_public(
     if page > 50:
         raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
     offset = (page - 1) * size
+
+    # ── 로그인 사용자 + 필터 없음 → 사전 캐시 정렬 적용 ──
+    if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
+        try:
+            current_user = _decode_jwt(authorization.split(" ", 1)[1])
+            bn = current_user.get("bn")
+            if bn:
+                cache_type = "public_ind" if target_type == "individual" else "public_biz"
+                _cc = get_db_connection()
+                _cr = _cc.cursor()
+                _cr.execute(
+                    "SELECT match_data FROM user_match_cache WHERE business_number = %s AND target_type = %s",
+                    (bn, cache_type)
+                )
+                cached = _cr.fetchone()
+                _cc.close()
+                if cached:
+                    order_data = cached["match_data"]
+                    all_ids = order_data.get("eligible_ids", []) + order_data.get("ineligible_ids", [])
+                    total = len(all_ids)
+                    page_ids = all_ids[offset: offset + size]
+                    if page_ids:
+                        _fc = get_db_connection()
+                        _fcu = _fc.cursor()
+                        _fcu.execute(
+                            f"""SELECT announcement_id, title, region, category, department,
+                                       support_amount, support_amount_max, support_amount_min, support_amount_type,
+                                       deadline_date, origin_source, created_at,
+                                       COALESCE(target_type, 'business') AS target_type,
+                                       origin_url, summary_text, eligibility_logic,
+                                       established_years_limit, revenue_limit, employee_limit
+                                FROM announcements
+                                WHERE announcement_id = ANY(%s)""",
+                            (page_ids,)
+                        )
+                        rows_map = {r["announcement_id"]: dict(r) for r in _fcu.fetchall()}
+                        _fc.close()
+                        rows = [rows_map[i] for i in page_ids if i in rows_map]
+                        # 카테고리 건수는 캐시 활용
+                        cat_cache_key = f"cat_counts:{target_type or 'all'}"
+                        category_counts = _get_cached(cat_cache_key) or {}
+                        return {
+                            "status": "SUCCESS",
+                            "data": rows,
+                            "total": total,
+                            "page": page,
+                            "size": size,
+                            "regions": [],
+                            "categories": [],
+                            "category_counts": category_counts,
+                            "personalized": True,
+                        }
+        except Exception as _pe:
+            pass  # 캐시 실패 시 기존 SQL 방식으로 폴백
 
     # 검색 없는 기본 조회는 캐시 활용
     if not search and not region and not category:

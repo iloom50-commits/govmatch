@@ -774,7 +774,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (search) url += `&search=${encodeURIComponent(search)}`;
     else if (catKeyword) url += `&category=${encodeURIComponent(catKeyword)}`;
 
-    fetch(url)
+    const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    fetch(url, {
+      headers: _tok ? { Authorization: `Bearer ${_tok}` } : {},
+    })
       .then(r => r.json())
       .then(d => {
         if (d.status === "SUCCESS") {

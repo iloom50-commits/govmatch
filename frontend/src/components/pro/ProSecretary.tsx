@@ -652,6 +652,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (!isIndiv && matchProfile.is_small_business === false) summaryLines.push(`• 소상공인: 해당 없음`);
     if (matchProfile.interests) summaryLines.push(`• 관심분야: ${matchProfile.interests}`);
 
+    // 매칭 모달에서 재활용할 수 있도록 collectedProfile에도 저장
+    setCollectedProfile(matchProfile);
+
     const seedHistory: ChatMessage[] = [
       { role: "user", text: summaryLines.join("\n") },
     ];

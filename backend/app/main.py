@@ -801,12 +801,20 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     FEMALE_ONLY = ["여성기업", "여성창업", "여성경제인"]
     YOUTH_BIZ = ["청년창업", "청년기업", "만39세", "만 39세"]
 
+    import datetime as _dt_batch
+    _today = _dt_batch.date.today()
+
     for ann in all_anns:
         ann_id = ann["announcement_id"]
         title = ann.get("title", "") or ""
         region = ann.get("region", "") or ""
         ann_target = (ann.get("target_type", "") or "").strip()
         category = ann.get("category", "") or ""
+
+        # 마감일 지난 공고 → 후순위 (ongoing 타입이어도 deadline_date가 과거면 후순위)
+        dl = ann.get("deadline_date")
+        if dl and (dl.date() if hasattr(dl, "date") else dl) < _today:
+            ineligible_ids.append(ann_id); continue
 
         # target_type 불일치 → 후순위
         if is_individual and ann_target == "business":
@@ -1997,6 +2005,7 @@ def api_announcements_public(
 
                     bucket_sql = f"""
                         CASE
+                            WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 4
                             WHEN COALESCE(target_type, 'business') != %s THEN 4
                             WHEN {inelig_sql} THEN 4
                             WHEN {region_sql} AND {has_amount_sql} THEN 0

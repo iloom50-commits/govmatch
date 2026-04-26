@@ -581,7 +581,7 @@ export default function NotificationModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[92vh] flex flex-col">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[96vh] flex flex-col">
         {/* 진행률 바 — shortcut에선 숨김 */}
         {!shortcutMode && (
           <div className="h-1.5 bg-slate-100 shrink-0">
@@ -599,10 +599,10 @@ export default function NotificationModal({
           </div>
         )}
 
-        <div className="relative flex-1 overflow-hidden">
-          <div className="p-5 sm:p-7">
+        <div className="relative flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-7">
           {/* 헤더 */}
-          <div className="flex items-center justify-between mb-5 sm:mb-7">
+          <div className="flex items-center justify-between mb-4 sm:mb-7">
             <div className="flex items-center gap-3">
               {step > 0 && !shortcutMode ? (
                 <button onClick={goBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
@@ -923,7 +923,7 @@ export default function NotificationModal({
         </div>
 
         {/* 하단 버튼 (고정) */}
-        <div className="p-5 sm:p-7 pt-0 shrink-0">
+        <div className="p-4 sm:p-7 pt-0 shrink-0">
           {!isLastStep ? (
             <button
               onClick={goNext}

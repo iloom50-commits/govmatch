@@ -357,6 +357,15 @@ export default function NotificationModal({
   const currentStep = steps[step] || steps[0];
 
   useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !businessNumber) return;
     setStep(shortcutMode ? steps.length - 1 : 0);
 

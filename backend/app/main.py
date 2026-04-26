@@ -1894,11 +1894,20 @@ def api_announcements_public(
                     sort_params = [user_target] + region_params + interest_params
 
                     valid_where = valid_announcement_where()
+                    # 기업/개인 탭 구분 필터
+                    if target_type:
+                        type_filter = "AND (target_type = %s OR target_type = 'both' OR target_type IS NULL)"
+                        type_params = [target_type]
+                    else:
+                        type_filter = ""
+                        type_params = []
+                    full_where = f"{valid_where} {type_filter}"
+
                     _pc = get_db_connection()
                     _pcur = _pc.cursor()
 
-                    # 전체 개수 (필터 없음 → 모든 유효 공고)
-                    _pcur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {valid_where}")
+                    # 전체 개수 (탭 기준 target_type 필터 적용)
+                    _pcur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {full_where}", type_params)
                     total = _pcur.fetchone()["cnt"]
 
                     # 맞춤 정렬 후 페이지 반환
@@ -1910,13 +1919,13 @@ def api_announcements_public(
                                    origin_url, summary_text, eligibility_logic,
                                    established_years_limit, revenue_limit, employee_limit
                             FROM announcements
-                            WHERE {valid_where}
+                            WHERE {full_where}
                             ORDER BY
                                 {sort_case},
                                 deadline_date ASC NULLS LAST,
                                 created_at DESC
                             LIMIT %s OFFSET %s""",
-                        sort_params + [size, offset],
+                        type_params + sort_params + [size, offset],
                     )
                     rows = [dict(r) for r in _pcur.fetchall()]
                     _pc.close()

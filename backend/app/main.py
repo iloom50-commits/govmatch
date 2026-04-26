@@ -967,21 +967,43 @@ def _discover_new_sources():
         print(f"[discover] 오류: {e}")
 
 
-def _cleanup_non_support_announcements():
-    """DB에서 지원사업이 아닌 공고 제거 (정보공개, 결과 발표 등)"""
+def _cleanup_non_support_announcements() -> int:
+    """DB에서 지원사업이 아닌 공고 제거. 반환: 삭제 건수."""
+    # 제목 키워드 — 이 단어가 제목에 있으면 비지원사업
     NON_SUPPORT_PATTERNS = [
+        # 기존
         "업무추진비", "사용내역", "사용 내역", "회의록", "의사록",
         "결산", "예산서", "감사결과", "인사발령",
         "입찰결과", "낙찰자", "계약현황", "계약체결", "개찰결과",
         "채용결과", "합격자 발표", "선정결과 발표",
         "행사 후기", "수료식", "시상식",
         "취소공고", "취소 공고", "철회",
+        # 추가 — 크롤러에서 유입된 비지원사업 패턴
+        "포럼 개최", "포럼개최", "세미나 개최", "간담회 개최", "행사 개최",
+        "직원 채용", "직원채용", "채용 공고", "채용공고",
+        "합격자 공고", "서류전형 합격", "최종합격자",
+        "당첨자 명단", "당첨자명단",
+        "기관 소개", "원장 인사말", "인사말",
+        "민원 안내", "민원안내", "정보공개 안내",
+        "통근버스", "수기 공모전", "수기공모전",
+        "컴퓨터 교육", "정보화교육",
+        "보도자료", "언론보도",
     ]
-    EXCEPTIONS = ["모집", "참여기업", "참여자", "신청", "접수", "공모"]
+    # 이 단어가 있으면 예외 (지원사업일 가능성)
+    EXCEPTIONS = ["모집", "참여기업", "참여자", "신청", "접수", "공모", "지원사업", "지원금"]
+
+    # 비지원사업 카테고리 — category 컬럼이 이 값이면 삭제
+    NON_SUPPORT_CATEGORIES = [
+        "Forum", "행사", "채용", "민원", "정보공개", "기관소개",
+        "정보화교육", "교통", "보도자료",
+    ]
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         deleted = 0
+
+        # ① 제목 키워드 기반 삭제
         for pattern in NON_SUPPORT_PATTERNS:
             cur.execute(
                 "SELECT announcement_id, title FROM announcements WHERE title ILIKE %s",
@@ -989,17 +1011,30 @@ def _cleanup_non_support_announcements():
             )
             for row in cur.fetchall():
                 title = row["title"]
-                # 예외 키워드 확인
                 if any(exc in title for exc in EXCEPTIONS):
                     continue
                 cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (row["announcement_id"],))
                 deleted += 1
             conn.commit()
+
+        # ② category 기반 삭제
+        if NON_SUPPORT_CATEGORIES:
+            placeholders = ",".join(["%s"] * len(NON_SUPPORT_CATEGORIES))
+            cur.execute(
+                f"DELETE FROM announcements WHERE category IN ({placeholders}) RETURNING announcement_id",
+                NON_SUPPORT_CATEGORIES
+            )
+            cat_deleted = cur.rowcount or 0
+            conn.commit()
+            deleted += cat_deleted
+
         conn.close()
         if deleted > 0:
             print(f"[cleanup] 비지원사업 공고 {deleted}건 삭제")
+        return deleted
     except Exception as e:
         print(f"[cleanup] 오류: {e}")
+        return 0
 
 
 def _auto_classify_target_type():
@@ -1833,7 +1868,7 @@ def api_announcements_public(
         raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
     offset = (page - 1) * size
 
-    # ── 로그인 사용자 + 필터 없음 → 실시간 맞춤 정렬 (전체 공고 표시) ──
+    # ── 로그인 사용자 + 필터 없음 → 사전캐시 우선, 없으면 실시간 CTE ──
     _is_logged_in = False  # 로그인 여부 — 공유 캐시 우회 판단용
     if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
         try:
@@ -1841,13 +1876,76 @@ def api_announcements_public(
             bn = current_user.get("bn")
             if bn:
                 _is_logged_in = True
-                _uc = get_db_connection()
-                _ucur = _uc.cursor()
-                _ucur.execute(
+                cache_type = "public_ind" if target_type == "individual" else "public_biz"
+
+                _pc = get_db_connection()
+                _pcur = _pc.cursor()
+
+                # ── 1순위: user_match_cache 사전 계산 결과 (새벽 배치) ──
+                _pcur.execute(
+                    """SELECT match_data FROM user_match_cache
+                       WHERE business_number = %s AND target_type = %s
+                         AND created_at > CURRENT_TIMESTAMP - INTERVAL '26 hours'
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (bn, cache_type),
+                )
+                cache_row = _pcur.fetchone()
+
+                if cache_row and cache_row.get("match_data"):
+                    cached = cache_row["match_data"]
+                    if isinstance(cached, str):
+                        import json as _j; cached = _j.loads(cached)
+
+                    eligible_ids = cached.get("eligible_ids") or []
+                    ineligible_ids = cached.get("ineligible_ids") or []
+                    all_ids = eligible_ids + ineligible_ids
+                    total = len(all_ids)
+
+                    # 페이지 슬라이스
+                    page_ids = all_ids[offset: offset + size]
+
+                    if page_ids:
+                        # ID 순서를 유지하면서 공고 본문 조회
+                        id_list = ",".join(str(i) for i in page_ids)
+                        _pcur.execute(
+                            f"""SELECT announcement_id, title, region, category, department,
+                                       support_amount, support_amount_max, support_amount_min, support_amount_type,
+                                       deadline_date, origin_source, created_at,
+                                       COALESCE(target_type, 'business') AS target_type,
+                                       origin_url, summary_text, eligibility_logic,
+                                       established_years_limit, revenue_limit, employee_limit
+                                FROM announcements
+                                WHERE announcement_id IN ({id_list})
+                                  AND {valid_announcement_where()}"""
+                        )
+                        rows_map = {{r["announcement_id"]: dict(r) for r in _pcur.fetchall()}}
+                        # 캐시 순서 복원 (신규 추가/삭제된 공고는 자연스럽게 제외됨)
+                        rows = [rows_map[i] for i in page_ids if i in rows_map]
+                    else:
+                        rows = []
+
+                    _pc.close()
+                    cat_cache_key = f"cat_counts:{target_type or 'all'}"
+                    category_counts = _get_cached(cat_cache_key) or {}
+                    return {
+                        "status": "SUCCESS",
+                        "data": rows,
+                        "total": total,
+                        "page": page,
+                        "size": size,
+                        "regions": [],
+                        "categories": [],
+                        "category_counts": category_counts,
+                        "personalized": True,
+                        "source": "cache",
+                    }
+
+                # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──
+                # 사용자 지역·관심분야 조회 (같은 연결 재사용)
+                _pcur.execute(
                     "SELECT address_city, interests FROM users WHERE business_number = %s", (bn,)
                 )
-                urow = _ucur.fetchone()
-                _uc.close()
+                urow = _pcur.fetchone()
 
                 if urow:
                     raw_city = str(urow.get("address_city", "") or "")
@@ -1856,7 +1954,6 @@ def api_announcements_public(
                     interests = [i.strip() for i in str(urow.get("interests", "") or "").split(",") if i.strip()]
                     user_target = "individual" if target_type == "individual" else "business"
 
-                    # 지역 조건
                     if user_city:
                         region_sql = "(region ILIKE %s AND region NOT IN ('전국', '', '전국 및 각 지역'))"
                         region_params = [f"%{user_city}%"]
@@ -1864,7 +1961,6 @@ def api_announcements_public(
                         region_sql = "FALSE"
                         region_params = []
 
-                    # 관심분야 조건
                     if interests:
                         interest_parts = " OR ".join(["(category ILIKE %s OR title ILIKE %s)" for _ in interests])
                         interest_sql = f"({interest_parts})"
@@ -1875,9 +1971,6 @@ def api_announcements_public(
                         interest_sql = "FALSE"
                         interest_params = []
 
-                    # 일별 로테이션 bucket 정렬
-                    # bucket 0 = 지역+자금, 1 = 전국+자금, 2 = 관심+자금, 3 = 후순위(해당없음)
-                    # 오늘의 우선 bucket: day_of_year % 3  → 매일 0→1→2→0... 순환
                     import datetime as _dt
                     today_bucket = _dt.date.today().timetuple().tm_yday % 3
 
@@ -1891,11 +1984,9 @@ def api_announcements_public(
                             ELSE 3
                         END
                     """
-                    # bucket 파라미터: user_target + region_params + interest_params
                     bucket_params = [user_target] + region_params + interest_params
 
                     valid_where = valid_announcement_where()
-                    # 기업/개인 탭 구분 필터
                     if target_type:
                         type_filter = "AND (target_type = %s OR target_type = 'both' OR target_type IS NULL)"
                         type_params = [target_type]
@@ -1904,14 +1995,9 @@ def api_announcements_public(
                         type_params = []
                     full_where = f"{valid_where} {type_filter}"
 
-                    _pc = get_db_connection()
-                    _pcur = _pc.cursor()
-
-                    # 전체 개수 (탭 기준 target_type 필터 적용)
                     _pcur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {full_where}", type_params)
                     total = _pcur.fetchone()["cnt"]
 
-                    # 일별 로테이션 정렬: CTE로 bucket 계산 후 오늘 기준 상대 순위
                     _pcur.execute(
                         f"""WITH ann AS (
                                 SELECT announcement_id, title, region, category, department,
@@ -1949,7 +2035,9 @@ def api_announcements_public(
                         "categories": [],
                         "category_counts": category_counts,
                         "personalized": True,
+                        "source": "realtime",
                     }
+                _pc.close()
         except Exception as _pe:
             _is_logged_in = True  # 예외 시에도 로그인 사용자로 처리 — 공유 캐시 우회
             print(f"[personalized] fallback to standard SQL: {_pe}")

@@ -93,6 +93,91 @@ def check_scraper_health(db_conn) -> Dict[str, Any]:
     }
 
 
+def check_admin_url_health(db_conn) -> Dict[str, Any]:
+    """admin_urls 테이블 기반 URL 오등록/장기 미수집 감지.
+
+    판단 기준:
+    1. fail_count >= 3 이고 is_active = 1  → 반복 실패 중
+    2. last_scraped IS NULL 이고 is_active = 1  → 한 번도 수집 안 됨
+    3. last_scraped < 오늘 - 14일  → 장기 미수집
+    4. is_active = 1 이지만 최근 30일 내 이 source_name의 announcements 신규 저장 0건
+       → URL이 틀렸거나 게시판이 비어있을 가능성
+    """
+    cur = db_conn.cursor()
+    suspects: list = []
+
+    try:
+        # 활성 URL 전체 조회
+        cur.execute("""
+            SELECT id, url, source_name, fail_count, last_scraped
+            FROM admin_urls
+            WHERE is_active = 1
+            ORDER BY source_name
+        """)
+        active_urls = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.warning(f"[AdminURLHealth] query error: {e}")
+        return {"suspects": [], "total_active": 0, "suspect_count": 0}
+
+    # 최근 30일 신규 공고가 있는 source_name 목록 (department 기준 매핑)
+    try:
+        cur.execute("""
+            SELECT DISTINCT department
+            FROM announcements
+            WHERE created_at > NOW() - INTERVAL '30 days'
+              AND department IS NOT NULL AND department != ''
+        """)
+        recent_departments = {r["department"] for r in cur.fetchall()}
+    except Exception as e:
+        logger.warning(f"[AdminURLHealth] department query error: {e}")
+        recent_departments = set()
+
+    import datetime as _dt
+    now = _dt.datetime.now()
+    cutoff_14d = now - _dt.timedelta(days=14)
+
+    for row in active_urls:
+        reasons = []
+        src = row["source_name"] or ""
+        fc = row.get("fail_count") or 0
+        ls = row.get("last_scraped")  # datetime or None
+
+        if fc >= 3:
+            reasons.append(f"연속 실패 {fc}회")
+
+        if ls is None:
+            reasons.append("한 번도 수집 안 됨")
+        elif ls < cutoff_14d:
+            days_ago = (now - ls).days
+            reasons.append(f"마지막 수집 {days_ago}일 전")
+
+        # source_name과 유사한 department가 최근 30일 내 없으면 의심
+        # 완전 일치 또는 포함 관계로 판단
+        if ls is not None:  # 수집 시도는 했는데 공고가 없는 경우만 체크
+            matched = any(
+                src in dept or dept in src
+                for dept in recent_departments
+                if len(dept) >= 3 and len(src) >= 3
+            )
+            if not matched:
+                reasons.append("최근 30일 신규 공고 0건 — URL 오등록 의심")
+
+        if reasons:
+            suspects.append({
+                "source_name": src,
+                "url": row["url"],
+                "fail_count": fc,
+                "last_scraped": ls.strftime("%Y-%m-%d") if ls else None,
+                "reasons": reasons,
+            })
+
+    return {
+        "total_active": len(active_urls),
+        "suspect_count": len(suspects),
+        "suspects": suspects,
+    }
+
+
 def format_report(health: Dict[str, Any]) -> str:
     """자연어 보고서 — 카카오/이메일 발송용."""
     s = health.get("summary_24h", {}) or {}

@@ -642,6 +642,23 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                     <p className="text-[12px] md:text-[11px] font-bold text-emerald-700">상담 완료</p>
                   </div>
                 )}
+
+                {/* 원문 링크 버튼 — 마지막 AI 메시지에만 표시 */}
+                {msg.role === "assistant" && i === messages.length - 1 && originUrl && (
+                  <div className="mt-2">
+                    <a
+                      href={originUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-[13px] font-semibold hover:bg-indigo-100 hover:border-indigo-300 transition-all active:scale-95"
+                    >
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      공고 원문 보기
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           ))}

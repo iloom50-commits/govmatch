@@ -22,13 +22,14 @@ def generate_and_send_report(
     quality: Dict,
     learning: Dict,
     actions: list,
+    url_health: Dict = None,
 ) -> bool:
     """Gemini로 보고서 생성 후 이메일 발송. 반환: 발송 성공 여부."""
 
     # ── 1. Gemini로 보고서 생성 ──
-    report_text = _generate_report_with_gemini(metrics, alerts, quality, learning, actions)
+    report_text = _generate_report_with_gemini(metrics, alerts, quality, learning, actions, url_health=url_health)
     if not report_text:
-        report_text = _generate_fallback_report(metrics, alerts, quality, learning, actions)
+        report_text = _generate_fallback_report(metrics, alerts, quality, learning, actions, url_health=url_health)
 
     # ── 2. 이메일 발송 ──
     sent = _send_email_report(report_text)
@@ -65,7 +66,8 @@ def generate_and_send_report(
 
 
 def _generate_report_with_gemini(
-    metrics: Dict, alerts: list, quality: Dict, learning: Dict, actions: list
+    metrics: Dict, alerts: list, quality: Dict, learning: Dict, actions: list,
+    url_health: Dict = None,
 ) -> str:
     """Gemini로 자연어 보고서 생성."""
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -73,6 +75,13 @@ def _generate_report_with_gemini(
         return ""
 
     today = datetime.now().strftime("%Y-%m-%d")
+    url_health = url_health or {}
+
+    # URL 의심 기관 요약 (최대 5개)
+    suspects = url_health.get("suspects", [])[:5]
+    suspect_summary = [
+        f"{s['source_name']}: {', '.join(s['reasons'])}" for s in suspects
+    ]
 
     data_block = json.dumps({
         "date": today,
@@ -97,6 +106,11 @@ def _generate_report_with_gemini(
         "learning_embed_coverage": f"{learning.get('embedding_coverage', 0)*100:.0f}%",
         "alerts": [a[1] for a in alerts],
         "auto_actions": actions,
+        "url_health": {
+            "total_active": url_health.get("total_active", 0),
+            "suspect_count": url_health.get("suspect_count", 0),
+            "suspect_list": suspect_summary,
+        },
     }, ensure_ascii=False, indent=2)
 
     prompt = f"""당신은 지원금AI(govmatch.kr) 서비스의 AI COO입니다.
@@ -112,10 +126,11 @@ def _generate_report_with_gemini(
 ■ AI 에이전트 성적표
 ■ 학습 파이프라인
 ■ 공고 분석 현황
+■ 수집 URL 점검 (의심 기관 목록 포함, 없으면 생략)
 ■ 이상 감지 및 자동 조치
 ■ 사장님께 제안
 
-한국어, 간결하고 핵심만. 이모지 적절히 사용. 400자 이내."""
+한국어, 간결하고 핵심만. 이모지 적절히 사용. 500자 이내."""
 
     try:
         import google.generativeai as genai
@@ -130,10 +145,12 @@ def _generate_report_with_gemini(
 
 
 def _generate_fallback_report(
-    metrics: Dict, alerts: list, quality: Dict, learning: Dict, actions: list
+    metrics: Dict, alerts: list, quality: Dict, learning: Dict, actions: list,
+    url_health: Dict = None,
 ) -> str:
     """Gemini 실패 시 단순 텍스트 보고서."""
     today = datetime.now().strftime("%Y-%m-%d")
+    url_health = url_health or {}
     lines = [
         f"📊 지원금AI 일일 보고 ({today})",
         "",
@@ -154,6 +171,12 @@ def _generate_fallback_report(
         lines.append("■ 자동 조치:")
         for a in actions[:3]:
             lines.append(f"  ✅ {a}")
+    suspects = url_health.get("suspects", [])
+    if suspects:
+        lines.append("")
+        lines.append(f"■ 수집 URL 점검 ({url_health.get('suspect_count', 0)}개 의심):")
+        for s in suspects[:5]:
+            lines.append(f"  🔍 {s['source_name']}: {', '.join(s['reasons'])}")
     return "\n".join(lines)
 
 

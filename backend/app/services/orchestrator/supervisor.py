@@ -129,7 +129,7 @@ def collect_metrics(db_conn) -> Dict[str, Any]:
     return metrics
 
 
-def detect_anomalies(metrics: Dict[str, Any]) -> list:
+def detect_anomalies(metrics: Dict[str, Any], url_health: Dict = None) -> list:
     """임계값 기반 이상 감지. 반환: [(severity, message), ...]"""
     alerts = []
 
@@ -170,6 +170,12 @@ def detect_anomalies(metrics: Dict[str, Any]) -> list:
     # 만료 공고
     if metrics.get("expired_ratio", 0) > 50:
         alerts.append(("warning", f"만료 공고 비율 {metrics.get('expired_ratio')}%"))
+
+    # URL 오등록 의심 기관
+    if url_health:
+        suspect_count = url_health.get("suspect_count", 0)
+        if suspect_count > 0:
+            alerts.append(("warning", f"admin_urls 의심 기관 {suspect_count}개 — URL 점검 필요"))
 
     return alerts
 
@@ -272,24 +278,47 @@ def run_daily_supervision(db_conn) -> Dict[str, Any]:
         logger.info("[Supervisor] Collecting metrics...")
         metrics = collect_metrics(db_conn)
 
-        # 2. 이상 감지
-        alerts = detect_anomalies(metrics)
+        # 2. URL 헬스체크 (admin_urls 오등록/장기 미수집 감지)
+        logger.info("[Supervisor] Checking admin URL health...")
+        url_health: Dict[str, Any] = {}
+        try:
+            from .scraper_monitor import check_admin_url_health
+            url_health = check_admin_url_health(db_conn)
+            logger.info(f"[Supervisor] URL health: {url_health.get('suspect_count', 0)} suspects / {url_health.get('total_active', 0)} active")
+        except Exception as e:
+            logger.warning(f"[Supervisor] URL health check error: {e}")
 
-        # 3. 품질 체크
+        # 3. 비지원사업 공고 일일 정제
+        logger.info("[Supervisor] Cleaning non-support announcements...")
+        cleanup_deleted = 0
+        try:
+            from app.main import _cleanup_non_support_announcements
+            cleanup_deleted = _cleanup_non_support_announcements() or 0
+            if cleanup_deleted:
+                logger.info(f"[Supervisor] Cleanup: {cleanup_deleted} non-support announcements deleted")
+        except Exception as e:
+            logger.warning(f"[Supervisor] Cleanup error: {e}")
+
+        # 4. 이상 감지
+        alerts = detect_anomalies(metrics, url_health=url_health)
+
+        # 5. 품질 체크
         logger.info("[Supervisor] Checking agent quality...")
         from .quality_checker import check_agent_quality
         quality = check_agent_quality(db_conn)
 
-        # 4. 학습 감시
+        # 6. 학습 감시
         logger.info("[Supervisor] Checking learning health...")
         from .learning_monitor import check_learning_health
         learning = check_learning_health(db_conn)
 
-        # 5. 자동 개선
+        # 7. 자동 개선
         logger.info("[Supervisor] Running auto-improvements...")
         actions = auto_improve(db_conn, metrics, quality, learning)
+        if cleanup_deleted:
+            actions.append(f"비지원사업 공고 {cleanup_deleted}건 정제 완료")
 
-        # 6. 보고서 생성 + 전송
+        # 8. 보고서 생성 + 전송
         logger.info("[Supervisor] Generating report...")
         from .reporter import generate_and_send_report
         report_sent = generate_and_send_report(
@@ -299,6 +328,7 @@ def run_daily_supervision(db_conn) -> Dict[str, Any]:
             quality=quality,
             learning=learning,
             actions=actions,
+            url_health=url_health,
         )
 
         elapsed = round(time.time() - start, 1)
@@ -313,8 +343,10 @@ def run_daily_supervision(db_conn) -> Dict[str, Any]:
             "alerts_count": len(alerts),
             "actions_count": len(actions),
             "report_sent": report_sent,
+            "url_suspects": url_health.get("suspect_count", 0),
+            "cleanup_deleted": cleanup_deleted,
         }
-        logger.info(f"[Supervisor] Done in {elapsed}s — {len(alerts)} alerts, {len(actions)} actions")
+        logger.info(f"[Supervisor] Done in {elapsed}s — {len(alerts)} alerts, {len(actions)} actions, {url_health.get('suspect_count',0)} URL suspects")
 
     except Exception as e:
         logger.error(f"[Supervisor] Error: {e}")

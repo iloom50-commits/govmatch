@@ -208,6 +208,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [showMatchModal, setShowMatchModal] = useState(false);  // 매칭 확인 모달
   const [matchProfile, setMatchProfile] = useState<any>({});  // 모달에서 편집 중인 프로필
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const [systemContext, setSystemContext] = useState("");
   const [activeAnnouncementId, setActiveAnnouncementId] = useState<number | null>(null);
   const [typing, setTyping] = useState(false); // 타이핑 애니메이션 중
@@ -351,6 +353,32 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       localStorage.setItem("pro_session_id", sessionId);
     }
   }, [sessionId]);
+
+  // ─── 진행률 애니메이션 ───
+  useEffect(() => {
+    if (!loading) {
+      setLoadingProgress(0);
+      setLoadingMessage("");
+      return;
+    }
+    const steps = [
+      { at: 0,     pct: 10, msg: "요청을 처리하는 중..." },
+      { at: 2000,  pct: 25, msg: "공고 데이터를 불러오는 중..." },
+      { at: 6000,  pct: 45, msg: "AI가 분석하고 있습니다..." },
+      { at: 12000, pct: 62, msg: "조건을 대조하는 중..." },
+      { at: 20000, pct: 75, msg: "결과를 정리하는 중..." },
+      { at: 30000, pct: 85, msg: "거의 다 됐어요!" },
+      { at: 45000, pct: 93, msg: "조금만 더 기다려주세요" },
+      { at: 60000, pct: 97, msg: "마지막 단계입니다..." },
+    ];
+    setLoadingProgress(steps[0].pct);
+    setLoadingMessage(steps[0].msg);
+    const timers = steps.slice(1).map(s => setTimeout(() => {
+      setLoadingProgress(s.pct);
+      setLoadingMessage(s.msg);
+    }, s.at));
+    return () => timers.forEach(clearTimeout);
+  }, [loading]);
 
   // ─── AI 대화 전송 ───
   const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string }) => {
@@ -1177,14 +1205,20 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                            <span className={`flex-1 text-[13px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>AI가 분석하고 있습니다</span>
+                            <span className={`flex-1 text-[13px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>{loadingMessage || "준비 중..."}</span>
+                            <span className={`text-[12px] font-bold tabular-nums ${dark ? "text-violet-400" : "text-violet-400"}`}>{loadingProgress}%</span>
                           </div>
-                          {/* 인디케이터 바 — 왕복 애니메이션 */}
+                          {/* 진행바 */}
                           <div className={`w-full h-2.5 rounded-full overflow-hidden ${dark ? "bg-violet-800/50" : "bg-violet-100"}`}>
-                            <div className="h-full w-2/5 rounded-full animate-indeterminate" style={{ background: "linear-gradient(90deg, #7c3aed, #a78bfa)" }} />
+                            <div
+                              className="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden"
+                              style={{ width: `${loadingProgress}%`, background: "linear-gradient(90deg, #7c3aed, #a78bfa)" }}
+                            >
+                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+                            </div>
                           </div>
                           <p className={`text-[11px] font-medium ${dark ? "text-violet-400" : "text-violet-400"}`}>
-                            공고 매칭 중
+                            AI가 처리하고 있어요
                             <span className="inline-flex gap-0.5 ml-1">
                               <span className="animate-bounce" style={{ animationDelay: "0ms" }}>·</span>
                               <span className="animate-bounce" style={{ animationDelay: "150ms" }}>·</span>

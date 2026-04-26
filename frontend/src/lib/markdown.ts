@@ -36,12 +36,12 @@ export function renderMarkdown(text: string): string {
     if (!tableInBlock) return;
     if (tableRows.length === 0) { tableInBlock = false; return; }
     const [headerRow, ...bodyRows] = tableRows;
-    const headerHtml = headerRow.map(c =>
-      `<th class="px-3 py-2 text-left font-bold text-indigo-700 border-b-2 border-indigo-200">${c}</th>`
+    const headerHtml = headerRow.map((c, i) =>
+      `<th class="px-3 py-2 text-left font-bold text-indigo-700 border-b-2 border-indigo-200${i === 0 ? " whitespace-nowrap" : ""}">${c}</th>`
     ).join("");
     const bodyHtml = bodyRows.map(row =>
-      `<tr class="border-b border-slate-100 hover:bg-indigo-50/30">${row.map(c =>
-        `<td class="px-3 py-2 align-top text-slate-700">${c}</td>`
+      `<tr class="border-b border-slate-100 hover:bg-indigo-50/30">${row.map((c, i) =>
+        `<td class="px-3 py-2 align-top text-slate-700${i === 0 ? " whitespace-nowrap font-medium" : ""}">${c}</td>`
       ).join("")}</tr>`
     ).join("");
     result.push(

@@ -576,7 +576,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-indigo-700 truncate">AI 지원대상 상담</p>
+                <p className="text-[15px] font-bold text-indigo-700 truncate">AI 지원대상 상담</p>
                 {originUrl ? (
                   <a
                     href={originUrl}

@@ -1252,7 +1252,8 @@ async def lifespan(app):
     import threading
 
     def _warmup():
-        _prewarm_response_cache(startup=True)  # 비로그인 응답 캐시 선제 채우기
+        _db_keepalive()  # 1. DB 연결 먼저 warm-up (cold start 40s 방지)
+        _prewarm_response_cache(startup=False)  # 2. warm DB로 응답 캐시 즉시 채우기
         print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
 
     threading.Thread(target=_warmup, daemon=True).start()

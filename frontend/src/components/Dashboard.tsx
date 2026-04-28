@@ -1057,7 +1057,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 서비스 공유 */}
       <ShareToggle
         label="친구에게 알려주기"
-        getUrl={() => window.location.origin}
+        getUrl={() => `${window.location.origin}?v=2`}
         shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
         toast={toast}
       />
@@ -1290,7 +1290,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className="relative z-10 space-y-1.5">
           <ShareToggle
             label="친구에게 추천하기"
-            getUrl={() => `${window.location.origin}?ref=${profile.referral_code}`}
+            getUrl={() => `${window.location.origin}?ref=${profile.referral_code}&v=2`}
             shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
             toast={toast}
           />

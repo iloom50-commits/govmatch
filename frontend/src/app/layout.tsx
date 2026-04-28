@@ -38,8 +38,8 @@ export const metadata: Metadata = {
     locale: "ko_KR",
     url: "https://www.govmatch.kr",
     siteName: "지원금AI",
-    title: "지원금AI — AI가 구석구석 찾아드리는 정부 지원금 매칭",
-    description: "17,000+ 정부 지원금 공고를 AI가 실시간 분석. 내 조건에 딱 맞는 보조금·정책자금을 자동 매칭. 무료!",
+    title: "지원금AI — 내 지원금 찾기 30초",
+    description: "찾지말고, 받으세요.",
     images: [
       {
         url: "/og-image-wide.png",
@@ -57,8 +57,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "지원금AI — 정부 지원금 AI 자동 매칭",
-    description: "17,000+ 정부 지원금 공고 AI 분석. 내 조건에 맞는 보조금 자동 매칭!",
+    title: "지원금AI — 내 지원금 찾기 30초",
+    description: "찾지말고, 받으세요.",
     images: ["/og-image-wide.png"],
   },
   robots: {

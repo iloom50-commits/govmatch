@@ -47,12 +47,6 @@ export const metadata: Metadata = {
         height: 630,
         alt: "지원금AI — AI 정부 지원금 자동 매칭",
       },
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 1200,
-        alt: "지원금AI 로고",
-      },
     ],
   },
   twitter: {

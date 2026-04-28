@@ -340,14 +340,14 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           {onSave && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); if (!saved && !saving) onSave(); }}
+              onClick={(e) => { e.stopPropagation(); if (!saving) onSave(); }}
               disabled={saving}
               className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all duration-200 shrink-0 ${
                 saved
-                  ? "bg-indigo-600 border-indigo-600 text-white"
+                  ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 active:scale-95"
                   : saving
                   ? "bg-slate-100 border-slate-200 text-slate-400 cursor-wait"
-                  : "bg-white/90 border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                  : "bg-white/90 border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95"
               }`}
               aria-label={saved ? "저장됨" : "일정 저장"}
             >

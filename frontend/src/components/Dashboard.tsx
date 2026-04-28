@@ -808,18 +808,32 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       onUpgrade?.();
       return;
     }
+    const alreadySaved = savedItems.find(s => s.announcement_id === announcementId);
     setSavingIds(prev => new Set(prev).add(announcementId));
     try {
       const token = localStorage.getItem("auth_token") || "";
-      const res = await fetch(`${API}/api/saved/bulk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ business_number: bn, announcement_ids: [announcementId] }),
-      });
-      const data = await res.json();
-      if (data.status === "SUCCESS") {
-        toast("일정에 저장되었습니다.", "success");
-        fetchSaved();
+      if (alreadySaved) {
+        // 저장 취소
+        const res = await fetch(`${API}/api/saved/${alreadySaved.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          toast("저장이 취소되었습니다.", "info");
+          fetchSaved();
+        }
+      } else {
+        // 저장
+        const res = await fetch(`${API}/api/saved/bulk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ business_number: bn, announcement_ids: [announcementId] }),
+        });
+        const data = await res.json();
+        if (data.status === "SUCCESS") {
+          toast("일정에 저장되었습니다.", "success");
+          fetchSaved();
+        }
       }
     } catch {
       toast("저장 중 오류가 발생했습니다.", "error");

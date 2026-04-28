@@ -705,7 +705,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                 <button
                   onClick={() => {
                     setSessionMsgLimitReached(false);
-                    setChatHistory([]);
+                    setMessages([]);
                     setOpen(false);
                   }}
                   className="text-[11px] text-slate-400 hover:text-slate-600 font-medium transition-all"

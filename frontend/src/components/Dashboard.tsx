@@ -1500,7 +1500,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex items-baseline gap-1.5 sm:gap-3 flex-wrap">
                 <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
                 <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                  전국 모든 지원금
+                  지원금 다나와
                 </span>
               </h2>
               <div className="flex items-center gap-2 flex-shrink-0">

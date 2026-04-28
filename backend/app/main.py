@@ -2079,7 +2079,28 @@ def api_announcements_public(
 
                     _pc.close()
                     cat_cache_key = f"cat_counts:{target_type or 'all'}"
-                    category_counts = _get_cached(cat_cache_key) or {}
+                    category_counts = _get_cached(cat_cache_key)
+                    if not category_counts:
+                        # 캐시 미스 시 DB 직접 조회 후 캐시 저장
+                        try:
+                            _cc = get_db_connection()
+                            _ccc = _cc.cursor()
+                            _cat_where = valid_announcement_where()
+                            _cat_params: list = []
+                            if target_type:
+                                _cat_where += " AND (target_type = %s OR target_type = 'both')"
+                                _cat_params.append(target_type)
+                            _ccc.execute(
+                                f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
+                                    FROM announcements WHERE {_cat_where}
+                                    GROUP BY COALESCE(category, '기타') ORDER BY cnt DESC""",
+                                _cat_params,
+                            )
+                            category_counts = {r["cat"]: r["cnt"] for r in _ccc.fetchall()}
+                            _cc.close()
+                            _set_cache(cat_cache_key, category_counts)
+                        except Exception:
+                            category_counts = {}
                     return {
                         "status": "SUCCESS",
                         "data": rows,
@@ -2198,7 +2219,27 @@ def api_announcements_public(
                     _pc.close()
 
                     cat_cache_key = f"cat_counts:{target_type or 'all'}"
-                    category_counts = _get_cached(cat_cache_key) or {}
+                    category_counts = _get_cached(cat_cache_key)
+                    if not category_counts:
+                        try:
+                            _cc2 = get_db_connection()
+                            _ccc2 = _cc2.cursor()
+                            _cat_where2 = valid_announcement_where()
+                            _cat_params2: list = []
+                            if target_type:
+                                _cat_where2 += " AND (target_type = %s OR target_type = 'both')"
+                                _cat_params2.append(target_type)
+                            _ccc2.execute(
+                                f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
+                                    FROM announcements WHERE {_cat_where2}
+                                    GROUP BY COALESCE(category, '기타') ORDER BY cnt DESC""",
+                                _cat_params2,
+                            )
+                            category_counts = {r["cat"]: r["cnt"] for r in _ccc2.fetchall()}
+                            _cc2.close()
+                            _set_cache(cat_cache_key, category_counts)
+                        except Exception:
+                            category_counts = {}
                     return {
                         "status": "SUCCESS",
                         "data": rows,

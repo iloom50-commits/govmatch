@@ -809,36 +809,39 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return;
     }
     const alreadySaved = savedItems.find(s => s.announcement_id === announcementId);
-    setSavingIds(prev => new Set(prev).add(announcementId));
-    try {
-      const token = localStorage.getItem("auth_token") || "";
-      if (alreadySaved) {
-        // 저장 취소
-        const res = await fetch(`${API}/api/saved/${alreadySaved.id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          toast("저장이 취소되었습니다.", "info");
-          fetchSaved();
-        }
-      } else {
-        // 저장
-        const res = await fetch(`${API}/api/saved/bulk`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ business_number: bn, announcement_ids: [announcementId] }),
-        });
-        const data = await res.json();
+    const token = localStorage.getItem("auth_token") || "";
+
+    if (alreadySaved) {
+      // 낙관적 업데이트 — 즉시 UI 반영
+      setSavedItems(prev => prev.filter(s => s.announcement_id !== announcementId));
+      fetch(`${API}/api/saved/${alreadySaved.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {
+        // 실패 시 원복
+        setSavedItems(prev => [...prev, alreadySaved]);
+        toast("저장 취소 중 오류가 발생했습니다.", "error");
+      });
+    } else {
+      // 낙관적 업데이트 — 즉시 UI 반영 (임시 id=-1)
+      const optimistic: SavedItem = { id: -1, announcement_id: announcementId, title: "", deadline_date: null, origin_url: null };
+      setSavedItems(prev => [...prev, optimistic]);
+      fetch(`${API}/api/saved/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ business_number: bn, announcement_ids: [announcementId] }),
+      }).then(r => r.json()).then(data => {
         if (data.status === "SUCCESS") {
-          toast("일정에 저장되었습니다.", "success");
+          // 서버 id로 교체
           fetchSaved();
+        } else {
+          setSavedItems(prev => prev.filter(s => s.announcement_id !== announcementId));
+          toast("저장 중 오류가 발생했습니다.", "error");
         }
-      }
-    } catch {
-      toast("저장 중 오류가 발생했습니다.", "error");
-    } finally {
-      setSavingIds(prev => { const s = new Set(prev); s.delete(announcementId); return s; });
+      }).catch(() => {
+        setSavedItems(prev => prev.filter(s => s.announcement_id !== announcementId));
+        toast("저장 중 오류가 발생했습니다.", "error");
+      });
     }
   };
 

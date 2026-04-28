@@ -792,8 +792,11 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     ind_major = str(user_profile.get("industry_code") or "")[:2]
     is_farmer = ind_major in ("01", "02", "03")  # 농업/임업/어업 업종
 
-    # 버킷 로테이션 순서 (오늘 날짜 + 사용자 해시)
-    bucket_order = _rotate_buckets(user_profile)  # ['region'|'interest'|'national_fund', 'deadline', 'fresh']
+    # 개인: 지역 → 관심분야 → 전국공고 고정 / 기업: 로테이션
+    if is_individual:
+        bucket_order = ["region", "interest", "national_fund", "deadline", "fresh"]
+    else:
+        bucket_order = _rotate_buckets(user_profile)
 
     buckets: dict = {b: [] for b in bucket_order}
     buckets["other"] = []
@@ -2208,12 +2211,17 @@ def api_announcements_public(
                             ORDER BY
                                 CASE WHEN bucket = 4 THEN 11
                                      WHEN bucket = 3 THEN 10
-                                     ELSE (bucket - %s + 3) % 3
+                                     WHEN %s = 'individual' THEN
+                                         CASE WHEN bucket = 0 THEN 0
+                                              WHEN bucket = 2 THEN 1
+                                              WHEN bucket = 1 THEN 2
+                                              ELSE 5 END
+                                     ELSE (bucket - %s + 3) %% 3
                                 END,
                                 deadline_date ASC NULLS LAST,
                                 created_at DESC
                             LIMIT %s OFFSET %s""",
-                        type_params + bucket_params + [today_bucket, size, offset],
+                        type_params + bucket_params + [target_type or "business", today_bucket, size, offset],
                     )
                     rows = [dict(r) for r in _pcur.fetchall()]
                     _pc.close()

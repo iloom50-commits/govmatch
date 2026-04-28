@@ -6,6 +6,20 @@ import json
 from app.services.rule_engine import rule_engine, _normalize_region
 from app.config import DATABASE_URL
 
+# 광역 표현 → 하위 지역 (DB에 "경상" 등으로 저장된 경우 처리)
+_BROAD_REGION_MAP: dict[str, set[str]] = {
+    "경상": {"경남", "경북"},
+    "전라": {"전남", "전북"},
+    "충청": {"충남", "충북"},
+}
+
+def _region_matches(user_city: str, ann_region: str) -> bool:
+    """사용자 소재지와 공고 지역이 일치하는지 체크. 광역 표현(경상/전라/충청) 포함."""
+    if ann_region == user_city:
+        return True
+    covered = _BROAD_REGION_MAP.get(ann_region)
+    return covered is not None and user_city in covered
+
 def get_db_connection(database_url=DATABASE_URL):
     conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
@@ -300,7 +314,7 @@ def _check_region_exclusion(user_city_normalized: str, ann_region: str, ann_titl
     normalized_ann = _normalize_region(ann_region)
     if not normalized_ann or normalized_ann in ("전국", "All"):
         return False, None
-    if (normalized_ann == user_city_normalized
+    if (_region_matches(user_city_normalized, normalized_ann)
         or user_city_normalized in normalized_ann
         or normalized_ann in user_city_normalized):
         return False, None
@@ -633,8 +647,8 @@ def get_matches_for_user(user_profile):
         # - 관심지역(interest_regions)은 필터 안 함 (보너스만)
         if ad_region and ad_region not in ("전국", "", "All"):
             if has_home:
-                # 소재지가 있으면: 소재지 일치만 통과
-                if ad_region != home_city:
+                # 소재지가 있으면: 소재지 일치만 통과 (광역 표현 경상/전라/충청 포함)
+                if not _region_matches(home_city, ad_region):
                     _mark_ineligible(ad, f"{ad_region} 지역 전용 (소재지 불일치)")
                     continue
             # 소재지 없으면 전국 취급 → 모든 지역 통과
@@ -802,10 +816,10 @@ def get_matches_for_user(user_profile):
         ad_city_for_match = (bracket_city_match.group(1) if bracket_city_match else None) or \
                             (ad_region if ad_region and ad_region not in ("전국", "", "All") else None)
         if ad_city_for_match:
-            if ad_city_for_match == home_city:
+            if _region_matches(home_city, ad_city_for_match):
                 score += 35.0
                 reasons.append(f"{home_city} 소재지 지원사업")
-            elif ad_city_for_match in interest_regions:
+            elif ad_city_for_match in interest_regions or any(_region_matches(ir, ad_city_for_match) for ir in interest_regions):
                 score += 15.0
                 reasons.append(f"{ad_city_for_match} 관심지역 지원사업")
 
@@ -1226,7 +1240,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         # 지역 필터 — 소재지 기반
         ad_region = _normalize_region(ad.get("region") or "")
         if ad_region and ad_region not in ("전국", "", "All"):
-            if has_home and ad_region != home_city:
+            if has_home and not _region_matches(home_city, ad_region):
                 continue
 
         # 마감 지남 제외
@@ -1512,7 +1526,7 @@ def _classify_bucket(match_item: dict, user_profile: dict, bucket_order: list = 
     addr_raw = _to_str(user_profile.get("address_city"))
     user_cities = [c.strip() for c in addr_raw.split(",") if c.strip() and c.strip() != "전국"]
     if user_cities:
-        if region and region not in ("전국", "All", "") and any(uc in region or region in uc for uc in user_cities):
+        if region and region not in ("전국", "All", "") and any(_region_matches(uc, region) or uc in region or region in uc for uc in user_cities):
             is_region = True
         if not is_region:
             import re as _re

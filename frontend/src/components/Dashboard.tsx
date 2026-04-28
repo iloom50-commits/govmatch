@@ -109,8 +109,8 @@ function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { p
   const getMsg = (): string | null => {
     const plan = planStatus?.plan;
     const daysLeft = planStatus?.days_left;
-    if ((plan === "lite" || plan === "lite_trial") && typeof daysLeft === "number" && daysLeft <= 3) {
-      return `LITE D-${daysLeft}! 지금 업그레이드하세요`;
+    if (plan === "lite_trial" && typeof daysLeft === "number" && daysLeft <= 3) {
+      return `LITE 무료체험 D-${daysLeft}! 지금 결제하세요`;
     }
     if (newMatchCount && newMatchCount > 0) {
       return `새 맞춤 공고 ${newMatchCount}건 업데이트됐어요`;
@@ -1377,7 +1377,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
       {/* [프로모션 2026-04-22 ~ 2026-05-23] LITE 1개월 무료 배너 */}
-      {planStatus && (planStatus.plan === "lite" || planStatus.plan === "lite_trial") && (() => {
+      {planStatus && planStatus.plan === "lite_trial" && (() => {
         // 2026-05-23까지 남은 일수 계산
         const now = new Date();
         const promoEnd = new Date("2026-05-23T23:59:59");

@@ -332,38 +332,37 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
 
-      {/* 일정 저장 pill — 우측 상단 */}
-      {onSave && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); if (!saved && !saving) onSave(); }}
-          disabled={saving}
-          className={`absolute top-3 right-3 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all duration-200 ${
-            saved
-              ? "bg-indigo-600 border-indigo-600 text-white"
-              : saving
-              ? "bg-slate-100 border-slate-200 text-slate-400 cursor-wait"
-              : "bg-white/90 border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
-          }`}
-          aria-label={saved ? "저장됨" : "일정 저장"}
-        >
-          {saved ? (
-            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>저장됨</>
-          ) : saving ? (
-            <>⏳ 저장 중</>
-          ) : (
-            <>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              + 저장
-            </>
-          )}
-        </button>
-      )}
-
       <div className="flex flex-col gap-4 h-full relative z-[1]">
 
         {/* Tags + Deadline inline */}
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* 일정 저장 pill — 태그 행 맨 앞 */}
+          {onSave && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); if (!saved && !saving) onSave(); }}
+              disabled={saving}
+              className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all duration-200 shrink-0 ${
+                saved
+                  ? "bg-indigo-600 border-indigo-600 text-white"
+                  : saving
+                  ? "bg-slate-100 border-slate-200 text-slate-400 cursor-wait"
+                  : "bg-white/90 border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+              }`}
+              aria-label={saved ? "저장됨" : "일정 저장"}
+            >
+              {saved ? (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>저장됨</>
+              ) : saving ? (
+                <>⏳</>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  + 저장
+                </>
+              )}
+            </button>
+          )}
           {onToggle && (
             <button
               type="button"

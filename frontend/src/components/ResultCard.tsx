@@ -253,12 +253,15 @@ interface CardProps {
   res: Result;
   selected?: boolean;
   onToggle?: () => void;
+  saved?: boolean;
+  saving?: boolean;
+  onSave?: () => void;
   planStatus?: { plan: string; ai_used?: number; ai_limit?: number; consult_limit?: number } | null;
   onUpgrade?: () => void;
   onLoginRequired?: () => void;
 }
 
-export default function ResultCard({ res, selected, onToggle, planStatus, onUpgrade, onLoginRequired, highlight }: CardProps & { highlight?: boolean }) {
+export default function ResultCard({ res, selected, onToggle, saved, saving, onSave, planStatus, onUpgrade, onLoginRequired, highlight }: CardProps & { highlight?: boolean }) {
   const isPublic = !!onLoginRequired;
   const isExpired = !isPublic && planStatus?.plan === "expired";
   const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
@@ -324,10 +327,38 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 pb-[4px] md:p-5 md:pb-[4px] rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 pb-[4px] md:p-5 md:pb-[4px] rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
+
+      {/* 일정 저장 pill — 우측 상단 */}
+      {onSave && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (!saved && !saving) onSave(); }}
+          disabled={saving}
+          className={`absolute top-3 right-3 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all duration-200 ${
+            saved
+              ? "bg-indigo-600 border-indigo-600 text-white"
+              : saving
+              ? "bg-slate-100 border-slate-200 text-slate-400 cursor-wait"
+              : "bg-white/90 border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+          }`}
+          aria-label={saved ? "저장됨" : "일정 저장"}
+        >
+          {saved ? (
+            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>저장됨</>
+          ) : saving ? (
+            <>⏳ 저장 중</>
+          ) : (
+            <>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              + 저장
+            </>
+          )}
+        </button>
+      )}
 
       <div className="flex flex-col gap-4 h-full relative z-[1]">
 

@@ -167,6 +167,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   const [loadingMessage, setLoadingMessage] = useState("");
   const [isDone, setIsDone] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [sessionMsgLimitReached, setSessionMsgLimitReached] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [originUrl, setOriginUrl] = useState<string | null>(null);
   const [consultLogId, setConsultLogId] = useState<number | null>(null);
@@ -358,7 +359,13 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       });
 
       if (res.status === 429) {
-        setLimitReached(true);
+        const errData = await res.json().catch(() => ({}));
+        const detail = errData.detail || "";
+        if (detail.startsWith("SESSION_MSG_LIMIT:")) {
+          setSessionMsgLimitReached(true);
+        } else {
+          setLimitReached(true);
+        }
         setLoading(false);
         return;
       }
@@ -663,6 +670,52 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             </div>
           ))}
 
+          {/* 세션 메시지 한도 초과 안내 */}
+          {sessionMsgLimitReached && (
+            <div className="flex justify-center my-4">
+              <div className="w-full max-w-[300px] p-5 bg-gradient-to-b from-amber-50 to-white rounded-2xl border border-amber-100 text-center space-y-3">
+                <div className="w-12 h-12 mx-auto bg-amber-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">💬</span>
+                </div>
+                <p className="text-[14px] font-bold text-slate-800">이 상담의 메시지 한도에 도달했어요</p>
+                <p className="text-[12px] text-slate-500">새 상담을 시작하거나, PRO로 업그레이드하면 한 상담에서 더 깊이 질문할 수 있어요.</p>
+                <div className="space-y-2 text-[12px]">
+                  <div className="p-3 bg-white rounded-xl border border-violet-100 text-left space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-violet-700">PRO</span>
+                      <span className="font-bold text-violet-600 text-[11px]">₩29,000/월</span>
+                    </div>
+                    <div className="space-y-0.5 text-[11px] text-slate-600">
+                      <p>· 메시지 수 <strong>무제한</strong></p>
+                      <p>· 전문가 1:1 매칭 상담</p>
+                      <p>· AI 신청서 자동작성 (준비 중)</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    setSessionMsgLimitReached(false);
+                    onUpgrade?.();
+                  }}
+                  className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-[13px] hover:bg-violet-700 transition-all active:scale-[0.98]"
+                >
+                  PRO 보기
+                </button>
+                <button
+                  onClick={() => {
+                    setSessionMsgLimitReached(false);
+                    setChatHistory([]);
+                    setOpen(false);
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-slate-600 font-medium transition-all"
+                >
+                  새 상담 시작하기
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 무료 상담 소진 안내 */}
           {limitReached && (
             <div className="flex justify-center my-4">
@@ -678,7 +731,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                       <span className="font-bold text-indigo-600 text-[11px]">4,900원/월</span>
                     </div>
                     <div className="space-y-0.5 text-[11px] text-slate-600">
-                      <p>· AI 상담 <strong>월 10회</strong></p>
+                      <p>· AI 상담 <strong>무제한</strong></p>
                       <p>· 맞춤 공고 알림 무제한</p>
                       <p>· 카카오톡/이메일 알림</p>
                     </div>

@@ -293,7 +293,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
             <div className="p-5">
               <div className="text-center mb-5">
                 <h3 className="text-[15px] font-bold text-slate-900">친구에게 추천하기</h3>
-                <p className="text-[11px] text-slate-400 mt-1">추천 시 양쪽 모두 LITE 1개월 무료!</p>
+                <p className="text-[11px] text-slate-400 mt-1">추천하면 양쪽 모두 1개월 무료!</p>
               </div>
               <div className="grid grid-cols-4 gap-3">
                 <button onClick={shareKakao} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-yellow-50 transition-all active:scale-95">
@@ -797,6 +797,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+
+  const handleInstantSave = async (announcementId: number) => {
+    if (!bn) return;
+    if (isFree) {
+      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
+      onUpgrade?.();
+      return;
+    }
+    setSavingIds(prev => new Set(prev).add(announcementId));
+    try {
+      const token = localStorage.getItem("auth_token") || "";
+      const res = await fetch(`${API}/api/saved/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ business_number: bn, announcement_ids: [announcementId] }),
+      });
+      const data = await res.json();
+      if (data.status === "SUCCESS") {
+        toast("일정에 저장되었습니다.", "success");
+        fetchSaved();
+      }
+    } catch {
+      toast("저장 중 오류가 발생했습니다.", "error");
+    } finally {
+      setSavingIds(prev => { const s = new Set(prev); s.delete(announcementId); return s; });
+    }
   };
 
   const handleBulkSave = async () => {
@@ -1706,8 +1735,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 >
                   <ResultCard
                     res={res}
-                    selected={isPublic ? false : selectedIds.has(res.announcement_id)}
-                    onToggle={isPublic ? undefined : () => toggleSelect(res.announcement_id)}
+                    saved={isPublic ? false : savedItems.some(s => s.announcement_id === res.announcement_id)}
+                    saving={savingIds.has(res.announcement_id)}
+                    onSave={isPublic ? undefined : () => handleInstantSave(res.announcement_id)}
                     planStatus={isPublic && !profile ? null : planStatus}
                     onUpgrade={isPublic && !profile ? undefined : onUpgrade}
                     onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
@@ -1761,25 +1791,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </>
           )}
 
-          {selectedIds.size > 0 && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-950 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300 w-[calc(100%-2rem)] max-w-sm sm:w-auto sm:max-w-none">
-              <span className="text-sm font-bold whitespace-nowrap">☑ {selectedIds.size}건 선택</span>
-              <button
-                onClick={handleBulkSave}
-                disabled={saving}
-                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap"
-              >
-                {saving ? "저장 중..." : "📅 일정 저장"}
-              </button>
-              <button
-                onClick={() => setSelectedIds(new Set())}
-                className="p-2 text-slate-400 hover:text-white transition-colors"
-                aria-label="선택 취소"
-              >
-                ✕
-              </button>
-            </div>
-          )}
           </div>
         </main>
       </div>

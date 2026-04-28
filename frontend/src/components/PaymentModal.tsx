@@ -274,7 +274,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
               <ul className="space-y-2 flex-1">
                 <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>50회</strong>/월</Feature>
+                <Feature available>공고AI 상담 — <strong>무제한</strong></Feature>
                 <Feature available>맞춤 공고 알림</Feature>
                 <Feature available>마감 알림 (카톡/이메일)</Feature>
                 <Feature available>공고 저장 · 일정관리</Feature>
@@ -288,26 +288,25 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isLite && !isPro ? (
-                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
+                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">첫 달 무료 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
             </div>
 
-            {/* PRO — [프로모션] 준비중 전환 (신규 결제 차단) */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-slate-200 bg-slate-50"}`}>
-              {/* 준비중 오버레이 뱃지 */}
-              {!isPro && (
-                <div className="absolute top-3 right-3 px-2 py-1 bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold rounded-full">
-                  🛠️ 준비중
-                </div>
+            {/* PRO */}
+            <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-200 bg-white"}`}>
+              {isPro && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-violet-600 text-white text-[10px] font-bold rounded-full">현재 플랜</div>
               )}
               <div className="h-[90px] mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
+                  <span className="px-2 py-0.5 bg-violet-100 text-violet-600 text-[10px] font-bold rounded-full">이벤트가</span>
                 </div>
                 <div className="mt-2">
-                  <span className="text-[20px] font-black text-slate-400">기능 개선 중</span>
+                  <span className="text-2xl font-black text-slate-900">₩29,000</span>
+                  <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">곧 업그레이드된 버전으로 오픈 예정</p>
+                <p className="text-[11px] text-slate-400 mt-1">전문가용 무제한 AI 상담</p>
               </div>
 
               <div className="h-[44px] mb-4 flex items-center">
@@ -315,10 +314,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                   <div className="w-full py-2.5 bg-violet-100 text-violet-700 rounded-lg text-[12px] font-bold text-center">
                     현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
                   </div>
+                ) : isLite ? (
+                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
+                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
+                    {loading ? "처리 중..." : "Pro로 업그레이드"}
+                  </button>
                 ) : (
-                  <button disabled
-                    className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold cursor-not-allowed">
-                    준비중
+                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
+                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
+                    {loading ? "처리 중..." : "Pro 시작하기"}
                   </button>
                 )}
               </div>
@@ -339,7 +343,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isPro ? (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 후 자동결제</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">첫 달 무료 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
             </div>
           </div>
@@ -347,8 +351,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
           {/* 친구 추천 */}
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between mb-3">
             <div>
-              <p className="text-[12px] font-bold text-amber-800">친구 추천 시 LITE 1개월 무료</p>
-              <p className="text-[10px] text-amber-600 mt-0.5">최대 5명까지 · 양쪽 모두 혜택</p>
+              <p className="text-[12px] font-bold text-amber-800">친구 추천 시 양쪽 모두 1개월 무료</p>
+              <p className="text-[10px] text-amber-600 mt-0.5">LITE 가입자 한정 · 1회 제공</p>
             </div>
             <button
               onClick={async () => {

@@ -143,9 +143,10 @@ interface AiChatBotProps {
   onUpgrade?: () => void;
   userType?: string | null;
   currentTab?: "business" | "individual";
+  suppressAnimation?: boolean;
 }
 
-export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab }: AiChatBotProps) {
+export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab, suppressAnimation }: AiChatBotProps) {
   // 현재 탭 기준으로 개인/기업 결정 (both 사용자도 탭에 따라 자동 전환)
   const isIndividual = currentTab === "individual" || (userType === "individual" && currentTab !== "business");
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
@@ -424,7 +425,13 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
       });
 
       if (res.status === 429) {
-        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
+        const errData = await res.json().catch(() => ({}));
+        const detail = errData.detail || "";
+        if (detail.startsWith("SESSION_MSG_LIMIT:")) {
+          toast(`이 상담의 메시지 한도(${CONSULT_MSG_LIMIT}개)에 도달했습니다. 새 상담을 시작하거나 PRO로 업그레이드하세요.`, "info");
+        } else {
+          toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
+        }
         setLoading(false);
         return;
       }
@@ -590,7 +597,9 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab 
     setMatchingInProgress(false);
   };
 
-  const CONSULT_MSG_LIMIT = 50;
+  const SESSION_MSG_LIMITS: Record<string, number> = { free: 10, lite_trial: 30, lite: 30, basic: 30, biz: 999999, pro: 999999 };
+  const plan = planStatus?.plan || "free";
+  const CONSULT_MSG_LIMIT = SESSION_MSG_LIMITS[plan] ?? 10;
   const userMsgCount = messages.filter((m) => m.role === "user").length;
   const isAtMsgLimit = userMsgCount >= CONSULT_MSG_LIMIT;
 
@@ -1028,7 +1037,7 @@ ${convHtml}
     return (
       <>
         {/* 봇 애니메이션 영역 — 화면 하단 전체 */}
-        {botPhase !== "idle" && (
+        {botPhase !== "idle" && !suppressAnimation && (
           <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none overflow-hidden h-20">
             {/* Phase: emerge — 하단 중앙에서 봇 등장 */}
             {botPhase === "emerge" && (
@@ -1988,15 +1997,15 @@ ${convHtml}
                 </div>
               ) : (
                 <>
-                  {mode !== "free" && userMsgCount > 0 && (
+                  {mode !== "free" && userMsgCount > 0 && CONSULT_MSG_LIMIT < 999999 && (
                     <div className={`text-[10px] font-medium mb-1.5 text-right ${isAtMsgLimit ? "text-rose-500" : "text-slate-400"}`}>
-                      {isAtMsgLimit ? "메시지 한도에 도달했습니다" : `${userMsgCount} / ${CONSULT_MSG_LIMIT}`}
+                      {isAtMsgLimit ? "메시지 한도에 도달했습니다" : `${userMsgCount} / ${CONSULT_MSG_LIMIT}회`}
                     </div>
                   )}
                   {isAtMsgLimit && mode !== "free" ? (
                     <div className="text-center py-2 px-3 bg-rose-50 border border-rose-200 rounded-xl">
-                      <p className="text-rose-600 text-[11px] font-bold">상담 메시지 한도({CONSULT_MSG_LIMIT}회)를 모두 사용했습니다.</p>
-                      <p className="text-rose-500 text-[10px] mt-0.5">새 공고에서 상담을 시작해 주세요.</p>
+                      <p className="text-rose-600 text-[11px] font-bold">메시지 한도({CONSULT_MSG_LIMIT}회)에 도달했습니다.</p>
+                      <p className="text-rose-500 text-[10px] mt-0.5">새 상담을 시작하거나 PRO로 업그레이드하세요.</p>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">

@@ -812,8 +812,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     const token = localStorage.getItem("auth_token") || "";
 
     if (alreadySaved) {
-      // 낙관적 업데이트 — 즉시 UI 반영
+      // 낙관적 업데이트 — 즉시 UI + 메시지 반영
       setSavedItems(prev => prev.filter(s => s.announcement_id !== announcementId));
+      toast("저장이 취소되었습니다.", "info");
       fetch(`${API}/api/saved/${alreadySaved.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -823,9 +824,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         toast("저장 취소 중 오류가 발생했습니다.", "error");
       });
     } else {
-      // 낙관적 업데이트 — 즉시 UI 반영 (임시 id=-1)
+      // 낙관적 업데이트 — 즉시 UI + 메시지 반영 (임시 id=-1)
       const optimistic: SavedItem = { id: -1, announcement_id: announcementId, title: "", deadline_date: null, origin_url: null };
       setSavedItems(prev => [...prev, optimistic]);
+      toast("일정에 저장되었습니다.", "success");
       fetch(`${API}/api/saved/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

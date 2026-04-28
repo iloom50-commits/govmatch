@@ -302,7 +302,12 @@ export default function ResultCard({ res, selected, onToggle, planStatus, onUpgr
     if (!raw) return "";
     // 2) 텍스트에 "억/천만/백만/만" qualifier + "원" 함께 있는 경우만 신뢰
     const m = raw.match(/(최대\s*)?[\d,]+(?:\.\d+)?\s*(?:억|천만|백만|만)\s*원/);
-    if (m) return m[0].replace(/\s+/g, "");
+    if (m) {
+      // 숫자 부분만 추출해서 0이면 무시 (원문 플레이스홀더 "00,000백만원" 방어)
+      const numPart = m[0].match(/[\d,]+/);
+      if (numPart && parseInt(numPart[0].replace(/,/g, ""), 10) === 0) return "";
+      return m[0].replace(/\s+/g, "");
+    }
     // 3) "N원" 명시 패턴 (숫자 + 원 직결, 최소 10,000원 이상)
     const m2 = raw.match(/(최대\s*)?([\d,]{5,})\s*원/);
     if (m2) {

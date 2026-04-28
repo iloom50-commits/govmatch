@@ -755,7 +755,8 @@ def _run_prematch_cache() -> int:
             count += 1
             import time; time.sleep(0.5)  # 커넥션 풀 여유
         except Exception as e:
-            print(f"[prematch] {bn}: {e}")
+            import traceback as _tb
+            print(f"[prematch] {bn}: {e}\n{_tb.format_exc()}")
     return count
 
 
@@ -824,11 +825,32 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         if not is_individual and ann_target == "individual":
             ineligible_ids.append(ann_id); continue
 
-        # 지역 전용인데 내 지역 아님 → 후순위
-        if user_city and region and region not in ("전국", "", "전국 및 각 지역"):
+        # 지역 전용인데 내 지역 아님 → 후순위 (announcements.region 컬럼 기준)
+        _region_specific = bool(region and region not in ("전국", "", "전국 및 각 지역"))
+        if user_city and _region_specific:
             excluded, _ = _check_region_exclusion(user_city, region, title)
             if excluded:
                 ineligible_ids.append(ann_id); continue
+
+        # eligibility_logic.region_restriction 보완 체크
+        # region 컬럼이 비어있거나 전국인데 eligibility_logic에 특정 지역 제한이 있는 경우
+        if user_city and not _region_specific:
+            _el_rr_data = ann.get("eligibility_logic")
+            if isinstance(_el_rr_data, str):
+                try:
+                    import json as _json
+                    _el_rr_data = _json.loads(_el_rr_data)
+                except Exception:
+                    _el_rr_data = None
+            if _el_rr_data and isinstance(_el_rr_data, dict):
+                _el_rr = _el_rr_data.get("region_restriction") or ""
+                if isinstance(_el_rr, list):
+                    _el_rr = _el_rr[0] if _el_rr else ""
+                _el_rr = _normalize_region(str(_el_rr).strip())
+                if _el_rr and _el_rr not in ("전국", "", "전국 및 각 지역"):
+                    excluded, _ = _check_region_exclusion(user_city, _el_rr, title)
+                    if excluded:
+                        ineligible_ids.append(ann_id); continue
 
         # 농림/수산 전용 카테고리인데 비농업인 → 후순위
         _AGRI_CATS = ("농림", "수산", "임업", "축산")
@@ -847,8 +869,18 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
 
         # eligibility_logic AI 분석 결과 기반 추가 필터
         el = ann.get("eligibility_logic")
+        if el and isinstance(el, str):
+            try:
+                import json as _json
+                el = _json.loads(el)
+            except Exception:
+                el = None
         if el and isinstance(el, dict):
-            el_gender = (el.get("gender_restriction") or "").strip()
+            _el_raw = el.get("gender_restriction") or ""
+            if isinstance(_el_raw, list):
+                el_gender = ",".join(str(v) for v in _el_raw).strip()
+            else:
+                el_gender = str(_el_raw).strip()
             if el_gender in ("여성", "여성전용", "여성기업", "여성창업자") and gender != "여성":
                 ineligible_ids.append(ann_id); continue
 
@@ -1317,7 +1349,7 @@ async def lifespan(app):
                 replace_existing=True,
             )
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started — daily 03:00 KST + keepalive 2min + cache prewarm 10min")
+            print("[Pipeline] APScheduler started - daily 03:00 KST + keepalive 2min + cache prewarm 10min")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -2039,7 +2071,7 @@ def api_announcements_public(
                                 WHERE announcement_id IN ({id_list})
                                   AND {valid_announcement_where()}"""
                         )
-                        rows_map = {{r["announcement_id"]: dict(r) for r in _pcur.fetchall()}}
+                        rows_map = {r["announcement_id"]: dict(r) for r in _pcur.fetchall()}
                         # 캐시 순서 복원 (신규 추가/삭제된 공고는 자연스럽게 제외됨)
                         rows = [rows_map[i] for i in page_ids if i in rows_map]
                     else:
@@ -3710,7 +3742,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         """SELECT plan, ai_usage_month, ai_usage_reset_at, plan_expires_at,
                   company_name, establishment_date, address_city, industry_code,
                   revenue_bracket, employee_count_bracket, interests, user_type,
-                  age_range, business_number
+                  age_range, business_number, gender,
+                  income_level, family_type, employment_status, housing_status
            FROM users WHERE business_number = %s""",
         (bn,)
     )
@@ -3721,7 +3754,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
     u = dict(user)
     # NULL 프로필 필드 → 빈 문자열 (AI 프롬프트 호환)
     for k in ("company_name", "establishment_date", "address_city", "industry_code",
-              "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range"):
+              "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range",
+              "gender", "income_level", "family_type", "employment_status", "housing_status"):
         if u.get(k) is None:
             u[k] = ""
 
@@ -4426,21 +4460,30 @@ def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):
 
         # 매칭 실행
         from app.core.matcher import get_matches_hybrid
-        has_industry = bool(str(profile.get("industry_code", "")).strip())
-        is_personal_name = profile.get("company_name", "") in ("개인", "")
-        is_individual = not has_industry or is_personal_name
-        interests_str = str(profile.get("interests", ""))
-        biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
-
-        if is_individual and not biz_interests:
-            matches = get_matches_hybrid(profile, is_individual=True) or []
-        elif is_individual and biz_interests:
-            ind_m = get_matches_hybrid(profile, is_individual=True) or []
-            biz_m = get_matches_hybrid(profile, is_individual=False) or []
-            matches = biz_m + ind_m
-            matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        # client_category 명시 우선 — 개인 선택 시 기업 공고 혼합 금지
+        _cat = (req.client_category or "").strip().lower()
+        if _cat == "individual":
+            is_individual = True
+        elif _cat in ("corporate", "individual_biz"):
+            is_individual = False
         else:
-            matches = get_matches_hybrid(profile, is_individual=False) or []
+            # fallback: profile에서 추론 (레거시)
+            has_industry = bool(str(profile.get("industry_code", "")).strip())
+            is_personal_name = profile.get("company_name", "") in ("개인", "")
+            is_individual = not has_industry or is_personal_name
+
+        if is_individual:
+            matches = get_matches_hybrid(profile, is_individual=True) or []
+        else:
+            interests_str = str(profile.get("interests", ""))
+            biz_interests = any(kw in interests_str for kw in ["창업", "R&D", "기술개발", "정책자금", "수출"])
+            if biz_interests:
+                ind_m = get_matches_hybrid(profile, is_individual=True) or []
+                biz_m = get_matches_hybrid(profile, is_individual=False) or []
+                matches = biz_m + ind_m
+                matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+            else:
+                matches = get_matches_hybrid(profile, is_individual=False) or []
 
         _interest = [a for a in matches if a.get("bucket") == "interest_match"][:10]
         _deadline = [a for a in matches if a.get("bucket") == "deadline_urgent"][:3]
@@ -4634,6 +4677,50 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 try: db.rollback()
                 except: pass
 
+        # AI 응답에서 언급된 공고명 키워드로 DB 검색 → 카드 표시
+        consult_matched = []
+        try:
+            reply_text = v2_result.get("reply", "")
+            if reply_text:
+                import re as _re
+                # 굵은 텍스트(**...**), 번호 목록, 따옴표 안 공고명 추출
+                _kw_candidates = _re.findall(r'\*\*([^*]{4,40})\*\*', reply_text)
+                _kw_candidates += _re.findall(r'[『「]([^』」]{4,40})[』」]', reply_text)
+                _kw_candidates += _re.findall(r'\d+\.\s+([가-힣a-zA-Z·\s]{4,40})(?=[:：]|\s*—)', reply_text)
+                seen_ids: set = set()
+                _kw_cur = db.cursor()
+                for kw in _kw_candidates[:8]:
+                    kw = kw.strip()
+                    if len(kw) < 4:
+                        continue
+                    _kw_cur.execute(
+                        """SELECT announcement_id, title, department, support_amount,
+                                  support_amount_max, deadline_date
+                           FROM announcements
+                           WHERE title ILIKE %s AND is_archived = false
+                           ORDER BY deadline_date ASC NULLS LAST
+                           LIMIT 1""",
+                        (f"%{kw}%",)
+                    )
+                    row = _kw_cur.fetchone()
+                    if row and row["announcement_id"] not in seen_ids:
+                        seen_ids.add(row["announcement_id"])
+                        consult_matched.append({
+                            "announcement_id": row["announcement_id"],
+                            "title": row["title"],
+                            "department": row["department"] or "",
+                            "support_amount": row["support_amount"] or "",
+                            "support_amount_max": row["support_amount_max"],
+                            "deadline_date": str(row["deadline_date"] or ""),
+                            "rank": len(consult_matched) + 1,
+                            "bucket": "consult_mention",
+                            "bucket_label": "상담 언급",
+                            "reasons": [],
+                            "matched_interests": [],
+                        })
+        except Exception as _cm_err:
+            print(f"[PRO consult] mention search error: {_cm_err}")
+
         return {
             "status": "SUCCESS",
             "action": "consult",
@@ -4643,7 +4730,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
             "profile": None,
             "collected": coll,
             "announcement_id": ann_id,
-            "matched_announcements": [],
+            "matched_announcements": consult_matched,
             "matched_groups": {"interest_match": [], "deadline_urgent": [], "qualified_other": []},
             "rag_sources": v2_result.get("rag_sources", []),
             "session_id": session_state.get("session_id") if session_state else None,
@@ -9018,6 +9105,19 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
             profile.family_type, profile.employment_status
         ))
         conn.commit()
+        # 프로필 변경 시 개인화 캐시 무효화
+        try:
+            cursor.execute(
+                "DELETE FROM user_match_cache WHERE business_number = %s",
+                (profile.business_number,)
+            )
+            conn.commit()
+        except Exception:
+            pass
+        _response_cache.pop(f"auth_me:{profile.business_number}", None)
+        _response_cache.pop(f"match:{profile.business_number}:business", None)
+        _response_cache.pop(f"match:{profile.business_number}:individual", None)
+        _response_cache.pop(f"match:{profile.business_number}:all", None)
         return {"status": "SUCCESS", "message": "프로필이 저장되었습니다."}
     except HTTPException:
         raise
@@ -10203,9 +10303,11 @@ def api_pro_consult_history(
     cur.execute(
         """SELECT cl.id, cl.announcement_id, a.title as announcement_title, a.category,
                   cl.conclusion, cl.feedback, cl.feedback_detail, cl.created_at,
-                  cl.messages
+                  cl.messages, cl.session_id,
+                  pcs.collected as session_collected
            FROM ai_consult_logs cl
            LEFT JOIN announcements a ON a.announcement_id = cl.announcement_id
+           LEFT JOIN pro_consult_sessions pcs ON pcs.session_id = cl.session_id
            WHERE cl.business_number = %s
            ORDER BY cl.created_at DESC
            LIMIT %s OFFSET %s""",
@@ -10218,12 +10320,63 @@ def api_pro_consult_history(
     total = cur.fetchone()["cnt"]
     conn.close()
 
+    def _build_consult_label(collected: dict, msgs: list) -> str:
+        """일반상담 레이블: [일반상담] 이름 • 지역 • 연령대 • 소득 • 가구유형 • 취업상태.
+        collected(pro_consult_sessions) 우선, 없으면 messages 첫 메시지에서 추출.
+        """
+        import re as _re_label
+        parts = []
+
+        # 1순위: collected dict (PRO 세션)
+        if collected:
+            name = collected.get("company_name") or collected.get("name") or ""
+            if name:
+                parts.append(f"이름: {name}")
+            region = collected.get("address_city") or ""
+            if region:
+                parts.append(f"지역: {region}")
+            age = collected.get("age_range") or ""
+            if age:
+                parts.append(f"연령대: {age}")
+            income = collected.get("income_level") or ""
+            if income:
+                parts.append(f"월 소득: {income}")
+            family = collected.get("family_type") or ""
+            if family:
+                parts.append(f"가구 유형: {family}")
+            employ = collected.get("employment_status") or ""
+            if employ:
+                parts.append(f"취업 상태: {employ}")
+
+        # 2순위: messages에서 bullet-point 프로필 텍스트 추출 (LITE fund 세션)
+        if not parts and msgs:
+            for m in msgs:
+                if not isinstance(m, dict):
+                    continue
+                text = m.get("text", "") or ""
+                # "이름: xxx • 지역: yyy ..." 패턴이 있는 메시지
+                if "이름:" in text or "지역:" in text or "연령대:" in text:
+                    # 불릿 항목들을 추출
+                    for label, key in [("이름", "이름"), ("지역", "지역"), ("연령대", "연령대"),
+                                       ("월 소득", "월 소득"), ("가구 유형", "가구 유형"), ("취업 상태", "취업 상태")]:
+                        m_val = _re_label.search(rf"{label}:\s*([^•\n]+)", text)
+                        if m_val:
+                            val = m_val.group(1).strip().rstrip("*").strip()
+                            if val:
+                                parts.append(f"{label}: {val}")
+                    if parts:
+                        break
+
+        return "[일반상담] " + " • ".join(parts) if parts else "[일반상담]"
+
     history = []
     for r in rows:
         d = dict(r)
         d["created_at"] = str(d["created_at"]) if d.get("created_at") else None
         # messages는 용량이 크므로 요약만
         msgs = d.pop("messages", None) or []
+        d.pop("session_id", None)
+        raw_collected = d.pop("session_collected", None)
         if isinstance(msgs, list):
             d["message_count"] = len(msgs)
             # 마지막 사용자 질문만 추출
@@ -10234,8 +10387,13 @@ def api_pro_consult_history(
                     break
             d["last_question"] = last_q
         else:
+            msgs = []
             d["message_count"] = 0
             d["last_question"] = ""
+        # announcement_id가 없는 일반상담: consult_label 생성
+        if not d.get("announcement_id"):
+            collected = raw_collected if isinstance(raw_collected, dict) else {}
+            d["consult_label"] = _build_consult_label(collected, msgs)
         history.append(d)
 
     return {"status": "SUCCESS", "history": history, "total": total}

@@ -1081,6 +1081,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   if (bucket === "interest_match") return { icon: "🎯", label: "관심 일치", color: "bg-violet-500/10 text-violet-600 border-violet-400/30" };
                                   if (bucket === "deadline_urgent") return { icon: "⏰", label: "마감 임박", color: "bg-red-500/10 text-red-600 border-red-400/30" };
                                   if (bucket === "qualified_other") return { icon: "✅", label: "참고", color: "bg-slate-500/10 text-slate-500 border-slate-400/30" };
+                                  if (bucket === "consult_mention") return { icon: "📋", label: "상담 언급", color: "bg-indigo-500/10 text-indigo-600 border-indigo-400/30" };
                                   return null;
                                 })();
                                 const interestTags = (m.matched_interests || []).slice(0, 2);
@@ -2579,9 +2580,24 @@ function AnnounceSearchPanel({ headers, toast, dark, t, onStartConsult }: {
               {analysisData.deadline_date && <p><span className={t.muted}>마감:</span> {String(analysisData.deadline_date).slice(0, 10)}</p>}
               {analysisData.has_db_analysis ? (
                 <>
-                  {analysisData.eligibility && <p><span className={t.muted}>자격요건:</span> {analysisData.eligibility.slice(0, 300)}</p>}
-                  {analysisData.support_details && <p><span className={t.muted}>지원내용:</span> {analysisData.support_details.slice(0, 300)}</p>}
-                  {analysisData.application_method && <p><span className={t.muted}>신청방법:</span> {analysisData.application_method.slice(0, 200)}</p>}
+                  {analysisData.eligibility && (
+                    <div>
+                      <span className={`${t.muted} font-semibold`}>자격요건</span>
+                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">{analysisData.eligibility.slice(0, 500)}</p>
+                    </div>
+                  )}
+                  {analysisData.support_details && (
+                    <div>
+                      <span className={`${t.muted} font-semibold`}>지원내용</span>
+                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">{analysisData.support_details.slice(0, 400)}</p>
+                    </div>
+                  )}
+                  {analysisData.application_method && (
+                    <div>
+                      <span className={`${t.muted} font-semibold`}>신청방법</span>
+                      <p className="mt-1 whitespace-pre-wrap leading-relaxed">{analysisData.application_method.slice(0, 300)}</p>
+                    </div>
+                  )}
                   {analysisData.target_summary && <p className="text-emerald-500 text-[11px] mt-2">✓ 분석 데이터 활용</p>}
                 </>
               ) : (

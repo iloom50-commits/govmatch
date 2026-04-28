@@ -448,29 +448,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
   }, [hasProfile, bizNeedsIndustry]);
 
+  // ref로 최신 checkProfileThenRun을 추적 — 리스너는 마운트 시 1회만 등록
+  const checkProfileThenRunRef = useRef(checkProfileThenRun);
+  useEffect(() => { checkProfileThenRunRef.current = checkProfileThenRun; }, [checkProfileThenRun]);
+
   // request-ai-consult → 프로필 게이트 → open-ai-consult
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      checkProfileThenRun(() => {
+      checkProfileThenRunRef.current(() => {
         window.dispatchEvent(new CustomEvent("close-fund-chat")); // AiChatBot 닫기
         window.dispatchEvent(new CustomEvent("open-ai-consult", { detail }));
       });
     };
     window.addEventListener("request-ai-consult", handler);
     return () => window.removeEventListener("request-ai-consult", handler);
-  }, [checkProfileThenRun]);
+  }, []); // 마운트 1회만 — ref로 최신 함수 참조
 
   // request-fund-chat → 프로필 게이트 → open-fund-chat
   useEffect(() => {
     const handler = () => {
-      checkProfileThenRun(() => {
+      checkProfileThenRunRef.current(() => {
         window.dispatchEvent(new CustomEvent("open-fund-chat"));
       });
     };
     window.addEventListener("request-fund-chat", handler);
     return () => window.removeEventListener("request-fund-chat", handler);
-  }, [checkProfileThenRun]);
+  }, []); // 마운트 1회만
 
   // 맞춤알림 설정 여부 체크 — 미설정 시 빨간 점/배지 노출
   useEffect(() => {
@@ -1810,6 +1814,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         businessNumber={profile?.business_number}
         onSave={() => {
           setNotifyFromGate(false);
+          publicCache.current = {};  // 프로필 변경 시 공고 캐시 초기화
           onRefresh?.();
           (async () => {
             await onProfileRefresh?.();

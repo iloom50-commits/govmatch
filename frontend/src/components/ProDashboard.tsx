@@ -35,8 +35,9 @@ const INDIVIDUAL_INTEREST_OPTIONS = ["취업", "주거", "교육", "청년", "�
 
 interface ConsultHistory {
   id: number;
-  announcement_id: number;
-  announcement_title: string;
+  announcement_id: number | null;
+  announcement_title: string | null;
+  consult_label?: string;
   category: string;
   conclusion: string;
   feedback: string;
@@ -754,7 +755,7 @@ export function HistoryTab({ headers, toast }: { headers: () => any; toast: any 
             <div key={h.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 text-sm truncate">{h.announcement_title || `공고 #${h.announcement_id}`}</p>
+                  <p className="font-bold text-slate-900 text-sm truncate">{h.announcement_title || h.consult_label || "[일반상담]"}</p>
                   <p className="text-xs text-slate-500 mt-1">{h.category} | 대화 {h.message_count}건 | {h.created_at?.slice(0, 16)}</p>
                   {h.last_question && <p className="text-xs text-slate-400 mt-1 truncate">Q: {h.last_question}</p>}
                 </div>

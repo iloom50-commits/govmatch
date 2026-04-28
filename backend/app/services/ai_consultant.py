@@ -2056,10 +2056,28 @@ def chat_consult(
         if form_parts:
             form_info = "\n[신청서 양식 구조]\n" + "\n".join(form_parts)
 
-    # 기업/사용자 정보
+    # 기업/사용자 정보 — 프로필에 개인 필드가 있으면 개인 형식, 없으면 기업 형식
     company_info = ""
     if user_profile:
-        company_info = f"""
+        _utype = (user_profile.get('user_type') or 'business').lower()
+        # 개인 필드 존재 여부로 판단 (user_type='both'도 개인 공고 상담 시 개인 필드만 전달됨)
+        _has_indiv_fields = bool(user_profile.get('age_range') or user_profile.get('income_level')
+                                 or user_profile.get('family_type') or user_profile.get('employment_status'))
+        _is_indiv = _utype == 'individual' or _has_indiv_fields
+        if _is_indiv:
+            company_info = f"""
+[사용자 정보]
+거주지역: {user_profile.get('address_city', '')}
+연령대: {user_profile.get('age_range', '')}
+성별: {user_profile.get('gender', '')}
+가구 유형: {user_profile.get('family_type', '')}
+소득 수준: {user_profile.get('income_level', '')}
+고용 형태: {user_profile.get('employment_status', '')}
+주거 형태: {user_profile.get('housing_status', '')}
+관심분야: {user_profile.get('interests', '')}
+사용자 유형: 개인"""
+        else:
+            company_info = f"""
 [기업 정보]
 사업자번호: {user_profile.get('business_number', '')}
 기업명: {user_profile.get('company_name', '')}

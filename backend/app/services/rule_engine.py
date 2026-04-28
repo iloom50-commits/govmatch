@@ -16,10 +16,14 @@ REGION_NORMALIZE = {
     "경기도": "경기",
 }
 
-def _normalize_region(region: str) -> str:
+def _normalize_region(region) -> str:
     if not region:
         return ""
-    r = region.strip()
+    if isinstance(region, list):
+        region = region[0] if region else ""
+    if not region:
+        return ""
+    r = str(region).strip()
     # 1. 정확히 매칭
     if r in REGION_NORMALIZE:
         return REGION_NORMALIZE[r]

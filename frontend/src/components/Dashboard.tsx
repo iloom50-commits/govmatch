@@ -1058,7 +1058,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => window.location.origin}
-        shareText="17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭해줘요. 기업·개인 모두 무료!"
+        shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
         toast={toast}
       />
 
@@ -1291,7 +1291,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}`}
-            shareText="17,000+ 정부 지원금 공고를 AI가 실시간 분석·자동 매칭해줘요. 기업·개인 모두 무료!"
+            shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (

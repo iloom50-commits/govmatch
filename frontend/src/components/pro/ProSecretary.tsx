@@ -255,55 +255,64 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     toast("상담이 종료되었습니다", "info");
   }, [messages.length, clientCategory, toast]);
 
-  // 뒤로가기: 단계별 복귀 (고객정보폼→고객유형→상담종류→닫기)
+  // 뒤로가기: 단계별 복귀
+  // ④ 채팅 → 저장 확인 → ① 고객선택
+  // ③ 상담목적 → ① 고객선택
+  // ② 폼(신규) → ① 고객선택 / 폼(조건수정) → ④ 채팅
+  // announce_search → ③ 상담목적
   const handleBack = useCallback(() => {
     if (activeView !== "chat") {
+      // announce_search 등에서 돌아올 때: 메시지 없으면 상담목적, 있으면 채팅
       setActiveView("chat");
+      if (messages.length === 0) setConsultType(null); // → 상담목적 화면
       window.history.pushState({ proDash: true }, "");
       return;
     }
-    // 상담 중이면 저장 dialog 표시
+    // 채팅 중(메시지 있음)이면 저장 dialog
     if (messages.length > 0) {
-      setPendingBackAction(() => {
-        return () => {
-          setShowProfileForm(false);
-          setClientCategory("");
-          setMessages([]);
-          setFlowState("idle");
-          setSelectedClient(null);
-          setSystemContext("");
-          setSessionId(null);
-          localStorage.removeItem("pro_session_id");
-          window.history.pushState({ proDash: true }, "");
-        };
+      setPendingBackAction(() => () => {
+        setShowProfileForm(false);
+        setClientCategory("");
+        setMessages([]);
+        setFlowState("idle");
+        setSelectedClient(null);
+        setSystemContext("");
+        setConsultType(null);
+        setCollectedProfile({});
+        setSessionId(null);
+        try { localStorage.removeItem("pro_session_id"); } catch {}
+        window.history.pushState({ proDash: true }, "");
       });
       setShowSaveDialog(true);
       return;
     }
-    // 고객 정보 입력 폼 → 고객 유형 선택으로
+    // 폼 표시 중 → 뒤로
     if (showProfileForm) {
       setShowProfileForm(false);
-      setClientCategory("");
+      if (messages.length === 0) {
+        // 신규 상담 폼 → 고객선택 화면으로
+        setClientCategory("");
+        setSelectedClient(null);
+        setCollectedProfile({});
+      }
       window.history.pushState({ proDash: true }, "");
       return;
     }
+    // 상담목적 화면(③) → 고객선택 화면(①)
     if (clientCategory) {
       setClientCategory("");
       setFlowState("idle");
       setSelectedClient(null);
       setSystemContext("");
-      setSessionId(null);
-      localStorage.removeItem("pro_session_id");
-      window.history.pushState({ proDash: true }, "");
-      return;
-    }
-    if (consultType) {
+      setCollectedProfile({});
       setConsultType(null);
+      setSessionId(null);
+      try { localStorage.removeItem("pro_session_id"); } catch {}
       window.history.pushState({ proDash: true }, "");
       return;
     }
     onClose();
-  }, [activeView, showProfileForm, clientCategory, messages.length, consultType, onClose]);
+  }, [activeView, showProfileForm, clientCategory, messages.length, onClose]);
 
   const handleBackRef = useRef(handleBack);
   useEffect(() => { handleBackRef.current = handleBack; }, [handleBack]);
@@ -543,7 +552,24 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setLoading(false);
   };
 
-  // ─── 새 상담 시작 ───
+  // ─── 전체 초기화 후 고객 선택 화면으로 ───
+  const resetForNewConsult = () => {
+    setClientCategory("");
+    setMessages([]);
+    setFlowState("idle");
+    setSelectedClient(null);
+    setSystemContext("");
+    setActiveAnnouncementId(null);
+    setShowProfileForm(false);
+    setConsultType(null);
+    setCollectedProfile({});
+    setSessionId(null);
+    setActiveView("chat");
+    setLeftOpen(false);
+    try { localStorage.removeItem("pro_session_id"); } catch {}
+  };
+
+  // ─── 고객 선택 후 상담 시작 (신규: 폼으로 / 기존: 상담목적 화면으로) ───
   const startNewChat = (category: ClientCategory, client?: ClientProfile) => {
     setActiveView("chat");
     setClientCategory(category);
@@ -551,31 +577,72 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setSelectedClient(client || null);
     setLeftOpen(false);
     setMessages([]);
+    setConsultType(null);
 
     if (client) {
-      // 기존 고객 → 정보 이미 있으므로 바로 대화 시작
+      // 기존 고객 → collectedProfile에 고객 정보 저장 후 상담목적 화면으로
       setShowProfileForm(false);
+      setCollectedProfile({
+        company_name: client.client_name,
+        address_city: client.address_city || "",
+        industry_name: client.industry_name || "",
+        revenue_bracket: client.revenue_bracket || "",
+      });
       setSystemContext(`[전문가 상담 모드] 기존 고객: ${client.client_name}\n지역: ${client.address_city || ""}\n업종: ${client.industry_name || ""}\n매출: ${client.revenue_bracket || ""}`);
-      setMessages([{
-        role: "assistant",
-        text: `**${client.client_name}** 고객 정보를 불러왔습니다.\n\n지역: ${client.address_city || "미등록"}\n업종: ${client.industry_name || "미등록"}\n매출: ${client.revenue_bracket || "미등록"}\n\n어떤 상담을 진행하시겠습니까?`,
-        choices: ["맞춤 지원사업 매칭", "첨부 자료 분석", "자격요건 검토"],
-      }]);
+      // messages는 비워둔다 → 상담목적 화면 조건 충족
     } else {
-      // 신규 고객 → 빈 폼 (전문가가 고객사 정보를 직접 입력)
+      // 신규 고객 → 빈 폼 표시
+      setCollectedProfile({});
       setShowProfileForm(true);
       setProfileForm({
-        company_name: "",
-        establishment_year: "",
-        establishment_date: "",
-        industry: "",
-        industry_code: "",
-        industry_name: "",
-        revenue_bracket: "",
-        employee_bracket: "",
-        address_city: "",
-        interests: [],
+        company_name: "", establishment_year: "", establishment_date: "",
+        industry: "", industry_code: "", industry_name: "",
+        revenue_bracket: "", employee_bracket: "", address_city: "",
+        interests: [], sme_category: "", sme_employee: "", sme_revenue: "",
+        age_range: "", income_level: "", family_type: "", employment_status: "",
+        representative_age: "", is_women_enterprise: false,
+        is_youth_enterprise: false, certifications: [], is_restart: false, memo: "",
       });
+    }
+  };
+
+  // ─── 상담 목적 선택 → AI 실행 ───
+  const startConsultType = (type: "matching" | "fund" | "announcement") => {
+    if (type === "announcement") {
+      setConsultType("announcement");
+      setActiveView("announce_search");
+      return;
+    }
+    setConsultType(type);
+    setFlowState("matching");
+
+    const isIndiv = clientCategory === "individual";
+    const catLabel = clientCategory === "individual_biz" ? "개인사업자"
+      : clientCategory === "corporate" ? "사업자"
+      : clientCategory === "individual" ? "개인" : "고객";
+    const actionLabel = type === "matching" ? "지원사업 매칭" : "자금 상담";
+
+    // 고객 정보 요약 (기존 고객 or 폼 입력 고객)
+    const p = collectedProfile;
+    const infoLines: string[] = [];
+    if (p.company_name) infoLines.push(`• ${isIndiv ? "이름" : "기업명"}: ${p.company_name}`);
+    if (p.industry_name || p.industry_code) infoLines.push(`• 업종: ${p.industry_name || p.industry_code}`);
+    if (p.address_city) infoLines.push(`• 지역: ${p.address_city}`);
+    if (p.revenue_bracket) infoLines.push(`• 매출: ${p.revenue_bracket}`);
+    if (p.employee_count_bracket) infoLines.push(`• 직원수: ${p.employee_count_bracket}`);
+    if (p.age_range) infoLines.push(`• 연령대: ${p.age_range}`);
+
+    const seedHistory: ChatMessage[] = [{
+      role: "user",
+      text: `📋 **${catLabel} 고객 — ${actionLabel} 실행**\n${infoLines.join("\n")}`,
+    }];
+    setMessages(seedHistory);
+
+    if (type === "fund") {
+      const mode = isIndiv ? "individual_fund" : "business_fund";
+      sendToAI(seedHistory, { action: "fund_consult", profile_override: p, mode });
+    } else {
+      sendToAI(seedHistory, { action: "match", profile_override: p });
     }
   };
 
@@ -652,21 +719,29 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     if (!isIndiv && matchProfile.is_small_business === false) summaryLines.push(`• 소상공인: 해당 없음`);
     if (matchProfile.interests) summaryLines.push(`• 관심분야: ${matchProfile.interests}`);
 
-    // 매칭 모달에서 재활용할 수 있도록 collectedProfile에도 저장
-    setCollectedProfile(matchProfile);
+    // collectedProfile에 저장 (상담목적 화면 및 재매칭 모달에서 재활용)
+    const fullProfile = { ...matchProfile, industry_name: f.industry_name || f.industry || "" };
+    setCollectedProfile(fullProfile);
 
-    const seedHistory: ChatMessage[] = [
-      { role: "user", text: summaryLines.join("\n") },
-    ];
-    setMessages(seedHistory);
-
-    if (consultType === "fund") {
-      // 자금 상담: 전문가-고객 관점의 정책자금/보증/대출 전문 상담
-      const fundMode = isIndiv ? "individual_fund" : "business_fund";
-      sendToAI(seedHistory, { action: "fund_consult", profile_override: matchProfile, mode: fundMode });
+    if (messages.length > 0) {
+      // 채팅 중 "조건 수정" 후 폼 재제출 → 즉시 AI 재실행 (기존 동작 유지)
+      setFlowState("matching");
+      const seedHistory: ChatMessage[] = [
+        ...messages,
+        { role: "user", text: summaryLines.join("\n") },
+      ];
+      setMessages(seedHistory);
+      if (consultType === "fund") {
+        const fundMode = isIndiv ? "individual_fund" : "business_fund";
+        sendToAI(seedHistory, { action: "fund_consult", profile_override: fullProfile, mode: fundMode });
+      } else {
+        sendToAI(seedHistory, { action: "match", profile_override: fullProfile });
+      }
     } else {
-      // [재설계 04] Mode A 제거 — 자연어 수집 없이 즉시 매칭 엔진 호출
-      sendToAI(seedHistory, { action: "match", profile_override: matchProfile });
+      // 신규 상담 시작 시 폼 제출 → 상담목적 선택 화면으로
+      // (consultType=null + clientCategory 있음 + messages 없음 → ConsultTypeScreen 표시)
+      setFlowState("idle");
+      setConsultType(null);
     }
   };
 
@@ -787,41 +862,42 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               </button>
             )}
 
-            {/* 새 상담 버튼 */}
+            {/* 새 고객 상담 시작 버튼 */}
             <div className={`p-3 border-b ${t.border}`}>
               <button
-                onClick={() => { setClientCategory(""); setMessages([]); setActiveView("chat"); setLeftOpen(false); setConsultType(null); }}
+                onClick={resetForNewConsult}
                 className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-[13px] font-bold hover:bg-violet-500 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
               >
                 {Icons.plus}
-                <span>새 상담</span>
+                <span>새 고객 상담</span>
               </button>
             </div>
 
-            {/* 기존 고객 선택 */}
+            {/* 최근 고객 퀵 액세스 */}
             {existingClients.length > 0 && (
               <div className={`p-3 border-b ${t.border}`}>
-                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>기존 고객</p>
-                <select
-                  onChange={(e) => {
-                    const c = existingClients.find(c => c.id === Number(e.target.value));
-                    if (c) startNewChat(c.client_type === "individual" ? "individual" : "corporate", c);
-                  }}
-                  className={`w-full px-2.5 py-2 rounded-lg text-[12px] outline-none border transition-colors ${t.input}`}
-                  value=""
-                >
-                  <option value="">고객 선택...</option>
-                  {existingClients.map(c => (
-                    <option key={c.id} value={c.id}>{c.client_name} ({c.address_city || ""})</option>
+                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${t.sectionTitle}`}>최근 고객</p>
+                <div className="space-y-0.5">
+                  {existingClients.slice(0, 5).map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => startNewChat(c.client_type === "individual" ? "individual" : "corporate", c)}
+                      className={`w-full px-2.5 py-1.5 flex items-center gap-2 rounded-lg text-left text-[12px] transition-all ${t.menuInactive}`}
+                    >
+                      <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-600"}`}>
+                        {c.client_type === "individual" ? "개" : "사"}
+                      </span>
+                      <span className="flex-1 truncate font-medium">{c.client_name}</span>
+                      <span className={`text-[10px] flex-shrink-0 ${t.muted}`}>{c.address_city || ""}</span>
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
             )}
 
-            {/* 메뉴 */}
+            {/* 메뉴 — "AI 상담 시작" 제거, 나머지 유지 */}
             <div className="flex-1 py-2">
               {([
-                { view: "chat" as ActiveView, icon: Icons.chat, label: "AI 상담 시작" },
                 { view: "announce_search" as ActiveView, icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>, label: "공고 검색" },
                 { view: "clients" as ActiveView, icon: Icons.clients, label: "고객 관리" },
                 { view: "history" as ActiveView, icon: Icons.history, label: "상담 이력" },
@@ -836,11 +912,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 >
                   {item.icon}
                   <span>{item.label}</span>
-                  {item.view === "chat" && messages.length > 0 && (
-                    <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold ${dark ? "bg-violet-500/20 text-violet-400" : "bg-violet-100 text-violet-600"}`}>
-                      {messages.length}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>
@@ -860,98 +931,80 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 <div className={`flex items-center justify-between px-4 lg:px-6 h-10 border-b flex-shrink-0 ${t.border}`}>
                   <div className="flex items-center gap-2 text-[12px]">
                     <span className={`font-semibold ${dark ? "text-violet-400" : "text-violet-700"}`}>
-                      {selectedClient ? selectedClient.client_name : clientCategory === "individual_biz" ? "개인사업자" : clientCategory === "corporate" ? "사업자" : clientCategory === "individual" ? "개인" : "유형 미정"}
+                      {selectedClient?.client_name || collectedProfile.company_name ||
+                        (clientCategory === "individual" ? "개인 고객" : clientCategory === "individual_biz" ? "개인사업자" : "사업자 고객")}
                     </span>
-                    <span className={`${t.muted}`}>·</span>
-                    <span className={`${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label || "대기"}</span>
+                    {consultType && (
+                      <>
+                        <span className={t.muted}>·</span>
+                        <span className={t.muted}>
+                          {consultType === "matching" ? "지원사업 매칭" : consultType === "fund" ? "자금 상담" : "공고 상담"}
+                        </span>
+                      </>
+                    )}
+                    <span className={t.muted}>·</span>
+                    <span className={t.muted}>{flowSteps.find(s => s.key === flowState)?.label || "대기"}</span>
                   </div>
-                  <span className={`text-[11px] ${t.muted}`}>{flowSteps.find(s => s.key === flowState)?.label}</span>
                 </div>
               )}
 
-              {/* Step 1: 상담 종류 선택 (2카드) — consultType이 null일 때 */}
-              {!clientCategory && messages.length === 0 && !showProfileForm && !consultType ? (
+              {/* ① 고객 선택 화면 — 홈 스크린 */}
+              {!clientCategory && messages.length === 0 && !showProfileForm ? (
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
-                  <div className="max-w-2xl text-center w-full">
-                    <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
-                      <span className="text-3xl">👋</span>
+                  <div className="max-w-2xl w-full">
+                    <div className="text-center mb-8">
+                      <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
+                        <span className="text-3xl">👥</span>
+                      </div>
+                      <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>누구의 상담을 시작하시겠습니까?</h2>
+                      <p className={`text-[13px] ${t.muted}`}>고객을 먼저 선택하면 맞춤 상담이 시작됩니다.</p>
                     </div>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>어떤 상담을 도와드릴까요?</h2>
-                    <p className={`text-[13px] mb-8 ${t.muted}`}>
-                      상담 종류를 선택하시면 AI 상담이 시작됩니다.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-                      <button
-                        onClick={() => setConsultType("matching")}
-                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"} hover:shadow-lg`}>
-                        <div className="text-4xl mb-3">🏢</div>
-                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원사업 상담</p>
-                        <p className={`text-[12px] mb-3 ${t.muted}`}>고객 정보로 맞춤 공고 찾기</p>
-                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
-                          고객 프로필 수집 → 조건에 맞는 지원사업 매칭 → 자격 요건 심화 상담
-                        </p>
-                      </button>
-                      <button
-                        onClick={() => { setActiveView("announce_search"); }}
-                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-indigo-500/60 hover:bg-indigo-500/10` : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 bg-white"} hover:shadow-lg`}>
-                        <div className="text-4xl mb-3">📋</div>
-                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>특정 공고 상담</p>
-                        <p className={`text-[12px] mb-3 ${t.muted}`}>알고 있는 공고 분석·자격 판정</p>
-                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
-                          공고명·기관·키워드로 검색 → 12섹션 상세 보고서 → 자격 요건 질문
-                        </p>
-                      </button>
-                      <button
-                        onClick={() => setConsultType("fund")}
-                        className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] ${dark ? `${t.cardBorder} border ${t.card} hover:border-emerald-500/60 hover:bg-emerald-500/10` : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 bg-white"} hover:shadow-lg`}>
-                        <div className="text-4xl mb-3">💰</div>
-                        <p className={`text-base font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>자금 상담</p>
-                        <p className={`text-[12px] mb-3 ${t.muted}`}>정책자금·보증·대출 전문</p>
-                        <p className={`text-[11px] leading-relaxed ${dark ? "text-slate-400" : "text-slate-500"}`}>
-                          고객 개인/기업 선택 → 프로필 입력 → 정책자금·보증·대출 맞춤 상담
-                        </p>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : /* Step 2: 고객 유형 선택 (매칭/자금 선택 후) */
-              !clientCategory && messages.length === 0 && !showProfileForm && (consultType === "matching" || consultType === "fund") ? (
-                <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
-                  <div className="max-w-md text-center">
-                    <button
-                      onClick={() => setConsultType(null)}
-                      className={`mb-4 text-[12px] font-medium flex items-center gap-1 mx-auto ${dark ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-700"}`}
-                    >
-                      ← 상담 종류 다시 선택
-                    </button>
-                    <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
-                      <svg className="w-8 h-8 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-                      </svg>
-                    </div>
-                    <h2 className={`text-xl font-bold mb-2 ${dark ? "text-slate-100" : "text-slate-800"}`}>고객 유형을 선택해 주세요</h2>
-                    <p className={`text-[13px] mb-8 ${t.muted}`}>
-                      {consultType === "fund"
-                        ? "고객 정보 입력 → 정책자금·보증·대출 전문 상담"
-                        : "고객 정보 수집 → 맞춤 지원사업 매칭 → 자격 요건 분석"}
-                    </p>
-                    <div className="grid grid-cols-2 gap-4 max-w-xl mx-auto w-full">
+                    {/* 신규 고객 */}
+                    <div className="grid grid-cols-2 gap-3 mb-6">
                       {[
-                        { key: "corporate" as ClientCategory, label: "사업자", icon: "🏢", desc: "법인 · 개인사업자" },
-                        { key: "individual" as ClientCategory, label: "개인", icon: "👤", desc: "취업·복지·주거" },
+                        { key: "corporate" as ClientCategory, icon: "🏢", label: "신규 사업자 고객", desc: "법인 · 개인사업자" },
+                        { key: "individual" as ClientCategory, icon: "👤", label: "신규 개인 고객", desc: "취업 · 복지 · 주거" },
                       ].map(opt => (
                         <button key={opt.key} onClick={() => startNewChat(opt.key)}
-                          className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
-                          <span className="text-4xl">{opt.icon}</span>
-                          <p className={`text-base font-bold mt-3 mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>{opt.label}</p>
-                          <p className={`text-[12px] ${t.muted}`}>{opt.desc}</p>
+                          className={`p-5 rounded-2xl border-2 transition-all text-left active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
+                          <span className="text-3xl">{opt.icon}</span>
+                          <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>{opt.label}</p>
+                          <p className={`text-[11px] ${t.muted}`}>{opt.desc}</p>
                         </button>
                       ))}
                     </div>
+                    {/* 기존 고객 */}
+                    {existingClients.length > 0 && (
+                      <>
+                        <div className={`flex items-center gap-3 mb-4`}>
+                          <div className={`flex-1 h-px ${dark ? "bg-white/10" : "bg-slate-200"}`} />
+                          <span className={`text-[12px] ${t.muted}`}>또는 기존 고객 선택</span>
+                          <div className={`flex-1 h-px ${dark ? "bg-white/10" : "bg-slate-200"}`} />
+                        </div>
+                        <div className="space-y-1.5">
+                          {existingClients.map(c => (
+                            <button key={c.id}
+                              onClick={() => startNewChat(c.client_type === "individual" ? "individual" : "corporate", c)}
+                              className={`w-full px-4 py-3 flex items-center gap-3 rounded-xl border transition-all text-left active:scale-[0.99] hover:shadow-sm ${dark ? `${t.card} border-white/[0.08] hover:border-violet-500/40` : "bg-white border-slate-200 hover:border-violet-400 hover:bg-violet-50"}`}>
+                              <span className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-700"}`}>
+                                {c.client_type === "individual" ? "개" : "사"}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-[13px] font-semibold truncate ${dark ? "text-slate-100" : "text-slate-800"}`}>{c.client_name}</p>
+                                <p className={`text-[11px] truncate ${t.muted}`}>{[c.industry_name, c.address_city].filter(Boolean).join(" · ")}</p>
+                              </div>
+                              <svg className={`w-4 h-4 flex-shrink-0 ${t.muted}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                              </svg>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : showProfileForm ? (
-                /* ═══ 고객 정보 입력 폼 (버튼식) ═══ */
+                /* ② 신규 고객 정보 입력 폼 */
                 <ProfileInputForm
                   dark={dark}
                   t={t}
@@ -959,8 +1012,65 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   profileForm={profileForm}
                   setProfileForm={setProfileForm}
                   onSubmit={handleProfileSubmit}
-                  onBack={() => { setShowProfileForm(false); setClientCategory(""); }}
+                  onBack={() => {
+                    setShowProfileForm(false);
+                    if (messages.length === 0) {
+                      // 신규 상담 폼 → 고객 선택 화면으로
+                      setClientCategory("");
+                      setSelectedClient(null);
+                      setCollectedProfile({});
+                    }
+                  }}
                 />
+              ) : !consultType && clientCategory && messages.length === 0 ? (
+                /* ③ 상담 목적 선택 화면 — 고객 확인 후 */
+                <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
+                  <div className="max-w-2xl w-full">
+                    {/* 고객 정보 카드 */}
+                    <div className={`flex items-center justify-between p-4 rounded-2xl border mb-7 ${dark ? `${t.card} border-white/[0.08]` : "bg-slate-50 border-slate-200"}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0 ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-700"}`}>
+                          {clientCategory === "individual" ? "👤" : "🏢"}
+                        </span>
+                        <div>
+                          <p className={`text-[11px] ${t.muted} mb-0.5`}>상담 대상 고객</p>
+                          <p className={`text-[14px] font-bold ${dark ? "text-slate-100" : "text-slate-800"}`}>
+                            {selectedClient?.client_name || collectedProfile.company_name || (clientCategory === "individual" ? "신규 개인 고객" : "신규 사업자 고객")}
+                          </p>
+                          {(collectedProfile.industry_name || collectedProfile.address_city || selectedClient?.industry_name || selectedClient?.address_city) && (
+                            <p className={`text-[12px] ${t.muted}`}>
+                              {[collectedProfile.industry_name || selectedClient?.industry_name, collectedProfile.address_city || selectedClient?.address_city].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {!selectedClient && (
+                        <button onClick={() => setShowProfileForm(true)}
+                          className={`text-[12px] font-medium px-3 py-1.5 rounded-lg transition-colors ${dark ? "text-violet-400 hover:bg-violet-500/10" : "text-violet-600 hover:bg-violet-50"}`}>
+                          정보 수정
+                        </button>
+                      )}
+                    </div>
+                    {/* 상담 목적 카드 */}
+                    <h3 className={`text-center text-base font-bold mb-5 ${dark ? "text-slate-200" : "text-slate-700"}`}>
+                      오늘 어떤 상담을 진행하시겠습니까?
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {[
+                        { type: "matching" as const, icon: "🏢", label: "지원사업 매칭", desc: "고객 조건에 맞는 공고 찾기", color: "hover:border-violet-500/60 hover:bg-violet-500/10" },
+                        { type: "fund" as const, icon: "💰", label: "자금 상담", desc: "정책자금·보증·대출 전문", color: "hover:border-emerald-500/60 hover:bg-emerald-500/10" },
+                        { type: "announcement" as const, icon: "📋", label: "특정 공고 상담", desc: "공고 분석·자격 판정", color: "hover:border-indigo-500/60 hover:bg-indigo-500/10" },
+                      ].map(opt => (
+                        <button key={opt.type} onClick={() => startConsultType(opt.type)}
+                          className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} ${opt.color}` : `border-slate-200 bg-white ${opt.color}`}`}>
+                          <div className="text-4xl mb-3">{opt.icon}</div>
+                          <p className={`text-[13px] font-bold mb-1 ${dark ? "text-slate-100" : "text-slate-800"}`}>{opt.label}</p>
+                          <p className={`text-[11px] ${t.muted}`}>{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <>
                   {/* 대화 영역 */}

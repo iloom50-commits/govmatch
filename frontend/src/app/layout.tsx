@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     description: "찾지말고, 받으세요.",
     images: [
       {
-        url: "/og-image-wide.png",
+        url: "/og-image-wide-v2.png",
         width: 1200,
         height: 630,
         alt: "지원금AI — AI 정부 지원금 자동 매칭",
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "지원금AI — 내 지원금 찾기 30초",
     description: "찾지말고, 받으세요.",
-    images: ["/og-image-wide.png"],
+    images: ["/og-image-wide-v2.png"],
   },
   robots: {
     index: true,

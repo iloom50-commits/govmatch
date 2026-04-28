@@ -13,8 +13,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || '지원금AI', {
       body: data.body,
-      icon: '/icon-192.png',
-      badge: '/icon-128.png',
+      icon: 'https://www.govmatch.kr/icon-192.png',
+      badge: 'https://www.govmatch.kr/icon-128.png',
       tag: 'govmatch',
       renotify: true,
       data: { url: data.url || '/' },

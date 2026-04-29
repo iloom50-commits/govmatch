@@ -164,10 +164,10 @@ def send_report(metrics: dict, quality: dict, learning: dict) -> dict:
         print("[Orchestrator/reporter] OWNER_EMAIL 또는 RESEND_API_KEY 미설정 — 이메일 스킵")
 
     # ── 카카오 발송 (사장님 계정) ──
-    owner_bn = os.environ.get("OWNER_BUSINESS_NUMBER")
+    owner_email = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
     kakao_client_id = os.environ.get("KAKAO_CLIENT_ID")
 
-    if owner_bn and kakao_client_id:
+    if owner_email and kakao_client_id:
         try:
             import asyncio
             import psycopg2
@@ -176,7 +176,7 @@ def send_report(metrics: dict, quality: dict, learning: dict) -> dict:
             DATABASE_URL = os.environ.get("DATABASE_URL", "")
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
             cur = conn.cursor()
-            cur.execute("SELECT kakao_refresh_token FROM users WHERE business_number = %s", (owner_bn,))
+            cur.execute("SELECT kakao_refresh_token FROM users WHERE email = %s", (owner_email,))
             row = cur.fetchone()
             conn.close()
 
@@ -228,6 +228,6 @@ def send_report(metrics: dict, quality: dict, learning: dict) -> dict:
         except Exception as e:
             print(f"[Orchestrator/reporter] 카카오 DB 조회 오류: {e}")
     else:
-        print("[Orchestrator/reporter] OWNER_BUSINESS_NUMBER 미설정 — 카카오 스킵")
+        print("[Orchestrator/reporter] OWNER_EMAIL 또는 KAKAO_CLIENT_ID 미설정 — 카카오 스킵")
 
     return result

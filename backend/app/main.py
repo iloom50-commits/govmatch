@@ -4178,7 +4178,111 @@ def _api_pro_consultant_chat_impl(req: AiConsultantChatRequest, current_user: di
         return _handle_pro_fund_consult(req, current_user)
     if action == "detail_analysis":
         return _handle_pro_detail_analysis(req, current_user)
-    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult | fund_consult | detail_analysis)")
+    if action == "chat":
+        return _handle_pro_chat(req, current_user)
+    raise HTTPException(status_code=400, detail=f"알 수 없는 action: {action} (지원: match | consult | fund_consult | detail_analysis | chat)")
+
+
+def _handle_pro_chat(req: AiConsultantChatRequest, current_user: dict):
+    """action=chat: 매칭 완료 후 대화형 후속 상담.
+    세션의 matched_snapshot을 컨텍스트로 Gemini가 질문에 답변.
+    매칭 엔진 재실행 없음.
+    """
+    db = get_db_connection()
+    try:
+        session_state = _load_or_create_session(db, current_user, req.session_id, req.client_category)
+        selected_client = _load_client(db, req.client_id, current_user["bn"])
+
+        # 프로필 확정
+        profile = req.profile_override or {}
+        if not profile and selected_client:
+            profile = {
+                "company_name": selected_client.get("client_name") or "",
+                "industry_code": selected_client.get("industry_code") or "",
+                "address_city": selected_client.get("address_city") or "",
+                "establishment_date": str(selected_client.get("establishment_date") or ""),
+                "revenue_bracket": selected_client.get("revenue_bracket") or "",
+                "employee_count_bracket": selected_client.get("employee_count_bracket") or "",
+                "interests": selected_client.get("interests") or "",
+                "certifications": selected_client.get("certifications") or "",
+            }
+        if not profile:
+            profile = session_state.get("collected") or {}
+
+        # 세션에서 매칭 결과 로드
+        matched_snapshot = session_state.get("matched_snapshot") or []
+        if isinstance(matched_snapshot, str):
+            try:
+                matched_snapshot = json.loads(matched_snapshot)
+            except Exception:
+                matched_snapshot = []
+
+        # 프로필 요약 텍스트
+        profile_lines = [f"- {k}: {v}" for k, v in profile.items() if v]
+        profile_str = "\n".join(profile_lines) if profile_lines else "정보 없음"
+
+        # 매칭 결과 요약 텍스트 (상위 5개)
+        matched_lines = []
+        for m in (matched_snapshot or [])[:5]:
+            title = m.get("title", "")
+            amt = m.get("support_amount", "") or m.get("support_amount_max", "")
+            dl = str(m.get("deadline_date", ""))[:10]
+            matched_lines.append(f"  - {title} | 지원금: {amt} | 마감: {dl}")
+        matched_str = ("매칭된 주요 공고:\n" + "\n".join(matched_lines)) if matched_lines else "매칭 결과 없음"
+
+        system_prompt = f"""당신은 정부지원사업 전문 컨설턴트입니다.
+아래 고객 프로필과 매칭 결과를 바탕으로 고객(전문가)의 질문에 전문적이고 구체적으로 답변하세요.
+
+[고객 프로필]
+{profile_str}
+
+[{matched_str}]
+
+답변 원칙:
+- 매칭된 공고를 바탕으로 구체적인 조언을 제공합니다
+- 추가 매칭이 필요하면 "조건을 수정하면 재매칭이 가능합니다"라고 안내합니다
+- 특정 공고 심화 분석이 필요하면 카드에서 "상담하기"를 클릭하라고 안내합니다
+- 간결하고 실용적으로 답변합니다 (마크다운 허용)"""
+
+        # Gemini 호출
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"status": "ERROR", "reply": "AI 서비스 설정 오류", "choices": [], "done": False}
+
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            system_instruction=system_prompt,
+        )
+
+        # 대화 히스토리 구성 (마지막 user 메시지 제외)
+        messages_list = list(req.messages)
+        history = []
+        for msg in messages_list[:-1]:
+            role = "user" if msg.get("role") == "user" else "model"
+            text = msg.get("text", "")
+            if text.strip():
+                history.append({"role": role, "parts": [text]})
+
+        chat = model.start_chat(history=history)
+        last_text = messages_list[-1].get("text", "") if messages_list else ""
+        response = chat.send_message(last_text)
+        reply = response.text or ""
+
+        return {
+            "status": "SUCCESS",
+            "action": "chat",
+            "reply": reply,
+            "choices": ["🔄 조건 수정 후 재매칭"],
+            "done": False,
+            "session_id": session_state.get("session_id"),
+        }
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):

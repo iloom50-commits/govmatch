@@ -213,6 +213,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   const [loadingMessage, setLoadingMessage] = useState("");
   const [systemContext, setSystemContext] = useState("");
   const [activeAnnouncementId, setActiveAnnouncementId] = useState<number | null>(null);
+  const [postMatchMode, setPostMatchMode] = useState(false); // 매칭 완료 후 대화형 모드
   const [typing, setTyping] = useState(false); // 타이핑 애니메이션 중
   const [typingText, setTypingText] = useState(""); // 현재까지 타이핑된 텍스트
   const typingRef = useRef<NodeJS.Timeout | null>(null);
@@ -477,6 +478,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
             if (last && last.role === "assistant") {
               const matched = data.matched_announcements || [];
               const ragSources = data.rag_sources || [];
+              if (matched.length > 0) setPostMatchMode(true);
               updated[updated.length - 1] = {
                 ...last,
                 text: fullText,
@@ -513,11 +515,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
     setInput("");
-    // [재설계 04] 재매칭 키워드 감지 시 action=match + 현재 프로필로 재매칭
-    const rematchKeywords = ["재매칭", "다시 매칭", "매칭 진행", "이 조건으로 매칭", "매칭해"];
+    // 재매칭 키워드 감지
+    const rematchKeywords = ["재매칭", "다시 매칭", "매칭 진행", "이 조건으로 매칭", "매칭해", "조건 수정 후 재매칭"];
     const isRematch = rematchKeywords.some(kw => text.includes(kw));
     if (isRematch) {
+      setPostMatchMode(false);
       sendToAI(newHistory, { action: "match", profile_override: collectedProfile });
+    } else if (postMatchMode && !activeAnnouncementId) {
+      // 매칭 완료 후 — 매칭 엔진 재실행 없이 대화형 응답
+      sendToAI(newHistory, { action: "chat" });
     } else {
       sendToAI(newHistory);
     }
@@ -562,6 +568,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setSelectedClient(null);
     setSystemContext("");
     setActiveAnnouncementId(null);
+    setPostMatchMode(false);
     setShowProfileForm(false);
     setConsultType(null);
     setCollectedProfile({});
@@ -580,6 +587,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     setLeftOpen(false);
     setMessages([]);
     setConsultType(null);
+    setPostMatchMode(false);
 
     if (client) {
       // 기존 고객 → collectedProfile에 고객 정보 저장 후 상담목적 화면으로

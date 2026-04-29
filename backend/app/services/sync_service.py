@@ -13,6 +13,7 @@ from app.services.public_api_service import gov_api_service, GovernmentAPIServic
 from app.services.admin_scraper import admin_scraper
 from app.services.ai_service import ai_service
 from app.config import DATABASE_URL
+from app.services.rule_engine import _normalize_region as _norm_reg
 
 import re as _re
 
@@ -306,7 +307,11 @@ class SyncService:
 
                 # 제목 정규화 기반 중복 방지
                 norm_title = _normalize_title(item['title'])
-                region_val = item.get('region', 'All') or 'All'
+                _raw_region = item.get('region') or ''
+                if not _raw_region or _raw_region in ('All', 'all'):
+                    region_val = '전국'
+                else:
+                    region_val = _norm_reg(_raw_region) or '전국'
                 is_individual = target_type in ('individual', 'both') or item.get('origin_source', '') in ('gov24-individual-api', 'local-welfare-api', 'gov24-api')
 
                 if is_individual:

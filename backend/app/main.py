@@ -889,8 +889,23 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
 
         # 버킷 분류
         has_amount = bool(ann.get("support_amount"))
-        is_national = region in ("전국", "", None)
-        in_my_region = bool(user_city) and (user_city in region or region == user_city)
+        # 제목 [지역명] 브래킷 추출 (region 필드보다 신뢰도 높음)
+        import re as _re_bkt
+        _bkt_m = _re_bkt.search(
+            r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]',
+            title
+        )
+        _title_region = _normalize_region(_bkt_m.group(1)) if _bkt_m else None
+        _norm_region = _normalize_region(region)
+        _db_is_regional = bool(_norm_region and _norm_region not in ("전국", "", "All"))
+        is_national = not _title_region and not _db_is_regional
+        # 지역 매칭:
+        # - 브래킷 있으면 브래킷 지역 == user_city 여부로 판단 (DB region 무시)
+        # - 브래킷 없으면 DB region이 지역한정 → 이미 line 833-836 exclusion 통과 = 내 지역
+        in_my_region = bool(user_city) and (
+            (_title_region and _title_region == user_city) or
+            (not _title_region and _db_is_regional)
+        )
         interest_hit = bool(interests) and any(
             (it in category or it in title) for it in interests
         )

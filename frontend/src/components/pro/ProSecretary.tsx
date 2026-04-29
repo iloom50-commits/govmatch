@@ -1094,26 +1094,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           {/* [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 패널 */}
                           {msg.role === "assistant" && msg.expert_insights && (
                             <div className={`mt-2 rounded-xl border overflow-hidden ${dark ? "border-violet-500/30 bg-violet-500/5" : "border-violet-200 bg-violet-50/50"}`}>
-                              {/* 적합성 배지 + 원문 바로가기 */}
-                              <div className={`px-3 py-2 border-b flex items-center gap-2 ${dark ? "border-violet-500/20" : "border-violet-200"}`}>
-                                {msg.verdict_for_client && (
+                              {/* 적합성 배지 */}
+                              {msg.verdict_for_client && (
+                                <div className={`px-3 py-2 border-b flex items-center gap-2 ${dark ? "border-violet-500/20" : "border-violet-200"}`}>
                                   <span className={`text-[12px] font-bold ${msg.verdict_for_client === "eligible" ? "text-emerald-500" : msg.verdict_for_client === "ineligible" ? "text-rose-500" : "text-amber-500"}`}>
                                     {msg.verdict_for_client === "eligible" ? "✅ 신청 가능" : msg.verdict_for_client === "ineligible" ? "⊘ 신청 불가" : "⚠️ 조건부 가능"}
                                   </span>
-                                )}
-                                {msg.expert_insights.selection_rate_estimate && (
-                                  <span className={`text-[11px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
-                                    예상 선정률 {msg.expert_insights.selection_rate_estimate}
-                                  </span>
-                                )}
-                                {msg.origin_url && (
-                                  <a href={msg.origin_url} target="_blank" rel="noopener noreferrer"
-                                    className={`ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${dark ? "border-violet-500/40 text-violet-300 hover:bg-violet-500/15 hover:border-violet-400" : "border-indigo-300 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-400"}`}>
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                    원문 바로가기
-                                  </a>
-                                )}
-                              </div>
+                                  {msg.expert_insights.selection_rate_estimate && (
+                                    <span className={`text-[11px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
+                                      예상 선정률 {msg.expert_insights.selection_rate_estimate}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               <div className="p-3 space-y-3 text-[12px]">
                                 {msg.expert_insights.common_pitfalls && msg.expert_insights.common_pitfalls.length > 0 && (
                                   <div>
@@ -1166,6 +1159,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   </div>
                                 )}
                               </div>
+                            </div>
+                          )}
+                          {/* 원문 바로가기 — 공고 분석 결과 맨 마지막 */}
+                          {msg.role === "assistant" && msg.expert_insights && msg.origin_url && (
+                            <div className="mt-3">
+                              <a href={msg.origin_url} target="_blank" rel="noopener noreferrer"
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${dark ? "border-violet-500/40 text-violet-300 hover:bg-violet-500/10 hover:border-violet-400" : "border-indigo-300 text-indigo-600 bg-white hover:bg-indigo-50 hover:border-indigo-400"}`}>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                공고 원문 바로가기
+                              </a>
                             </div>
                           )}
                           {/* 선택지 */}

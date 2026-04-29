@@ -1,185 +1,121 @@
-"""상담 품질 체커 — 최근 상담 샘플링 → Gemini 평가."""
-
-import os
+"""
+quality_checker.py — 에이전트별 상담 품질 평가
+ai_consult_logs에서 최근 5건 샘플링 → Gemini 채점 → 결과 반환
+"""
 import json
-import logging
-from typing import Dict, Any, List
-
-logger = logging.getLogger(__name__)
+import os
+import random
 
 
-def _ensure_reviews_table(db_conn) -> None:
-    """orchestrator_reviews 테이블이 없으면 자동 생성 (init.sql 미적용 환경 대비)."""
+SCORE_PROMPT = """
+당신은 AI 상담 품질 평가 전문가입니다.
+아래 상담 대화를 읽고 5가지 항목을 각각 0~10점으로 채점하세요.
+
+[상담 대화]
+{conversation}
+
+[채점 기준]
+1. 정확성: 정보가 사실에 기반하며 오류가 없는가
+2. 완결성: 질문에 충분히 답변했는가
+3. 전문성: 정부지원사업 전문가다운 답변인가
+4. 실행가능성: 고객이 실제로 실행할 수 있는 구체적 조언인가
+5. 명확성: 이해하기 쉽고 구조화된 답변인가
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{"정확성": 숫자, "완결성": 숫자, "전문성": 숫자, "실행가능성": 숫자, "명확성": 숫자, "총평": "한 문장 평가"}
+"""
+
+
+def _call_gemini(prompt: str) -> dict:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {}
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
+        resp = model.generate_content(prompt)
+        text = resp.text.strip()
+        # JSON 추출
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+    except Exception as e:
+        print(f"[Orchestrator/quality] Gemini 오류: {e}")
+    return {}
+
+
+def check_quality(db_conn) -> dict:
+    """
+    ai_consult_logs 최근 7일 중 랜덤 5건 샘플링 → Gemini 채점.
+    반환: {"samples": [...], "avg_scores": {...}, "low_quality_count": int}
+    """
     try:
         cur = db_conn.cursor()
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS orchestrator_reviews (
-                id SERIAL PRIMARY KEY,
-                review_date DATE NOT NULL DEFAULT CURRENT_DATE,
-                agent VARCHAR(40) NOT NULL,
-                consult_log_id INTEGER,
-                accuracy FLOAT,
-                completeness FLOAT,
-                usefulness FLOAT,
-                avg_score FLOAT,
-                issue TEXT,
-                needs_review BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_date ON orchestrator_reviews(review_date DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_agent ON orchestrator_reviews(agent)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_orch_review_needs ON orchestrator_reviews(needs_review) WHERE needs_review = TRUE")
-        db_conn.commit()
-    except Exception as e:
-        logger.warning(f"[QualityChecker] Table ensure error: {e}")
-        try: db_conn.rollback()
-        except Exception: pass
-
-
-def check_agent_quality(db_conn, samples_per_agent: int = 3) -> Dict[str, Any]:
-    """에이전트별 최근 상담을 샘플링하여 Gemini로 품질 평가.
-
-    Returns: {
-        "agent_scores": {"lite_biz": {"avg_score": 7.2, "samples": 3}, ...},
-        "low_quality_samples": [...],
-        "summary": "..."
-    }
-    """
-    result: Dict[str, Any] = {"agent_scores": {}, "low_quality_samples": [], "summary": ""}
-
-    _ensure_reviews_table(db_conn)
-
-    try:
-        cur = db_conn.cursor()
-
-        # 에이전트별 최근 상담 샘플링 (messages JSON에서 추출)
-        cur.execute(f"""
-            SELECT id, mode, conclusion, messages, created_at
+            SELECT id, session_id, messages, conclusion, updated_at
             FROM ai_consult_logs
-            WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'
+            WHERE updated_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
               AND messages IS NOT NULL
-            ORDER BY RANDOM()
-            LIMIT {samples_per_agent * 4}
+            ORDER BY updated_at DESC
+            LIMIT 50
         """)
-        raw_samples = cur.fetchall()
-
-        # messages JSON에서 마지막 user/assistant 추출
-        samples = []
-        for r in raw_samples:
-            msgs = r.get("messages") or []
-            if isinstance(msgs, str):
-                try:
-                    msgs = json.loads(msgs)
-                except Exception:
-                    continue
-            user_msgs = [m.get("text", "") for m in msgs if m.get("role") == "user"]
-            asst_msgs = [m.get("text", "") for m in msgs if m.get("role") == "assistant"]
-            if user_msgs and asst_msgs:
-                samples.append({
-                    "id": r["id"],
-                    "mode": r.get("mode") or r.get("conclusion") or "unknown",
-                    "query": user_msgs[-1],
-                    "reply": asst_msgs[-1],
-                    "created_at": r["created_at"],
-                })
-
-        if not samples:
-            result["summary"] = "최근 24시간 상담 로그 없음"
-            return result
-
-        # Gemini로 품질 평가
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            result["summary"] = "GEMINI_API_KEY 미설정 — 품질 평가 불가"
-            return result
-
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(
-                "models/gemini-2.5-flash",
-                generation_config={"max_output_tokens": 2048, "temperature": 0.2, "response_mime_type": "application/json"},
-            )
-        except Exception as e:
-            result["summary"] = f"Gemini 초기화 실패: {e}"
-            return result
-
-        agent_scores: Dict[str, List[float]] = {}
-
-        for sample in samples:
-            agent = sample.get("mode") or "unknown"
-            query = (sample.get("query") or "")[:300]
-            reply = (sample.get("reply") or "")[:500]
-
-            if not query or not reply:
-                continue
-
-            prompt = f"""다음은 정부 지원사업 AI 상담의 질문과 답변입니다.
-품질을 0~10점으로 평가하세요.
-
-[질문] {query}
-[답변] {reply}
-
-평가 기준:
-- 정확성: 근거 없는 추측이 있는가? (0=완전 추측, 10=모두 근거 있음)
-- 완결성: 질문에 충분히 답했는가? (0=전혀, 10=완벽)
-- 유용성: 실제 도움이 되는 정보인가? (0=무의미, 10=매우 유용)
-
-JSON 형식으로 응답:
-{{"accuracy": 0, "completeness": 0, "usefulness": 0, "avg": 0, "issue": "문제점 한줄"}}"""
-
-            try:
-                resp = model.generate_content(prompt)
-                scores = json.loads(resp.text)
-                avg = float(scores.get("avg", 0) or 0)
-                accuracy = float(scores.get("accuracy", 0) or 0)
-                completeness = float(scores.get("completeness", 0) or 0)
-                usefulness = float(scores.get("usefulness", 0) or 0)
-                issue = scores.get("issue", "")[:500] if scores.get("issue") else None
-
-                if agent not in agent_scores:
-                    agent_scores[agent] = []
-                agent_scores[agent].append(avg)
-
-                low_flag = avg < 5
-                if low_flag:
-                    result["low_quality_samples"].append({
-                        "log_id": sample.get("id"),
-                        "agent": agent,
-                        "score": avg,
-                        "issue": issue or "",
-                    })
-
-                # DB 저장 — 매 평가 기록
-                try:
-                    cur.execute("""
-                        INSERT INTO orchestrator_reviews
-                            (agent, consult_log_id, accuracy, completeness, usefulness, avg_score, issue, needs_review)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (agent[:40], sample.get("id"), accuracy, completeness, usefulness, avg, issue, low_flag))
-                    db_conn.commit()
-                except Exception as ins_err:
-                    logger.warning(f"[QualityChecker] Insert review error: {ins_err}")
-                    try: db_conn.rollback()
-                    except Exception: pass
-            except Exception:
-                continue
-
-        # 에이전트별 평균
-        for agent, scores_list in agent_scores.items():
-            result["agent_scores"][agent] = {
-                "avg_score": round(sum(scores_list) / len(scores_list), 1) if scores_list else 0,
-                "samples": len(scores_list),
-            }
-
-        # 전체 요약
-        all_scores = [s for sl in agent_scores.values() for s in sl]
-        overall = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0
-        result["summary"] = f"전체 평균 {overall}/10 ({len(all_scores)}건 평가)"
-
+        rows = cur.fetchall()
     except Exception as e:
-        logger.error(f"[QualityChecker] Error: {e}")
-        result["summary"] = f"품질 체크 오류: {e}"
+        print(f"[Orchestrator/quality] DB 조회 오류: {e}")
+        return {"error": str(e), "samples": [], "avg_scores": {}}
 
-    return result
+    if not rows:
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0}
+
+    sample = random.sample(rows, min(5, len(rows)))
+    results = []
+    score_keys = ["정확성", "완결성", "전문성", "실행가능성", "명확성"]
+
+    for row in sample:
+        msgs = row.get("messages") or []
+        if isinstance(msgs, str):
+            try:
+                msgs = json.loads(msgs)
+            except Exception:
+                msgs = []
+
+        # 대화 텍스트 구성 (최대 6턴)
+        conv_lines = []
+        for m in msgs[-6:]:
+            role = "고객" if m.get("role") == "user" else "AI"
+            text = (m.get("text") or "")[:300]
+            conv_lines.append(f"{role}: {text}")
+        conversation = "\n".join(conv_lines)
+
+        if not conversation.strip():
+            continue
+
+        scores = _call_gemini(SCORE_PROMPT.format(conversation=conversation))
+        total = sum(scores.get(k, 0) for k in score_keys)
+        results.append({
+            "session_id": row.get("session_id", ""),
+            "updated_at": str(row.get("updated_at", "")),
+            "scores": scores,
+            "total": total,
+        })
+
+    if not results:
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0}
+
+    # 평균 집계
+    avg = {}
+    for k in score_keys:
+        vals = [r["scores"].get(k, 0) for r in results if r["scores"]]
+        avg[k] = round(sum(vals) / len(vals), 1) if vals else 0
+
+    low_quality_count = sum(1 for r in results if r["total"] < 25)
+
+    return {
+        "samples": results,
+        "avg_scores": avg,
+        "avg_total": round(sum(r["total"] for r in results) / len(results), 1),
+        "low_quality_count": low_quality_count,
+        "sample_count": len(results),
+    }

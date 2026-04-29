@@ -1351,8 +1351,27 @@ async def lifespan(app):
                 name="비로그인 응답 캐시 갱신 (10분마다)",
                 replace_existing=True,
             )
+
+            # ── AI COO 오케스트레이터 — 매일 09:30 KST (UTC 00:30) ──
+            def _orchestrator_job():
+                try:
+                    from app.services.orchestrator import run_daily_supervision
+                    print("[AI COO] 일일 감시 스케줄 실행 시작 (09:30 KST)...")
+                    result = run_daily_supervision()
+                    print(f"[AI COO] 완료: {result.get('elapsed')}초")
+                except Exception as e:
+                    print(f"[AI COO] 스케줄 실행 오류: {e}")
+
+            pipeline_scheduler.add_job(
+                _orchestrator_job,
+                CronTrigger(hour=0, minute=30),  # UTC 00:30 = KST 09:30
+                id="ai_coo_supervision",
+                name="AI COO 일일 감시 (09:30 KST)",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - daily 03:00 KST + keepalive 2min + cache prewarm 10min")
+            print("[Pipeline] APScheduler started - daily 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -12613,6 +12632,27 @@ def api_announcement_for_smartdoc(announcement_id: int):
         return {"status": "SUCCESS", "data": result}
     finally:
         conn.close()
+
+
+@app.post("/api/admin/ai-coo/run")
+def api_ai_coo_run(req: AdminAuthRequest):
+    """관리자: AI COO 일일 감시 수동 실행 (테스트용)"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    try:
+        from app.services.orchestrator import run_daily_supervision
+        result = run_daily_supervision()
+        return {
+            "status": "SUCCESS",
+            "elapsed": result.get("elapsed"),
+            "metrics": result.get("metrics", {}),
+            "quality_avg": result.get("quality", {}).get("avg_total"),
+            "knowledge_total": result.get("learning", {}).get("total"),
+            "email_sent": result.get("report", {}).get("email_sent"),
+            "kakao_sent": result.get("report", {}).get("kakao_sent"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

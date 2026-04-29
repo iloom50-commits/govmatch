@@ -2274,11 +2274,11 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
           </div>
         )}
 
-        {/* 소상공인 판별기 (사업자만 — 재무재표 기준 전용 입력) */}
+        {/* 소상공인 판별기 (사업자만 — 위 매출/직원수로 자동 판별) */}
         {!isIndiv && (() => {
           const autoCat = ksicToSMECat(profileForm.industry_code || "");
           const selCat = profileForm.sme_category || autoCat;
-          const result = determineSMEExact(selCat, profileForm.sme_employee, profileForm.sme_revenue);
+          const result = determineSME(selCat, profileForm.employee_bracket, profileForm.revenue_bracket);
 
           const smeBtnCls = (selected: boolean) =>
             `px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all active:scale-95 border ${
@@ -2291,61 +2291,46 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
           return (
             <div className={`rounded-xl border p-4 space-y-4 ${dark ? "border-white/[0.08] bg-white/[0.02]" : "border-slate-200 bg-slate-50/60"}`}>
               <div className="flex items-center justify-between">
-                <p className={`text-[12px] font-bold ${dark ? "text-slate-200" : "text-slate-600"}`}>소상공인 판별 <span className={`font-normal ${t.muted}`}>(재무재표 기준)</span></p>
+                <p className={`text-[12px] font-bold ${dark ? "text-slate-200" : "text-slate-600"}`}>소상공인 판별 <span className={`font-normal ${t.muted}`}>(자동 계산)</span></p>
                 {autoCat && !profileForm.sme_category && (
                   <span className={`text-[10px] ${dark ? "text-violet-400" : "text-violet-500"}`}>업종코드 자동 감지됨</span>
                 )}
               </div>
 
-              {/* 업종 구분 */}
-              <div>
-                <p className={`text-[11px] mb-1.5 ${t.muted}`}>업종 구분</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {SME_CATEGORIES.map(cat => (
-                    <button key={cat.key}
-                      onClick={() => update("sme_category", profileForm.sme_category === cat.key ? "" : cat.key)}
-                      className={smeBtnCls(selCat === cat.key)}>
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 상시근로자수 */}
-              <div>
-                <p className={`text-[11px] mb-1.5 ${t.muted}`}>상시근로자수</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {["5인 미만", "5~9인", "10인 이상"].map(opt => (
-                    <button key={opt}
-                      onClick={() => update("sme_employee", profileForm.sme_employee === opt ? "" : opt)}
-                      className={smeBtnCls(profileForm.sme_employee === opt)}>{opt}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 연매출 */}
-              <div>
-                <p className={`text-[11px] mb-1.5 ${t.muted}`}>연매출</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {["10억 이하", "10억~30억", "30억~50억", "50억~120억", "120억 초과"].map(opt => (
-                    <button key={opt}
-                      onClick={() => update("sme_revenue", profileForm.sme_revenue === opt ? "" : opt)}
-                      className={smeBtnCls(profileForm.sme_revenue === opt)}>{opt}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 판별 결과 */}
-              {result && (
-                <div className={`rounded-lg px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 ${
-                  result === "yes" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
-                }`}>
-                  {result === "yes" ? "✅ 소상공인 해당" : "❌ 소상공인 해당 없음"}
+              {/* 업종 구분 — 자동 감지 안 될 때만 수동 선택 */}
+              {!autoCat && (
+                <div>
+                  <p className={`text-[11px] mb-1.5 ${t.muted}`}>업종 구분</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SME_CATEGORIES.map(cat => (
+                      <button key={cat.key}
+                        onClick={() => update("sme_category", profileForm.sme_category === cat.key ? "" : cat.key)}
+                        className={smeBtnCls(selCat === cat.key)}>
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-              {!result && selCat && (
-                <p className={`text-[11px] ${t.muted}`}>상시근로자수와 연매출을 선택하면 자동 판별됩니다.</p>
+
+              {/* 판별 결과 — 위 매출/직원수 기준 자동 계산 */}
+              {result === "yes" && (
+                <div className="rounded-lg px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                  ✅ 소상공인 해당
+                </div>
+              )}
+              {result === "no" && (
+                <div className="rounded-lg px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20">
+                  ❌ 소상공인 해당 없음
+                </div>
+              )}
+              {result === "check" && (
+                <div className="rounded-lg px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  ⚠️ 경계 구간 — 정확한 수치 확인 필요
+                </div>
+              )}
+              {!result && (
+                <p className={`text-[11px] ${t.muted}`}>위 매출 규모와 직원수를 선택하면 자동 판별됩니다.</p>
               )}
             </div>
           );

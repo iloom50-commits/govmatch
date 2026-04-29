@@ -1862,9 +1862,11 @@ PLAN_PRICES = {
 
 # [프로모션] 2026-04-22 ~ 2026-05-23 LITE 1개월 무료 개방
 # 프로모션 기간 동안 신규 가입자는 자동으로 LITE 플랜 + PROMO_END까지 무료
-# PRO 요금제는 "준비중"으로 신규 결제 차단
 PROMO_LITE_FREE_END = "2026-05-23 23:59:59"  # ISO format
 PROMO_ACTIVE = True  # False로 바꾸면 프로모션 종료 (기존 7일 체험 로직으로 복귀)
+# PRO 3개월 오픈 이벤트: 29,000원/월 (정가 49,000원), 2026-07-31까지
+PRO_EVENT_PRICE = 29000
+PRO_EVENT_END = "2026-07-31"
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon
 AI_GUIDE_PRICE = None
@@ -3204,12 +3206,7 @@ def api_plan_upgrade(
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
 
-    # [프로모션] PRO는 현재 "준비중" — 신규 결제 차단
-    if target == "pro":
-        raise HTTPException(
-            status_code=400,
-            detail="PRO 플랜은 현재 준비중입니다. LITE 플랜을 2026-05-23까지 무료로 체험해보세요."
-        )
+    # PRO 3개월 오픈 이벤트 (2026-07-31까지 29,000원/월)
 
     # 사용자 정보 조회
     conn = get_db_connection()

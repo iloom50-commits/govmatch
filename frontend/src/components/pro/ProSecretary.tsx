@@ -19,6 +19,7 @@ interface ChatMessage {
   showReportButton?: boolean; // 보고서 생성 버튼 표시용
   done?: boolean;
   rag_sources?: any[];      // 답변에 참고한 출처 (공고 섹션) 카드
+  origin_url?: string;          // 공고 원문 링크 (분석 메시지에 저장)
   // [재설계 05] PRO 공고상담 V2 — 전문가 인사이트
   verdict_for_client?: "eligible" | "conditional" | "ineligible" | null;
   expert_insights?: {
@@ -390,7 +391,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [loading]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult" | "detail_analysis"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult" | "detail_analysis"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string; origin_url?: string }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({
@@ -486,6 +487,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 // [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 저장
                 verdict_for_client: data.verdict_for_client || undefined,
                 expert_insights: data.expert_insights || undefined,
+                origin_url: options?.origin_url || undefined,
               };
             }
             return updated;
@@ -1092,19 +1094,26 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                           {/* [재설계 05] PRO 공고상담 V2 — 전문가 인사이트 패널 */}
                           {msg.role === "assistant" && msg.expert_insights && (
                             <div className={`mt-2 rounded-xl border overflow-hidden ${dark ? "border-violet-500/30 bg-violet-500/5" : "border-violet-200 bg-violet-50/50"}`}>
-                              {/* 적합성 배지 */}
-                              {msg.verdict_for_client && (
-                                <div className={`px-3 py-2 border-b text-[12px] font-bold flex items-center gap-2 ${dark ? "border-violet-500/20" : "border-violet-200"}`}>
-                                  {msg.verdict_for_client === "eligible" && <span className="text-emerald-500">✅ 신청 가능</span>}
-                                  {msg.verdict_for_client === "conditional" && <span className="text-amber-500">⚠️ 조건부 가능</span>}
-                                  {msg.verdict_for_client === "ineligible" && <span className="text-rose-500">⊘ 신청 불가</span>}
-                                  {msg.expert_insights.selection_rate_estimate && (
-                                    <span className={`ml-auto text-[11px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
-                                      예상 선정률 {msg.expert_insights.selection_rate_estimate}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
+                              {/* 적합성 배지 + 원문 바로가기 */}
+                              <div className={`px-3 py-2 border-b flex items-center gap-2 ${dark ? "border-violet-500/20" : "border-violet-200"}`}>
+                                {msg.verdict_for_client && (
+                                  <span className={`text-[12px] font-bold ${msg.verdict_for_client === "eligible" ? "text-emerald-500" : msg.verdict_for_client === "ineligible" ? "text-rose-500" : "text-amber-500"}`}>
+                                    {msg.verdict_for_client === "eligible" ? "✅ 신청 가능" : msg.verdict_for_client === "ineligible" ? "⊘ 신청 불가" : "⚠️ 조건부 가능"}
+                                  </span>
+                                )}
+                                {msg.expert_insights.selection_rate_estimate && (
+                                  <span className={`text-[11px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
+                                    예상 선정률 {msg.expert_insights.selection_rate_estimate}
+                                  </span>
+                                )}
+                                {msg.origin_url && (
+                                  <a href={msg.origin_url} target="_blank" rel="noopener noreferrer"
+                                    className={`ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${dark ? "border-violet-500/40 text-violet-300 hover:bg-violet-500/15 hover:border-violet-400" : "border-indigo-300 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-400"}`}>
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    원문 바로가기
+                                  </a>
+                                )}
+                              </div>
                               <div className="p-3 space-y-3 text-[12px]">
                                 {msg.expert_insights.common_pitfalls && msg.expert_insights.common_pitfalls.length > 0 && (
                                   <div>
@@ -1159,16 +1168,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               </div>
                             </div>
                           )}
-                          {/* 원문 바로가기 — 공고 상담 중 AI 응답 아래 항상 표시 */}
-                          {msg.role === "assistant" && selectedMatchedAnnouncement?.origin_url && (
-                            <div className="mt-2">
-                              <a href={selectedMatchedAnnouncement.origin_url} target="_blank" rel="noopener noreferrer"
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${dark ? "border-white/10 text-slate-400 hover:text-violet-400 hover:border-violet-500/30 hover:bg-violet-500/5" : "border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50"}`}>
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                원문 바로가기
-                              </a>
-                            </div>
-                          )}
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">
@@ -1213,7 +1212,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                     const consultMsg = `『${m.title || m.program_title || "공고"}』 공고를 분석해주세요.`;
                                     const newHistory = [...messages, { role: "user" as const, text: consultMsg }];
                                     setMessages(newHistory);
-                                    sendToAI(newHistory, { action: "consult", announcement_id: aid, is_announcement_start: true });
+                                    sendToAI(newHistory, { action: "consult", announcement_id: aid, is_announcement_start: true, origin_url: m.origin_url || undefined });
                                   };
                                 return (
                                 <div key={mi}

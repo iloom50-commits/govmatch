@@ -392,7 +392,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }, [loading]);
 
   // ─── AI 대화 전송 ───
-  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult" | "detail_analysis"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string; origin_url?: string }) => {
+  const sendToAI = useCallback(async (chatHistory: ChatMessage[], options?: { action?: "match" | "consult" | "fund_consult" | "detail_analysis" | "chat"; profile_override?: any; announcement_id?: number; is_announcement_start?: boolean; mode?: string; origin_url?: string }) => {
     setLoading(true);
     try {
       const messagesPayload = chatHistory.map((m, i) => ({

@@ -33,14 +33,25 @@ def _call_gemini(prompt: str) -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-2.5-flash")
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config={
+                "temperature": 0.2,
+                "max_output_tokens": 512,
+                "response_mime_type": "application/json",
+            },
+        )
         resp = model.generate_content(prompt)
-        text = resp.text.strip()
-        # JSON 추출
+        text = (resp.text or "").strip()
+        if not text:
+            print("[Orchestrator/quality] Gemini 응답이 비어있음")
+            return {}
+        # JSON 추출 (마크다운 감싸기 방어)
         start = text.find("{")
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
             return json.loads(text[start:end])
+        print(f"[Orchestrator/quality] JSON 파싱 실패: {text[:100]}")
     except Exception as e:
         print(f"[Orchestrator/quality] Gemini 오류: {e}")
     return {}
@@ -56,7 +67,7 @@ def check_quality(db_conn) -> dict:
         cur.execute("""
             SELECT id, session_id, messages, conclusion, updated_at
             FROM ai_consult_logs
-            WHERE updated_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+            WHERE updated_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
               AND messages IS NOT NULL
             ORDER BY updated_at DESC
             LIMIT 50
@@ -67,7 +78,7 @@ def check_quality(db_conn) -> dict:
         return {"error": str(e), "samples": [], "avg_scores": {}}
 
     if not rows:
-        return {"samples": [], "avg_scores": {}, "low_quality_count": 0}
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0}
 
     sample = random.sample(rows, min(5, len(rows)))
     results = []
@@ -102,7 +113,7 @@ def check_quality(db_conn) -> dict:
         })
 
     if not results:
-        return {"samples": [], "avg_scores": {}, "low_quality_count": 0}
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0}
 
     # 평균 집계
     avg = {}

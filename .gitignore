@@ -46,3 +46,4 @@ test-screenshots/
 
 # Test scripts (Playwright 등)
 test-*.js
+tests/e2e/.auth-state.json

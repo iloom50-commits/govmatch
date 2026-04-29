@@ -3764,13 +3764,19 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         try: conn.rollback()
         except: pass
 
-    # ── LITE 상담 학습 트리거: 대화 5턴 이상이면 지식 추출 ──
+    # ── LITE 상담 학습 트리거: 대화 3턴 이상이면 지식 추출 ──
     user_turn_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if user_turn_count >= 5:
+    if user_turn_count >= 3:
         try:
             from app.services.ai_consultant import extract_and_store_insights
             all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
-            source_tag = f"lite_{req.mode or 'unknown'}"
+            # 에이전트 태그: 개인/기업 구분 보존 (knowledge_base source_agent 격리 기준)
+            if req.mode == "individual_fund":
+                source_tag = "fund_indiv"
+            elif req.mode == "business_fund":
+                source_tag = "fund_biz"
+            else:
+                source_tag = "fund_biz"  # 기본값: 기업
             stored = extract_and_store_insights(all_msgs, conn, source=source_tag)
             if stored > 0:
                 print(f"[LITE learning] Extracted {stored} knowledge items from LITE chat")

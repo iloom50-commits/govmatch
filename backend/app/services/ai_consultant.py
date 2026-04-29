@@ -315,7 +315,7 @@ def extract_and_store_insights(messages: List[Dict], db_conn, source: str = "pro
                 db_conn=db_conn,
                 category=cat,
                 confidence=conf,
-                source_agent=source.split("_")[0] if "_" in source else source,
+                source_agent=source,  # 전체 태그 보존 (fund_biz/fund_indiv/pro_biz/pro_indiv)
             )
             stored += 1
         except Exception as ie:
@@ -1660,11 +1660,19 @@ def chat_lite_fund_expert(
                     last_user_text = m.get("text", "")
                     break
             if last_user_text:
+                # 에이전트별 지식 격리 — PRO는 전체, LITE는 자기 영역만
+                if pro_consult_context:
+                    _allowed = None  # PRO: 전체 조회
+                elif is_individual:
+                    _allowed = ["fund_indiv", "pro_indiv", "pro"]
+                else:
+                    _allowed = ["fund_biz", "pro_biz", "pro"]
                 kb_items = get_relevant_knowledge(
-                    category=None,  # 카테고리 제한 없이 의미검색 우선
+                    category=None,
                     db_conn=db_conn,
                     query=last_user_text,
                     limit=5,
+                    allowed_agents=_allowed,
                 )
                 if kb_items:
                     parts = ["\n\n[★★★ 축적된 전문 지식 — 도구 결과에 수치가 없으면 아래 지식의 수치를 반드시 인용하세요]"]

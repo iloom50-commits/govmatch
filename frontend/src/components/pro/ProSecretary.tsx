@@ -1159,6 +1159,16 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                               </div>
                             </div>
                           )}
+                          {/* 원문 바로가기 — 공고 상담 중 AI 응답 아래 항상 표시 */}
+                          {msg.role === "assistant" && selectedMatchedAnnouncement?.origin_url && (
+                            <div className="mt-2">
+                              <a href={selectedMatchedAnnouncement.origin_url} target="_blank" rel="noopener noreferrer"
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${dark ? "border-white/10 text-slate-400 hover:text-violet-400 hover:border-violet-500/30 hover:bg-violet-500/5" : "border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50"}`}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                원문 바로가기
+                              </a>
+                            </div>
+                          )}
                           {/* 선택지 */}
                           {msg.role === "assistant" && msg.choices && msg.choices.length > 0 && i === messages.length - 1 && !loading && (
                             <div className="flex flex-wrap gap-2 mt-2">

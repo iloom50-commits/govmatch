@@ -6294,7 +6294,7 @@ def _run_bulk_analysis(mode: str, limit: int):
                     _bulk_job["errors"].append({"id": ann_id, "error": str(ex)[:100]})
 
             _bulk_job["done"] += 1
-            _t.sleep(0.5)  # Gemini rate limit 여유
+            _t.sleep(0.1)  # 최소 대기 (Gemini Flash 속도 대응)
 
     except Exception as ex:
         _bulk_job["errors"].append({"fatal": str(ex)[:200]})
@@ -6352,8 +6352,8 @@ def api_bulk_analyze_db_check(password: str):
         SELECT
             COUNT(*) AS total_active,
             COUNT(aa.id) AS has_analysis,
-            COUNT(CASE WHEN aa.full_text IS NOT NULL AND LENGTH(aa.full_text) >= 500 THEN 1 END) AS has_fulltext,
-            COUNT(CASE WHEN aa.source_type IN ('summary','') OR aa.source_type IS NULL THEN 1 END) AS summary_only,
+            COUNT(CASE WHEN aa.id IS NOT NULL AND aa.full_text IS NOT NULL AND LENGTH(aa.full_text) >= 500 THEN 1 END) AS has_fulltext,
+            COUNT(CASE WHEN aa.id IS NOT NULL AND (aa.source_type IN ('summary','') OR aa.source_type IS NULL OR LENGTH(COALESCE(aa.full_text,'')) < 500) THEN 1 END) AS summary_or_short,
             COUNT(CASE WHEN aa.id IS NULL THEN 1 END) AS no_analysis
         FROM announcements a
         LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id

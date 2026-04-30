@@ -6100,6 +6100,182 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
     }
 
 
+
+# ── 일괄 선행분석 (백그라운드) ──────────────────────────────────────────
+import threading as _threading
+
+_bulk_job: dict = {
+    "running": False, "stop_requested": False,
+    "total": 0, "done": 0, "success": 0, "failed": 0, "skipped": 0,
+    "started_at": None, "finished_at": None,
+    "current_id": None, "current_title": "",
+    "errors": [],  # 최근 20건 오류
+}
+
+
+def _run_bulk_analysis(mode: str, limit: int):
+    """백그라운드 스레드: 미분석 공고 전체 순차 처리."""
+    import time as _t
+    from app.services.doc_analysis_service import analyze_and_store
+
+    _bulk_job.update({"running": True, "stop_requested": False,
+                      "done": 0, "success": 0, "failed": 0, "skipped": 0,
+                      "started_at": _t.strftime("%Y-%m-%dT%H:%M:%S"),
+                      "finished_at": None, "errors": []})
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if mode == "missing":
+            # announcement_analysis 기록 없는 공고
+            q = """
+                SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
+                FROM announcements a
+                LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+                WHERE aa.id IS NULL
+                  AND a.origin_url IS NOT NULL
+                  AND a.is_archived = FALSE
+                ORDER BY a.announcement_id DESC
+            """
+        else:
+            # summary_only 재분석 포함
+            q = """
+                SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
+                FROM announcements a
+                LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+                WHERE (aa.id IS NULL OR aa.source_type IN ('summary', ''))
+                  AND a.origin_url IS NOT NULL
+                  AND a.is_archived = FALSE
+                ORDER BY a.announcement_id DESC
+            """
+        if limit > 0:
+            q += f" LIMIT {limit}"
+
+        cur.execute(q)
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+
+        _bulk_job["total"] = len(rows)
+
+        for row in rows:
+            if _bulk_job["stop_requested"]:
+                break
+
+            ann_id = row["announcement_id"]
+            _bulk_job["current_id"] = ann_id
+            _bulk_job["current_title"] = (row.get("title") or "")[:50]
+
+            try:
+                item_conn = get_db_connection()
+                res = analyze_and_store(
+                    announcement_id=ann_id,
+                    origin_url=row.get("origin_url") or "",
+                    title=row.get("title") or "",
+                    db_conn=item_conn,
+                    summary_text=row.get("summary_text") or "",
+                )
+                item_conn.close()
+                if res.get("success"):
+                    _bulk_job["success"] += 1
+                else:
+                    _bulk_job["failed"] += 1
+                    if len(_bulk_job["errors"]) < 20:
+                        _bulk_job["errors"].append({
+                            "id": ann_id, "title": (row.get("title") or "")[:40],
+                            "error": (res.get("error") or "")[:100],
+                            "source": res.get("source_type", ""),
+                        })
+            except Exception as ex:
+                _bulk_job["failed"] += 1
+                if len(_bulk_job["errors"]) < 20:
+                    _bulk_job["errors"].append({"id": ann_id, "error": str(ex)[:100]})
+
+            _bulk_job["done"] += 1
+            _t.sleep(0.5)  # Gemini rate limit 여유
+
+    except Exception as ex:
+        _bulk_job["errors"].append({"fatal": str(ex)[:200]})
+    finally:
+        _bulk_job.update({"running": False, "current_id": None,
+                          "finished_at": _t.strftime("%Y-%m-%dT%H:%M:%S")})
+
+
+@app.post("/api/admin/bulk-analyze/start")
+def api_bulk_analyze_start(req: AdminAuthRequest, mode: str = "missing", limit: int = 0):
+    """백그라운드로 미분석 공고 일괄 선행분석.
+
+    mode=missing  : announcement_analysis 기록 없는 공고만 (기본, ~9,022건)
+    mode=all      : summary_only 재분석 포함 (~12,000건)
+    limit=N       : N건만 처리 (0=전체)
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+    if _bulk_job["running"]:
+        return {"status": "ALREADY_RUNNING", **_bulk_job}
+
+    t = _threading.Thread(target=_run_bulk_analysis, args=(mode, limit), daemon=True)
+    t.start()
+    return {"status": "STARTED", "mode": mode, "limit": limit}
+
+
+@app.get("/api/admin/bulk-analyze/status")
+def api_bulk_analyze_status(password: str):
+    """일괄 분석 진행 상황 조회."""
+    if password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+    pct = round(_bulk_job["done"] / _bulk_job["total"] * 100, 1) if _bulk_job["total"] else 0
+    return {**_bulk_job, "progress_pct": pct}
+
+
+@app.post("/api/admin/bulk-analyze/stop")
+def api_bulk_analyze_stop(req: AdminAuthRequest):
+    """진행 중인 일괄 분석 중단 요청."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+    _bulk_job["stop_requested"] = True
+    return {"status": "STOP_REQUESTED"}
+
+
+@app.get("/api/admin/bulk-analyze/db-check")
+def api_bulk_analyze_db_check(password: str):
+    """DB 저장 검증: announcement_analysis 현황 + 샘플."""
+    if password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            COUNT(*) AS total_active,
+            COUNT(aa.id) AS has_analysis,
+            COUNT(CASE WHEN aa.full_text IS NOT NULL AND LENGTH(aa.full_text) >= 500 THEN 1 END) AS has_fulltext,
+            COUNT(CASE WHEN aa.source_type IN ('summary','') OR aa.source_type IS NULL THEN 1 END) AS summary_only,
+            COUNT(CASE WHEN aa.id IS NULL THEN 1 END) AS no_analysis
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+        WHERE a.is_archived = FALSE
+    """)
+    stats = dict(cur.fetchone())
+
+    # 최근 분석 완료 샘플 3건
+    cur.execute("""
+        SELECT a.announcement_id, a.title, aa.source_type,
+               LENGTH(aa.full_text) AS text_len,
+               aa.updated_at,
+               CASE WHEN aa.parsed_sections IS NOT NULL THEN
+                   LENGTH(aa.parsed_sections::text) END AS sections_len
+        FROM announcement_analysis aa
+        JOIN announcements a ON a.announcement_id = aa.announcement_id
+        WHERE aa.full_text IS NOT NULL AND LENGTH(aa.full_text) >= 500
+        ORDER BY aa.updated_at DESC
+        LIMIT 3
+    """)
+    samples = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return {"stats": stats, "recent_samples": samples}
+
+
 @app.post("/api/admin/backfill-support-amount")
 def api_backfill_support_amount(req: AdminAuthRequest, commit: bool = False, limit: int = 0):
     """관리자: 기존 공고의 support_amount 빈 필드를 summary_text/title 에서 정규식으로 채움.

@@ -1083,30 +1083,31 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         const _ut = profile?.user_type || "individual";
         const hasProfile = (() => {
           if (!profile) return false;
-          if (_ut === "business") return !!(_city || profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code);
+          if (_ut === "business") return !!(_city && (profile.revenue_bracket || profile.employee_count_bracket || profile.industry_code));
           if (_ut === "individual") return !!(profile.age_range || profile.income_level || profile.family_type || profile.employment_status || profile.gender);
-          return !!(_city || profile.revenue_bracket || profile.industry_code || profile.age_range || profile.income_level);
+          // both: 소재지 + 기업 정보 모두 있어야 완성
+          return !!(_city && (profile.revenue_bracket || profile.industry_code));
         })();
         const allDone = hasProfile && hasNotificationSet;
 
         if (!profile) return null;
 
         if (allDone) return (
-          <div className="relative z-10 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 shadow-sm">
+          <button
+            onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
+            className="relative z-10 w-full p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all active:scale-[0.98] text-left"
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">✅</div>
               <div className="flex-1 min-w-0">
                 <p className="text-[14px] font-bold text-emerald-800">맞춤 알림 설정 완료</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">평일 오전 9시에 맞춤 공고를 받아보고 있어요</p>
               </div>
-              <button
-                onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
-                className="flex-shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-              >
+              <span className="flex-shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-700 bg-emerald-100 rounded-lg">
                 수정
-              </button>
+              </span>
             </div>
-          </div>
+          </button>
         );
 
         // 프로필 미완성 → 프로필 폼부터 / 프로필 완성+알림 미설정 → 알림 설정만

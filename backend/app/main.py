@@ -828,9 +828,10 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         if not is_individual and ann_target == "individual":
             ineligible_ids.append(ann_id); continue
 
-        # 지역 전용인데 내 지역 아님 → 후순위 (announcements.region 컬럼 기준)
+        # 지역 전용인데 내 지역 아님 → 후순위
+        # _check_region_exclusion은 region 비어있어도 title [지역명] 패턴까지 검사하므로 항상 호출
         _region_specific = bool(region and region not in ("전국", "", "전국 및 각 지역"))
-        if user_city and _region_specific:
+        if user_city:
             excluded, _ = _check_region_exclusion(user_city, region, title)
             if excluded:
                 ineligible_ids.append(ann_id); continue

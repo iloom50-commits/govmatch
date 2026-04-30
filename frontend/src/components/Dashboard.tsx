@@ -728,7 +728,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
-  const [publicServerTotal, setPublicServerTotal] = useState(0);
+  const [publicServerTotal, setPublicServerTotal] = useState(0);  // 현재 탭 페이지네이션용
+  const [publicAllTotal, setPublicAllTotal] = useState(0);         // 전체 탭 카운트 표시용
   const [publicLoading, setPublicLoading] = useState(false);
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
@@ -746,6 +747,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (publicCache.current[cacheKey]) {
       setPublicData(publicCache.current[cacheKey].data);
       setPublicServerTotal(publicCache.current[cacheKey].total);
+      if (activeTab === "all") setPublicAllTotal(publicCache.current[cacheKey].total);
       return;
     }
 
@@ -766,6 +768,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         if (d.status === "SUCCESS") {
           setPublicData(d.data || []);
           setPublicServerTotal(d.total || 0);
+          if (activeTab === "all") setPublicAllTotal(d.total || 0);
           publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
           if (d.total) setTotalAnnouncementCount(prev => prev || d.total);
           if (d.category_counts && onCategoryCountsLoaded) {
@@ -997,8 +1000,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const tabCounts = useMemo(() => {
     const activeCounts = majorTab === "business" ? categoryCountsBiz : categoryCountsInd;
     if (activeCounts && Object.keys(activeCounts).length > 0) {
-      // 전체 건수: publicServerTotal 우선 (서버 집계가 더 정확)
-      const allCount = publicServerTotal > 0 ? publicServerTotal : Object.values(activeCounts).reduce((a, b) => a + b, 0);
+      // 전체 건수: publicAllTotal 우선 (카테고리 탭의 total로 덮어씌워지지 않음)
+      const allCount = publicAllTotal > 0 ? publicAllTotal : Object.values(activeCounts).reduce((a, b) => a + b, 0);
       const counts: Record<string, number> = { all: allCount };
       currentTabs.forEach((g: { key: string; categories: string[] }) => {
         if (g.key === "all") return;
@@ -1015,7 +1018,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return counts;
     }
     // activeCounts 없으면 publicServerTotal 사용 (matches 폴백 금지)
-    const allCount = publicServerTotal > 0 ? publicServerTotal : 0;
+    const allCount = publicAllTotal > 0 ? publicAllTotal : 0;
     const counts: Record<string, number> = { all: allCount };
     currentTabs.forEach((g: { key: string; categories: string[] }) => {
       if (g.key === "all") return;
@@ -1025,7 +1028,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       }).length;
     });
     return counts;
-  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd, publicServerTotal, publicData]);
+  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd, publicAllTotal, publicData]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (

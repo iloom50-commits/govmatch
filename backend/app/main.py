@@ -2110,7 +2110,7 @@ def api_announcements_public(
 
     # ── 로그인 사용자 + 필터 없음 → 사전캐시 우선, 없으면 실시간 CTE ──
     _is_logged_in = False  # 로그인 여부 — 공유 캐시 우회 판단용
-    if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
+    if authorization and authorization.startswith("Bearer ") and not search and not region:
         try:
             current_user = _decode_jwt(authorization.split(" ", 1)[1])
             bn = current_user.get("bn")
@@ -2138,11 +2138,29 @@ def api_announcements_public(
 
                     eligible_ids = cached.get("eligible_ids") or []
                     ineligible_ids = cached.get("ineligible_ids") or []
-                    all_ids = eligible_ids + ineligible_ids
-                    total = len(all_ids)
 
-                    # 페이지 슬라이스
-                    page_ids = all_ids[offset: offset + size]
+                    # 카테고리 탭: eligible_ids 중 해당 카테고리만 필터
+                    if category:
+                        _all_cands = eligible_ids + ineligible_ids
+                        if _all_cands:
+                            _cid_str = ",".join(str(i) for i in _all_cands)
+                            _pcur.execute(
+                                f"""SELECT announcement_id FROM announcements
+                                    WHERE announcement_id IN ({_cid_str})
+                                      AND category ILIKE %s
+                                      AND {valid_announcement_where()}""",
+                                (f"%{category}%",)
+                            )
+                            _matched = {r["announcement_id"] for r in _pcur.fetchall()}
+                            display_ids = [i for i in _all_cands if i in _matched]
+                        else:
+                            display_ids = []
+                        total = len(display_ids)
+                        page_ids = display_ids[offset: offset + size]
+                    else:
+                        all_ids = eligible_ids + ineligible_ids
+                        total = len(all_ids)
+                        page_ids = all_ids[offset: offset + size]
 
                     if page_ids:
                         # ID 순서를 유지하면서 공고 본문 조회
@@ -2315,6 +2333,40 @@ def api_announcements_public(
                         type_params + bucket_params + [target_type or "business", today_bucket, size, offset],
                     )
                     rows = [dict(r) for r in _pcur.fetchall()]
+
+                    # 백그라운드: 전체 정렬 ID 목록 → user_match_cache 저장 (신규/만료 시 1회)
+                    import threading as _thr, json as _jcache
+                    def _bg_cache_save(_bn, _ct, _fw, _tp, _bs, _bp, _tt, _tb):
+                        try:
+                            _sc = get_db_connection(); _scu = _sc.cursor()
+                            _scu.execute(
+                                f"""WITH ann AS (
+                                    SELECT announcement_id, {_bs} AS bucket
+                                    FROM announcements WHERE {_fw}
+                                ) SELECT announcement_id FROM ann
+                                ORDER BY CASE WHEN bucket=4 THEN 11 WHEN bucket=3 THEN 10
+                                     WHEN %s='individual' THEN CASE WHEN bucket=0 THEN 0 WHEN bucket=2 THEN 1 WHEN bucket=1 THEN 2 ELSE 5 END
+                                     ELSE (bucket-%s+3)%%3 END,
+                                deadline_date ASC NULLS LAST, created_at DESC""",
+                                _tp + _bp + [_tt or "business", _tb]
+                            )
+                            _ids = [r["announcement_id"] for r in _scu.fetchall()]
+                            _cd = _jcache.dumps({"eligible_ids": _ids, "ineligible_ids": []}, ensure_ascii=False)
+                            _scu.execute(
+                                """INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
+                                   VALUES (%s, %s, %s::jsonb, CURRENT_TIMESTAMP)
+                                   ON CONFLICT (business_number, target_type)
+                                   DO UPDATE SET match_data=EXCLUDED.match_data, created_at=CURRENT_TIMESTAMP""",
+                                (_bn, _ct, _cd)
+                            )
+                            _sc.commit(); _sc.close()
+                        except Exception as _e:
+                            print(f"[realtime-cache-save] {_e}")
+                    _thr.Thread(
+                        target=_bg_cache_save,
+                        args=(bn, cache_type, full_where, type_params, bucket_sql, bucket_params, target_type, today_bucket),
+                        daemon=True
+                    ).start()
 
                     cat_cache_key = f"cat_counts:{target_type or 'all'}"
                     category_counts = _get_cached(cat_cache_key)

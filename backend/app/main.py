@@ -2273,7 +2273,10 @@ def api_announcements_public(
                             ELSE 3
                         END
                     """
-                    bucket_params = [user_target] + region_params + interest_params
+                    # region_params는 두 번 필요:
+                    # 1) _other_region_sql 안 NOT (region ILIKE %s)
+                    # 2) WHEN region_sql AND has_amount THEN 0  (region ILIKE %s)
+                    bucket_params = [user_target] + region_params + region_params + interest_params
 
                     valid_where = valid_announcement_where()
                     if target_type:

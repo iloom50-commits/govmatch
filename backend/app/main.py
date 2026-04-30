@@ -6216,27 +6216,36 @@ def _run_bulk_analysis(mode: str, limit: int):
         conn = get_db_connection()
         cur = conn.cursor()
 
+        # 공통 유효 조건: 마감 안된 공고만
+        _active_cond = """
+            AND a.is_archived = FALSE
+            AND (
+                a.deadline_type = 'ongoing'
+                OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE)
+                OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')
+            )
+        """
         if mode == "missing":
             # announcement_analysis 기록 없는 공고
-            q = """
+            q = f"""
                 SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
                 FROM announcements a
                 LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
                 WHERE aa.id IS NULL
                   AND a.origin_url IS NOT NULL
-                  AND a.is_archived = FALSE
-                ORDER BY a.announcement_id DESC
+                  {_active_cond}
+                ORDER BY a.deadline_date ASC NULLS LAST, a.announcement_id DESC
             """
         else:
             # summary_only 재분석 포함
-            q = """
+            q = f"""
                 SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
                 FROM announcements a
                 LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
                 WHERE (aa.id IS NULL OR aa.source_type IN ('summary', ''))
                   AND a.origin_url IS NOT NULL
-                  AND a.is_archived = FALSE
-                ORDER BY a.announcement_id DESC
+                  {_active_cond}
+                ORDER BY a.deadline_date ASC NULLS LAST, a.announcement_id DESC
             """
         if limit > 0:
             q += f" LIMIT {limit}"

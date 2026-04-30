@@ -2139,28 +2139,14 @@ def api_announcements_public(
                     eligible_ids = cached.get("eligible_ids") or []
                     ineligible_ids = cached.get("ineligible_ids") or []
 
-                    # 카테고리 탭: eligible_ids 중 해당 카테고리만 필터
+                    # 카테고리 탭: 캐시 없이 일반 경로로 처리 (IN 쿼리 성능 이슈)
                     if category:
-                        _all_cands = eligible_ids + ineligible_ids
-                        if _all_cands:
-                            _cid_str = ",".join(str(i) for i in _all_cands)
-                            _pcur.execute(
-                                f"""SELECT announcement_id FROM announcements
-                                    WHERE announcement_id IN ({_cid_str})
-                                      AND category ILIKE %s
-                                      AND {valid_announcement_where()}""",
-                                (f"%{category}%",)
-                            )
-                            _matched = {r["announcement_id"] for r in _pcur.fetchall()}
-                            display_ids = [i for i in _all_cands if i in _matched]
-                        else:
-                            display_ids = []
-                        total = len(display_ids)
-                        page_ids = display_ids[offset: offset + size]
-                    else:
-                        all_ids = eligible_ids + ineligible_ids
-                        total = len(all_ids)
-                        page_ids = all_ids[offset: offset + size]
+                        _pc.close()
+                        raise ValueError("no-cache-category-fallthrough")
+
+                    all_ids = eligible_ids + ineligible_ids
+                    total = len(all_ids)
+                    page_ids = all_ids[offset: offset + size]
 
                     if page_ids:
                         # ID 순서를 유지하면서 공고 본문 조회

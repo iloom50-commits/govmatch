@@ -2234,10 +2234,10 @@ def api_announcements_public(
                     }
 
                 # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──
-                # 카테고리 탭은 실시간 CTE 생략 (전체 행 bucket 계산이 너무 느림)
-                if category:
+                # tab=local/national 은 일반 SQL 경로가 더 빠름 → fall-through
+                if category or tab in ("local", "national"):
                     _pc.close()
-                    raise ValueError("no-cache-category-fallthrough")
+                    raise ValueError("no-cache-tab-fallthrough")
 
                 # 사용자 지역·관심분야 조회 (같은 연결 재사용)
                 _pcur.execute(

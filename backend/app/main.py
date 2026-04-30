@@ -761,54 +761,46 @@ def _run_prematch_cache() -> int:
 
 
 def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> dict:
-    """사용자별 전체 공고 정렬 순서 계산 (하루 1회 배치용).
-    eligible_ids(자격 가능, 버킷 로테이션 순) + ineligible_ids(후순위) 반환.
+    """사용자별 공고 정렬 순서 계산 (하루 1회 배치용).
+    local(내 지역) / national(전국) 분리 + 매칭 점수 정렬.
+    하위호환: eligible_ids / ineligible_ids 도 함께 반환.
     """
-    from app.core.matcher import _check_region_exclusion, _rotate_buckets
+    from app.core.matcher import _check_region_exclusion
     from app.services.rule_engine import _normalize_region
 
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         f"""SELECT announcement_id, title, region, category,
-                   support_amount, target_type, deadline_date,
+                   support_amount, support_amount_max, target_type, deadline_date,
                    eligibility_logic
             FROM announcements
             WHERE {valid_announcement_where()}
-            ORDER BY
-                CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
-                deadline_date ASC NULLS LAST,
-                created_at DESC"""
+            ORDER BY deadline_date ASC NULLS LAST, created_at DESC"""
     )
     all_anns = [dict(r) for r in cur.fetchall()]
     conn.close()
 
-    # 사용자 정보 추출
     raw_city = str(user_profile.get("address_city", "") or "")
     cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
     user_city = _normalize_region(cities[0]) if cities else ""
     interests = [i.strip() for i in str(user_profile.get("interests", "") or "").split(",") if i.strip()]
     gender = str(user_profile.get("gender", "") or "")
     ind_major = str(user_profile.get("industry_code") or "")[:2]
-    is_farmer = ind_major in ("01", "02", "03")  # 농업/임업/어업 업종
+    is_farmer = ind_major in ("01", "02", "03")
 
-    # 개인: 지역 → 관심분야 → 전국공고 고정 / 기업: 로테이션
-    if is_individual:
-        bucket_order = ["region", "interest", "national_fund", "deadline", "fresh"]
-    else:
-        bucket_order = _rotate_buckets(user_profile)
-
-    buckets: dict = {b: [] for b in bucket_order}
-    buckets["other"] = []
-    ineligible_ids: list = []
-
-    # 특정 대상 제한 키워드
     RESTRICTED_ALWAYS = ["장애인기업", "장애인창업", "농업인", "영농조합", "어업인", "수산업", "보훈", "제대군인"]
     FEMALE_ONLY = ["여성기업", "여성창업", "여성경제인"]
     YOUTH_BIZ = ["청년창업", "청년기업", "만39세", "만 39세"]
+    _AGRI_CATS = ("농림", "수산", "임업", "축산")
 
-    import datetime as _dt_batch
+    import datetime as _dt_batch, re as _re_bkt
     _today = _dt_batch.date.today()
+
+    local_scored: list = []    # [(score, ann_id), ...]
+    national_scored: list = []
+    eligible_ids: list = []
+    ineligible_ids: list = []
 
     for ann in all_anns:
         ann_id = ann["announcement_id"]
@@ -817,27 +809,21 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         ann_target = (ann.get("target_type", "") or "").strip()
         category = ann.get("category", "") or ""
 
-        # 마감일 지난 공고 → 후순위 (ongoing 타입이어도 deadline_date가 과거면 후순위)
         dl = ann.get("deadline_date")
         if dl and (dl.date() if hasattr(dl, "date") else dl) < _today:
             ineligible_ids.append(ann_id); continue
 
-        # target_type 불일치 → 후순위
         if is_individual and ann_target == "business":
             ineligible_ids.append(ann_id); continue
         if not is_individual and ann_target == "individual":
             ineligible_ids.append(ann_id); continue
 
-        # 지역 전용인데 내 지역 아님 → 후순위
-        # _check_region_exclusion은 region 비어있어도 title [지역명] 패턴까지 검사하므로 항상 호출
         _region_specific = bool(region and region not in ("전국", "", "전국 및 각 지역"))
         if user_city:
             excluded, _ = _check_region_exclusion(user_city, region, title)
             if excluded:
                 ineligible_ids.append(ann_id); continue
 
-        # eligibility_logic.region_restriction 보완 체크
-        # region 컬럼이 비어있거나 전국인데 eligibility_logic에 특정 지역 제한이 있는 경우
         if user_city and not _region_specific:
             _el_rr_data = ann.get("eligibility_logic")
             if isinstance(_el_rr_data, str):
@@ -856,22 +842,16 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
                     if excluded:
                         ineligible_ids.append(ann_id); continue
 
-        # 농림/수산 전용 카테고리인데 비농업인 → 후순위
-        _AGRI_CATS = ("농림", "수산", "임업", "축산")
         if not is_farmer and any(ac in category for ac in _AGRI_CATS):
             ineligible_ids.append(ann_id); continue
 
-        # 항상 제외 대상 (업종 관계없이) → 후순위
         if any(kw in title for kw in RESTRICTED_ALWAYS):
             ineligible_ids.append(ann_id); continue
-        # 여성 전용 + 비해당 → 후순위
         if any(kw in title for kw in FEMALE_ONLY) and gender != "여성":
             ineligible_ids.append(ann_id); continue
-        # 청년기업 전용 + 기업 탭 → 후순위
         if not is_individual and any(kw in title for kw in YOUTH_BIZ):
             ineligible_ids.append(ann_id); continue
 
-        # eligibility_logic AI 분석 결과 기반 추가 필터
         el = ann.get("eligibility_logic")
         if el and isinstance(el, str):
             try:
@@ -888,10 +868,32 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
             if el_gender in ("여성", "여성전용", "여성기업", "여성창업자") and gender != "여성":
                 ineligible_ids.append(ann_id); continue
 
-        # 버킷 분류
-        has_amount = bool(ann.get("support_amount"))
-        # 제목 [지역명] 브래킷 추출 (region 필드보다 신뢰도 높음)
-        import re as _re_bkt
+        # ── 매칭 점수 계산 ──
+        score = 0
+
+        # 관심분야 일치 (50점)
+        interest_hit = bool(interests) and any(it in category or it in title for it in interests)
+        if interest_hit:
+            score += 50
+
+        # 지원 금액 규모 (30점) — 1억당 5점, 최대 30점
+        amt_max = ann.get("support_amount_max")
+        if amt_max and isinstance(amt_max, (int, float)) and amt_max > 0:
+            score += min(30, int(amt_max / 100_000_000) * 5)
+
+        # 기본 적합도 (15점) — 필터 통과한 공고에 고정 부여
+        score += 15
+
+        # 마감 임박 (5점)
+        if dl:
+            dl_date = dl.date() if hasattr(dl, "date") else dl
+            days_left = (dl_date - _today).days
+            if 0 < days_left <= 7:
+                score += 5
+            elif days_left <= 30:
+                score += 2
+
+        # ── 지역 / 전국 분류 ──
         _bkt_m = _re_bkt.search(
             r'\[(서울|경기|인천|부산|대구|대전|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)\]',
             title
@@ -899,37 +901,27 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         _title_region = _normalize_region(_bkt_m.group(1)) if _bkt_m else None
         _norm_region = _normalize_region(region)
         _db_is_regional = bool(_norm_region and _norm_region not in ("전국", "", "All"))
-        is_national = not _title_region and not _db_is_regional
-        # 지역 매칭:
-        # - 브래킷 있으면 브래킷 지역 == user_city 여부로 판단 (DB region 무시)
-        # - 브래킷 없으면 DB region이 지역한정 → 이미 line 833-836 exclusion 통과 = 내 지역
         in_my_region = bool(user_city) and (
             (_title_region and _title_region == user_city) or
             (not _title_region and _db_is_regional)
         )
-        interest_hit = bool(interests) and any(
-            (it in category or it in title) for it in interests
-        )
 
+        eligible_ids.append(ann_id)
         if in_my_region:
-            bucket = "region"
-        elif interest_hit:
-            bucket = "interest"
-        elif is_national and has_amount:
-            bucket = "national_fund"
+            local_scored.append((score, ann_id))
         else:
-            bucket = "other"
+            national_scored.append((score, ann_id))
 
-        target = buckets.get(bucket, buckets["other"])
-        target.append(ann_id)
+    # 점수 내림차순 정렬
+    local_scored.sort(key=lambda x: x[0], reverse=True)
+    national_scored.sort(key=lambda x: x[0], reverse=True)
 
-    # 버킷 로테이션 순서대로 합치기
-    eligible_ids: list = []
-    for b in bucket_order:
-        eligible_ids.extend(buckets.get(b, []))
-    eligible_ids.extend(buckets["other"])
-
-    return {"eligible_ids": eligible_ids, "ineligible_ids": ineligible_ids}
+    return {
+        "local": [aid for _, aid in local_scored],
+        "national": [aid for _, aid in national_scored],
+        "eligible_ids": eligible_ids,    # 하위호환 (전체 탭)
+        "ineligible_ids": ineligible_ids,
+    }
 
 
 def _log_expired_announcements():
@@ -2091,6 +2083,7 @@ def api_announcements_public(
     category: Optional[str] = None,
     search: Optional[str] = None,
     target_type: Optional[str] = None,
+    tab: Optional[str] = None,          # "local" | "national" | None(전체)
     authorization: Optional[str] = Header(None),
 ):
     """비로그인 사용자도 접근 가능한 공고 리스트 (마감 전 공고만)"""
@@ -2110,7 +2103,7 @@ def api_announcements_public(
 
     # ── 로그인 사용자 + 필터 없음 → 사전캐시 우선, 없으면 실시간 CTE ──
     _is_logged_in = False  # 로그인 여부 — 공유 캐시 우회 판단용
-    if authorization and authorization.startswith("Bearer ") and not search and not region:
+    if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
         try:
             current_user = _decode_jwt(authorization.split(" ", 1)[1])
             bn = current_user.get("bn")
@@ -2136,13 +2129,52 @@ def api_announcements_public(
                     if isinstance(cached, str):
                         import json as _j; cached = _j.loads(cached)
 
+                    # ── 신형식: local / national 분리 캐시 ──
+                    if tab in ("local", "national") and tab in cached:
+                        tab_ids = cached[tab]
+                        total = len(tab_ids)
+                        page_ids = tab_ids[offset: offset + size]
+
+                        if page_ids:
+                            id_list = ",".join(str(i) for i in page_ids)
+                            _pcur.execute(
+                                f"""SELECT announcement_id, title, region, category, department,
+                                           support_amount, support_amount_max, support_amount_min, support_amount_type,
+                                           deadline_date, origin_source, created_at,
+                                           COALESCE(target_type, 'business') AS target_type,
+                                           origin_url, summary_text, eligibility_logic,
+                                           established_years_limit, revenue_limit, employee_limit
+                                    FROM announcements
+                                    WHERE announcement_id IN ({id_list})
+                                      AND {valid_announcement_where()}"""
+                            )
+                            rows_map = {{r["announcement_id"]: dict(r) for r in _pcur.fetchall()}}
+                            rows = [rows_map[i] for i in page_ids if i in rows_map]
+                        else:
+                            rows = []
+                        _pc.close()
+                        return {
+                            "status": "SUCCESS",
+                            "data": rows,
+                            "total": total,
+                            "page": page,
+                            "size": size,
+                            "regions": [],
+                            "categories": [],
+                            "category_counts": {},
+                            "personalized": True,
+                            "source": "cache",
+                            "tab": tab,
+                        }
+
+                    # ── tab 요청인데 캐시에 해당 키 없음 (구형식) → 일반 경로 ──
+                    if tab in ("local", "national"):
+                        _pc.close()
+                        raise ValueError("no-cache-tab-fallthrough")
+
+                    # ── 전체 탭 (tab=None): eligible_ids + ineligible_ids 기존 로직 ──
                     eligible_ids = cached.get("eligible_ids") or []
                     ineligible_ids = cached.get("ineligible_ids") or []
-
-                    # 카테고리 탭: 캐시 없이 일반 경로로 처리 (IN 쿼리 성능 이슈)
-                    if category:
-                        _pc.close()
-                        raise ValueError("no-cache-category-fallthrough")
 
                     all_ids = eligible_ids + ineligible_ids
                     total = len(all_ids)
@@ -2342,7 +2374,28 @@ def api_announcements_public(
                                 _tp + _bp + [_tt or "business", _tb]
                             )
                             _ids = [r["announcement_id"] for r in _scu.fetchall()]
-                            _cd = _jcache.dumps({"eligible_ids": _ids, "ineligible_ids": []}, ensure_ascii=False)
+                            # 지역/전국 분리 (신형식 포함 저장)
+                            _scu.execute(
+                                f"""SELECT announcement_id, region, title FROM announcements WHERE {_fw}""",
+                                _tp
+                            )
+                            _ann_map = {r["announcement_id"]: dict(r) for r in _scu.fetchall()}
+                            _local, _national = [], []
+                            for _aid in _ids:
+                                _ar = (_ann_map.get(_aid) or {})
+                                _reg = (_ar.get("region") or "").strip()
+                                _tit = (_ar.get("title") or "")
+                                _is_nat = not _reg or _reg in ("전국", "전국 및 각 지역", "All")
+                                if _is_nat:
+                                    _national.append(_aid)
+                                else:
+                                    _local.append(_aid)
+                            _cd = _jcache.dumps({
+                                "eligible_ids": _ids,
+                                "ineligible_ids": [],
+                                "local": _local,
+                                "national": _national,
+                            }, ensure_ascii=False)
                             _scu.execute(
                                 """INSERT INTO user_match_cache (business_number, target_type, match_data, created_at)
                                    VALUES (%s, %s, %s::jsonb, CURRENT_TIMESTAMP)
@@ -2394,11 +2447,75 @@ def api_announcements_public(
                 _pc.close()
         except Exception as _pe:
             _is_logged_in = True  # 예외 시에도 로그인 사용자로 처리 — 공유 캐시 우회
-            if "no-cache-category-fallthrough" not in str(_pe):
+            _silent = ("no-cache-category-fallthrough", "no-cache-tab-fallthrough")
+            if not any(s in str(_pe) for s in _silent):
                 print(f"[personalized] fallback to standard SQL: {_pe}")
 
+    # tab=local/national 일반 경로: 지역 필터 SQL로 처리 (캐시 미사용)
+    if tab in ("local", "national") and not region:
+        from app.services.rule_engine import _normalize_region as _nrm_tab
+        _tab_conn = get_db_connection()
+        _tab_cur = _tab_conn.cursor()
+        _tab_where = valid_announcement_where()
+        _tab_params: list = []
+        if target_type:
+            _tab_where += " AND (target_type = %s OR target_type = 'both')"
+            _tab_params.append(target_type)
+        if tab == "national":
+            _tab_where += " AND (region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All'))"
+        elif tab == "local":
+            # 사용자 지역 조회
+            _user_city = ""
+            if _is_logged_in:
+                try:
+                    _u_jwt = _decode_jwt(authorization.split(" ", 1)[1])
+                    _u_bn = _u_jwt.get("bn")
+                    if _u_bn:
+                        _tab_cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_u_bn,))
+                        _urow = _tab_cur.fetchone()
+                        if _urow and _urow.get("address_city"):
+                            _raw = str(_urow["address_city"]).split(",")[0].strip()
+                            _user_city = _nrm_tab(_raw)
+                except Exception:
+                    pass
+            if _user_city:
+                _tab_where += " AND (region ILIKE %s OR title ILIKE %s)"
+                _tab_params.extend([f"%{_user_city}%", f"%[{_user_city}]%"])
+            else:
+                _tab_where += " AND FALSE"  # 지역 정보 없으면 빈 결과
+        _tab_cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_tab_where}", _tab_params)
+        _tab_total = (_tab_cur.fetchone() or {}).get("cnt", 0)
+        _tab_cur.execute(
+            f"""SELECT announcement_id, title, region, category, department,
+                       support_amount, support_amount_max, support_amount_min, support_amount_type,
+                       deadline_date, origin_source, created_at,
+                       COALESCE(target_type, 'business') AS target_type,
+                       origin_url, summary_text, eligibility_logic,
+                       established_years_limit, revenue_limit, employee_limit
+                FROM announcements
+                WHERE {_tab_where}
+                ORDER BY support_amount_max DESC NULLS LAST, deadline_date ASC NULLS LAST, created_at DESC
+                LIMIT %s OFFSET %s""",
+            _tab_params + [size, offset],
+        )
+        _tab_rows = [dict(r) for r in _tab_cur.fetchall()]
+        _tab_conn.close()
+        return {
+            "status": "SUCCESS",
+            "data": _tab_rows,
+            "total": _tab_total,
+            "page": page,
+            "size": size,
+            "regions": [],
+            "categories": [],
+            "category_counts": {},
+            "personalized": False,
+            "source": "tab_sql",
+            "tab": tab,
+        }
+
     # 검색 없는 기본 조회는 캐시 활용 — 로그인 사용자는 공유 캐시 우회
-    if not _is_logged_in and not search and not region and not category:
+    if not _is_logged_in and not search and not region and not category and not tab:
         cache_key = f"pub:v2:{target_type}:{page}:{size}"
         cached = _get_cached(cache_key)
         if cached:

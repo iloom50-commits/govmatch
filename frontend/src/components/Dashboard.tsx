@@ -203,23 +203,11 @@ interface MatchItem {
 // 대분류
 type MajorTab = "business" | "individual";
 
-const BUSINESS_TABS: { label: string; key: string; categories: string[] }[] = [
-  { label: "전체", key: "all", categories: [] },
-  { label: "소상공인", key: "small_biz", categories: ["Small Business/Startup", "SME Support", "General Business Support", "General", "Food Industry", "소상공인", "내수"] },
-  { label: "창업", key: "startup", categories: ["Entrepreneurship", "Small Business/Startup", "창업"] },
-  { label: "R&D/기술", key: "rnd", categories: ["R&D", "R&D/Digital", "기술", "기술개발", "스마트공장", "정보"] },
-  { label: "자금/융자", key: "loan", categories: ["Loan/Investment", "금융"] },
-  { label: "경영/수출/인력", key: "biz", categories: ["Marketing", "General Business Support", "경영", "수출", "수출지원", "인력", "인력지원", "기타"] },
-];
-
-const INDIVIDUAL_TABS: { label: string; key: string; categories: string[] }[] = [
-  { label: "전체", key: "all", categories: [] },
-  { label: "복지", key: "welfare", categories: ["복지", "생활안정", "의료"] },
-  { label: "교육", key: "education", categories: ["교육", "장학", "훈련"] },
-  { label: "주거", key: "housing", categories: ["주거", "주택", "임대"] },
-  { label: "고용", key: "employment", categories: ["고용", "취업", "일자리", "채용"] },
-  { label: "출산/육아", key: "parenting", categories: ["출산", "육아", "보육", "양육"] },
-  { label: "금융/세제", key: "finance", categories: ["금융", "세제", "감면", "대출"] },
+// 지역/전국 2탭 구조 (카테고리 탭 대체)
+const PUBLIC_TABS: { label: string; key: string; tabParam: string }[] = [
+  { label: "전체",    key: "all",      tabParam: "" },
+  { label: "내 지역", key: "local",    tabParam: "local" },
+  { label: "전국",    key: "national", tabParam: "national" },
 ];
 
 type SortKey = "recommend" | "amount" | "deadline";
@@ -383,9 +371,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (dx < 0 && majorTab === "business") switchMajorTab("individual");
     else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
   };
-  const baseTabs = majorTab === "business" ? BUSINESS_TABS : INDIVIDUAL_TABS;
-  // "맞춤 추천" 탭 — 항상 표시
-  const currentTabs = [...baseTabs];
+  // 지역/전국 2탭 구조 (기업/개인 공통)
+  const currentTabs = PUBLIC_TABS;
 
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
@@ -731,6 +718,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [publicServerTotal, setPublicServerTotal] = useState(0);  // 현재 탭 페이지네이션용
   const [publicAllTotal, setPublicAllTotal] = useState(0);         // 전체 탭 카운트 표시용
   const [publicLoading, setPublicLoading] = useState(false);
+  const [tabCacheCounts, setTabCacheCounts] = useState<Record<string, number>>({});
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
   const usePublicData = true;  // 전체 공고 항상 API 데이터 사용 (일별 로테이션 맞춤 정렬)
@@ -738,12 +726,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 서버 데이터 로드
   useEffect(() => {
     const targetType = majorTab === "business" ? "business" : "individual";
-    const group = currentTabs.find((t: { key: string }) => t.key === activeTab);
-    const catKeyword = activeTab === "all" ? "" : (group?.categories?.find((c: string) => /[가-힣]/.test(c)) || group?.categories?.[0] || "");
+    const tabDef = currentTabs.find((t) => t.key === activeTab);
+    const tabParam = tabDef?.tabParam || "";
     const search = searchQuery.trim();
     const page = currentPage;
 
-    const cacheKey = `${targetType}:${catKeyword}:${page}:${search}`;
+    const cacheKey = `${targetType}:${tabParam}:${page}:${search}`;
     if (publicCache.current[cacheKey]) {
       setPublicData(publicCache.current[cacheKey].data);
       setPublicServerTotal(publicCache.current[cacheKey].total);
@@ -751,13 +739,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return;
     }
 
-    // 캐시 없음 → 이전 탭 데이터 즉시 비우고 로딩 표시
     setPublicData([]);
     setPublicLoading(true);
 
     let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
-    else if (catKeyword) url += `&category=${encodeURIComponent(catKeyword)}`;
+    else if (tabParam) url += `&tab=${tabParam}`;
 
     const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     fetch(url, {
@@ -780,36 +767,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .finally(() => setPublicLoading(false));
   }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
 
-  // 백그라운드 pre-fetch: 전체 탭 로드 완료(publicAllTotal 세팅) 후 나머지 탭 순차 선로딩
+  // 백그라운드 pre-fetch: 전체 탭 로드 후 내 지역/전국 탭 순차 선로딩
   useEffect(() => {
     if (publicAllTotal === 0 || searchQuery.trim()) return;
     const targetType = majorTab === "business" ? "business" : "individual";
     const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    const catTabs = currentTabs.filter((t: any) => t.key !== "all");
 
     let delay = 800;
-    for (const tab of catTabs) {
-      const catKeyword = tab.categories?.find((c: string) => /[가-힣]/.test(c)) || tab.categories?.[0] || "";
-      if (!catKeyword) continue;
-      const cKey = `${targetType}:${catKeyword}:1:`;
-      if (publicCache.current[cKey]) continue;
-
-      const _url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${targetType}&category=${encodeURIComponent(catKeyword)}`;
-      const _ck = catKeyword;
-      const _cacheKey = cKey;
+    for (const tabDef of PUBLIC_TABS.filter(t => t.tabParam)) {
+      const cKey = `${targetType}:${tabDef.tabParam}:1:`;
+      if (publicCache.current[cKey]) {
+        setTabCacheCounts(prev => ({ ...prev, [tabDef.key]: publicCache.current[cKey].total }));
+        continue;
+      }
+      const _url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=${tabDef.tabParam}`;
+      const _cKey = cKey;
+      const _tabKey = tabDef.key;
       setTimeout(() => {
-        if (publicCache.current[_cacheKey]) return;
+        if (publicCache.current[_cKey]) return;
         fetch(_url, { headers: _tok ? { Authorization: `Bearer ${_tok}` } : {} })
           .then(r => r.json())
           .then(d => {
             if (d.status === "SUCCESS") {
-              publicCache.current[_cacheKey] = { data: d.data || [], total: d.total || 0 };
-              console.log(`[prefetch] ${_ck} ${d.data?.length}건 캐시 완료`);
+              publicCache.current[_cKey] = { data: d.data || [], total: d.total || 0 };
+              setTabCacheCounts(prev => ({ ...prev, [_tabKey]: d.total || 0 }));
             }
           })
           .catch(() => {});
       }, delay);
-      delay += 1200;  // 탭마다 1.2초 간격 (서버 부하 분산)
+      delay += 1200;
     }
   }, [publicAllTotal, majorTab]);
 
@@ -1030,38 +1016,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const searchedMatches = baseMatches;
 
-  const tabCounts = useMemo(() => {
-    const activeCounts = majorTab === "business" ? categoryCountsBiz : categoryCountsInd;
-    if (activeCounts && Object.keys(activeCounts).length > 0) {
-      // 전체 건수: publicAllTotal 우선 (카테고리 탭의 total로 덮어씌워지지 않음)
-      const allCount = publicAllTotal > 0 ? publicAllTotal : Object.values(activeCounts).reduce((a, b) => a + b, 0);
-      const counts: Record<string, number> = { all: allCount };
-      currentTabs.forEach((g: { key: string; categories: string[] }) => {
-        if (g.key === "all") return;
-        counts[g.key] = g.categories.reduce((sum, gc) => {
-          const gcLower = gc.toLowerCase();
-          for (const [cat, cnt] of Object.entries(activeCounts)) {
-            if (cat.toLowerCase().includes(gcLower) || gcLower.includes(cat.toLowerCase())) {
-              sum += cnt;
-            }
-          }
-          return sum;
-        }, 0);
-      });
-      return counts;
-    }
-    // activeCounts 없으면 publicServerTotal 사용 (matches 폴백 금지)
-    const allCount = publicAllTotal > 0 ? publicAllTotal : 0;
-    const counts: Record<string, number> = { all: allCount };
-    currentTabs.forEach((g: { key: string; categories: string[] }) => {
-      if (g.key === "all") return;
-      counts[g.key] = publicData.filter(m => {
-        const cat = (m.category || "").trim();
-        return g.categories.some((gc: string) => cat.toLowerCase().includes(gc.toLowerCase()));
-      }).length;
-    });
-    return counts;
-  }, [searchedMatches, currentTabs, majorTab, categoryCountsBiz, categoryCountsInd, publicAllTotal, publicData]);
+  const tabCounts = useMemo((): Record<string, number> => ({
+    all: publicAllTotal,
+    local: tabCacheCounts.local ?? 0,
+    national: tabCacheCounts.national ?? 0,
+  }), [publicAllTotal, tabCacheCounts]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
@@ -1618,10 +1577,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 >
                   {currentTabs.map((tab) => {
                     const count = tabCounts[tab.key] || 0;
-                    if (tab.key !== "all" && count === 0) return null;
                     return (
                       <option key={tab.key} value={tab.key}>
-                        {tab.label} ({count.toLocaleString()})
+                        {tab.label}{count > 0 ? ` (${count.toLocaleString()})` : ""}
                       </option>
                     );
                   })}
@@ -1631,11 +1589,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </svg>
               </div>
 
-              {/* Desktop: 하위 카테고리 탭 — 가로 스크롤 */}
+              {/* Desktop: 탭 버튼 */}
               <div className="hidden sm:flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {currentTabs.map((tab) => {
                   const count = tabCounts[tab.key] || 0;
-                  if (tab.key !== "all" && count === 0) return null;
                   return (
                     <button
                       key={tab.key}

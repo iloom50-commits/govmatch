@@ -1264,7 +1264,7 @@ def _prewarm_response_cache(startup: bool = False):
                                 WHEN deadline_date IS NOT NULL
                                      AND deadline_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
                                      AND support_amount IS NOT NULL AND support_amount != '' THEN 0
-                                WHEN (region IN ('전국', '', '전국 및 각 지역') OR region IS NULL)
+                                WHEN (region IN ('전국', '', '전국 및 각 지역', 'All') OR region IS NULL)
                                      AND support_amount IS NOT NULL AND support_amount != '' THEN 1
                                 WHEN support_amount IS NOT NULL AND support_amount != '' THEN 2
                                 ELSE 3
@@ -2215,13 +2215,21 @@ def api_announcements_public(
                         inelig_parts.append(f"({agri_ilike})")
                     inelig_sql = " OR ".join(inelig_parts)
 
+                    # 전국 판단: 빈값/전국/All/전국 및 각 지역
+                    _nationwide_sql = "region IN ('전국', '', '전국 및 각 지역', 'All') OR region IS NULL"
+                    # 타지역 판단: 지역한정인데 내 지역 아님 → 후순위(4)
+                    if user_city:
+                        _other_region_sql = f"NOT ({_nationwide_sql}) AND NOT ({region_sql})"
+                    else:
+                        _other_region_sql = "FALSE"
                     bucket_sql = f"""
                         CASE
                             WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 4
                             WHEN COALESCE(target_type, 'business') != %s THEN 4
                             WHEN {inelig_sql} THEN 4
+                            WHEN {_other_region_sql} THEN 4
                             WHEN {region_sql} AND {has_amount_sql} THEN 0
-                            WHEN region IN ('전국', '', '전국 및 각 지역') AND {has_amount_sql} THEN 1
+                            WHEN ({_nationwide_sql}) AND {has_amount_sql} THEN 1
                             WHEN {interest_sql} AND {has_amount_sql} THEN 2
                             ELSE 3
                         END
@@ -2327,8 +2335,15 @@ def api_announcements_public(
     params: list = []
 
     if region:
-        where_clauses.append("region = %s")
-        params.append(region)
+        if region in ("전국", "All", "all"):
+            # 전국 선택 → 전국/빈값/All 포함 (지역한정 제외)
+            where_clauses.append("(region IN ('전국', '', 'All') OR region IS NULL)")
+        else:
+            # 특정 지역 선택 → 정규화된 값으로 조회
+            from app.services.rule_engine import _normalize_region as _nrm
+            _nr = _nrm(region)
+            where_clauses.append("(region = %s OR region = %s)")
+            params.extend([region, _nr])
     if category:
         where_clauses.append("category ILIKE %s")
         params.append(f"%{category}%")
@@ -2456,7 +2471,7 @@ def api_announcements_public(
                     WHEN deadline_date IS NOT NULL
                          AND deadline_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
                          AND support_amount IS NOT NULL AND support_amount != '' THEN 0
-                    WHEN (region IN ('전국', '', '전국 및 각 지역') OR region IS NULL)
+                    WHEN (region IN ('전국', '', '전국 및 각 지역', 'All') OR region IS NULL)
                          AND support_amount IS NOT NULL AND support_amount != '' THEN 1
                     WHEN support_amount IS NOT NULL AND support_amount != '' THEN 2
                     ELSE 3

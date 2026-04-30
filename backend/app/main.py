@@ -6186,19 +6186,23 @@ def _send_bulk_analysis_email_report(is_final: bool = False):
       </p>
     </div>"""
 
-    try:
-        msg = _MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = smtp_user
-        msg["To"]      = to_email
-        msg.attach(_MIMEText(html, "html", "utf-8"))
-        with _smtp.SMTP(smtp_host, smtp_port) as sv:
-            sv.ehlo(); sv.starttls(); sv.ehlo()
-            sv.login(smtp_user, smtp_pw)
-            sv.sendmail(smtp_user, [to_email], msg.as_string())
-        print(f"[BulkReport] 이메일 발송 완료 → {to_email} ({done}/{total}건)")
-    except Exception as ex:
-        print(f"[BulkReport] 이메일 발송 실패: {ex}")
+    def _do_send():
+        try:
+            msg = _MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_user
+            msg["To"]      = to_email
+            msg.attach(_MIMEText(html, "html", "utf-8"))
+            with _smtp.SMTP(smtp_host, smtp_port, timeout=15) as sv:
+                sv.ehlo(); sv.starttls(); sv.ehlo()
+                sv.login(smtp_user, smtp_pw)
+                sv.sendmail(smtp_user, [to_email], msg.as_string())
+            print(f"[BulkReport] 이메일 발송 완료 → {to_email} ({done}/{total}건)")
+        except Exception as ex:
+            print(f"[BulkReport] 이메일 발송 실패: {ex}")
+
+    # 별도 스레드로 실행 — 분석 메인 스레드 블로킹 방지
+    _threading.Thread(target=_do_send, daemon=True).start()
 
 
 def _run_bulk_analysis(mode: str, limit: int):

@@ -1400,8 +1400,33 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            async def _digest_job():
+                """평일 09:00 KST 매칭 이메일/푸시 발송 + 사전매칭 캐시 갱신"""
+                from app.services.notification_service import notification_service
+                try:
+                    print("[Digest] Running daily digest (평일 09:00 KST)...")
+                    results = await notification_service.generate_daily_digest()
+                    sent = sum(1 for r in results if r.get("email_sent"))
+                    push_sent = sum(r.get("push_sent", 0) for r in results)
+                    print(f"[Digest] Done: {len(results)} users, {sent} emails, {push_sent} pushes")
+                except Exception as e:
+                    print(f"[Digest] error: {e}")
+                try:
+                    count = _run_prematch_cache()
+                    print(f"[Digest] Pre-match cache: {count} users")
+                except Exception as e:
+                    print(f"[Digest] pre-match error: {e}")
+
+            pipeline_scheduler.add_job(
+                _digest_job,
+                CronTrigger(hour=DIGEST_HOUR, minute=0, day_of_week="mon-fri"),
+                id="daily_digest",
+                name=f"매칭 이메일 발송 (평일 {DIGEST_HOUR:02d}:00 UTC = KST 09:00)",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - daily 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h")
+            print("[Pipeline] APScheduler started - daily 03:00 KST + digest 09:00 KST(평일) + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:

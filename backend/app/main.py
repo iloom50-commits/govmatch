@@ -901,16 +901,21 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         _title_region = _normalize_region(_bkt_m.group(1)) if _bkt_m else None
         _norm_region = _normalize_region(region)
         _db_is_regional = bool(_norm_region and _norm_region not in ("전국", "", "All"))
+
+        # 내 지역: title [city] 태그 또는 region이 user_city와 매칭
         in_my_region = bool(user_city) and (
             (_title_region and _title_region == user_city) or
-            (not _title_region and _db_is_regional)
+            (not _title_region and _db_is_regional and user_city in _norm_region)
         )
+        # 전국: 지역명이 특정되지 않은 공고 (null/전국/빈값)
+        is_national = not _db_is_regional and not _title_region
 
         eligible_ids.append(ann_id)
         if in_my_region:
             local_scored.append((score, ann_id))
-        else:
+        elif is_national:
             national_scored.append((score, ann_id))
+        # else: 다른 지역 공고 — 두 탭 모두 제외, 전체 탭(eligible_ids)에만 포함
 
     # 점수 내림차순 정렬
     local_scored.sort(key=lambda x: x[0], reverse=True)
@@ -2474,8 +2479,8 @@ def api_announcements_public(
                         _tab_cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_u_bn,))
                         _urow = _tab_cur.fetchone()
                         if _urow and _urow.get("address_city"):
-                            _raw = str(_urow["address_city"]).split(",")[0].strip()
-                            _user_city = _nrm_tab(_raw)
+                            _cities = [c.strip() for c in str(_urow["address_city"]).split(",") if c.strip() and c.strip() != "전국"]
+                            _user_city = _nrm_tab(_cities[0]) if _cities else ""
                 except Exception:
                     pass
             if _user_city:

@@ -2216,6 +2216,11 @@ def api_announcements_public(
                     }
 
                 # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──
+                # 카테고리 탭은 실시간 CTE 생략 (전체 행 bucket 계산이 너무 느림)
+                if category:
+                    _pc.close()
+                    raise ValueError("no-cache-category-fallthrough")
+
                 # 사용자 지역·관심분야 조회 (같은 연결 재사용)
                 _pcur.execute(
                     "SELECT address_city, interests, gender, industry_code FROM users WHERE business_number = %s", (bn,)
@@ -2403,7 +2408,8 @@ def api_announcements_public(
                 _pc.close()
         except Exception as _pe:
             _is_logged_in = True  # 예외 시에도 로그인 사용자로 처리 — 공유 캐시 우회
-            print(f"[personalized] fallback to standard SQL: {_pe}")
+            if "no-cache-category-fallthrough" not in str(_pe):
+                print(f"[personalized] fallback to standard SQL: {_pe}")
 
     # 검색 없는 기본 조회는 캐시 활용 — 로그인 사용자는 공유 캐시 우회
     if not _is_logged_in and not search and not region and not category:

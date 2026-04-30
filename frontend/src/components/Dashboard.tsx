@@ -780,6 +780,39 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .finally(() => setPublicLoading(false));
   }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
 
+  // 백그라운드 pre-fetch: 전체 탭 로드 완료(publicAllTotal 세팅) 후 나머지 탭 순차 선로딩
+  useEffect(() => {
+    if (publicAllTotal === 0 || searchQuery.trim()) return;
+    const targetType = majorTab === "business" ? "business" : "individual";
+    const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const catTabs = currentTabs.filter((t: any) => t.key !== "all");
+
+    let delay = 800;
+    for (const tab of catTabs) {
+      const catKeyword = tab.categories?.find((c: string) => /[가-힣]/.test(c)) || tab.categories?.[0] || "";
+      if (!catKeyword) continue;
+      const cKey = `${targetType}:${catKeyword}:1:`;
+      if (publicCache.current[cKey]) continue;
+
+      const _url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${targetType}&category=${encodeURIComponent(catKeyword)}`;
+      const _ck = catKeyword;
+      const _cacheKey = cKey;
+      setTimeout(() => {
+        if (publicCache.current[_cacheKey]) return;
+        fetch(_url, { headers: _tok ? { Authorization: `Bearer ${_tok}` } : {} })
+          .then(r => r.json())
+          .then(d => {
+            if (d.status === "SUCCESS") {
+              publicCache.current[_cacheKey] = { data: d.data || [], total: d.total || 0 };
+              console.log(`[prefetch] ${_ck} ${d.data?.length}건 캐시 완료`);
+            }
+          })
+          .catch(() => {});
+      }, delay);
+      delay += 1200;  // 탭마다 1.2초 간격 (서버 부하 분산)
+    }
+  }, [publicAllTotal, majorTab]);
+
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {
     if (sidebarOpen) {

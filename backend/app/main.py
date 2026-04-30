@@ -2461,76 +2461,6 @@ def api_announcements_public(
 
     where_sql = " AND ".join(where_clauses)
 
-    # ── 로그인 사용자 + 검색 없음 → 카테고리/지역 탭에서도 개인화 bucket 정렬 ──
-    _tab_bucket_sql = ""
-    _tab_bucket_params: list = []
-    if not search and authorization and authorization.startswith("Bearer "):
-        try:
-            _cur_user2 = _decode_jwt(authorization.split(" ", 1)[1])
-            _bn2 = _cur_user2.get("bn")
-            if _bn2:
-                cursor.execute(
-                    "SELECT address_city, interests, gender, industry_code FROM users WHERE business_number = %s",
-                    (_bn2,)
-                )
-                _urow2 = cursor.fetchone()
-                if _urow2:
-                    _raw_city2 = str(_urow2.get("address_city", "") or "")
-                    _cities2 = [c.strip() for c in _raw_city2.split(",") if c.strip() and c.strip() != "전국"]
-                    _ucity2 = _cities2[0] if _cities2 else ""
-                    _ints2 = [i.strip() for i in str(_urow2.get("interests", "") or "").split(",") if i.strip()]
-                    _gender2 = str(_urow2.get("gender", "") or "")
-                    _ind2 = str(_urow2.get("industry_code") or "")[:2]
-                    _is_farmer2 = _ind2 in ("01", "02", "03")
-                    _utarget2 = "individual" if target_type == "individual" else "business"
-
-                    if _ucity2:
-                        _rg_sql2 = "(region ILIKE %s AND region NOT IN ('전국', '', '전국 및 각 지역'))"
-                        _rg_params2 = [f"%{_ucity2}%"]
-                    else:
-                        _rg_sql2 = "FALSE"
-                        _rg_params2 = []
-
-                    if _ints2:
-                        _int_sql2 = "(" + " OR ".join(["(category ILIKE %s OR title ILIKE %s)" for _ in _ints2]) + ")"
-                        _int_params2: list = []
-                        for _it2 in _ints2:
-                            _int_params2.extend([f"%{_it2}%", f"%{_it2}%"])
-                    else:
-                        _int_sql2 = "FALSE"
-                        _int_params2 = []
-
-                    _has_amt2 = "(support_amount IS NOT NULL AND support_amount != '')"
-                    _nwide2 = "region IN ('전국', '', '전국 및 각 지역', 'All') OR region IS NULL"
-                    _RESTR2 = ["장애인기업", "장애인창업", "농업인", "영농조합", "어업인", "수산업", "보훈", "제대군인"]
-                    _FEMALE2 = ["여성기업", "여성창업", "여성경제인"]
-                    _inelig2 = "(" + " OR ".join(f"title ILIKE '%{kw}%'" for kw in _RESTR2) + ")"
-                    _inelig_parts2 = [_inelig2]
-                    if _gender2 != "여성":
-                        _inelig_parts2.append("(" + " OR ".join(f"title ILIKE '%{kw}%'" for kw in _FEMALE2) + ")")
-                    if not _is_farmer2:
-                        _inelig_parts2.append("(" + " OR ".join(f"category ILIKE '%{ac}%'" for ac in ["농림", "수산", "임업", "축산"]) + ")")
-                    _inelig_sql2 = " OR ".join(_inelig_parts2)
-
-                    _other_rg2 = f"NOT ({_nwide2}) AND NOT ({_rg_sql2})" if _ucity2 else "FALSE"
-
-                    _tab_bucket_sql = f"""
-                        CASE
-                            WHEN COALESCE(target_type, 'business') != %s THEN 4
-                            WHEN {_inelig_sql2} THEN 4
-                            WHEN {_other_rg2} THEN 4
-                            WHEN {_rg_sql2} AND {_has_amt2} THEN 0
-                            WHEN ({_nwide2}) AND {_has_amt2} THEN 1
-                            WHEN {_int_sql2} AND {_has_amt2} THEN 2
-                            ELSE 3
-                        END,"""
-                    _tab_bucket_params = [_utarget2] + _rg_params2 + _rg_params2 + _int_params2
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-
     # 총 개수
     cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
     total = cursor.fetchone()["cnt"]
@@ -2572,7 +2502,6 @@ def api_announcements_public(
                 {relevance_order}
                 CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 9
                      ELSE 0 END,
-                {_tab_bucket_sql}
                 CASE
                     WHEN deadline_date IS NOT NULL
                          AND deadline_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
@@ -2585,7 +2514,7 @@ def api_announcements_public(
                 deadline_date ASC NULLS LAST,
                 created_at DESC
             LIMIT %s OFFSET %s""",
-        params + relevance_params + _tab_bucket_params + [size, offset],
+        params + relevance_params + [size, offset],
     )
     rows = cursor.fetchall()
 

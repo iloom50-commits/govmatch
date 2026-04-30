@@ -358,10 +358,8 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
     raw_city = _to_str(user_profile.get("address_city"))
     user_city_norm = ""
     if raw_city:
-        _cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()]
-        # "전국" 포함 시 지역 필터 비활성화 (전국 = 지역 제한 없음)
-        if "전국" not in _cities:
-            user_city_norm = next((c for c in _cities if c not in ("전국", "")), "")
+        _cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
+        user_city_norm = next((c for c in _cities if c), "")
     ann_ids = [c.get("announcement_id") for c in candidates if c.get("announcement_id")]
     exclusion_map = _load_exclusion_rules_bulk(db_conn, ann_ids)
 
@@ -413,10 +411,8 @@ def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) 
     raw_city = _to_str(user_profile.get("address_city"))
     user_city_norm = ""
     if raw_city:
-        _cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()]
-        # "전국" 포함 시 지역 필터 비활성화 (전국 = 지역 제한 없음)
-        if "전국" not in _cities:
-            user_city_norm = next((c for c in _cities if c not in ("전국", "")), "")
+        _cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
+        user_city_norm = next((c for c in _cities if c), "")
 
     passed = []
     excluded = []
@@ -566,14 +562,10 @@ def get_matches_for_user(user_profile):
     is_food_mfg = user_ind_code in ("10", "11")       # 식품제조
     is_culture = user_ind_code in ("58", "59", "60", "90", "91")  # 출판/영상/문화
 
-    # 소재지 (1개, 자격 필터용) — address_city에서 첫 번째 실제 지역
+    # 소재지 (1개, 자격 필터용) — address_city에서 첫 번째 실제 지역 ("전국" 제외)
     raw_city = user_profile.get("address_city", "")
-    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
-    # "전국" 포함 시 지역 필터 비활성화 (전국 = 지역 제한 없음)
-    if "전국" in user_cities:
-        home_city = ""
-    else:
-        home_city = next((c for c in user_cities if c not in ("전국", "")), "")
+    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip() and c.strip() != "전국"] if raw_city else []
+    home_city = user_cities[0] if user_cities else ""
 
     # 관심 지역 (복수, 보너스용) — interest_regions 필드
     raw_interest_regions = _to_str(user_profile.get("interest_regions"))
@@ -1134,14 +1126,9 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     user_family = user_profile.get("family_type") or "해당없음"
     user_employment = user_profile.get("employment_status") or "해당없음"
     raw_city = _to_str(user_profile.get("address_city"))
-    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip()] if raw_city else []
-    # "전국" 포함 시 지역 필터 비활성화 (전국 = 지역 제한 없음)
-    if "전국" in user_cities:
-        home_city = ""
-        has_home = False
-    else:
-        home_city = next((c for c in user_cities if c not in ("전국", "")), "")
-        has_home = bool(home_city)
+    user_cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip() and c.strip() != "전국"] if raw_city else []
+    home_city = user_cities[0] if user_cities else ""
+    has_home = bool(home_city)
     raw_interest_regions = _to_str(user_profile.get("interest_regions"))
     interest_regions = [_normalize_region(c.strip()) for c in raw_interest_regions.split(",") if c.strip() and c.strip() != "전국"] if raw_interest_regions else []
     bonus_cities = [home_city] if home_city else []

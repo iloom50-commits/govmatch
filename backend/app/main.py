@@ -4751,6 +4751,7 @@ def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):
                 "support_amount": d.get("support_amount", ""),
                 "support_amount_max": d.get("support_amount_max"),
                 "deadline_date": str(d.get("deadline_date", "")),
+                "origin_url": d.get("origin_url") or "",
                 "rank": d.get("rank") or (idx + 1),
                 "bucket": d.get("bucket", ""),
                 "bucket_label": d.get("bucket_label", ""),

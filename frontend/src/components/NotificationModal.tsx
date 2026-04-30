@@ -134,7 +134,7 @@ function getSteps(userType: UserType): { id: StepId; title: string; subtitle: st
     steps.push({ id: "ind_basic", title: "기본 정보를 알려주세요", subtitle: "성별·연령·소득 조건 매칭에 사용합니다" });
     steps.push({ id: "ind_life", title: "생활 정보를 알려주세요", subtitle: "가구유형·취업상태 매칭에 사용합니다" });
   }
-  if (userType === "business") {
+  if (userType === "business" || userType === "both") {
     steps.push({ id: "biz_location", title: "사업장 소재지를 알려주세요", subtitle: "공고 지역 필터링에 사용합니다" });
   }
   if (userType === "business" || userType === "both") {

@@ -2526,7 +2526,10 @@ def api_announcements_public(
                         END,"""
                     _tab_bucket_params = [_utarget2] + _rg_params2 + _rg_params2 + _int_params2
         except Exception:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     # 총 개수
     cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)

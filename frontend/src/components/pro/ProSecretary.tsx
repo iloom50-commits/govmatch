@@ -2125,10 +2125,11 @@ function formatAmount(raw: string, max?: number | null): string {
 
 // ─── 소상공인 판별 헬퍼 ───
 const SME_CATEGORIES = [
-  { key: "manufacturing", label: "제조·광업·건설·운수업", maxEmp: 10, maxRev: 120 },
-  { key: "retail",        label: "도소매업",              maxEmp: 5,  maxRev: 50  },
-  { key: "food",          label: "숙박·음식업",           maxEmp: 5,  maxRev: 10  },
-  { key: "service",       label: "기타 서비스업",         maxEmp: 5,  maxRev: 30  },
+  { key: "manufacturing",      label: "제조업",           maxEmp: 10, maxRev: 120 },
+  { key: "mining_const_trans", label: "광업·건설·운수업", maxEmp: 10, maxRev: 80  },
+  { key: "wholesale",          label: "도매업",           maxEmp: 5,  maxRev: 100 },
+  { key: "retail_food",        label: "소매·음식·숙박업", maxEmp: 5,  maxRev: 10  },
+  { key: "service",            label: "기타 서비스업",    maxEmp: 5,  maxRev: 30  },
 ];
 const EMP_RANGE: Record<string, [number, number]> = {
   "5인 미만":   [0,  4],
@@ -2147,9 +2148,10 @@ const REV_RANGE: Record<string, [number, number]> = {
 function ksicToSMECat(code: string): string {
   if (!code || code.length < 2) return "";
   const div = parseInt(code.substring(0, 2));
-  if ((div >= 5 && div <= 8) || (div >= 10 && div <= 33) || (div >= 41 && div <= 42) || (div >= 49 && div <= 52)) return "manufacturing";
-  if (div >= 45 && div <= 47) return "retail";
-  if (div >= 55 && div <= 56) return "food";
+  if (div >= 10 && div <= 33) return "manufacturing";
+  if ((div >= 5 && div <= 8) || (div >= 41 && div <= 42) || (div >= 49 && div <= 52)) return "mining_const_trans";
+  if (div === 46) return "wholesale";
+  if (div === 45 || div === 47 || (div >= 55 && div <= 56)) return "retail_food";
   return "service";
 }
 const SME_REV_MAX: Record<string, number> = {
@@ -2158,7 +2160,7 @@ const SME_REV_MAX: Record<string, number> = {
 function determineSMEExact(catKey: string, smeEmp: string, smeRev: string): "yes" | "no" | null {
   const cat = SME_CATEGORIES.find(c => c.key === catKey);
   if (!cat || !smeEmp || !smeRev) return null;
-  const empOk = catKey === "manufacturing"
+  const empOk = (catKey === "manufacturing" || catKey === "mining_const_trans")
     ? smeEmp === "5인 미만" || smeEmp === "5~9인"
     : smeEmp === "5인 미만";
   const revOk = (SME_REV_MAX[smeRev] ?? 9999) <= cat.maxRev;

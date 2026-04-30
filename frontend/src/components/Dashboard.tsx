@@ -729,6 +729,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
   const [publicServerTotal, setPublicServerTotal] = useState(0);
+  const [publicLoading, setPublicLoading] = useState(false);
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
   const usePublicData = true;  // 전체 공고 항상 API 데이터 사용 (일별 로테이션 맞춤 정렬)
@@ -747,6 +748,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       setPublicServerTotal(publicCache.current[cacheKey].total);
       return;
     }
+
+    // 캐시 없음 → 이전 탭 데이터 즉시 비우고 로딩 표시
+    setPublicData([]);
+    setPublicLoading(true);
 
     let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -768,7 +773,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           }
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPublicLoading(false));
   }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
 
   // 사이드바 열릴 때 body 스크롤 잠금
@@ -1741,30 +1747,44 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden">
-              {(() => {
-                // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
-                if (publicData.length > 0) {
-                  return publicData;
-                }
-                return filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-              })().map((res, idx) => (
-                <div
-                  key={`${res.announcement_id}-${idx}`}
-                  className="animate-in fade-in slide-in-from-bottom-6 duration-700"
-                  style={{ animationDelay: `${Math.min(idx, 10) * 80}ms` }}
-                >
-                  <ResultCard
-                    res={res}
-                    saved={isPublic ? false : savedItems.some(s => s.announcement_id === res.announcement_id)}
-                    saving={savingIds.has(res.announcement_id)}
-                    onSave={isPublic ? undefined : () => handleInstantSave(res.announcement_id)}
-                    planStatus={isPublic && !profile ? null : planStatus}
-                    onUpgrade={isPublic && !profile ? undefined : onUpgrade}
-                    onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
-                    highlight={highlightAid === res.announcement_id}
-                  />
-                </div>
-              ))}
+              {publicLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3 animate-pulse">
+                    <div className="flex gap-2">
+                      <div className="h-5 w-16 bg-slate-100 rounded-full" />
+                      <div className="h-5 w-20 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="h-4 w-full bg-slate-100 rounded" />
+                    <div className="h-4 w-4/5 bg-slate-100 rounded" />
+                    <div className="h-8 w-32 bg-slate-100 rounded-lg mt-2" />
+                  </div>
+                ))
+              ) : (
+                (() => {
+                  // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
+                  if (publicData.length > 0) {
+                    return publicData;
+                  }
+                  return filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+                })().map((res, idx) => (
+                  <div
+                    key={`${res.announcement_id}-${idx}`}
+                    className="animate-in fade-in slide-in-from-bottom-6 duration-700"
+                    style={{ animationDelay: `${Math.min(idx, 10) * 80}ms` }}
+                  >
+                    <ResultCard
+                      res={res}
+                      saved={isPublic ? false : savedItems.some(s => s.announcement_id === res.announcement_id)}
+                      saving={savingIds.has(res.announcement_id)}
+                      onSave={isPublic ? undefined : () => handleInstantSave(res.announcement_id)}
+                      planStatus={isPublic && !profile ? null : planStatus}
+                      onUpgrade={isPublic && !profile ? undefined : onUpgrade}
+                      onLoginRequired={isPublic && !profile ? handleLoginRequired : undefined}
+                      highlight={highlightAid === res.announcement_id}
+                    />
+                  </div>
+                ))
+              )}
             </div>
             {(() => {
               const totalItems = publicServerTotal > 0 ? publicServerTotal : filteredMatches.length;

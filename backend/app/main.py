@@ -1386,8 +1386,22 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            # ── 일괄 분석 진행 보고 — 1시간마다 이메일 ──
+            def _bulk_analyze_report_job():
+                if not _bulk_job.get("running") and not _bulk_job.get("started_at"):
+                    return  # 작업 없으면 스킵
+                _send_bulk_analysis_email_report()
+
+            pipeline_scheduler.add_job(
+                _bulk_analyze_report_job,
+                IntervalTrigger(hours=1),
+                id="bulk_analyze_report",
+                name="일괄 분석 진행 보고 (1시간마다)",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - daily 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min")
+            print("[Pipeline] APScheduler started - daily 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -6113,6 +6127,80 @@ _bulk_job: dict = {
 }
 
 
+def _send_bulk_analysis_email_report(is_final: bool = False):
+    """일괄 분석 진행 상황을 이메일로 발송."""
+    import smtplib as _smtp
+    from email.mime.text import MIMEText as _MIMEText
+    from email.mime.multipart import MIMEMultipart as _MIMEMultipart
+
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pw   = os.environ.get("SMTP_PASSWORD", "")
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    to_email  = os.environ.get("OWNER_EMAIL") or os.environ.get("SMTP_FROM") or smtp_user
+
+    if not smtp_user or not smtp_pw or not to_email:
+        print("[BulkReport] SMTP 미설정 — 이메일 스킵")
+        return
+
+    j = _bulk_job
+    total   = j.get("total", 0)
+    done    = j.get("done", 0)
+    success = j.get("success", 0)
+    failed  = j.get("failed", 0)
+    pct     = round(done / total * 100, 1) if total else 0
+    status  = "완료" if is_final else ("실행 중" if j.get("running") else "중단됨")
+    errors  = j.get("errors") or []
+
+    subject = f"[GovMatch] 공고 선행분석 {'완료' if is_final else '진행 보고'} — {done}/{total}건 ({pct}%)"
+
+    error_html = ""
+    if errors:
+        rows = "".join(
+            f"<tr><td style='padding:4px 8px;border-bottom:1px solid #eee'>{e.get('id','')}</td>"
+            f"<td style='padding:4px 8px;border-bottom:1px solid #eee'>{e.get('title','')}</td>"
+            f"<td style='padding:4px 8px;border-bottom:1px solid #eee;color:#c00'>{e.get('error','')}</td></tr>"
+            for e in errors[-10:]
+        )
+        error_html = f"""
+        <h3 style='color:#c00;margin-top:20px'>최근 오류 (최대 10건)</h3>
+        <table style='border-collapse:collapse;font-size:13px'>
+          <tr style='background:#fef2f2'><th style='padding:4px 8px'>ID</th><th style='padding:4px 8px'>공고</th><th style='padding:4px 8px'>오류</th></tr>
+          {rows}
+        </table>"""
+
+    html = f"""
+    <div style='font-family:sans-serif;max-width:560px;margin:0 auto'>
+      <h2 style='color:#4338ca'>📊 공고 선행분석 {status}</h2>
+      <table style='border-collapse:collapse;width:100%;font-size:15px'>
+        <tr><td style='padding:8px;color:#555'>상태</td><td style='padding:8px;font-weight:bold'>{status}</td></tr>
+        <tr style='background:#f5f5ff'><td style='padding:8px;color:#555'>진행률</td><td style='padding:8px;font-weight:bold'>{done} / {total}건 ({pct}%)</td></tr>
+        <tr><td style='padding:8px;color:#555'>성공</td><td style='padding:8px;color:#16a34a;font-weight:bold'>{success}건</td></tr>
+        <tr style='background:#f5f5ff'><td style='padding:8px;color:#555'>실패</td><td style='padding:8px;color:#dc2626'>{failed}건</td></tr>
+        <tr><td style='padding:8px;color:#555'>시작</td><td style='padding:8px'>{j.get('started_at','')}</td></tr>
+        <tr style='background:#f5f5ff'><td style='padding:8px;color:#555'>현재 처리 중</td><td style='padding:8px'>{j.get('current_title','')}</td></tr>
+      </table>
+      {error_html}
+      <p style='margin-top:20px;font-size:12px;color:#999'>
+        DB 검증: GET /api/admin/bulk-analyze/db-check?password=***
+      </p>
+    </div>"""
+
+    try:
+        msg = _MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = smtp_user
+        msg["To"]      = to_email
+        msg.attach(_MIMEText(html, "html", "utf-8"))
+        with _smtp.SMTP(smtp_host, smtp_port) as sv:
+            sv.ehlo(); sv.starttls(); sv.ehlo()
+            sv.login(smtp_user, smtp_pw)
+            sv.sendmail(smtp_user, [to_email], msg.as_string())
+        print(f"[BulkReport] 이메일 발송 완료 → {to_email} ({done}/{total}건)")
+    except Exception as ex:
+        print(f"[BulkReport] 이메일 발송 실패: {ex}")
+
+
 def _run_bulk_analysis(mode: str, limit: int):
     """백그라운드 스레드: 미분석 공고 전체 순차 처리."""
     import time as _t
@@ -6122,6 +6210,7 @@ def _run_bulk_analysis(mode: str, limit: int):
                       "done": 0, "success": 0, "failed": 0, "skipped": 0,
                       "started_at": _t.strftime("%Y-%m-%dT%H:%M:%S"),
                       "finished_at": None, "errors": []})
+    _send_bulk_analysis_email_report()  # 시작 알림
 
     try:
         conn = get_db_connection()
@@ -6199,6 +6288,7 @@ def _run_bulk_analysis(mode: str, limit: int):
     finally:
         _bulk_job.update({"running": False, "current_id": None,
                           "finished_at": _t.strftime("%Y-%m-%dT%H:%M:%S")})
+        _send_bulk_analysis_email_report(is_final=True)  # 완료 알림
 
 
 @app.post("/api/admin/bulk-analyze/start")

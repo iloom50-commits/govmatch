@@ -755,7 +755,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         if (d.status === "SUCCESS") {
           setPublicData(d.data || []);
           setPublicServerTotal(d.total || 0);
-          if (activeTab === "all") setPublicAllTotal(d.total || 0);
+          if (activeTab === "all") {
+            setPublicAllTotal(d.total || 0);
+            // 전체 탭 응답에 local/national 카운트가 포함된 경우 즉시 반영
+            if (d.local_total !== undefined || d.national_total !== undefined) {
+              setTabCacheCounts({
+                local: d.local_total || 0,
+                national: d.national_total || 0,
+              });
+            }
+          }
           publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
           if (d.total) setTotalAnnouncementCount(prev => prev || d.total);
           if (d.category_counts && onCategoryCountsLoaded) {
@@ -767,37 +776,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .finally(() => setPublicLoading(false));
   }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
 
-  // 백그라운드 pre-fetch: 전체 탭 로드 후 내 지역/전국 탭 순차 선로딩
-  useEffect(() => {
-    if (publicAllTotal === 0 || searchQuery.trim()) return;
-    const targetType = majorTab === "business" ? "business" : "individual";
-    const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-
-    let delay = 800;
-    for (const tabDef of PUBLIC_TABS.filter(t => t.tabParam)) {
-      const cKey = `${targetType}:${tabDef.tabParam}:1:`;
-      if (publicCache.current[cKey]) {
-        setTabCacheCounts(prev => ({ ...prev, [tabDef.key]: publicCache.current[cKey].total }));
-        continue;
-      }
-      const _url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=${tabDef.tabParam}`;
-      const _cKey = cKey;
-      const _tabKey = tabDef.key;
-      setTimeout(() => {
-        if (publicCache.current[_cKey]) return;
-        fetch(_url, { headers: _tok ? { Authorization: `Bearer ${_tok}` } : {} })
-          .then(r => r.json())
-          .then(d => {
-            if (d.status === "SUCCESS") {
-              publicCache.current[_cKey] = { data: d.data || [], total: d.total || 0 };
-              setTabCacheCounts(prev => ({ ...prev, [_tabKey]: d.total || 0 }));
-            }
-          })
-          .catch(() => {});
-      }, delay);
-      delay += 1200;
-    }
-  }, [publicAllTotal, majorTab]);
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {

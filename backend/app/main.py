@@ -2236,6 +2236,8 @@ def api_announcements_public(
                         "category_counts": category_counts,
                         "personalized": True,
                         "source": "cache",
+                        "local_total": len(cached.get("local") or []),
+                        "national_total": len(cached.get("national") or []),
                     }
 
                 # ── 2순위: 사전캐시 없음 → 실시간 CTE (신규 가입자 / 캐시 만료) ──

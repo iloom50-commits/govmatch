@@ -764,6 +764,28 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 national: d.national_total || 0,
               });
             }
+            // 백그라운드 pre-fetch: 현재 탭 local/national + 반대 타겟타입 all/local/national
+            const _t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+            const _h: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {};
+            const _bgFetch = (tt: string, tab: string) => {
+              const bgKey = `${tt}:${tab}:1:`;
+              if (!publicCache.current[bgKey]) {
+                const url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${tt}${tab ? `&tab=${tab}` : ""}`;
+                fetch(url, { headers: _h })
+                  .then(r => r.json())
+                  .then(bd => {
+                    if (bd.status === "SUCCESS") {
+                      publicCache.current[bgKey] = { data: bd.data || [], total: bd.total || 0 };
+                    }
+                  })
+                  .catch(() => {});
+              }
+            };
+            // 현재 타겟타입: local/national
+            (["local", "national"] as const).forEach(tab => _bgFetch(targetType, tab));
+            // 반대 타겟타입: all/local/national 전부
+            const otherType = targetType === "business" ? "individual" : "business";
+            (["", "local", "national"] as const).forEach(tab => _bgFetch(otherType, tab));
           }
           publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
           if (d.total) setTotalAnnouncementCount(prev => prev || d.total);

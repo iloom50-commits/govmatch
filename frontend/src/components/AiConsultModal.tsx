@@ -175,6 +175,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   // sendToAI 콜백이 useCallback deps 누락으로 stale closure가 되는 것을 방지하기 위한 ref
   const sessionIdRef = useRef<string | null>(null);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -340,6 +341,14 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
 
   const sendToAI = useCallback(async (chatHistory: ChatMessage[]) => {
     if (!announcement) return;
+
+    // 이전 진행 중인 fetch 취소
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setLoadingStartTime(Date.now());
     const token = localStorage.getItem("auth_token");
@@ -356,6 +365,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
           messages: chatHistory.map((m) => ({ role: m.role, text: m.text })),
           session_id: sessionIdRef.current,
         }),
+        signal: controller.signal,
       });
 
       if (res.status === 429) {
@@ -407,7 +417,9 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       }
       // AI가 done=true를 반환해도 자동 종료하지 않음 — 사용자가 직접 "상담 종료" 클릭
       if (data.consult_log_id) setConsultLogId(data.consult_log_id);
-    } catch {
+    } catch (err: unknown) {
+      // AbortError는 의도적 취소 — 에러 toast 없이 조용히 종료
+      if (err instanceof Error && err.name === "AbortError") return;
       toast("서버 연결에 실패했습니다.", "error");
     }
     setLoading(false);
@@ -439,7 +451,13 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   };
 
   const handleClose = useCallback(() => {
+    // 진행 중인 fetch 취소
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setOpen(false);
+    setLoading(false);
     setMessages([]);
     setAnnouncement(null);
     setIsDone(false);

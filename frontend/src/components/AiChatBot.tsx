@@ -1872,7 +1872,10 @@ ${convHtml}
                               {/* 공고 한 줄 인라인 */}
                               <div className="flex items-center gap-1.5 ml-2 px-3 py-2 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
                                 {displayAmount && <span className="shrink-0 text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{formatSupportAmount(displayAmount)}</span>}
-                                <span className="flex-1 text-sm font-bold text-slate-800 truncate">{ann.title}</span>
+                                {ann.origin_url
+                                  ? <a href={ann.origin_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-sm font-bold text-slate-800 truncate hover:text-indigo-600 hover:underline">{ann.title}</a>
+                                  : <span className="flex-1 text-sm font-bold text-slate-800 truncate">{ann.title}</span>
+                                }
                                 {displayDept && <span className="shrink-0 text-[11px] text-slate-400 hidden sm:block">{String(displayDept).slice(0, 16)}</span>}
                                 {deadlineStr && <span className="shrink-0 text-[11px] text-slate-400">{deadlineStr}</span>}
                                 <button className="shrink-0 text-[12px] text-indigo-600 font-bold hover:text-indigo-800 whitespace-nowrap"
@@ -1898,7 +1901,10 @@ ${convHtml}
                           return (
                             <div key={annId} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
                               {displayAmount && <span className="shrink-0 text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{formatSupportAmount(displayAmount)}</span>}
-                              <span className="flex-1 text-sm font-bold text-slate-800 truncate">{ann.title}</span>
+                              {ann.origin_url
+                                ? <a href={ann.origin_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-sm font-bold text-slate-800 truncate hover:text-indigo-600 hover:underline">{ann.title}</a>
+                                : <span className="flex-1 text-sm font-bold text-slate-800 truncate">{ann.title}</span>
+                              }
                               {displayDept && <span className="shrink-0 text-[11px] text-slate-400 hidden sm:block">{String(displayDept).slice(0, 16)}</span>}
                               {deadlineStr && <span className="shrink-0 text-[11px] text-slate-400">{deadlineStr}</span>}
                               <button

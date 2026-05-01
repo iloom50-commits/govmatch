@@ -290,6 +290,7 @@ class NotificationService:
             "title": f"맞춤 공고 {len(matches)}건 도착",
             "body": top.get("program_title", "새로운 지원사업이 매칭되었습니다."),
             "url": APP_URL,
+            "icon": "https://www.govmatch.kr/icon-192-maskable.png",
         }, ensure_ascii=False)
 
         sent = 0

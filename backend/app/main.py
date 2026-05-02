@@ -1432,28 +1432,40 @@ def health_check():
 
 @app.get("/api/db-check")
 def db_check():
-    """DB 연결 단계별 진단 — 운영 안정화 후 제거 예정"""
-    import time
+    """DB 연결 단계별 진단 — 포트 6543(PgBouncer) vs 5432(직접) 비교"""
+    import time, re
     result = {}
-    t0 = time.time()
-    try:
-        conn = get_db_connection()
-        result["connect_ms"] = round((time.time() - t0) * 1000)
-        t1 = time.time()
-        cur = conn.cursor()
-        cur.execute("SELECT 1 AS ping")
-        result["ping_ms"] = round((time.time() - t1) * 1000)
-        t2 = time.time()
-        cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
-        cnt = cur.fetchone()["cnt"]
-        result["count_ms"] = round((time.time() - t2) * 1000)
-        result["count"] = cnt
-        conn.close()
-        result["status"] = "ok"
-    except Exception as e:
-        result["status"] = "error"
-        result["error"] = str(e)
-        result["elapsed_ms"] = round((time.time() - t0) * 1000)
+
+    def _test_url(url, label):
+        r = {"label": label}
+        t0 = time.time()
+        try:
+            c = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, connect_timeout=10)
+            r["connect_ms"] = round((time.time() - t0) * 1000)
+            cur = c.cursor()
+            t1 = time.time()
+            cur.execute("SELECT 1 AS ping")
+            r["ping_ms"] = round((time.time() - t1) * 1000)
+            t2 = time.time()
+            cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
+            r["count"] = cur.fetchone()["cnt"]
+            r["count_ms"] = round((time.time() - t2) * 1000)
+            c.close()
+            r["status"] = "ok"
+        except Exception as e:
+            r["status"] = "error"
+            r["error"] = str(e)
+            r["elapsed_ms"] = round((time.time() - t0) * 1000)
+        return r
+
+    # 6543 = PgBouncer 풀러 (현재 사용 중)
+    result["pgbouncer_6543"] = _test_url(DATABASE_URL, "pgbouncer:6543")
+
+    # 5432 = PostgreSQL 직접 연결 (PgBouncer 우회)
+    direct_url = re.sub(r"pooler\.supabase\.com:6543", "supabase.co:5432",
+                        DATABASE_URL.replace("aws-1-ap-northeast-2.pooler", "db.erjxlphndhkpdfmglzyv"))
+    result["direct_5432"] = _test_url(direct_url, "direct:5432")
+
     return result
 
 

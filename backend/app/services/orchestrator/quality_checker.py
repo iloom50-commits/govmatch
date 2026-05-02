@@ -35,9 +35,14 @@ SCORE_KEY_LABELS = {
 }
 
 
+_last_gemini_error = None  # 디버그용: 마지막 에러 저장
+
+
 def _call_gemini(prompt: str) -> dict:
+    global _last_gemini_error
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        _last_gemini_error = "GEMINI_API_KEY 미설정"
         return {}
     try:
         import google.generativeai as genai
@@ -58,8 +63,10 @@ def _call_gemini(prompt: str) -> dict:
             return {}
         return json.loads(text)
     except json.JSONDecodeError as je:
+        _last_gemini_error = f"JSONDecodeError: {je}"
         print(f"[Orchestrator/quality] JSON 파싱 실패: {je}")
     except Exception as e:
+        _last_gemini_error = f"{type(e).__name__}: {str(e)[:200]}"
         print(f"[Orchestrator/quality] Gemini 오류: {type(e).__name__}: {e}")
     return {}
 
@@ -128,7 +135,7 @@ def check_quality(db_conn) -> dict:
         })
 
     if not results:
-        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0, "skipped_empty": skipped_empty}
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0, "skipped_empty": skipped_empty, "last_error": _last_gemini_error}
 
     # 평균 집계 (한글 키 기준)
     kr_keys = list(SCORE_KEY_LABELS.values())

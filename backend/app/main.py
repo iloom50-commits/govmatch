@@ -1295,11 +1295,27 @@ def _prewarm_response_cache(startup: bool = False):
 
 
 async def lifespan(app):
-    # [진단모드] startup DB 작업 전체 비활성화 — SSL 연결 과부하 원인 특정 중
-    # _log_expired_announcements()
-    # seed_financial_knowledge 비활성화
-    # _warmup() 비활성화
-    print("[Startup] 진단모드: startup DB 작업 비활성화")
+    _log_expired_announcements()  # 시작 시 현황만 로그
+    # 서버 시작 시 사전매칭 캐시 (백그라운드)
+    import threading
+
+    def _warmup():
+        _db_keepalive()  # 1. DB 연결 먼저 warm-up (cold start 40s 방지)
+        _prewarm_response_cache(startup=False)  # 2. warm DB로 응답 캐시 즉시 채우기
+        print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
+
+    threading.Thread(target=_warmup, daemon=True).start()
+
+    # ── 금융 지식 시딩 (최초 1회) ──
+    try:
+        from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
+        seed_conn = get_db_connection()
+        seeded = seed_financial_knowledge(seed_conn)
+        seed_conn.close()
+        if seeded:
+            print(f"[KnowledgeSeed] {seeded} financial knowledge items seeded")
+    except Exception as seed_err:
+        print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
 
     # ── 일일 통합 파이프라인 (매일 03:00 KST = 18:00 UTC) ──
     # docs/daily-pipeline.md 참조
@@ -1430,46 +1446,6 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.get("/api/db-check")
-def db_check():
-    """DB 연결 단계별 진단 — 포트 6543(PgBouncer) vs 5432(직접) 비교"""
-    import time, re
-    result = {}
-
-    def _test_url(url, label):
-        r = {"label": label}
-        t0 = time.time()
-        try:
-            c = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor, connect_timeout=10)
-            r["connect_ms"] = round((time.time() - t0) * 1000)
-            cur = c.cursor()
-            t1 = time.time()
-            cur.execute("SELECT 1 AS ping")
-            r["ping_ms"] = round((time.time() - t1) * 1000)
-            t2 = time.time()
-            cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
-            r["count"] = cur.fetchone()["cnt"]
-            r["count_ms"] = round((time.time() - t2) * 1000)
-            c.close()
-            r["status"] = "ok"
-        except Exception as e:
-            r["status"] = "error"
-            r["error"] = str(e)
-            r["elapsed_ms"] = round((time.time() - t0) * 1000)
-        return r
-
-    # 6543 = PgBouncer 풀러 (현재 사용 중)
-    result["pgbouncer_6543"] = _test_url(DATABASE_URL, "pgbouncer:6543")
-
-    # 5432 = PostgreSQL 직접 연결 (PgBouncer 우회) — username도 단순화
-    project_ref = "erjxlphndhkpdfmglzyv"
-    import urllib.parse as _up
-    parsed = _up.urlparse(DATABASE_URL)
-    pw = _up.unquote(parsed.password or "")
-    direct_url = f"postgresql://postgres:{_up.quote(pw, safe='')}@db.{project_ref}.supabase.co:5432/postgres"
-    result["direct_5432"] = _test_url(direct_url, "direct:5432")
-
-    return result
 
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")

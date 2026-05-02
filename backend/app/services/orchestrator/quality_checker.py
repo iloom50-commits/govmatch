@@ -8,22 +8,31 @@ import random
 
 
 SCORE_PROMPT = """
-당신은 AI 상담 품질 평가 전문가입니다.
-아래 상담 대화를 읽고 5가지 항목을 각각 0~10점으로 채점하세요.
+You are an AI consultation quality evaluator.
+Read the following consultation and score each of 5 criteria from 0 to 10.
 
-[상담 대화]
+[Consultation]
 {conversation}
 
-[채점 기준]
-1. 정확성: 정보가 사실에 기반하며 오류가 없는가
-2. 완결성: 질문에 충분히 답변했는가
-3. 전문성: 정부지원사업 전문가다운 답변인가
-4. 실행가능성: 고객이 실제로 실행할 수 있는 구체적 조언인가
-5. 명확성: 이해하기 쉽고 구조화된 답변인가
+[Criteria]
+1. accuracy: Is the information factually correct?
+2. completeness: Did it fully answer the question?
+3. expertise: Is it expert-level advice on government support programs?
+4. actionability: Can the customer actually act on this advice?
+5. clarity: Is it easy to understand and well-structured?
 
-반드시 아래 JSON 형식으로만 응답하세요:
-{"정확성": 숫자, "완결성": 숫자, "전문성": 숫자, "실행가능성": 숫자, "명확성": 숫자, "총평": "한 문장 평가"}
+Respond ONLY in this exact JSON format:
+{{"accuracy": N, "completeness": N, "expertise": N, "actionability": N, "clarity": N, "comment": "one sentence"}}
 """
+
+# 영어 키 → 한글 표시명 매핑
+SCORE_KEY_LABELS = {
+    "accuracy": "정확성",
+    "completeness": "완결성",
+    "expertise": "전문성",
+    "actionability": "실행가능성",
+    "clarity": "명확성",
+}
 
 
 def _call_gemini(prompt: str) -> dict:
@@ -82,7 +91,7 @@ def check_quality(db_conn) -> dict:
 
     sample = random.sample(rows, min(5, len(rows)))
     results = []
-    score_keys = ["정확성", "완결성", "전문성", "실행가능성", "명확성"]
+    score_keys = list(SCORE_KEY_LABELS.keys())  # ["accuracy", "completeness", ...]
 
     for row in sample:
         msgs = row.get("messages") or []
@@ -104,20 +113,26 @@ def check_quality(db_conn) -> dict:
             continue
 
         scores = _call_gemini(SCORE_PROMPT.format(conversation=conversation))
+        if not scores:
+            continue
         total = sum(scores.get(k, 0) for k in score_keys)
+        # 한글 키로 변환하여 저장 (reporter 표시용)
+        scores_kr = {SCORE_KEY_LABELS[k]: scores.get(k, 0) for k in score_keys}
+        scores_kr["총평"] = scores.get("comment", "")
         results.append({
             "session_id": row.get("session_id", ""),
             "updated_at": str(row.get("updated_at", "")),
-            "scores": scores,
+            "scores": scores_kr,
             "total": total,
         })
 
     if not results:
         return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0}
 
-    # 평균 집계
+    # 평균 집계 (한글 키 기준)
+    kr_keys = list(SCORE_KEY_LABELS.values())
     avg = {}
-    for k in score_keys:
+    for k in kr_keys:
         vals = [r["scores"].get(k, 0) for r in results if r["scores"]]
         avg[k] = round(sum(vals) / len(vals), 1) if vals else 0
 

@@ -41,7 +41,7 @@ def _call_gemini(prompt: str) -> dict:
             model_name,
             generation_config={
                 "temperature": 0.1,
-                "max_output_tokens": 256,
+                "max_output_tokens": 1024,
             },
         )
         resp = model.generate_content(prompt)

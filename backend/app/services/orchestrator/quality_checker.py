@@ -61,21 +61,19 @@ def _call_gemini(prompt: str) -> dict:
         if not text:
             print("[Orchestrator/quality] Gemini 응답 비어있음")
             return {}
+        _last_gemini_error = f"raw={text[:150]}"
         # { ... } 블록 추출 후 파싱
         start = text.find("{")
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
             chunk = text[start:end]
-            try:
-                return json.loads(chunk)
-            except json.JSONDecodeError:
-                # 단따옴표 → 쌍따옴표 변환 후 재시도
-                import re
-                fixed = re.sub(r"'([^']*)'", r'"\1"', chunk)
-                return json.loads(fixed)
+            return json.loads(chunk)
         raise ValueError(f"JSON 블록 없음: {text[:100]}")
     except (json.JSONDecodeError, ValueError) as je:
-        _last_gemini_error = f"JSONDecodeError: {je}"
+        if _last_gemini_error and _last_gemini_error.startswith("raw="):
+            _last_gemini_error = f"{_last_gemini_error} | err={je}"
+        else:
+            _last_gemini_error = f"JSONDecodeError: {je}"
         print(f"[Orchestrator/quality] JSON 파싱 실패: {je}")
     except Exception as e:
         _last_gemini_error = f"{type(e).__name__}: {str(e)[:200]}"

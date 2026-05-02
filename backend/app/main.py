@@ -1295,27 +1295,11 @@ def _prewarm_response_cache(startup: bool = False):
 
 
 async def lifespan(app):
-    _log_expired_announcements()  # 시작 시 현황만 로그
-    # 서버 시작 시 사전매칭 캐시 (백그라운드)
-    import threading
-
-    def _warmup():
-        _db_keepalive()  # 1. DB 연결 먼저 warm-up (cold start 40s 방지)
-        _prewarm_response_cache(startup=False)  # 2. warm DB로 응답 캐시 즉시 채우기
-        print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
-
-    threading.Thread(target=_warmup, daemon=True).start()
-
-    # ── 금융 지식 시딩 (최초 1회) ──
-    try:
-        from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
-        seed_conn = get_db_connection()
-        seeded = seed_financial_knowledge(seed_conn)
-        seed_conn.close()
-        if seeded:
-            print(f"[KnowledgeSeed] {seeded} financial knowledge items seeded")
-    except Exception as seed_err:
-        print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
+    # [진단모드] startup DB 작업 전체 비활성화 — SSL 연결 과부하 원인 특정 중
+    # _log_expired_announcements()
+    # seed_financial_knowledge 비활성화
+    # _warmup() 비활성화
+    print("[Startup] 진단모드: startup DB 작업 비활성화")
 
     # ── 일일 통합 파이프라인 (매일 03:00 KST = 18:00 UTC) ──
     # docs/daily-pipeline.md 참조

@@ -7,23 +7,12 @@ import os
 import random
 
 
-SCORE_PROMPT = """
-You are an AI consultation quality evaluator.
-Read the following consultation and score each of 5 criteria from 0 to 10.
+SCORE_PROMPT = """Rate this AI consultation on 5 criteria (0-10 each). Reply with ONE line of JSON only, no other text.
 
-[Consultation]
+Consultation:
 {conversation}
 
-[Criteria]
-1. accuracy: Is the information factually correct?
-2. completeness: Did it fully answer the question?
-3. expertise: Is it expert-level advice on government support programs?
-4. actionability: Can the customer actually act on this advice?
-5. clarity: Is it easy to understand and well-structured?
-
-Respond ONLY in this exact JSON format:
-{{"accuracy": N, "completeness": N, "expertise": N, "actionability": N, "clarity": N, "comment": "one sentence"}}
-"""
+Reply format (one line): {{"accuracy":N,"completeness":N,"expertise":N,"actionability":N,"clarity":N,"comment":"brief"}}"""
 
 # 영어 키 → 한글 표시명 매핑
 SCORE_KEY_LABELS = {
@@ -51,9 +40,8 @@ def _call_gemini(prompt: str) -> dict:
         model = genai.GenerativeModel(
             model_name,
             generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 512,
-                "response_mime_type": "application/json",
+                "temperature": 0.1,
+                "max_output_tokens": 256,
             },
         )
         resp = model.generate_content(prompt)

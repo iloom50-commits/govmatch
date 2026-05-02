@@ -2629,8 +2629,10 @@ def api_announcements_public(
 
     where_sql = " AND ".join(where_clauses)
 
-    # 총 개수
+    # 총 개수 — 8s 타임아웃 (VACUUM 후 정상이면 1s 이내)
+    cursor.execute("SET LOCAL statement_timeout = '8s'")
     cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
+    cursor.execute("RESET statement_timeout")
     total = cursor.fetchone()["cnt"]
 
     # 공고 리스트 — 검색 시 관련성 정렬

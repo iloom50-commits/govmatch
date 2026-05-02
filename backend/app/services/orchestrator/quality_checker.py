@@ -42,12 +42,12 @@ def _call_gemini(prompt: str) -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        # response_mime_type 제거 — 일부 모델에서 빈 응답 유발
         model = genai.GenerativeModel(
-            "gemini-1.5-flash",
+            "gemini-2.5-flash",
             generation_config={
                 "temperature": 0.2,
                 "max_output_tokens": 512,
+                "response_mime_type": "application/json",
             },
         )
         resp = model.generate_content(prompt)
@@ -55,15 +55,9 @@ def _call_gemini(prompt: str) -> dict:
         if not text:
             print("[Orchestrator/quality] Gemini 응답 비어있음")
             return {}
-        # JSON 블록 추출 (```json ... ``` 또는 순수 { ... })
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except json.JSONDecodeError:
-                pass
-        print(f"[Orchestrator/quality] JSON 파싱 실패, 응답: {text[:150]}")
+        return json.loads(text)
+    except json.JSONDecodeError as je:
+        print(f"[Orchestrator/quality] JSON 파싱 실패: {je}")
     except Exception as e:
         print(f"[Orchestrator/quality] Gemini 오류: {e}")
     return {}

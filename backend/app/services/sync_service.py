@@ -223,9 +223,7 @@ class SyncService:
 
     async def _save_to_db(self, results, use_ai=False):
         """DB 저장. use_ai=False면 API 기본 데이터만 빠르게 저장."""
-        # Supabase Direct 연결 (Transaction Pooler 6543 -> Direct 5432)
-        db_url = self.database_url.replace(":6543/", ":5432/")
-        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = True
         cursor = conn.cursor()
         cursor.execute("SET statement_timeout = '60000'")  # 60초
@@ -425,8 +423,7 @@ class SyncService:
         from app.services.ai_consultant import save_knowledge
         import datetime as _dt
 
-        db_url = self.database_url.replace(":6543/", ":5432/")
-        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
 
         # 카테고리별 수집 통계
         category_stats = {}

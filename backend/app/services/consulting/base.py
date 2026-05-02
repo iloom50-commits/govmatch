@@ -104,8 +104,12 @@ def detect_domain(title: str, category: str, text: str = "") -> Optional[str]:
     return None
 
 
-def get_domain_knowledge(domain: str, db_conn) -> str:
-    """해당 분야의 knowledge_base 지식을 프롬프트용 텍스트로 반환"""
+def get_domain_knowledge(domain: str, db_conn, allowed_agents: list = None) -> str:
+    """해당 분야의 knowledge_base 지식을 프롬프트용 텍스트로 반환.
+
+    allowed_agents: 허용 source_agent 목록. None이면 전체 허용.
+    예) ["consult", "pro"] → fund_biz/fund_indiv 지식 제외
+    """
     if not db_conn:
         return ""
 
@@ -115,16 +119,24 @@ def get_domain_knowledge(domain: str, db_conn) -> str:
 
     try:
         cur = db_conn.cursor()
-        # 해당 분야 카테고리의 지식 조회
+        # 에이전트 격리 필터 구성
+        agent_filter = ""
+        agent_params = ()
+        if allowed_agents:
+            placeholders_a = ",".join(["%s"] * len(allowed_agents))
+            agent_filter = f"AND (source_agent IS NULL OR source_agent IN ({placeholders_a}))"
+            agent_params = tuple(allowed_agents)
+
         placeholders = ",".join(["%s"] * len(categories)) if categories else "''"
         cur.execute(f"""
             SELECT id, knowledge_type, content, confidence
             FROM knowledge_base
             WHERE (category IN ({placeholders}) OR category = %s)
               AND confidence >= 0.5
+              {agent_filter}
             ORDER BY confidence DESC, use_count DESC
             LIMIT 10
-        """, (*categories, label))
+        """, (*categories, label, *agent_params))
 
         rows = cur.fetchall()
         if not rows:

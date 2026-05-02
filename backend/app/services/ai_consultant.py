@@ -2211,8 +2211,12 @@ def chat_consult(
         detected_domain = detect_domain(_title, _cat, _support)
 
         if detected_domain:
-            # 분야별 knowledge_base 지식 조회
-            domain_knowledge = get_domain_knowledge(detected_domain, db_conn)
+            # 분야별 knowledge_base 지식 조회 (공고상담·PRO 지식만, LITE 자금상담 제외)
+            # source_agent IS NULL(태그 없음)은 SQL 조건에서 자동 허용됨
+            domain_knowledge = get_domain_knowledge(
+                detected_domain, db_conn,
+                allowed_agents=["consult", "pro", "crawler", "seed"],
+            )
 
             # 금융 분야: 추가로 financial_analysis 모듈에서 상세 데이터 로드
             if detected_domain == "finance":

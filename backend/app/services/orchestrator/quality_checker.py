@@ -42,8 +42,9 @@ def _call_gemini(prompt: str) -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
+        model_name = os.environ.get("GEMINI_BATCH_MODEL", "gemini-2.5-flash")
         model = genai.GenerativeModel(
-            "gemini-2.5-flash",
+            model_name,
             generation_config={
                 "temperature": 0.2,
                 "max_output_tokens": 512,
@@ -59,7 +60,7 @@ def _call_gemini(prompt: str) -> dict:
     except json.JSONDecodeError as je:
         print(f"[Orchestrator/quality] JSON 파싱 실패: {je}")
     except Exception as e:
-        print(f"[Orchestrator/quality] Gemini 오류: {e}")
+        print(f"[Orchestrator/quality] Gemini 오류: {type(e).__name__}: {e}")
     return {}
 
 
@@ -89,6 +90,7 @@ def check_quality(db_conn) -> dict:
     sample = random.sample(rows, min(5, len(rows)))
     results = []
     score_keys = list(SCORE_KEY_LABELS.keys())  # ["accuracy", "completeness", ...]
+    skipped_empty = 0
 
     for row in sample:
         msgs = row.get("messages") or []
@@ -98,15 +100,17 @@ def check_quality(db_conn) -> dict:
             except Exception:
                 msgs = []
 
-        # 대화 텍스트 구성 (최대 6턴)
+        # 대화 텍스트 구성 (최대 6턴) — "text" 또는 "content" 키 모두 지원
         conv_lines = []
         for m in msgs[-6:]:
             role = "고객" if m.get("role") == "user" else "AI"
-            text = (m.get("text") or "")[:300]
-            conv_lines.append(f"{role}: {text}")
+            text = (m.get("text") or m.get("content") or "")[:300]
+            if text:
+                conv_lines.append(f"{role}: {text}")
         conversation = "\n".join(conv_lines)
 
         if not conversation.strip():
+            skipped_empty += 1
             continue
 
         scores = _call_gemini(SCORE_PROMPT.format(conversation=conversation))
@@ -124,7 +128,7 @@ def check_quality(db_conn) -> dict:
         })
 
     if not results:
-        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0}
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0, "skipped_empty": skipped_empty}
 
     # 평균 집계 (한글 키 기준)
     kr_keys = list(SCORE_KEY_LABELS.values())

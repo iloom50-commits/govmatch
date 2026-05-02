@@ -55,14 +55,21 @@ def _call_gemini(prompt: str) -> dict:
         if not text:
             print("[Orchestrator/quality] Gemini 응답이 비어있음")
             return {}
+        print(f"[Orchestrator/quality] Gemini 원본 응답: {text[:200]}")
         # JSON 추출 (마크다운 감싸기 방어)
         start = text.find("{")
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
-            return json.loads(text[start:end])
-        print(f"[Orchestrator/quality] JSON 파싱 실패: {text[:100]}")
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError as je:
+                print(f"[Orchestrator/quality] JSON 파싱 실패: {je} | 원문: {text[start:end][:200]}")
+                return {}
+        print(f"[Orchestrator/quality] JSON 블록 없음: {text[:200]}")
     except Exception as e:
+        import traceback
         print(f"[Orchestrator/quality] Gemini 오류: {e}")
+        traceback.print_exc()
     return {}
 
 

@@ -17,7 +17,7 @@ async function fetchPublicAnnouncements(targetType: "business" | "individual"): 
     const res = await fetch(
       `${API}/api/announcements/public?page=1&size=9&target_type=${targetType}`,
       {
-        next: { revalidate: 3600 },
+        cache: "no-store",
         headers: {
           "x-bot-token": process.env.BOT_TOKEN || "GOVMATCH_BLOG_BOT_2026",
         },

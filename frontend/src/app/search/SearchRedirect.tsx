@@ -12,6 +12,8 @@ function RedirectInner() {
     const id = searchParams.get("id") || "";
     const utm = searchParams.get("utm_source") || "";
 
+    if (!q && !id) return;
+
     if (utm === "blog" && typeof window !== "undefined" && (window as any).gtag) {
       (window as any).gtag("event", "blog_referral", {
         search_query: q,
@@ -24,6 +26,10 @@ function RedirectInner() {
     if (id) params.set("id", id);
     router.replace(`/?${params.toString()}`);
   }, [searchParams, router]);
+
+  const q = searchParams.get("q") || "";
+  const id = searchParams.get("id") || "";
+  if (!q && !id) return null;
 
   return (
     <div className="flex items-center gap-3 py-8">

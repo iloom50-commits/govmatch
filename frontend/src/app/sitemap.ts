@@ -17,15 +17,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/refund`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
   ];
 
-  // 동적 페이지 — 주요 공고 (마감 안 된 것, 최대 500건)
-  let announcementPages: MetadataRoute.Sitemap = [];
+  // 동적 페이지 — 기업 공고 (최대 500건)
+  let bizPages: MetadataRoute.Sitemap = [];
+  let indivPages: MetadataRoute.Sitemap = [];
   try {
-    const res = await fetch(`${API}/api/announcements/public?page=1&size=500&target_type=business`, {
-      next: { revalidate: 86400 }, // 24시간 캐시
-    });
-    const data = await res.json();
-    if (data.status === "SUCCESS" && data.data) {
-      announcementPages = data.data.map((ann: any) => ({
+    const [bizRes, indivRes] = await Promise.all([
+      fetch(`${API}/api/announcements/public?page=1&size=400&target_type=business`, { next: { revalidate: 86400 } }),
+      fetch(`${API}/api/announcements/public?page=1&size=200&target_type=individual`, { next: { revalidate: 86400 } }),
+    ]);
+    const [bizData, indivData] = await Promise.all([bizRes.json(), indivRes.json()]);
+    if (bizData.status === "SUCCESS" && bizData.data) {
+      bizPages = bizData.data.map((ann: any) => ({
+        url: `${baseUrl}/announcements/${ann.announcement_id}`,
+        lastModified: new Date(),
+        changeFrequency: "weekly" as const,
+        priority: 0.65,
+      }));
+    }
+    if (indivData.status === "SUCCESS" && indivData.data) {
+      indivPages = indivData.data.map((ann: any) => ({
         url: `${baseUrl}/announcements/${ann.announcement_id}`,
         lastModified: new Date(),
         changeFrequency: "weekly" as const,
@@ -36,5 +46,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // API 실패해도 정적 페이지는 반환
   }
 
-  return [...staticPages, ...announcementPages];
+  const seen = new Set<string>();
+  const allAnnPages = [...bizPages, ...indivPages].filter(p => {
+    if (seen.has(p.url)) return false;
+    seen.add(p.url);
+    return true;
+  });
+
+  return [...staticPages, ...allAnnPages];
 }

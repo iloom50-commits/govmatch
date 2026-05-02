@@ -60,14 +60,43 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
     );
   }
 
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "지원금AI", "item": "https://www.govmatch.kr" },
+      { "@type": "ListItem", "position": 2, "name": ann.category || "지원사업", "item": `https://www.govmatch.kr/search?q=${encodeURIComponent(ann.category || "")}` },
+      { "@type": "ListItem", "position": 3, "name": ann.title, "item": `https://www.govmatch.kr/announcements/${id}` },
+    ],
+  };
+
+  const articleSchema = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": ann.title,
+    "description": ann.summary_text ? ann.summary_text.slice(0, 150) : `${ann.department || "정부"} ${ann.title}`,
+    "url": `https://www.govmatch.kr/announcements/${id}`,
+    "publisher": {
+      "@type": "Organization",
+      "name": "지원금AI",
+      "url": "https://www.govmatch.kr",
+    },
+    "dateModified": new Date().toISOString(),
+    ...(ann.deadline_date ? { "expires": String(ann.deadline_date).slice(0, 10) } : {}),
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* SEO 정적 콘텐츠 — 네이버 봇이 읽음 */}
-        <nav className="text-sm text-slate-400 mb-4">
+        <nav className="text-sm text-slate-400 mb-4" aria-label="breadcrumb">
           <a href="/" className="hover:text-indigo-600">지원금AI</a>
           <span className="mx-2">/</span>
-          <span>{ann.category || "지원사업"}</span>
+          <a href={`/search?q=${encodeURIComponent(ann.category || "")}`} className="hover:text-indigo-600">{ann.category || "지원사업"}</a>
+          <span className="mx-2">/</span>
+          <span className="text-slate-600 truncate">{ann.title?.slice(0, 30)}</span>
         </nav>
 
         <article>

@@ -1551,7 +1551,7 @@ class SecurityAgent:
             "headless", "phantom", "puppeteer", "playwright",
         ]
         # 허용 봇 (검색 엔진)
-        self._allowed_bots = ["googlebot", "bingbot", "yandexbot", "naverbot", "daumoa"]
+        self._allowed_bots = ["googlebot", "bingbot", "yandexbot", "naverbot", "yeti", "daumoa", "twitterbot", "facebookexternalhit", "linkedinbot"]
         # 이벤트 로그 (최근 100건)
         self._events: list = []
         self._MAX_EVENTS = 100

@@ -26,8 +26,16 @@ export const metadata: Metadata = {
     default: "지원금AI — 내 지원금 찾기 30초",
     template: "%s | 지원금AI",
   },
-  description: "찾지말고, 받으세요.",
-  keywords: ["지원금AI", "정부지원금", "보조금", "정책자금", "중소기업지원", "소상공인지원", "창업지원", "개인복지", "AI매칭", "지원금찾기", "정부보조금", "소상공인정책자금", "청년지원금", "전세자금대출", "R&D지원"],
+  description: "지원금AI — 정부 지원금·보조금·정책자금을 AI가 자동 분석합니다. 중소기업·소상공인·청년·개인 맞춤 17,000건 이상의 공고를 30초 안에 찾아드립니다. 무료로 시작하세요.",
+  keywords: [
+    "지원금AI", "정부지원금", "정부보조금", "정책자금", "지원금찾기", "AI매칭",
+    "중소기업지원금", "소상공인지원금", "창업지원금", "청년지원금", "R&D지원",
+    "소상공인정책자금", "사업화지원금", "스타트업지원", "바우처사업",
+    "청년창업", "예비창업패키지", "초기창업패키지",
+    "전세자금", "주거지원", "복지바우처", "출산지원금", "육아지원금",
+    "지자체지원사업", "중소기업진흥공단", "기업마당", "정부지원사업",
+    "보조금신청", "정책자금신청", "지원금신청방법", "소상공인보조금",
+  ],
   manifest: "/manifest.json",
   metadataBase: new URL("https://www.govmatch.kr"),
   alternates: {
@@ -39,7 +47,7 @@ export const metadata: Metadata = {
     url: "https://www.govmatch.kr",
     siteName: "지원금AI",
     title: "지원금AI — 내 지원금 찾기 30초",
-    description: "찾지말고, 받으세요.",
+    description: "정부 지원금·보조금·정책자금을 AI가 자동 분석합니다. 중소기업·소상공인·청년 맞춤 17,000건 이상의 공고를 30초 안에 찾아드립니다.",
     images: [
       {
         url: "/og-image-wide-v2.png",
@@ -52,7 +60,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "지원금AI — 내 지원금 찾기 30초",
-    description: "찾지말고, 받으세요.",
+    description: "정부 지원금·보조금·정책자금을 AI가 자동 분석합니다. 중소기업·소상공인·청년 맞춤 17,000건 이상의 공고를 30초 안에 찾아드립니다.",
     images: ["/og-image-wide-v2.png"],
   },
   robots: {
@@ -178,10 +186,12 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "WebApplication",
               "name": "지원금AI",
+              "alternateName": "govmatch",
               "url": "https://www.govmatch.kr",
-              "description": "17,000+ 정부 지원금 공고를 AI가 실시간 분석하여 내 조건에 맞는 보조금·정책자금을 자동 매칭해드리는 서비스",
+              "description": "정부 지원금·보조금·정책자금 공고를 AI가 실시간 분석하여 중소기업·소상공인·청년·개인 조건에 맞는 지원사업을 자동 매칭해드리는 서비스. 17,000건 이상 공고 보유.",
               "applicationCategory": "BusinessApplication",
               "operatingSystem": "Web",
+              "inLanguage": "ko",
               "offers": {
                 "@type": "Offer",
                 "price": "0",
@@ -209,6 +219,57 @@ export default function RootLayout({
             }),
           }}
         />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "FAQPage",
+              "mainEntity": [
+                {
+                  "@type": "Question",
+                  "name": "지원금AI란 무엇인가요?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "지원금AI(govmatch.kr)는 중앙부처와 전국 지자체의 정부 지원금·보조금·정책자금 공고 17,000건 이상을 AI가 실시간 분석하여, 기업과 개인 조건에 꼭 맞는 지원사업을 자동으로 찾아드리는 AI 매칭 서비스입니다."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "어떤 지원금을 찾을 수 있나요?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "중소기업 R&D 지원사업, 소상공인 정책자금·융자, 창업지원금(예비창업패키지·초기창업패키지·TIPS), 수출바우처, 고용지원금, 청년지원금, 주거지원, 복지바우처, 출산·육아 지원, 장학금 등 기업과 개인을 위한 모든 정부 지원사업을 찾아드립니다."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "지원금AI는 무료인가요?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "네, 기본 기능은 무료입니다. 회원가입 후 업종·지역·매출 정보를 입력하면 맞춤 지원금 공고를 무제한으로 받아볼 수 있으며, AI 상담은 월 3회 무료로 이용 가능합니다."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "소상공인도 이용할 수 있나요?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "네. 소상공인진흥공단의 정책자금·융자·보증, 각 지자체 소상공인 지원사업, 경영환경 개선 지원 등 소상공인 전용 지원사업을 별도로 분류하여 안내해드립니다."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "개인도 지원금을 받을 수 있나요?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "네. 청년 취업·창업 지원금, 신혼부부·청년 주거 지원, 출산·육아 지원금, 복지바우처, 장학금 등 개인 대상 지원사업도 AI가 조건에 맞게 자동 매칭해드립니다."
+                  }
+                }
+              ]
+            }),
+          }}
+        />
         <div className="flex-1 flex flex-col">
           <Providers>{children}</Providers>
         </div>
@@ -216,72 +277,84 @@ export default function RootLayout({
         {/* ── SEO 정적 콘텐츠 (SSR) — 검색엔진 노출용
              비로그인: details로 접힘 제공
              로그인: 아래 is-logged-in CSS로 완전 숨김 (크롤러는 항상 비로그인이라 SEO 영향 0) ── */}
-        <section className="seo-intro w-full border-t border-slate-200/60 bg-white" aria-label="서비스 소개">
-          <details className="max-w-5xl mx-auto px-4 py-6 text-slate-700">
-            <summary className="cursor-pointer list-none flex items-center gap-2 text-[13px] md:text-sm font-semibold text-slate-600 hover:text-indigo-600 select-none">
-              <span className="text-indigo-500">💡</span>
-              <span>지원금AI 서비스 소개 · 주요 키워드 · 데이터 출처</span>
-              <span className="ml-auto text-[11px] text-slate-400 group-open:hidden">펼치기 ▼</span>
-            </summary>
-            <div className="pt-6">
-            <h2 className="text-lg md:text-xl font-bold text-slate-900 mb-3">
+        <section className="seo-intro w-full border-t border-slate-200/60 bg-gradient-to-b from-white to-slate-50/50" aria-label="서비스 소개">
+          <div className="max-w-5xl mx-auto px-4 py-8 text-slate-700">
+            <h1 className="text-xl md:text-2xl font-bold text-slate-900 mb-3">
               지원금AI — 정부 지원금·보조금·정책자금 AI 자동 매칭 서비스
-            </h2>
-            <p className="text-[13px] md:text-sm leading-relaxed text-slate-600 mb-5">
-              지원금AI(govmatch.kr)는 중앙부처와 전국 지자체가 공고하는 <strong>정부 지원금, 보조금, 정책자금, 창업지원금, R&amp;D 과제, 소상공인 지원사업</strong>을 매시간 자동 수집·분석해,
-              기업과 개인의 조건에 꼭 맞는 지원사업을 찾아드리는 AI 매칭 서비스입니다. 17,000건 이상의 공고를 AI가 실시간 분석하여 신청 자격·마감일·지원금액을 한눈에 정리해드립니다.
-              회원가입 후 업종·지역·매출·관심분야만 입력하면 맞춤 알림까지 자동 발송됩니다.
+            </h1>
+            <p className="text-[13px] md:text-sm leading-relaxed text-slate-600 mb-6">
+              <strong>지원금AI(govmatch.kr)</strong>는 중앙부처와 전국 지자체가 공고하는 <strong>정부 지원금, 보조금, 정책자금, 창업지원금, R&amp;D 과제, 소상공인 지원사업</strong>을 매시간 자동 수집·분석합니다.
+              기업과 개인의 업종·지역·매출·연령 조건에 꼭 맞는 지원사업을 AI가 자동으로 찾아드리는 서비스로, 17,000건 이상의 공고를 실시간 분석하여 신청 자격·마감일·지원금액을 한눈에 정리해드립니다.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-              <div>
-                <h3 className="text-[13px] font-bold text-slate-800 mb-2">🏢 기업 대상 주요 서비스</h3>
-                <ul className="text-[12px] md:text-[13px] text-slate-600 space-y-1 list-disc pl-5">
-                  <li>중소기업 R&amp;D 및 기술개발 지원사업 매칭</li>
-                  <li>수출·해외마케팅 바우처 자동 추천</li>
-                  <li>스마트공장·디지털전환 정책자금 검색</li>
-                  <li>창업기업·벤처기업 전용 지원사업</li>
-                  <li>소상공인 융자·보증·경영환경 개선 지원</li>
-                  <li>여성·장애인·사회적경제기업 전용 사업</li>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+              <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                <h2 className="text-[13px] font-bold text-slate-800 mb-2">🏢 기업·소상공인 지원금</h2>
+                <ul className="text-[12px] text-slate-600 space-y-1 list-disc pl-4">
+                  <li>중소기업 R&amp;D·기술개발 지원사업</li>
+                  <li>소상공인 정책자금·융자·보증</li>
+                  <li>수출·해외마케팅 바우처</li>
+                  <li>스마트공장·디지털전환 자금</li>
+                  <li>창업·벤처 전용 지원사업</li>
+                  <li>여성·장애인·사회적기업 지원</li>
                 </ul>
               </div>
-              <div>
-                <h3 className="text-[13px] font-bold text-slate-800 mb-2">👤 개인 대상 주요 서비스</h3>
-                <ul className="text-[12px] md:text-[13px] text-slate-600 space-y-1 list-disc pl-5">
-                  <li>청년 구직·취업 지원금 안내</li>
-                  <li>신혼부부·다자녀 주거 지원</li>
-                  <li>저소득·차상위 복지바우처 매칭</li>
-                  <li>출산·육아·보육 지원사업</li>
+              <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                <h2 className="text-[13px] font-bold text-slate-800 mb-2">👤 개인·청년 지원금</h2>
+                <ul className="text-[12px] text-slate-600 space-y-1 list-disc pl-4">
+                  <li>청년 취업·구직 지원금</li>
+                  <li>신혼부부·청년 전세·월세 지원</li>
+                  <li>출산·육아·다자녀 지원금</li>
+                  <li>저소득·차상위 복지바우처</li>
+                  <li>국가장학금·학자금 지원</li>
                   <li>에너지·농어업인 지원금</li>
-                  <li>장학금·학자금·교육훈련 지원</li>
+                </ul>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                <h2 className="text-[13px] font-bold text-slate-800 mb-2">🤖 AI 서비스 특징</h2>
+                <ul className="text-[12px] text-slate-600 space-y-1 list-disc pl-4">
+                  <li>17,000건 이상 공고 실시간 분석</li>
+                  <li>조건 입력 후 30초 내 맞춤 매칭</li>
+                  <li>AI 전문가 상담 (LITE·PRO)</li>
+                  <li>마감 임박 공고 자동 알림</li>
+                  <li>사업계획서 작성 지원</li>
+                  <li>무료로 시작 가능</li>
                 </ul>
               </div>
             </div>
 
-            <div className="mb-6">
-              <h3 className="text-[13px] font-bold text-slate-800 mb-2">🔗 주요 페이지</h3>
+            <div className="mb-5">
+              <h2 className="text-[13px] font-bold text-slate-800 mb-2">주요 지원금 카테고리</h2>
+              <nav className="flex flex-wrap gap-2 text-[12px]">
+                {["정부지원금", "소상공인지원금", "창업지원금", "청년지원금", "R&D지원", "수출지원", "주거지원", "복지지원", "출산지원", "장학금"].map(kw => (
+                  <a key={kw} href={`/search?q=${encodeURIComponent(kw)}`}
+                    className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full hover:bg-indigo-100 transition-colors">
+                    {kw}
+                  </a>
+                ))}
+              </nav>
+            </div>
+
+            <div className="mb-5">
+              <h2 className="text-[13px] font-bold text-slate-800 mb-2">주요 페이지</h2>
               <nav className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] md:text-[13px]">
-                <a href="/" className="text-indigo-600 hover:underline">홈 (맞춤 매칭)</a>
+                <a href="/" className="text-indigo-600 hover:underline">홈 · 맞춤 매칭</a>
                 <a href="/search" className="text-indigo-600 hover:underline">공고 검색</a>
+                <a href="/calendar" className="text-indigo-600 hover:underline">지원금 캘린더</a>
                 <a href="/api-partnership" className="text-indigo-600 hover:underline">API 제휴</a>
                 <a href="/support" className="text-indigo-600 hover:underline">고객상담</a>
-                <a href="/calendar" className="text-indigo-600 hover:underline">지원금 캘린더</a>
-                <a href="/terms" className="text-indigo-600 hover:underline">이용약관</a>
-                <a href="/privacy" className="text-indigo-600 hover:underline">개인정보 처리방침</a>
-                <a href="/refund" className="text-indigo-600 hover:underline">환불 정책</a>
               </nav>
             </div>
 
             <div className="text-[11px] text-slate-500 leading-relaxed pt-4 border-t border-slate-100">
               <p className="mb-1">
-                <strong>주요 데이터 출처:</strong> 기업마당(bizinfo.go.kr), K-Startup, 중소벤처기업부, 중소기업기술정보진흥원, 과학기술정보통신부, 한국식품안전관리인증원, 정부24, 지방자치단체 복지포털 등 17,000건 이상의 공고 실시간 연동.
+                <strong>데이터 출처:</strong> 기업마당(bizinfo.go.kr), K-Startup, 중소벤처기업부, 중소기업기술정보진흥원, 과학기술정보통신부, 정부24, 복지로, 각 지자체 공식 공고 등 17,000건 이상 실시간 연동.
               </p>
               <p>
-                <strong>연관 키워드:</strong> 정부지원금, 정부보조금, 중소기업지원금, 소상공인지원금, 창업지원금, 정책자금 신청, 청년지원금, 지자체 지원사업, 바우처 사업, R&amp;D 과제, 사업계획서 컨설팅, 지원금 찾기
+                <strong>검색 키워드:</strong> 지원금AI, 정부지원금, 정부보조금, 중소기업지원금, 소상공인지원금, 창업지원금, 정책자금신청, 청년지원금, 지자체지원사업, 바우처사업, R&amp;D과제, 지원금찾기, AI보조금매칭
               </p>
             </div>
-            </div>
-          </details>
+          </div>
         </section>
 
         <footer className="w-full border-t border-slate-200/60 bg-slate-50/80">

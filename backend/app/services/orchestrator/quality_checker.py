@@ -7,12 +7,11 @@ import os
 import random
 
 
-SCORE_PROMPT = """Rate this AI consultation on 5 criteria (0-10 each). Reply with ONE line of JSON only, no other text.
+SCORE_PROMPT = """Score this AI consultation. Reply with ONLY this JSON, nothing else:
+{{"accuracy":N,"completeness":N,"expertise":N,"actionability":N,"clarity":N}}
 
-Consultation:
-{conversation}
-
-Reply format (one line): {{"accuracy":N,"completeness":N,"expertise":N,"actionability":N,"clarity":N,"comment":"brief"}}"""
+Where N is 0-10. Consultation:
+{conversation}"""
 
 # 영어 키 → 한글 표시명 매핑
 SCORE_KEY_LABELS = {
@@ -127,7 +126,6 @@ def check_quality(db_conn) -> dict:
         total = sum(scores.get(k, 0) for k in score_keys)
         # 한글 키로 변환하여 저장 (reporter 표시용)
         scores_kr = {SCORE_KEY_LABELS[k]: scores.get(k, 0) for k in score_keys}
-        scores_kr["총평"] = scores.get("comment", "")
         results.append({
             "session_id": row.get("session_id", ""),
             "updated_at": str(row.get("updated_at", "")),

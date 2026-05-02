@@ -2631,11 +2631,22 @@ def api_announcements_public(
 
     where_sql = " AND ".join(where_clauses)
 
-    # 총 개수 — 8s 타임아웃 (VACUUM 후 정상이면 1s 이내)
-    cursor.execute("SET LOCAL statement_timeout = '8s'")
-    cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
-    cursor.execute("RESET statement_timeout")
-    total = cursor.fetchone()["cnt"]
+    # 총 개수 — 타임아웃 시 근사치로 폴백 (500 방지)
+    try:
+        cursor.execute("SET LOCAL statement_timeout = '15s'")
+        cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
+        cursor.execute("RESET statement_timeout")
+        total = cursor.fetchone()["cnt"]
+    except Exception as _count_err:
+        print(f"[public] COUNT 타임아웃 폴백: {_count_err}")
+        try: cursor.execute("RESET statement_timeout")
+        except: pass
+        # reltuples 근사치 사용
+        try:
+            cursor.execute("SELECT reltuples::bigint AS cnt FROM pg_class WHERE relname = 'announcements'")
+            total = int((cursor.fetchone() or {}).get("cnt") or 10000)
+        except:
+            total = 10000
 
     # 공고 리스트 — 검색 시 관련성 정렬
     # 기관명 정확 매칭 > 구문 제목 > AND 제목 > 구문 요약 > AND 요약 > OR

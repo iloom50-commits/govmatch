@@ -16,7 +16,12 @@ async function fetchPublicAnnouncements(targetType: "business" | "individual"): 
   try {
     const res = await fetch(
       `${API}/api/announcements/public?page=1&size=9&target_type=${targetType}`,
-      { next: { revalidate: 3600 } }
+      {
+        next: { revalidate: 3600 },
+        headers: {
+          "x-bot-token": process.env.BOT_TOKEN || "GOVMATCH_BLOG_BOT_2026",
+        },
+      }
     );
     if (!res.ok) return [];
     const data = await res.json();

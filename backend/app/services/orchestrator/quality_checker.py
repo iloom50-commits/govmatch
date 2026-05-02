@@ -48,7 +48,7 @@ def _call_gemini(prompt: str) -> dict:
         if not text:
             print("[Orchestrator/quality] Gemini 응답 비어있음")
             return {}
-        _last_gemini_error = f"len={len(text)} raw={text[:500]}"
+        _last_gemini_error = f"parse_error"
         # 마크다운 코드블록 제거 (```json ... ```)
         import re as _re
         text = _re.sub(r"```(?:json)?\s*", "", text).strip()
@@ -134,7 +134,7 @@ def check_quality(db_conn) -> dict:
         })
 
     if not results:
-        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0, "skipped_empty": skipped_empty, "last_error": _last_gemini_error}
+        return {"samples": [], "avg_scores": {}, "low_quality_count": 0, "avg_total": 0, "sample_count": 0}
 
     # 평균 집계 (한글 키 기준)
     kr_keys = list(SCORE_KEY_LABELS.values())

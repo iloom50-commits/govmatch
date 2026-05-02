@@ -49,7 +49,10 @@ def _call_gemini(prompt: str) -> dict:
         if not text:
             print("[Orchestrator/quality] Gemini 응답 비어있음")
             return {}
-        _last_gemini_error = f"raw={text[:150]}"
+        _last_gemini_error = f"raw={text[:200]}"
+        # 마크다운 코드블록 제거 (```json ... ```)
+        import re as _re
+        text = _re.sub(r"```(?:json)?\s*", "", text).strip()
         # { ... } 블록 추출 후 파싱
         start = text.find("{")
         end = text.rfind("}") + 1

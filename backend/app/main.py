@@ -1461,9 +1461,12 @@ def db_check():
     # 6543 = PgBouncer 풀러 (현재 사용 중)
     result["pgbouncer_6543"] = _test_url(DATABASE_URL, "pgbouncer:6543")
 
-    # 5432 = PostgreSQL 직접 연결 (PgBouncer 우회)
-    direct_url = re.sub(r"pooler\.supabase\.com:6543", "supabase.co:5432",
-                        DATABASE_URL.replace("aws-1-ap-northeast-2.pooler", "db.erjxlphndhkpdfmglzyv"))
+    # 5432 = PostgreSQL 직접 연결 (PgBouncer 우회) — username도 단순화
+    project_ref = "erjxlphndhkpdfmglzyv"
+    import urllib.parse as _up
+    parsed = _up.urlparse(DATABASE_URL)
+    pw = _up.unquote(parsed.password or "")
+    direct_url = f"postgresql://postgres:{_up.quote(pw, safe='')}@db.{project_ref}.supabase.co:5432/postgres"
     result["direct_5432"] = _test_url(direct_url, "direct:5432")
 
     return result

@@ -1430,6 +1430,33 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get("/api/db-check")
+def db_check():
+    """DB 연결 단계별 진단 — 운영 안정화 후 제거 예정"""
+    import time
+    result = {}
+    t0 = time.time()
+    try:
+        conn = get_db_connection()
+        result["connect_ms"] = round((time.time() - t0) * 1000)
+        t1 = time.time()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 AS ping")
+        result["ping_ms"] = round((time.time() - t1) * 1000)
+        t2 = time.time()
+        cur.execute("SELECT COUNT(*) AS cnt FROM announcements")
+        cnt = cur.fetchone()["cnt"]
+        result["count_ms"] = round((time.time() - t2) * 1000)
+        result["count"] = cnt
+        conn.close()
+        result["status"] = "ok"
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+        result["elapsed_ms"] = round((time.time() - t0) * 1000)
+    return result
+
+
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함

@@ -13282,6 +13282,39 @@ def admin_qa_review_action(item_id: int, req: QAReviewRequest):
         conn.close()
 
 
+class ManualKnowledgeRequest(BaseModel):
+    content: str           # 자유 형식 텍스트
+    category: str          # fund_biz | fund_indiv | finance | housing | ...
+    knowledge_type: str = "fact"
+    memo: str = ""
+
+
+@app.post("/api/admin/knowledge/manual-input", dependencies=[Depends(_verify_admin)])
+def admin_manual_knowledge(req: ManualKnowledgeRequest):
+    """관리자 직접 지식 주입 → knowledge_base 즉시 저장"""
+    if not req.content.strip():
+        raise HTTPException(status_code=400, detail="content가 비어있습니다")
+    content_json = json.dumps(
+        {"text": req.content.strip(), "memo": req.memo},
+        ensure_ascii=False,
+    )
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO knowledge_base
+                   (source, knowledge_type, category, content, confidence, source_agent, use_count)
+               VALUES (%s, %s, %s, %s::jsonb, %s, %s, 0)
+               RETURNING id""",
+            ("manual_input", req.knowledge_type, req.category, content_json, 1.0, "manual"),
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        return {"status": "SUCCESS", "id": new_id}
+    finally:
+        conn.close()
+
+
 class QAGenerateRequest(BaseModel):
     password: str
     batch_size: int = 5

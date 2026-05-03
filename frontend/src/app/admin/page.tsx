@@ -222,6 +222,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [qaEditId, setQaEditId] = useState<number | null>(null);
   const [qaEditAnswer, setQaEditAnswer] = useState('');
   const [qaEditMemo, setQaEditMemo] = useState('');
+  const [manualText, setManualText] = useState('');
+  const [manualCategory, setManualCategory] = useState('fund_biz');
+  const [manualType, setManualType] = useState('fact');
+  const [manualMemo, setManualMemo] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
 
   const authHeaders = useCallback((): Record<string, string> => {
     const token = sessionStorage.getItem('admin_token') || '';
@@ -370,6 +375,35 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       toast('생성 요청 오류', 'error');
     } finally {
       setQaGenerating(false);
+    }
+  };
+
+  const handleManualSave = async () => {
+    if (!manualText.trim()) { toast('내용을 입력하세요', 'error'); return; }
+    setManualSaving(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/knowledge/manual-input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: manualText.trim(),
+          category: manualCategory,
+          knowledge_type: manualType,
+          memo: manualMemo,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast(`✅ 지식 저장 완료 (ID: ${data.id})`, 'success');
+        setManualText('');
+        setManualMemo('');
+      } else {
+        toast(data.detail || '저장 실패', 'error');
+      }
+    } catch {
+      toast('저장 오류', 'error');
+    } finally {
+      setManualSaving(false);
     }
   };
 
@@ -790,6 +824,57 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200"
                 >
                   <FiRefreshCw size={14} /> 새로고침
+                </button>
+              </div>
+            </div>
+
+            {/* 직접 지식 입력 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-3">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <FiDatabase size={14} className="text-emerald-500" /> 직접 지식 입력
+              </h3>
+              <textarea
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                rows={4}
+                className="w-full text-sm border border-slate-200 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder={"예) 중진공 직접대출 2024년 금리는 2.9%~3.9%이며, 시설자금 최대 100억, 운전자금 최대 5억 한도입니다.\n또는: 소상공인 정책자금은 소진공(1588-5411)에서 신청하며 상시근로자 5인 미만 사업체가 대상입니다."}
+              />
+              <div className="flex flex-wrap gap-2 items-center">
+                <select
+                  value={manualCategory}
+                  onChange={(e) => setManualCategory(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="fund_biz">기업자금 (fund_biz)</option>
+                  <option value="fund_indiv">개인창업 (fund_indiv)</option>
+                  <option value="finance">금융일반 (finance)</option>
+                  <option value="housing">주거 (housing)</option>
+                  <option value="employment">고용 (employment)</option>
+                  <option value="startup">창업 (startup)</option>
+                </select>
+                <select
+                  value={manualType}
+                  onChange={(e) => setManualType(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="fact">사실·수치 (fact)</option>
+                  <option value="policy">정책 설명 (policy)</option>
+                  <option value="procedure">절차·방법 (procedure)</option>
+                  <option value="eligibility">자격요건 (eligibility)</option>
+                </select>
+                <input
+                  value={manualMemo}
+                  onChange={(e) => setManualMemo(e.target.value)}
+                  className="flex-1 min-w-[140px] text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="메모 (선택, 출처 등)"
+                />
+                <button
+                  onClick={handleManualSave}
+                  disabled={manualSaving || !manualText.trim()}
+                  className="px-5 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {manualSaving ? '저장 중...' : '저장'}
                 </button>
               </div>
             </div>

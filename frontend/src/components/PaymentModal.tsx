@@ -288,7 +288,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isLite && !isPro ? (
-                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">첫 달 무료 · 이후 자동결제</p>
+                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
             </div>
 
@@ -343,7 +343,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               {!isPro ? (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">첫 달 무료 · 이후 자동결제</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
             </div>
           </div>

@@ -1914,10 +1914,9 @@ PLAN_PRICES = {
     "biz": 29000,       # legacy → PRO 취급
 }
 
-# [프로모션] 2026-04-22 ~ 2026-05-23 LITE 1개월 무료 개방
-# 프로모션 기간 동안 신규 가입자는 자동으로 LITE 플랜 + PROMO_END까지 무료
-PROMO_LITE_FREE_END = "2026-05-23 23:59:59"  # ISO format
-PROMO_ACTIVE = True  # False로 바꾸면 프로모션 종료 (기존 7일 체험 로직으로 복귀)
+# 신규 가입자 LITE 7일 무료체험 (상시)
+TRIAL_DAYS = 7
+PROMO_ACTIVE = False  # 프로모션 종료 (2026-05-23 이후)
 # PRO 3개월 오픈 이벤트: 29,000원/월 (정가 49,000원), 2026-07-31까지
 PRO_EVENT_PRICE = 29000
 PRO_EVENT_END = "2026-07-31"
@@ -2962,9 +2961,9 @@ def api_register(req: RegisterRequest, request: Request):
             )
             user_id = existing["user_id"]
         else:
-            # [프로모션] 활성화 시 기본 플랜을 lite + 2026-05-23까지 무료
-            _initial_plan = 'lite' if PROMO_ACTIVE else 'free'
-            _initial_expires = PROMO_LITE_FREE_END if PROMO_ACTIVE else None
+            # 신규 가입: LITE 7일 무료체험
+            _initial_plan = 'lite'
+            _initial_expires = (datetime.datetime.utcnow() + datetime.timedelta(days=TRIAL_DAYS)).isoformat()
             cursor.execute(
                 """INSERT INTO users (business_number, company_name, email, password_hash, plan,
                    plan_started_at, plan_expires_at, ai_usage_month, ai_usage_reset_at,
@@ -3185,11 +3184,11 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
             cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s", params)
             conn.commit()
     else:
-        # 신규 가입 — [프로모션] 활성화 시 기본 lite + 2026-05-23까지 무료
+        # 신규 가입 — LITE 7일 무료체험
         bn = f"U{int(datetime.datetime.utcnow().timestamp())}"[-10:]
         import hashlib as _hashlib
-        _initial_plan = 'lite' if PROMO_ACTIVE else 'free'
-        _initial_expires = PROMO_LITE_FREE_END if PROMO_ACTIVE else None
+        _initial_plan = 'lite'
+        _initial_expires = (datetime.datetime.utcnow() + datetime.timedelta(days=TRIAL_DAYS)).isoformat()
         cursor.execute(
             """INSERT INTO users (business_number, company_name, email, password_hash, plan,
                plan_started_at, plan_expires_at, ai_usage_month, ai_usage_reset_at, kakao_id, gender, age_range, user_type)

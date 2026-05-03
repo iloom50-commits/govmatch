@@ -1378,36 +1378,28 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
-      {/* [프로모션 2026-04-22 ~ 2026-05-23] LITE 1개월 무료 배너 */}
-      {planStatus && planStatus.plan === "lite_trial" && (() => {
-        // 2026-05-23까지 남은 일수 계산
-        const now = new Date();
-        const promoEnd = new Date("2026-05-23T23:59:59");
-        const daysLeft = Math.max(0, Math.ceil((promoEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-        // 프로모션 기간 종료 시 자동 숨김
-        if (daysLeft === 0 || now > promoEnd) return null;
-        return (
-          <button
-            onClick={() => setShowPromoModal(true)}
-            className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
-          >
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="text-lg">🎁</span>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-bold truncate">
-                    LITE 1개월 무료 체험 중 · D-{daysLeft}
-                  </div>
-                  <div className="text-[11px] opacity-90 truncate">
-                    2026-05-23까지 모든 기능 무료 · 공고AI 상담 · 맞춤 공고 알림
-                  </div>
+      {/* LITE 7일 무료체험 배너 */}
+      {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (
+        <button
+          onClick={() => setShowPromoModal(true)}
+          className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-lg">🎁</span>
+              <div className="min-w-0">
+                <div className="text-[13px] font-bold truncate">
+                  LITE 7일 무료체험 중 · D-{planStatus.days_left}
+                </div>
+                <div className="text-[11px] opacity-90 truncate">
+                  가입 후 7일간 모든 기능 무료 · 공고AI 상담 · 맞춤 공고 알림
                 </div>
               </div>
-              <span className="text-[11px] opacity-70 flex-shrink-0">자세히 ›</span>
             </div>
-          </button>
-        );
-      })()}
+            <span className="text-[11px] opacity-70 flex-shrink-0">자세히 ›</span>
+          </div>
+        </button>
+      )}
 
       {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
@@ -1856,14 +1848,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🎁</span>
-                <h3 className="text-[16px] font-black text-slate-900">LITE 1개월 무료 체험</h3>
+                <h3 className="text-[16px] font-black text-slate-900">LITE 7일 무료체험</h3>
               </div>
               <button onClick={() => setShowPromoModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all text-sm">✕</button>
             </div>
             <div className="space-y-3 mb-5">
               <div className="bg-violet-50 rounded-xl p-4 border border-violet-100">
                 <p className="text-[13px] font-bold text-violet-700 mb-1">🗓 체험 기간</p>
-                <p className="text-[13px] text-slate-700">2026년 4월 22일 ~ <strong>5월 23일</strong>까지</p>
+                <p className="text-[13px] text-slate-700">가입일로부터 <strong>7일간</strong> 무료</p>
               </div>
               <div className="space-y-2">
                 <p className="text-[12px] font-bold text-slate-500 uppercase tracking-wide">무료 제공 기능</p>

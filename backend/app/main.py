@@ -13196,6 +13196,118 @@ def api_ai_coo_run(req: AdminAuthRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ══════════════════════════════════════════════════════════
+#  자금상담 사전학습 Q&A 관리 API
+# ══════════════════════════════════════════════════════════
+
+@app.get("/api/admin/qa-review", dependencies=[Depends(_verify_admin)])
+def admin_qa_review_list(status: str = "pending", limit: int = 50):
+    """Q&A 검토 큐 목록 조회"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, question, ai_answer, category, source_keywords,
+                      status, corrected_answer, owner_memo, created_at, reviewed_at
+               FROM qa_review_queue
+               WHERE status = %s
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (status, limit),
+        )
+        rows = cur.fetchall()
+        items = [dict(r) for r in rows]
+        return {"status": "SUCCESS", "items": items, "count": len(items)}
+    finally:
+        conn.close()
+
+
+class QAReviewRequest(BaseModel):
+    action: str  # approve | correct | reject
+    corrected_answer: str = ""
+    owner_memo: str = ""
+
+
+@app.post("/api/admin/qa-review/{item_id}/review", dependencies=[Depends(_verify_admin)])
+def admin_qa_review_action(item_id: int, req: QAReviewRequest):
+    """Q&A 승인(approve) / 수정(correct) / 거절(reject) 처리 + 승인 시 knowledge_base 저장"""
+    if req.action not in ("approve", "correct", "reject"):
+        raise HTTPException(status_code=400, detail="action은 approve/correct/reject 중 하나")
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM qa_review_queue WHERE id = %s",
+            (item_id,),
+        )
+        item = cur.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="항목 없음")
+
+        new_status = "approved" if req.action in ("approve", "correct") else "rejected"
+        final_answer = req.corrected_answer.strip() if req.action == "correct" else item["ai_answer"]
+
+        cur.execute(
+            """UPDATE qa_review_queue
+               SET status = %s, corrected_answer = %s, owner_memo = %s,
+                   reviewed_at = NOW()
+               WHERE id = %s""",
+            (new_status, req.corrected_answer or None, req.owner_memo or None, item_id),
+        )
+
+        if new_status == "approved":
+            content_json = json.dumps(
+                {"question": item["question"], "answer": final_answer},
+                ensure_ascii=False,
+            )
+            cur.execute(
+                """INSERT INTO knowledge_base
+                       (source, knowledge_type, category, content, confidence, source_agent, use_count)
+                   VALUES (%s, %s, %s, %s::jsonb, %s, %s, 0)
+                   ON CONFLICT DO NOTHING""",
+                (
+                    "qa_verified",
+                    "faq",
+                    item["category"],
+                    content_json,
+                    1.0,
+                    "qa_training",
+                ),
+            )
+
+        conn.commit()
+        return {"status": "SUCCESS", "action": new_status, "id": item_id}
+    finally:
+        conn.close()
+
+
+class QAGenerateRequest(BaseModel):
+    password: str
+    batch_size: int = 5
+
+
+@app.post("/api/admin/qa-review/generate")
+def admin_qa_generate(req: QAGenerateRequest):
+    """Q&A 배치 생성 트리거 (백그라운드 실행)"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+
+    import threading
+
+    def _run():
+        try:
+            from app.services.qa_generator import generate_and_save_qa
+            result = generate_and_save_qa(batch_size=req.batch_size)
+            print(f"[qa_generate] 완료: {result}")
+        except Exception as e:
+            print(f"[qa_generate] 오류: {e}")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {"status": "STARTED", "message": f"Q&A 생성 시작 (batch_size={req.batch_size})"}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -175,7 +175,7 @@ export default function AdminPage() {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy' | 'logs' | 'qa_training'>('overview');
   const [strategyReport, setStrategyReport] = useState<string>('');
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [reportHistory, setReportHistory] = useState<{id:number;report:string;created_at:string}[]>([]);
@@ -201,6 +201,27 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeProgress, setReanalyzeProgress] = useState<{ done: number; total: number; result: string | null } | null>(null);
+
+  // Q&A 사전학습
+  interface QAItem {
+    id: number;
+    question: string;
+    ai_answer: string;
+    category: string;
+    source_keywords: string;
+    status: string;
+    corrected_answer: string | null;
+    owner_memo: string | null;
+    created_at: string;
+    reviewed_at: string | null;
+  }
+  const [qaItems, setQaItems] = useState<QAItem[]>([]);
+  const [qaFilter, setQaFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaGenerating, setQaGenerating] = useState(false);
+  const [qaEditId, setQaEditId] = useState<number | null>(null);
+  const [qaEditAnswer, setQaEditAnswer] = useState('');
+  const [qaEditMemo, setQaEditMemo] = useState('');
 
   const authHeaders = useCallback((): Record<string, string> => {
     const token = sessionStorage.getItem('admin_token') || '';
@@ -292,6 +313,65 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   useEffect(() => { if (activeTab === 'logs') loadSystemLogs(logCategory || undefined); }, [activeTab, logCategory]);
+
+  const loadQaItems = async (status: 'pending' | 'approved' | 'rejected' = 'pending') => {
+    setQaLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/qa-review?status=${status}&limit=50`);
+      const data = await res.json();
+      if (data.status === 'SUCCESS') setQaItems(data.items || []);
+    } catch {
+      toast('Q&A 목록 로드 실패', 'error');
+    } finally {
+      setQaLoading(false);
+    }
+  };
+
+  useEffect(() => { if (activeTab === 'qa_training') loadQaItems(qaFilter); }, [activeTab, qaFilter]);
+
+  const handleQaReview = async (id: number, action: 'approve' | 'correct' | 'reject', correctedAnswer = '', memo = '') => {
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/qa-review/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, corrected_answer: correctedAnswer, owner_memo: memo }),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast(action === 'approve' ? '✅ 승인 완료' : action === 'correct' ? '✏️ 수정 승인 완료' : '❌ 거절 완료', 'success');
+        setQaEditId(null);
+        loadQaItems(qaFilter);
+      } else {
+        toast('처리 실패', 'error');
+      }
+    } catch {
+      toast('오류 발생', 'error');
+    }
+  };
+
+  const handleQaGenerate = async () => {
+    const pw = sessionStorage.getItem('admin_password') || prompt('관리자 비밀번호 입력') || '';
+    if (!pw) return;
+    setQaGenerating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/qa-review/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw, batch_size: 5 }),
+      });
+      const data = await res.json();
+      if (data.status === 'STARTED') {
+        toast('Q&A 생성 시작! 1~2분 후 목록을 새로고침하세요.', 'success');
+        sessionStorage.setItem('admin_password', pw);
+      } else {
+        toast(data.detail || '생성 실패', 'error');
+      }
+    } catch {
+      toast('생성 요청 오류', 'error');
+    } finally {
+      setQaGenerating(false);
+    }
+  };
 
   const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -589,6 +669,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <FiRefreshCw size={15} /> 활동 이력
             </button>
+            <button
+              onClick={() => setActiveTab('qa_training')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'qa_training'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FiCpu size={15} /> AI 사전학습
+            </button>
           </div>
         </header>
 
@@ -673,6 +763,143 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <FiTrendingUp size={48} className="mx-auto mb-4 opacity-30" />
                 <p className="text-sm font-medium">&quot;새 보고서 생성&quot; 버튼을 눌러 AI 전략 분석을 시작하세요</p>
                 <p className="text-xs mt-1">사용자 행동 데이터를 기반으로 서비스 활성화 전략을 제안합니다</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ Q&A 사전학습 Tab ═══════════ */}
+        {activeTab === 'qa_training' && (
+          <div className="space-y-6">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">자금상담 AI 사전학습</h2>
+                <p className="text-xs text-slate-400 mt-0.5">AI가 생성한 Q&A를 검토·승인하면 knowledge_base에 학습됩니다.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleQaGenerate}
+                  disabled={qaGenerating}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <FiCpu size={14} /> {qaGenerating ? '생성 중...' : 'AI Q&A 자동 생성'}
+                </button>
+                <button
+                  onClick={() => loadQaItems(qaFilter)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200"
+                >
+                  <FiRefreshCw size={14} /> 새로고침
+                </button>
+              </div>
+            </div>
+
+            {/* 필터 탭 */}
+            <div className="flex gap-2">
+              {(['pending', 'approved', 'rejected'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setQaFilter(s)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    qaFilter === s
+                      ? s === 'pending' ? 'bg-amber-500 text-white'
+                        : s === 'approved' ? 'bg-emerald-600 text-white'
+                        : 'bg-red-500 text-white'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {s === 'pending' ? '검토 대기' : s === 'approved' ? '승인됨' : '거절됨'}
+                </button>
+              ))}
+            </div>
+
+            {/* 목록 */}
+            {qaLoading ? (
+              <div className="text-center py-12 text-slate-400">로딩 중...</div>
+            ) : qaItems.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                {qaFilter === 'pending' ? '검토할 Q&A가 없습니다. AI Q&A 자동 생성을 실행해보세요.' : '항목 없음'}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {qaItems.map((item) => (
+                  <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    {/* 카테고리 + 키워드 */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        item.category === 'fund_biz' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                      }`}>
+                        {item.category === 'fund_biz' ? '기업자금' : '개인창업'}
+                      </span>
+                      {item.source_keywords && (
+                        <span className="text-[10px] text-slate-400">출처: {item.source_keywords}</span>
+                      )}
+                      <span className="ml-auto text-[10px] text-slate-300">#{item.id}</span>
+                    </div>
+
+                    {/* 질문 */}
+                    <p className="font-bold text-slate-800 text-sm mb-2">Q. {item.question}</p>
+
+                    {/* 답변 (수정 모드 / 읽기 모드) */}
+                    {qaEditId === item.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={qaEditAnswer}
+                          onChange={(e) => setQaEditAnswer(e.target.value)}
+                          rows={5}
+                          className="w-full text-xs border border-slate-300 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                          placeholder="수정할 답변을 입력하세요"
+                        />
+                        <input
+                          value={qaEditMemo}
+                          onChange={(e) => setQaEditMemo(e.target.value)}
+                          className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          placeholder="메모 (선택)"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleQaReview(item.id, 'correct', qaEditAnswer, qaEditMemo)}
+                            className="px-4 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700"
+                          >수정 승인</button>
+                          <button
+                            onClick={() => setQaEditId(null)}
+                            className="px-4 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200"
+                          >취소</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
+                        {item.corrected_answer || item.ai_answer}
+                      </div>
+                    )}
+
+                    {/* 액션 버튼 — 대기 상태만 표시 */}
+                    {qaFilter === 'pending' && qaEditId !== item.id && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => handleQaReview(item.id, 'approve')}
+                          className="flex-1 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700"
+                        >✅ 승인</button>
+                        <button
+                          onClick={() => { setQaEditId(item.id); setQaEditAnswer(item.ai_answer); setQaEditMemo(''); }}
+                          className="flex-1 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600"
+                        >✏️ 수정</button>
+                        <button
+                          onClick={() => handleQaReview(item.id, 'reject')}
+                          className="flex-1 py-1.5 bg-red-500 text-white rounded-xl text-xs font-bold hover:bg-red-600"
+                        >❌ 거절</button>
+                      </div>
+                    )}
+
+                    {/* 승인/거절된 항목 메타 */}
+                    {qaFilter !== 'pending' && (
+                      <div className="mt-2 text-[10px] text-slate-400">
+                        {item.owner_memo && <span className="mr-3">메모: {item.owner_memo}</span>}
+                        {item.reviewed_at && <span>검토: {new Date(item.reviewed_at).toLocaleDateString('ko-KR')}</span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

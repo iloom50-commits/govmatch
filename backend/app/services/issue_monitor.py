@@ -138,9 +138,42 @@ JSON 배열만 반환:
         return []
 
 
+def _match_announcement(cur, title: str, category: str) -> tuple[int | None, str | None]:
+    """
+    이슈 제목·카테고리로 우리 공고 DB에서 가장 유사한 공고를 찾는다.
+    반환: (announcement_id, deadline_date) or (None, None)
+    마감일이 지난 공고는 제외.
+    """
+    # 제목에서 핵심 키워드 추출 (2자 이상 단어)
+    import re
+    keywords = [w for w in re.split(r'[\s·\-—,·/]+', title) if len(w) >= 2][:4]
+    if not keywords:
+        return None, None
+
+    for kw in keywords:
+        try:
+            cur.execute(
+                """SELECT announcement_id, deadline_date::text
+                   FROM announcements
+                   WHERE title ILIKE %s
+                     AND is_archived = FALSE
+                     AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                   ORDER BY deadline_date ASC NULLS LAST
+                   LIMIT 1""",
+                (f"%{kw}%",),
+            )
+            row = cur.fetchone()
+            if row:
+                print(f"  [issue_monitor] 공고 매칭: '{kw}' → id={row['announcement_id']} 마감={row['deadline_date']}")
+                return row["announcement_id"], row["deadline_date"]
+        except Exception:
+            pass
+    return None, None
+
+
 def run_issue_monitoring(auto_activate: bool = False) -> dict:
     """
-    보도자료 수집 → AI 분석 → hot_issues 저장
+    보도자료 수집 → AI 분석 → 공고 매칭 → hot_issues 저장
     auto_activate=True: 기존 활성 이슈 유지하면서 새 초안 추가
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -163,11 +196,17 @@ def run_issue_monitoring(auto_activate: bool = False) -> dict:
     saved = 0
     for issue in issues:
         try:
+            ann_id, ann_deadline = _match_announcement(
+                cur,
+                issue.get("title", ""),
+                issue.get("category", ""),
+            )
             cur.execute(
                 """INSERT INTO hot_issues
                        (ticker_text, title, summary, detail, category,
-                        source_name, source_url, is_active, auto_generated, sort_order)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, 99)""",
+                        source_name, source_url, is_active, auto_generated,
+                        sort_order, linked_announcement_id, expires_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, 99, %s, %s)""",
                 (
                     issue.get("ticker_text", "")[:30],
                     issue.get("title", "")[:60],
@@ -177,6 +216,8 @@ def run_issue_monitoring(auto_activate: bool = False) -> dict:
                     issue.get("source_name", ""),
                     issue.get("source_url", ""),
                     auto_activate,
+                    ann_id,
+                    ann_deadline,   # None이면 NULL — 만료일 모르는 경우 영구 표시
                 ),
             )
             conn.commit()

@@ -91,7 +91,80 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-// 뉴스 티커 — 공고 리스트 최상단 가로 스크롤
+// ── Hot이슈 티커 ──────────────────────────────────────────
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+
+interface HotIssue { id: number; ticker_text: string; title: string; summary: string; detail: string; category: string; source_name: string; source_url: string; }
+
+function HotIssueTicker() {
+  const [issues, setIssues] = useState<HotIssue[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [modal, setModal] = useState<HotIssue | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/hot-issues/active`)
+      .then(r => r.json())
+      .then(d => { if (d.items?.length) setIssues(d.items); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (issues.length <= 1) return;
+    const t = setInterval(() => setCurrent(c => (c + 1) % issues.length), 4000);
+    return () => clearInterval(t);
+  }, [issues.length]);
+
+  if (!issues.length) return null;
+  const issue = issues[current];
+
+  return (
+    <>
+      <div
+        className="w-full flex items-center gap-2 bg-rose-600 text-white px-3 py-2 cursor-pointer hover:bg-rose-700 transition-colors"
+        onClick={() => setModal(issue)}
+      >
+        <span className="text-[10px] font-black bg-white text-rose-600 px-2 py-0.5 rounded-full shrink-0 leading-tight">HOT</span>
+        <span className="text-xs font-bold truncate flex-1 animate-pulse-once">{issue.ticker_text}</span>
+        <span className="text-[10px] opacity-70 shrink-0">{current + 1}/{issues.length} ›</span>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setModal(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">HOT이슈</span>
+              {modal.category && <span className="text-[10px] text-slate-400">{modal.category}</span>}
+              <button onClick={() => setModal(null)} className="ml-auto text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+            </div>
+            <h2 className="text-base font-black text-slate-900 mb-2">{modal.title}</h2>
+            {modal.summary && <p className="text-sm text-slate-600 mb-3">{modal.summary}</p>}
+            {modal.detail && (
+              <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                {modal.detail}
+              </div>
+            )}
+            {modal.source_name && (
+              <p className="text-[11px] text-slate-400 mt-3">
+                출처: {modal.source_name}
+                {modal.source_url && (
+                  <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-indigo-500 underline">원문 보기</a>
+                )}
+              </p>
+            )}
+            <div className="flex gap-2 mt-4">
+              {issues.map((_, i) => (
+                <button key={i} onClick={() => setModal(issues[i])}
+                  className={`h-1.5 rounded-full transition-all ${i === issues.indexOf(modal) ? 'bg-rose-500 w-6' : 'bg-slate-200 w-2'}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+// ─────────────────────────────────────────────────────────
 
 
 // 마이페이지 버튼 + 스마트 말풍선 (D-3 업그레이드 / 새 맞춤 공고 / 프로필 미완성)
@@ -1377,6 +1450,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
+
+      {/* Hot이슈 티커 */}
+      <HotIssueTicker />
 
       {/* LITE 7일 무료체험 배너 */}
       {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (

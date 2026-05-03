@@ -1422,6 +1422,24 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            # ── Hot이슈 자동 생성 — 월·목 23:00 UTC (KST 08:00) ──
+            def _issue_monitor_job():
+                try:
+                    from app.services.issue_monitor import run_issue_monitoring
+                    result = run_issue_monitoring(auto_activate=False)
+                    print(f"[issue_monitor] 완료: {result}")
+                    _log_system("issue_monitor", "system", f"Hot이슈 자동 생성: {result.get('saved',0)}건", "success")
+                except Exception as e:
+                    print(f"[issue_monitor] 오류: {e}")
+
+            pipeline_scheduler.add_job(
+                _issue_monitor_job,
+                CronTrigger(day_of_week="mon,thu", hour=23, minute=0),
+                id="hot_issue_monitor",
+                name="Hot이슈 자동 생성 (월·목 KST 08:00)",
+                replace_existing=True,
+            )
+
             # ── LITE 자금상담 이력 30일 자동 삭제 — 매일 02:00 UTC (KST 11:00) ──
             def _cleanup_lite_chat_logs():
                 try:
@@ -7580,6 +7598,35 @@ def api_run_migrations(req: AdminAuthRequest):
             )"""),
         ("idx_match_history_bn",
          "CREATE INDEX IF NOT EXISTS idx_match_history_bn ON match_history(business_number, created_at DESC)"),
+        ("hot_issues table",
+         """CREATE TABLE IF NOT EXISTS hot_issues (
+                id SERIAL PRIMARY KEY,
+                ticker_text VARCHAR(40) NOT NULL,
+                title VARCHAR(80) NOT NULL,
+                summary VARCHAR(150),
+                detail TEXT,
+                category VARCHAR(30),
+                source_name VARCHAR(60),
+                source_url TEXT DEFAULT '',
+                is_active BOOLEAN DEFAULT FALSE,
+                auto_generated BOOLEAN DEFAULT FALSE,
+                sort_order INTEGER DEFAULT 99,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""),
+        ("qa_review_queue table",
+         """CREATE TABLE IF NOT EXISTS qa_review_queue (
+                id SERIAL PRIMARY KEY,
+                question TEXT NOT NULL,
+                ai_answer TEXT NOT NULL,
+                category VARCHAR(30),
+                source_keywords VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'pending',
+                corrected_answer TEXT,
+                owner_memo TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP
+            )"""),
     ]
 
     for name, sql in migrations:
@@ -13224,6 +13271,148 @@ def api_ai_coo_run(req: AdminAuthRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════
+#  Hot이슈 티커 API
+# ══════════════════════════════════════════════════════════
+
+@app.get("/api/hot-issues/active")
+def api_hot_issues_active():
+    """활성 Hot이슈 목록 (비로그인 공개) — sort_order 순, 최대 5개"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, ticker_text, title, summary, detail, category, source_name, source_url
+               FROM hot_issues
+               WHERE is_active = TRUE
+               ORDER BY sort_order ASC, created_at DESC
+               LIMIT 5"""
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "items": items}
+    finally:
+        conn.close()
+
+
+@app.get("/api/admin/hot-issues", dependencies=[Depends(_verify_admin)])
+def admin_hot_issues_list(status: str = "all"):
+    """Hot이슈 전체 목록 (관리자)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        where = ""
+        if status == "active":
+            where = "WHERE is_active = TRUE"
+        elif status == "draft":
+            where = "WHERE is_active = FALSE"
+        cur.execute(
+            f"""SELECT id, ticker_text, title, summary, detail, category,
+                       source_name, source_url, is_active, auto_generated,
+                       sort_order, created_at
+                FROM hot_issues
+                {where}
+                ORDER BY is_active DESC, sort_order ASC, created_at DESC
+                LIMIT 50"""
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "items": items}
+    finally:
+        conn.close()
+
+
+class HotIssueUpsertRequest(BaseModel):
+    ticker_text: str
+    title: str
+    summary: str = ""
+    detail: str = ""
+    category: str = ""
+    source_name: str = ""
+    source_url: str = ""
+
+
+@app.post("/api/admin/hot-issues", dependencies=[Depends(_verify_admin)])
+def admin_hot_issue_create(req: HotIssueUpsertRequest):
+    """Hot이슈 직접 생성 (관리자 수동 입력)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO hot_issues (ticker_text, title, summary, detail, category,
+                   source_name, source_url, is_active, auto_generated, sort_order)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, FALSE, 99)
+               RETURNING id""",
+            (req.ticker_text[:40], req.title[:80], req.summary[:150],
+             req.detail, req.category, req.source_name, req.source_url),
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        return {"status": "SUCCESS", "id": new_id}
+    finally:
+        conn.close()
+
+
+class HotIssueActivateRequest(BaseModel):
+    is_active: bool
+    sort_order: int = 99
+
+
+@app.patch("/api/admin/hot-issues/{issue_id}", dependencies=[Depends(_verify_admin)])
+def admin_hot_issue_update(issue_id: int, req: HotIssueActivateRequest):
+    """Hot이슈 활성화/비활성화 + 순서 변경"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # 활성화 시 최대 5개 제한 확인
+        if req.is_active:
+            cur.execute("SELECT COUNT(*) AS c FROM hot_issues WHERE is_active = TRUE AND id != %s", (issue_id,))
+            active_count = cur.fetchone()["c"]
+            if active_count >= 5:
+                raise HTTPException(status_code=400, detail="활성 이슈는 최대 5개까지 가능합니다.")
+        cur.execute(
+            """UPDATE hot_issues
+               SET is_active = %s, sort_order = %s, updated_at = NOW()
+               WHERE id = %s""",
+            (req.is_active, req.sort_order, issue_id),
+        )
+        conn.commit()
+        return {"status": "SUCCESS"}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/admin/hot-issues/{issue_id}", dependencies=[Depends(_verify_admin)])
+def admin_hot_issue_delete(issue_id: int):
+    """Hot이슈 삭제"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM hot_issues WHERE id = %s", (issue_id,))
+        conn.commit()
+        return {"status": "SUCCESS"}
+    finally:
+        conn.close()
+
+
+class HotIssueGenerateRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/admin/hot-issues/generate")
+def admin_hot_issue_generate(req: HotIssueGenerateRequest):
+    """Hot이슈 AI 자동 생성 트리거 (백그라운드)"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="비밀번호 오류")
+    import threading
+    def _run():
+        try:
+            from app.services.issue_monitor import run_issue_monitoring
+            run_issue_monitoring(auto_activate=False)
+        except Exception as e:
+            print(f"[hot_issue_generate] 오류: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "STARTED", "message": "Hot이슈 AI 생성 시작 (1~2분 소요)"}
 
 
 # ══════════════════════════════════════════════════════════

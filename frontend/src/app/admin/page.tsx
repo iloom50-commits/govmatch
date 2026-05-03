@@ -175,7 +175,7 @@ export default function AdminPage() {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy' | 'logs' | 'qa_training'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'strategy' | 'logs' | 'qa_training' | 'hot_issues'>('overview');
   const [strategyReport, setStrategyReport] = useState<string>('');
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [reportHistory, setReportHistory] = useState<{id:number;report:string;created_at:string}[]>([]);
@@ -376,6 +376,99 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     } finally {
       setQaGenerating(false);
     }
+  };
+
+  // Hot이슈
+  interface HotIssue {
+    id: number;
+    ticker_text: string;
+    title: string;
+    summary: string;
+    detail: string;
+    category: string;
+    source_name: string;
+    source_url: string;
+    is_active: boolean;
+    auto_generated: boolean;
+    sort_order: number;
+    created_at: string;
+  }
+  const [hotIssues, setHotIssues] = useState<HotIssue[]>([]);
+  const [hotLoading, setHotLoading] = useState(false);
+  const [hotGenerating, setHotGenerating] = useState(false);
+  const [hotForm, setHotForm] = useState({ ticker_text: '', title: '', summary: '', detail: '', category: '', source_name: '', source_url: '' });
+  const [hotFormOpen, setHotFormOpen] = useState(false);
+
+  const loadHotIssues = async () => {
+    setHotLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/hot-issues`);
+      const data = await res.json();
+      if (data.status === 'SUCCESS') setHotIssues(data.items || []);
+    } catch { toast('Hot이슈 목록 로드 실패', 'error'); }
+    finally { setHotLoading(false); }
+  };
+
+  useEffect(() => { if (activeTab === 'hot_issues') loadHotIssues(); }, [activeTab]);
+
+  const handleHotToggle = async (id: number, current: boolean, sortOrder: number) => {
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/hot-issues/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !current, sort_order: sortOrder }),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast(!current ? '✅ 활성화됨' : '⏸ 비활성화됨', 'success');
+        loadHotIssues();
+      } else { toast(data.detail || '처리 실패', 'error'); }
+    } catch { toast('오류 발생', 'error'); }
+  };
+
+  const handleHotDelete = async (id: number) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    try {
+      await authFetch(`${API_URL}/api/admin/hot-issues/${id}`, { method: 'DELETE' });
+      toast('삭제됨', 'success');
+      loadHotIssues();
+    } catch { toast('삭제 실패', 'error'); }
+  };
+
+  const handleHotCreate = async () => {
+    if (!hotForm.ticker_text || !hotForm.title) { toast('티커 문구와 제목은 필수입니다', 'error'); return; }
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/hot-issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hotForm),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast('✅ 생성 완료', 'success');
+        setHotForm({ ticker_text: '', title: '', summary: '', detail: '', category: '', source_name: '', source_url: '' });
+        setHotFormOpen(false);
+        loadHotIssues();
+      } else { toast(data.detail || '생성 실패', 'error'); }
+    } catch { toast('오류 발생', 'error'); }
+  };
+
+  const handleHotGenerate = async () => {
+    const pw = sessionStorage.getItem('admin_password') || prompt('관리자 비밀번호') || '';
+    if (!pw) return;
+    setHotGenerating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/hot-issues/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (data.status === 'STARTED') {
+        toast('🔥 AI 이슈 생성 시작! 1~2분 후 새로고침', 'success');
+        sessionStorage.setItem('admin_password', pw);
+      } else { toast(data.detail || '실패', 'error'); }
+    } catch { toast('오류', 'error'); }
+    finally { setHotGenerating(false); }
   };
 
   const handleManualSave = async () => {
@@ -713,6 +806,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <FiCpu size={15} /> AI 사전학습
             </button>
+            <button
+              onClick={() => setActiveTab('hot_issues')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'hot_issues'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FiBell size={15} /> Hot이슈
+            </button>
           </div>
         </header>
 
@@ -797,6 +900,104 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <FiTrendingUp size={48} className="mx-auto mb-4 opacity-30" />
                 <p className="text-sm font-medium">&quot;새 보고서 생성&quot; 버튼을 눌러 AI 전략 분석을 시작하세요</p>
                 <p className="text-xs mt-1">사용자 행동 데이터를 기반으로 서비스 활성화 전략을 제안합니다</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ Hot이슈 Tab ═══════════ */}
+        {activeTab === 'hot_issues' && (
+          <div className="space-y-6">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">🔥 Hot이슈 티커 관리</h2>
+                <p className="text-xs text-slate-400 mt-0.5">활성화된 이슈(최대 5개)가 앱 메인 티커에 표시됩니다.</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleHotGenerate} disabled={hotGenerating}
+                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 disabled:opacity-50">
+                  <FiBell size={14} /> {hotGenerating ? 'AI 생성 중...' : 'AI 자동 생성'}
+                </button>
+                <button onClick={() => setHotFormOpen(v => !v)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200">
+                  <FiPlus size={14} /> 직접 추가
+                </button>
+                <button onClick={loadHotIssues}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200">
+                  <FiRefreshCw size={14} /> 새로고침
+                </button>
+              </div>
+            </div>
+
+            {/* 직접 추가 폼 */}
+            {hotFormOpen && (
+              <div className="bg-white rounded-2xl border border-rose-200 p-5 space-y-3">
+                <h3 className="text-sm font-bold text-slate-800">새 이슈 직접 추가</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input value={hotForm.ticker_text} onChange={e => setHotForm(f => ({...f, ticker_text: e.target.value}))}
+                    placeholder="티커 문구 (20자, 이모지 포함) *" maxLength={40}
+                    className="text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+                  <input value={hotForm.title} onChange={e => setHotForm(f => ({...f, title: e.target.value}))}
+                    placeholder="이슈 제목 (30자) *" maxLength={80}
+                    className="text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+                  <input value={hotForm.summary} onChange={e => setHotForm(f => ({...f, summary: e.target.value}))}
+                    placeholder="한줄 요약 (60자)" maxLength={150}
+                    className="text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                  <input value={hotForm.source_name} onChange={e => setHotForm(f => ({...f, source_name: e.target.value}))}
+                    placeholder="출처 기관명"
+                    className="text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                </div>
+                <textarea value={hotForm.detail} onChange={e => setHotForm(f => ({...f, detail: e.target.value}))}
+                  placeholder="상세 내용 — 받는 방법, 자격요건, 신청 기관 등 (마크다운 가능)"
+                  rows={4} className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                <div className="flex gap-2">
+                  <button onClick={handleHotCreate}
+                    className="px-5 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700">저장</button>
+                  <button onClick={() => setHotFormOpen(false)}
+                    className="px-5 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200">취소</button>
+                </div>
+              </div>
+            )}
+
+            {/* 이슈 목록 */}
+            {hotLoading ? (
+              <div className="text-center py-12 text-slate-400">로딩 중...</div>
+            ) : hotIssues.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">이슈 없음. AI 자동 생성 또는 직접 추가하세요.</div>
+            ) : (
+              <div className="space-y-3">
+                {hotIssues.map(issue => (
+                  <div key={issue.id} className={`bg-white rounded-2xl border p-4 ${issue.is_active ? 'border-rose-300 shadow-sm' : 'border-slate-200'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${issue.is_active ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {issue.is_active ? '● 활성' : '○ 초안'}
+                          </span>
+                          {issue.auto_generated && <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-600 font-bold">AI생성</span>}
+                          {issue.category && <span className="text-[10px] text-slate-400">{issue.category}</span>}
+                          <span className="text-[10px] text-slate-300 ml-auto">#{issue.id} · 순서 {issue.sort_order}</span>
+                        </div>
+                        <p className="text-xs font-bold text-rose-600 mb-0.5">📢 {issue.ticker_text}</p>
+                        <p className="text-sm font-bold text-slate-800">{issue.title}</p>
+                        {issue.summary && <p className="text-xs text-slate-500 mt-0.5">{issue.summary}</p>}
+                        {issue.detail && <p className="text-xs text-slate-400 mt-1 line-clamp-2 whitespace-pre-wrap">{issue.detail}</p>}
+                        {issue.source_name && <p className="text-[10px] text-slate-300 mt-1">출처: {issue.source_name}</p>}
+                      </div>
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={() => handleHotToggle(issue.id, issue.is_active, issue.sort_order)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold ${issue.is_active ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-rose-600 text-white hover:bg-rose-700'}`}>
+                          {issue.is_active ? '비활성화' : '활성화'}
+                        </button>
+                        <button onClick={() => handleHotDelete(issue.id)}
+                          className="px-3 py-1.5 bg-red-50 text-red-500 rounded-xl text-xs font-bold hover:bg-red-100">
+                          삭제
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

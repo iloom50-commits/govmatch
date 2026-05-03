@@ -233,78 +233,107 @@ class NotificationService:
 
     def _build_email_html(self, company_name: str, matches: List[Dict], user_type: str = "business") -> str:
         """매칭 결과를 HTML 이메일 본문으로 변환 — 기업/개인 섹션 분리"""
-        today_str = datetime.date.today().strftime("%Y년 %m월 %d일")
+        today = datetime.date.today()
+        today_str = today.strftime("%Y년 %m월 %d일")
         APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
 
+        def _deadline_badge(deadline_str: str) -> str:
+            if not deadline_str:
+                return ""
+            try:
+                dl = datetime.date.fromisoformat(deadline_str[:10])
+                days_left = (dl - today).days
+                if days_left < 0:
+                    return ""
+                if days_left <= 3:
+                    return f'<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;">⚠️ D-{days_left}</span>'
+                if days_left <= 7:
+                    return f'<span style="background:#fef3c7;color:#d97706;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;">D-{days_left}</span>'
+                return f'<span style="background:#f1f5f9;color:#64748b;font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;">~{deadline_str[2:].replace("-",".")}</span>'
+            except Exception:
+                return ""
+
         def _card_html(m: dict) -> str:
-            title = m.get("program_title", "")
-            ann_id = m.get("announcement_id") or m.get("id")
-            amount = m.get("support_amount") or ""
-            deadline = str(m.get("deadline_date") or "")[:10]
-            link = f"{APP_URL}?aid={ann_id}" if ann_id else APP_URL
+            title      = m.get("program_title") or ""
+            ann_id     = m.get("announcement_id") or m.get("id")
+            amount     = (m.get("support_amount") or "").strip()
+            deadline   = str(m.get("deadline_date") or "")[:10]
+            category   = (m.get("category") or "").strip()
+            department = (m.get("department") or "").strip()[:20]
+            link       = f"{APP_URL}?aid={ann_id}" if ann_id else APP_URL
 
-            amount_html = f'<span style="color:#e11d48; font-weight:700; margin-right:8px;">{amount}</span>' if amount else ""
-            deadline_html = f'<span style="color:#475569;">마감 {deadline[2:].replace("-", ".")}</span>' if deadline else ""
-            meta_html = f'<p style="margin:4px 0 10px; font-size:12px;">{amount_html}{deadline_html}</p>' if (amount or deadline) else ""
+            # 카테고리 뱃지
+            cat_html = f'<span style="background:#ede9fe;color:#7c3aed;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;margin-right:6px;">{category}</span>' if category else ""
+            # 기관명
+            dept_html = f'<span style="color:#94a3b8;font-size:11px;">{department}</span>' if department else ""
+            # 상단 메타 (카테고리 + 기관명)
+            meta_top = f'<div style="margin-bottom:8px;">{cat_html}{dept_html}</div>' if (category or department) else ""
 
-            return f'''<div style="margin:0 0 12px; padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
-  <p style="margin:0 0 4px; color:#1e293b; font-size:14px; font-weight:600; line-height:1.6;">{title}</p>
-  {meta_html}
-  <a href="{link}" style="display:inline-block; padding:6px 14px; background:#2563eb; color:white; text-decoration:none; border-radius:6px; font-size:12px; font-weight:600;">공고 바로가기 →</a>
+            # 금액
+            amount_short = amount[:40] + "…" if len(amount) > 40 else amount
+            amount_html = f'<div style="margin:10px 0 6px;"><span style="font-size:16px;font-weight:800;color:#2563eb;">💰 {amount_short}</span></div>' if amount_short else ""
+
+            # 마감일 뱃지
+            dl_badge = _deadline_badge(deadline)
+            dl_html  = f'<div style="margin-bottom:12px;">{dl_badge}</div>' if dl_badge else '<div style="margin-bottom:12px;"></div>'
+
+            return f'''<div style="margin:0 0 14px;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">
+  <div style="border-left:4px solid #4f46e5;padding:16px 16px 14px;background:#ffffff;">
+    {meta_top}
+    <p style="margin:0;color:#1e293b;font-size:14px;font-weight:700;line-height:1.6;">{title}</p>
+    {amount_html}
+    {dl_html}
+    <a href="{link}" style="display:block;text-align:center;padding:10px;background:#4f46e5;color:#ffffff;text-decoration:none;border-radius:7px;font-size:13px;font-weight:700;">공고 바로가기 →</a>
+  </div>
 </div>\n'''
 
         # 기업/개인 섹션 분리
-        biz_matches = [m for m in matches if m.get("target_type") not in ("individual",)]
+        biz_matches   = [m for m in matches if m.get("target_type") != "individual"]
         indiv_matches = [m for m in matches if m.get("target_type") == "individual"]
 
-        # user_type이 both면 두 섹션 모두, 아니면 해당 타입만
-        show_biz = user_type != "individual"
+        show_biz   = user_type != "individual"
         show_indiv = user_type != "business"
-
-        # 두 타입 모두 있으면 강제로 both 처리
         if biz_matches and indiv_matches:
-            show_biz = True
-            show_indiv = True
+            show_biz = show_indiv = True
 
         sections_html = ""
-        total_count = 0
 
         if show_biz and biz_matches:
             label = "🏢 기업 맞춤 공고" if show_indiv else "맞춤 공고"
             top = biz_matches[:5]
-            total_count += len(top)
-            sections_html += f'<p style="margin:0 0 12px; font-size:15px; font-weight:700;">{label} {len(top)}건</p>'
+            sections_html += f'<p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1e293b;">{label} {len(top)}건</p>'
             sections_html += "".join(_card_html(m) for m in top)
 
         if show_indiv and indiv_matches:
             top = indiv_matches[:5]
-            total_count += len(top)
-            margin_top = "margin-top:24px;" if sections_html else ""
-            sections_html += f'<p style="{margin_top}margin-bottom:12px; font-size:15px; font-weight:700;">👤 개인 맞춤 공고 {len(top)}건</p>'
+            mt = "margin-top:28px;" if sections_html else ""
+            sections_html += f'<p style="{mt}margin-bottom:12px;font-size:15px;font-weight:700;color:#1e293b;">👤 개인 맞춤 공고 {len(top)}건</p>'
             sections_html += "".join(_card_html(m) for m in top)
 
         if not sections_html:
             top = matches[:5]
-            total_count = len(top)
-            sections_html = f'<p style="margin:0 0 12px; font-size:15px; font-weight:700;">맞춤 공고 {total_count}건</p>'
+            sections_html = f'<p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1e293b;">맞춤 공고 {len(top)}건</p>'
             sections_html += "".join(_card_html(m) for m in top)
 
-        return f"""
-        <div style="max-width:520px; margin:0 auto; font-family:-apple-system,'Pretendard',sans-serif; color:#1e293b;">
-          <div style="padding:28px 24px 20px; border-bottom:2px solid #e2e8f0;">
-            <p style="margin:0; font-size:18px; font-weight:700;">지원금AI</p>
-            <p style="margin:4px 0 0; font-size:13px; color:#64748b;">{today_str} | {company_name}</p>
-          </div>
-          <div style="padding:24px;">
-            {sections_html}
-            <div style="margin:24px 0; text-align:center;">
-              <a href="{APP_URL}" style="display:inline-block; padding:12px 32px; background:#2563eb; color:white; text-decoration:none; border-radius:8px; font-size:14px; font-weight:700;">전체 공고 보기</a>
-            </div>
-          </div>
-          <div style="padding:16px 24px; border-top:1px solid #f1f5f9; text-align:center;">
-            <p style="margin:0; font-size:11px; color:#94a3b8;">지원금AI | 자동 발송 알림</p>
-          </div>
-        </div>"""
+        total = len(matches)
+        return f"""<div style="max-width:520px;margin:0 auto;font-family:-apple-system,'Pretendard',Arial,sans-serif;color:#1e293b;background:#f8fafc;">
+  <!-- 헤더 -->
+  <div style="background:#4f46e5;padding:28px 24px 22px;">
+    <p style="margin:0;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">지원금AI</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#c7d2fe;">{today_str} · {company_name} 맞춤 공고 {total}건</p>
+  </div>
+  <!-- 본문 -->
+  <div style="padding:24px;">
+    {sections_html}
+    <div style="margin:8px 0 4px;text-align:center;">
+      <a href="{APP_URL}" style="display:inline-block;padding:13px 36px;background:#1e293b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">전체 공고 보기</a>
+    </div>
+  </div>
+  <!-- 푸터 -->
+  <div style="padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:11px;color:#94a3b8;">지원금AI · 자동 발송 알림 · <a href="{APP_URL}/unsubscribe" style="color:#94a3b8;">수신 거부</a></p>
+  </div>
+</div>"""
 
     def send_email(self, to_email: str, company_name: str, matches: List[Dict], user_type: str = "business") -> bool:
         """Resend HTTP API를 통해 매칭 결과 이메일 발송.
@@ -559,6 +588,8 @@ class NotificationService:
                             "support_amount": program.get('support_amount') or '',
                             "deadline_date": str(program.get('deadline_date') or '')[:10],
                             "target_type": program.get('target_type') or '',
+                            "category": program.get('category') or '',
+                            "department": program.get('department') or '',
                         })
 
                 if matches:

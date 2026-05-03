@@ -383,6 +383,12 @@ class NotificationService:
 
     def send_push(self, business_number: str, company_name: str, matches: List[Dict]) -> int:
         """해당 사업자의 웹 푸시 구독 전부에 알림 발송, 발송 수 리턴"""
+        import datetime as _dt
+        _kst_hour = (_dt.datetime.utcnow().hour + 9) % 24
+        if not (9 <= _kst_hour < 18):
+            print(f"  [push] KST {_kst_hour:02d}시 — 발송 시간 외(09~18시) 스킵")
+            return 0
+
         try:
             from pywebpush import webpush, WebPushException
         except ImportError:
@@ -442,6 +448,12 @@ class NotificationService:
 
     async def send_kakao_message(self, business_number: str, company_name: str, matches: List[Dict]) -> bool:
         """카카오 refresh_token으로 액세스 토큰 갱신 후 나에게 보내기 API로 맞춤 공고 발송"""
+        import datetime as _dt
+        _kst_hour = (_dt.datetime.utcnow().hour + 9) % 24
+        if not (9 <= _kst_hour < 18):
+            print(f"  [kakao] KST {_kst_hour:02d}시 — 발송 시간 외(09~18시) 스킵")
+            return False
+
         kakao_client_id = os.getenv("KAKAO_CLIENT_ID", "")
         kakao_client_secret = os.getenv("KAKAO_CLIENT_SECRET", "")
         if not kakao_client_id:

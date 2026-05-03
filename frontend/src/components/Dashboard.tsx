@@ -98,8 +98,8 @@ interface HotIssue { id: number; ticker_text: string; title: string; summary: st
 
 function HotIssueTicker() {
   const [issues, setIssues] = useState<HotIssue[]>([]);
-  const [current, setCurrent] = useState(0);
   const [modal, setModal] = useState<HotIssue | null>(null);
+  const [modalIdx, setModalIdx] = useState(0);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/hot-issues/active`)
@@ -108,34 +108,70 @@ function HotIssueTicker() {
       .catch(() => {});
   }, []);
 
+  // 모달 열릴 때 body 스크롤 잠금
   useEffect(() => {
-    if (issues.length <= 1) return;
-    const t = setInterval(() => setCurrent(c => (c + 1) % issues.length), 4000);
-    return () => clearInterval(t);
-  }, [issues.length]);
+    if (modal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [modal]);
+
+  const openModal = (issue: HotIssue) => {
+    setModal(issue);
+    setModalIdx(issues.indexOf(issue));
+  };
+  const closeModal = () => setModal(null);
+  const goModal = (i: number) => { setModal(issues[i]); setModalIdx(i); };
 
   if (!issues.length) return null;
-  const issue = issues[current];
+
+  // 마퀴 텍스트 — 이슈들을 구분자로 이어붙임
+  const tickerText = issues.map(it => it.ticker_text).join('   ·   ');
 
   return (
     <>
-      <div
-        className="w-full flex items-center gap-2 bg-rose-600 text-white px-3 py-2 cursor-pointer hover:bg-rose-700 transition-colors"
-        onClick={() => setModal(issue)}
-      >
-        <span className="text-[10px] font-black bg-white text-rose-600 px-2 py-0.5 rounded-full shrink-0 leading-tight">HOT</span>
-        <span className="text-xs font-bold truncate flex-1 animate-pulse-once">{issue.ticker_text}</span>
-        <span className="text-[10px] opacity-70 shrink-0">{current + 1}/{issues.length} ›</span>
+      {/* 우→좌 마퀴 티커 */}
+      <div className="w-full overflow-hidden bg-amber-50 border-y border-amber-200 py-1.5 px-0">
+        <div
+          className="flex items-center gap-3 whitespace-nowrap"
+          style={{ animation: 'ticker-scroll 20s linear infinite' }}
+        >
+          <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full shrink-0 ml-3">HOT</span>
+          {/* 두 번 반복해서 끊김 없이 순환 */}
+          {[0, 1].map(n => (
+            <span key={n} className="flex items-center gap-4">
+              {issues.map((issue, i) => (
+                <button
+                  key={`${n}-${i}`}
+                  onClick={() => openModal(issue)}
+                  className="text-xs font-semibold text-rose-700 hover:text-rose-900 hover:underline transition-colors shrink-0"
+                >
+                  {issue.ticker_text}
+                </button>
+              ))}
+              <span className="text-slate-300 shrink-0">·····</span>
+            </span>
+          ))}
+        </div>
       </div>
 
+      {/* 모달 — 항상 화면 중앙 */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setModal(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={closeModal}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center gap-2 mb-3">
               <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">HOT이슈</span>
               {modal.category && <span className="text-[10px] text-slate-400">{modal.category}</span>}
-              <button onClick={() => setModal(null)} className="ml-auto text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+              <button onClick={closeModal} className="ml-auto w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-base leading-none transition-colors">×</button>
             </div>
             <h2 className="text-base font-black text-slate-900 mb-2">{modal.title}</h2>
             {modal.summary && <p className="text-sm text-slate-600 mb-3">{modal.summary}</p>}
@@ -152,12 +188,14 @@ function HotIssueTicker() {
                 )}
               </p>
             )}
-            <div className="flex gap-2 mt-4">
-              {issues.map((_, i) => (
-                <button key={i} onClick={() => setModal(issues[i])}
-                  className={`h-1.5 rounded-full transition-all ${i === issues.indexOf(modal) ? 'bg-rose-500 w-6' : 'bg-slate-200 w-2'}`} />
-              ))}
-            </div>
+            {issues.length > 1 && (
+              <div className="flex gap-2 mt-4">
+                {issues.map((it, i) => (
+                  <button key={i} onClick={() => goModal(i)}
+                    className={`h-1.5 rounded-full transition-all ${i === modalIdx ? 'bg-rose-500 w-6' : 'bg-slate-200 w-2'}`} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1451,9 +1489,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
 
-      {/* Hot이슈 티커 */}
-      <HotIssueTicker />
-
       {/* LITE 7일 무료체험 배너 */}
       {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (
         <button
@@ -1677,6 +1712,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
 
           </header>
+
+          {/* Hot이슈 티커 — 탭 바로 아래 */}
+          <HotIssueTicker />
 
           {searchQuery.trim() && !searchLoading && searchResults && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">

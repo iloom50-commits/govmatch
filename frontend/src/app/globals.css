@@ -418,3 +418,8 @@ h1, h2, h3, h4 {
   50% { transform: rotate(30deg); }
   100% { transform: rotate(0deg); }
 }
+
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

@@ -7667,9 +7667,15 @@ def api_run_migrations(req: AdminAuthRequest):
                 is_active BOOLEAN DEFAULT FALSE,
                 auto_generated BOOLEAN DEFAULT FALSE,
                 sort_order INTEGER DEFAULT 99,
+                linked_announcement_id INTEGER NULL,
+                expires_at DATE NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )"""),
+        ("hot_issues linked_announcement_id col",
+         "ALTER TABLE hot_issues ADD COLUMN IF NOT EXISTS linked_announcement_id INTEGER NULL"),
+        ("hot_issues expires_at col",
+         "ALTER TABLE hot_issues ADD COLUMN IF NOT EXISTS expires_at DATE NULL"),
         ("qa_review_queue table",
          """CREATE TABLE IF NOT EXISTS qa_review_queue (
                 id SERIAL PRIMARY KEY,
@@ -13335,15 +13341,22 @@ def api_ai_coo_run(req: AdminAuthRequest):
 
 @app.get("/api/hot-issues/active")
 def api_hot_issues_active():
-    """활성 Hot이슈 목록 (비로그인 공개) — sort_order 순, 최대 5개"""
+    """활성 Hot이슈 (공개) — 만료일 지난 것 제외, 공고 연결 정보 포함"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute(
-            """SELECT id, ticker_text, title, summary, detail, category, source_name, source_url
-               FROM hot_issues
-               WHERE is_active = TRUE
-               ORDER BY sort_order ASC, created_at DESC
+            """SELECT h.id, h.ticker_text, h.title, h.summary, h.detail,
+                      h.category, h.source_name, h.source_url,
+                      h.linked_announcement_id,
+                      h.expires_at::text AS expires_at,
+                      a.title AS linked_title,
+                      a.deadline_date::text AS linked_deadline
+               FROM hot_issues h
+               LEFT JOIN announcements a ON h.linked_announcement_id = a.announcement_id
+               WHERE h.is_active = TRUE
+                 AND (h.expires_at IS NULL OR h.expires_at >= CURRENT_DATE)
+               ORDER BY h.sort_order ASC, h.created_at DESC
                LIMIT 5"""
         )
         items = [dict(r) for r in cur.fetchall()]
@@ -13354,23 +13367,53 @@ def api_hot_issues_active():
 
 @app.get("/api/admin/hot-issues", dependencies=[Depends(_verify_admin)])
 def admin_hot_issues_list(status: str = "all"):
-    """Hot이슈 전체 목록 (관리자)"""
+    """Hot이슈 전체 목록 (관리자) — 공고 연결 정보 포함"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        where = ""
+        where_parts = []
         if status == "active":
-            where = "WHERE is_active = TRUE"
+            where_parts.append("h.is_active = TRUE")
         elif status == "draft":
-            where = "WHERE is_active = FALSE"
+            where_parts.append("h.is_active = FALSE")
+        where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         cur.execute(
-            f"""SELECT id, ticker_text, title, summary, detail, category,
-                       source_name, source_url, is_active, auto_generated,
-                       sort_order, created_at
-                FROM hot_issues
+            f"""SELECT h.id, h.ticker_text, h.title, h.summary, h.detail, h.category,
+                       h.source_name, h.source_url, h.is_active, h.auto_generated,
+                       h.sort_order, h.linked_announcement_id,
+                       h.expires_at::text AS expires_at,
+                       h.created_at::text AS created_at,
+                       a.title AS linked_title,
+                       a.deadline_date::text AS linked_deadline
+                FROM hot_issues h
+                LEFT JOIN announcements a ON h.linked_announcement_id = a.announcement_id
                 {where}
-                ORDER BY is_active DESC, sort_order ASC, created_at DESC
+                ORDER BY h.is_active DESC, h.sort_order ASC, h.created_at DESC
                 LIMIT 50"""
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "items": items}
+    finally:
+        conn.close()
+
+
+@app.get("/api/admin/announcements/search", dependencies=[Depends(_verify_admin)])
+def admin_announcements_search(q: str = "", limit: int = 10):
+    """공고 키워드 검색 — Hot이슈 공고 연결용"""
+    if not q.strip():
+        return {"status": "SUCCESS", "items": []}
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT announcement_id, title, category, deadline_date::text AS deadline_date, department
+               FROM announcements
+               WHERE title ILIKE %s
+                 AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+                 AND is_archived = FALSE
+               ORDER BY deadline_date ASC NULLS LAST, created_at DESC
+               LIMIT %s""",
+            (f"%{q.strip()}%", limit),
         )
         items = [dict(r) for r in cur.fetchall()]
         return {"status": "SUCCESS", "items": items}
@@ -13386,6 +13429,10 @@ class HotIssueUpsertRequest(BaseModel):
     category: str = ""
     source_name: str = ""
     source_url: str = ""
+    linked_announcement_id: Optional[int] = None
+    expires_at: Optional[str] = None   # "YYYY-MM-DD" or null
+    is_active: bool = False
+    sort_order: int = 99
 
 
 @app.post("/api/admin/hot-issues", dependencies=[Depends(_verify_admin)])
@@ -13396,11 +13443,14 @@ def admin_hot_issue_create(req: HotIssueUpsertRequest):
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO hot_issues (ticker_text, title, summary, detail, category,
-                   source_name, source_url, is_active, auto_generated, sort_order)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, FALSE, 99)
+                   source_name, source_url, is_active, auto_generated, sort_order,
+                   linked_announcement_id, expires_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)
                RETURNING id""",
             (req.ticker_text[:40], req.title[:80], req.summary[:150],
-             req.detail, req.category, req.source_name, req.source_url),
+             req.detail, req.category, req.source_name, req.source_url,
+             req.is_active, req.sort_order,
+             req.linked_announcement_id, req.expires_at or None),
         )
         new_id = cur.fetchone()["id"]
         conn.commit()
@@ -13410,28 +13460,62 @@ def admin_hot_issue_create(req: HotIssueUpsertRequest):
 
 
 class HotIssueActivateRequest(BaseModel):
-    is_active: bool
-    sort_order: int = 99
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+    ticker_text: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    detail: Optional[str] = None
+    category: Optional[str] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    linked_announcement_id: Optional[int] = None
+    expires_at: Optional[str] = None   # "YYYY-MM-DD" or "" to clear
 
 
 @app.patch("/api/admin/hot-issues/{issue_id}", dependencies=[Depends(_verify_admin)])
 def admin_hot_issue_update(issue_id: int, req: HotIssueActivateRequest):
-    """Hot이슈 활성화/비활성화 + 순서 변경"""
+    """Hot이슈 부분 업데이트 (활성화/내용/공고연결/만료일)"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         # 활성화 시 최대 5개 제한 확인
-        if req.is_active:
+        if req.is_active is True:
             cur.execute("SELECT COUNT(*) AS c FROM hot_issues WHERE is_active = TRUE AND id != %s", (issue_id,))
-            active_count = cur.fetchone()["c"]
-            if active_count >= 5:
+            if cur.fetchone()["c"] >= 5:
                 raise HTTPException(status_code=400, detail="활성 이슈는 최대 5개까지 가능합니다.")
-        cur.execute(
-            """UPDATE hot_issues
-               SET is_active = %s, sort_order = %s, updated_at = NOW()
-               WHERE id = %s""",
-            (req.is_active, req.sort_order, issue_id),
-        )
+
+        # 동적 SET 구성
+        fields, vals = [], []
+        if req.is_active is not None:
+            fields.append("is_active = %s"); vals.append(req.is_active)
+        if req.sort_order is not None:
+            fields.append("sort_order = %s"); vals.append(req.sort_order)
+        if req.ticker_text is not None:
+            fields.append("ticker_text = %s"); vals.append(req.ticker_text[:40])
+        if req.title is not None:
+            fields.append("title = %s"); vals.append(req.title[:80])
+        if req.summary is not None:
+            fields.append("summary = %s"); vals.append(req.summary[:150])
+        if req.detail is not None:
+            fields.append("detail = %s"); vals.append(req.detail)
+        if req.category is not None:
+            fields.append("category = %s"); vals.append(req.category)
+        if req.source_name is not None:
+            fields.append("source_name = %s"); vals.append(req.source_name)
+        if req.source_url is not None:
+            fields.append("source_url = %s"); vals.append(req.source_url)
+        if req.linked_announcement_id is not None:
+            fields.append("linked_announcement_id = %s"); vals.append(req.linked_announcement_id)
+        if req.expires_at is not None:
+            fields.append("expires_at = %s"); vals.append(req.expires_at or None)
+
+        if not fields:
+            return {"status": "SUCCESS", "message": "변경 없음"}
+
+        fields.append("updated_at = NOW()")
+        vals.append(issue_id)
+        cur.execute(f"UPDATE hot_issues SET {', '.join(fields)} WHERE id = %s", vals)
         conn.commit()
         return {"status": "SUCCESS"}
     finally:

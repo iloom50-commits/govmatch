@@ -94,7 +94,20 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
 // ── Hot이슈 티커 ──────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
-interface HotIssue { id: number; ticker_text: string; title: string; summary: string; detail: string; category: string; source_name: string; source_url: string; }
+interface HotIssue {
+  id: number;
+  ticker_text: string;
+  title: string;
+  summary: string;
+  detail: string;
+  category: string;
+  source_name: string;
+  source_url: string;
+  linked_announcement_id?: number;
+  linked_title?: string;
+  linked_deadline?: string;   // "YYYY-MM-DD"
+  expires_at?: string;
+}
 
 function HotIssueTicker() {
   const [issues, setIssues] = useState<HotIssue[]>([]);
@@ -222,10 +235,30 @@ function HotIssueTicker() {
                   {renderDetail(modal.detail)}
                 </div>
               )}
+              {/* 관련 공고 연결 버튼 */}
+              {modal.linked_announcement_id && (
+                <a
+                  href={`/announcements/${modal.linked_announcement_id}`}
+                  className="mt-4 flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 hover:bg-indigo-100 transition-colors group"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wide">공고 바로보기</span>
+                    <span className="text-sm font-semibold text-indigo-800 group-hover:underline leading-snug">
+                      {modal.linked_title || "관련 공고 확인"}
+                    </span>
+                    {modal.linked_deadline && (
+                      <span className="text-[11px] text-indigo-400">
+                        마감: {modal.linked_deadline}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-indigo-400 text-lg shrink-0">→</span>
+                </a>
+              )}
               {modal.source_name && (
-                <p className="text-[11px] text-slate-400 mt-4 flex items-center gap-1">
+                <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-1">
                   <span>📌 출처: {modal.source_name}</span>
-                  {modal.source_url && (
+                  {modal.source_url && !modal.linked_announcement_id && (
                     <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-indigo-500 underline">원문 보기 →</a>
                   )}
                 </p>

@@ -4488,6 +4488,15 @@ def _handle_pro_chat(req: AiConsultantChatRequest, current_user: dict):
             except Exception:
                 matched_snapshot = []
 
+        if not matched_snapshot:
+            return {
+                "status": "ERROR",
+                "reply": "아직 매칭된 공고가 없습니다. 먼저 고객 정보를 입력하고 매칭을 실행해주세요.",
+                "choices": ["🔄 매칭 시작"],
+                "done": True,
+                "session_id": session_state.get("session_id"),
+            }
+
         # 프로필 요약 텍스트
         profile_lines = [f"- {k}: {v}" for k, v in profile.items() if v]
         profile_str = "\n".join(profile_lines) if profile_lines else "정보 없음"
@@ -4540,6 +4549,19 @@ def _handle_pro_chat(req: AiConsultantChatRequest, current_user: dict):
         last_text = messages_list[-1].get("text", "") if messages_list else ""
         response = chat.send_message(last_text)
         reply = response.text or ""
+
+        # phase를 'consulting'으로 업데이트
+        try:
+            cur2 = db.cursor()
+            cur2.execute(
+                "UPDATE pro_consult_sessions SET phase = 'consulting' WHERE session_id = %s",
+                (session_state.get("session_id"),)
+            )
+            db.commit()
+        except Exception as e:
+            print(f"[PRO chat] phase update failed: {e}")
+            try: db.rollback()
+            except: pass
 
         return {
             "status": "SUCCESS",
@@ -4699,7 +4721,9 @@ def _load_or_create_session(db, current_user, req_session_id, client_category):
                 "matched_snapshot": matched_snap or [],
                 "db_messages": db_msgs,
             }
-    sid = str(_uuid.uuid4())
+    # 클라이언트가 준 session_id가 있으면 그대로 사용, 없으면 새 UUID 생성
+    # → match와 chat이 같은 session_id를 공유할 수 있게 함
+    sid = req_session_id or str(_uuid.uuid4())
     cur.execute(
         "INSERT INTO pro_consult_sessions (session_id, business_number, client_category, current_step, collected) VALUES (%s, %s, %s, 1, '{}'::jsonb)",
         (sid, current_user["bn"], client_category or "")

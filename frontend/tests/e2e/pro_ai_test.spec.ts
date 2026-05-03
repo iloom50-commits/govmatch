@@ -166,15 +166,25 @@ test('TEST3 매칭 후 chat 모드 — 매칭엔진 재실행 없이 대화', as
   });
   const matchData = await matchRes.json();
   const matchReply = matchData.reply || matchData.message || '';
+  const matchSessionId = matchData.session_id;
+  const matchedCount = (matchData.matched_announcements || []).length;
+
   console.log(`\n[매칭 응답 (${matchReply.length}자)]:\n${matchReply.slice(0, 300)}`);
+  console.log(`[매칭 session_id]: ${matchSessionId}`);
+  console.log(`[매칭 공고 수]: ${matchedCount}개`);
   expect(matchReply.length, '매칭 응답 없음').toBeGreaterThan(20);
+  expect(matchedCount, '매칭 공고 0건').toBeGreaterThan(0);
+
+  // ★ 핵심: match가 반환한 session_id로 chat 호출 (세션 공유 검증)
+  const chatSid = matchSessionId || sid;
+  console.log(`[chat에서 사용할 session_id]: ${chatSid}`);
 
   // 2단계: chat 모드
   const chatRes = await request.post(`${API}/api/pro/consultant/chat`, {
     headers: auth(token),
     data: {
       action: 'chat',
-      session_id: sid,
+      session_id: chatSid,
       messages: [
         { role: 'user', text: '제조업 소기업, 경기도, 설비투자 지원 필요' },
         { role: 'assistant', text: matchReply },
@@ -186,10 +196,15 @@ test('TEST3 매칭 후 chat 모드 — 매칭엔진 재실행 없이 대화', as
   const chatReply = chatData.reply || chatData.message || '';
   const newMatched = chatData.matched_announcements || [];
 
-  console.log(`\n[chat 응답 (${chatReply.length}자)]:\n${chatReply.slice(0, 300)}`);
+  console.log(`\n[chat status]: ${chatData.status}`);
+  console.log(`[chat 응답 (${chatReply.length}자)]:\n${chatReply.slice(0, 300)}`);
   console.log(`[매칭엔진 재실행]: ${newMatched.length > 0 ? '⚠️ 재실행됨' : '✅ 정상'}`);
   if (chatData.outer_error) console.error(`[outer_error]: ${chatData.outer_error}`);
 
+  // ★ 핵심 검증: "DB에서 찾지 못했습니다" 응답 금지
+  expect(chatData.status, 'chat status가 ERROR여서는 안 됨').not.toBe('ERROR');
+  expect(chatReply, '"DB에서 찾지 못했습니다" 응답 금지').not.toContain('DB에서 찾지 못했습니다');
+  expect(chatReply, '"매칭된 공고가 없습니다" 응답 금지').not.toContain('매칭된 공고가 없습니다');
   expect(chatReply.length, 'chat 응답 없음').toBeGreaterThan(30);
   expect(newMatched.length, 'chat 모드에서 매칭엔진 재실행됨').toBe(0);
 

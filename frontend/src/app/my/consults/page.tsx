@@ -26,6 +26,7 @@ const CONC_MAP: Record<string, { label: string; color: string; emoji: string }> 
   eligible: { label: "신청 가능", color: "bg-emerald-100 text-emerald-700 border-emerald-200", emoji: "✅" },
   conditional: { label: "조건부", color: "bg-amber-100 text-amber-700 border-amber-200", emoji: "⚠️" },
   ineligible: { label: "대상 아님", color: "bg-slate-100 text-slate-600 border-slate-200", emoji: "❌" },
+  free_chat: { label: "자금상담", color: "bg-blue-50 text-blue-600 border-blue-200", emoji: "💰" },
   "": { label: "진행 중", color: "bg-indigo-50 text-indigo-600 border-indigo-200", emoji: "💬" },
 };
 
@@ -87,7 +88,9 @@ export default function MyConsultsPage() {
   };
 
   const filtered = items.filter(item =>
-    !search || item.announcement_title.toLowerCase().includes(search.toLowerCase())
+    !search ||
+    item.announcement_title.toLowerCase().includes(search.toLowerCase()) ||
+    item.category.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -110,7 +113,7 @@ export default function MyConsultsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="공고명 검색..."
+            placeholder="공고명 / 자금상담 검색..."
             className="flex-1 px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-[13px] outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
           />
           <select
@@ -137,7 +140,7 @@ export default function MyConsultsPage() {
               {items.length === 0 ? "아직 상담 기록이 없습니다" : "검색 결과가 없습니다"}
             </p>
             <p className="text-slate-400 text-[12px] mt-1">
-              공고 카드에서 "나도 받을 수 있나?" 버튼으로 AI 상담을 시작해보세요
+              공고 카드에서 AI 상담을 시작하거나, 자금상담 AI를 이용해보세요
             </p>
           </div>
         ) : (

@@ -1422,8 +1422,35 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            # ── LITE 자금상담 이력 30일 자동 삭제 — 매일 02:00 UTC (KST 11:00) ──
+            def _cleanup_lite_chat_logs():
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute(
+                        """DELETE FROM ai_consult_logs
+                           WHERE conclusion = 'free_chat'
+                             AND created_at < NOW() - INTERVAL '30 days'"""
+                    )
+                    deleted = cur.rowcount
+                    conn.commit()
+                    conn.close()
+                    if deleted:
+                        print(f"[cleanup] LITE 자금상담 이력 {deleted}건 삭제 (30일 경과)")
+                        _log_system("cleanup_lite_chat", "system", f"LITE 상담이력 {deleted}건 30일 경과 삭제", "success")
+                except Exception as e:
+                    print(f"[cleanup] LITE 상담이력 삭제 오류: {e}")
+
+            pipeline_scheduler.add_job(
+                _cleanup_lite_chat_logs,
+                CronTrigger(hour=2, minute=0),
+                id="cleanup_lite_chat",
+                name="LITE 자금상담 이력 30일 자동 삭제",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - daily 03:00 KST + digest 09:00 KST(평일) + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h")
+            print("[Pipeline] APScheduler started - daily 03:00 KST + digest 09:00 KST(평일) + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h + lite_chat_cleanup 11:00 KST")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -5530,11 +5557,14 @@ def api_my_consults(
                 if m.get("role") == "assistant":
                     last_ai = (m.get("text") or "")[:200]
                     break
+        _conc = r.get("conclusion") or ""
+        _is_lite = _conc == "free_chat"
+        _title = r.get("title") or ("자금상담 AI" if _is_lite else "(삭제된 공고)")
         items.append({
             "id": r["id"],
             "announcement_id": r["announcement_id"],
-            "announcement_title": r.get("title") or "(삭제된 공고)",
-            "category": r.get("category") or "",
+            "announcement_title": _title,
+            "category": r.get("category") or ("자금상담" if _is_lite else ""),
             "department": r.get("department") or "",
             "deadline_date": str(r.get("deadline_date")) if r.get("deadline_date") else "",
             "support_amount": r.get("support_amount") or "",

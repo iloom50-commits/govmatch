@@ -130,67 +130,115 @@ function HotIssueTicker() {
   // 마퀴 텍스트 — 이슈들을 구분자로 이어붙임
   const tickerText = issues.map(it => it.ticker_text).join('   ·   ');
 
+  // 마크다운 간이 렌더링 (bold, 불릿, 소제목)
+  const renderDetail = (text: string) => {
+    const lines = text.split('\n');
+    return lines.map((line, idx) => {
+      if (!line.trim()) return <div key={idx} className="h-2" />;
+      // ### 소제목
+      if (line.startsWith('### ')) {
+        const content = line.replace(/^###\s*/, '');
+        return <p key={idx} className="text-sm font-black text-slate-800 mt-3 mb-1">{renderInline(content)}</p>;
+      }
+      // ## 소제목
+      if (line.startsWith('## ')) {
+        const content = line.replace(/^##\s*/, '');
+        return <p key={idx} className="text-sm font-black text-rose-700 mt-3 mb-1">{renderInline(content)}</p>;
+      }
+      // 불릿
+      if (/^[-•*]\s/.test(line)) {
+        const content = line.replace(/^[-•*]\s*/, '');
+        return (
+          <div key={idx} className="flex gap-2 items-start text-sm text-slate-700 leading-snug mb-1">
+            <span className="text-rose-500 mt-0.5 shrink-0">•</span>
+            <span>{renderInline(content)}</span>
+          </div>
+        );
+      }
+      return <p key={idx} className="text-sm text-slate-700 leading-relaxed mb-1">{renderInline(line)}</p>;
+    });
+  };
+
+  const renderInline = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((p, i) =>
+      p.startsWith('**') && p.endsWith('**')
+        ? <strong key={i} className="font-bold text-slate-900">{p.slice(2, -2)}</strong>
+        : <span key={i}>{p}</span>
+    );
+  };
+
   return (
     <>
-      {/* 우→좌 마퀴 티커 */}
-      <div className="w-full overflow-hidden bg-amber-50 border-y border-amber-200 py-1.5 px-0">
-        <div
-          className="flex items-center gap-3 whitespace-nowrap"
-          style={{ animation: 'ticker-scroll 20s linear infinite' }}
-        >
-          <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full shrink-0 ml-3">HOT</span>
-          {/* 두 번 반복해서 끊김 없이 순환 */}
-          {[0, 1].map(n => (
-            <span key={n} className="flex items-center gap-4">
-              {issues.map((issue, i) => (
-                <button
-                  key={`${n}-${i}`}
-                  onClick={() => openModal(issue)}
-                  className="text-xs font-semibold text-rose-700 hover:text-rose-900 hover:underline transition-colors shrink-0"
-                >
-                  {issue.ticker_text}
-                </button>
-              ))}
-              <span className="text-slate-300 shrink-0">·····</span>
-            </span>
-          ))}
+      {/* 우→좌 마퀴 티커 — HOT 배지는 고정, 텍스트만 스크롤 */}
+      <div className="w-full bg-amber-50 border-y border-amber-200 py-1.5 flex items-center">
+        <span className="shrink-0 text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full ml-3 mr-2 z-10">HOT</span>
+        <div className="flex-1 overflow-hidden">
+          <div
+            className="flex items-center whitespace-nowrap"
+            style={{ animation: `ticker-scroll ${Math.max(15, issues.length * 12)}s linear infinite` }}
+          >
+            {/* 두 번 반복 — 각 사본이 최소 100vw 이상 차지해 동시 노출 방지 */}
+            {[0, 1].map(n => (
+              <span key={n} className="inline-flex items-center gap-8 pr-16" style={{ minWidth: '100vw' }}>
+                {issues.map((issue, i) => (
+                  <button
+                    key={`${n}-${i}`}
+                    onClick={() => openModal(issue)}
+                    className="text-xs font-semibold text-rose-700 hover:text-rose-900 hover:underline transition-colors shrink-0"
+                  >
+                    {issue.ticker_text}
+                  </button>
+                ))}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 모달 — 항상 화면 중앙 */}
+      {/* 모달 — 항상 화면 중앙, 스크롤 잠금 */}
       {modal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={closeModal}
         >
-          <div className="absolute inset-0 bg-black/50" />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div
-            className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+            className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[85vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 mb-3">
+            {/* 헤더 */}
+            <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
               <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">HOT이슈</span>
-              {modal.category && <span className="text-[10px] text-slate-400">{modal.category}</span>}
+              {modal.category && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">{modal.category}</span>
+              )}
               <button onClick={closeModal} className="ml-auto w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-base leading-none transition-colors">×</button>
             </div>
-            <h2 className="text-base font-black text-slate-900 mb-2">{modal.title}</h2>
-            {modal.summary && <p className="text-sm text-slate-600 mb-3">{modal.summary}</p>}
-            {modal.detail && (
-              <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                {modal.detail}
-              </div>
-            )}
-            {modal.source_name && (
-              <p className="text-[11px] text-slate-400 mt-3">
-                출처: {modal.source_name}
-                {modal.source_url && (
-                  <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-indigo-500 underline">원문 보기</a>
-                )}
-              </p>
-            )}
+            {/* 내용 스크롤 영역 */}
+            <div className="overflow-y-auto px-5 py-4 flex-1">
+              <h2 className="text-lg font-black text-slate-900 mb-1 leading-tight">{modal.title}</h2>
+              {modal.summary && (
+                <p className="text-sm text-rose-600 font-semibold mb-4 leading-snug">{modal.summary}</p>
+              )}
+              {modal.detail && (
+                <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                  {renderDetail(modal.detail)}
+                </div>
+              )}
+              {modal.source_name && (
+                <p className="text-[11px] text-slate-400 mt-4 flex items-center gap-1">
+                  <span>📌 출처: {modal.source_name}</span>
+                  {modal.source_url && (
+                    <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-indigo-500 underline">원문 보기 →</a>
+                  )}
+                </p>
+              )}
+            </div>
+            {/* 하단 페이지 인디케이터 */}
             {issues.length > 1 && (
-              <div className="flex gap-2 mt-4">
-                {issues.map((it, i) => (
+              <div className="flex gap-2 justify-center px-5 py-3 border-t border-slate-100 shrink-0">
+                {issues.map((_, i) => (
                   <button key={i} onClick={() => goModal(i)}
                     className={`h-1.5 rounded-full transition-all ${i === modalIdx ? 'bg-rose-500 w-6' : 'bg-slate-200 w-2'}`} />
                 ))}

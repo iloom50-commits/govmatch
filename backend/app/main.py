@@ -1317,6 +1317,45 @@ async def lifespan(app):
     except Exception as seed_err:
         print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
 
+    # ── Hot이슈 초기 시드 (최초 1회) ──
+    try:
+        _seed_conn = get_db_connection()
+        _seed_cur = _seed_conn.cursor()
+        _seed_cur.execute("SELECT COUNT(*) AS c FROM hot_issues")
+        _hot_count = _seed_cur.fetchone()["c"]
+        if _hot_count == 0:
+            _seed_cur.execute(
+                """INSERT INTO hot_issues
+                       (ticker_text, title, summary, detail, category, source_name, source_url, is_active, sort_order)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, 1)""",
+                (
+                    "⛽ 고유가 보조금 신청 방법",
+                    "고유가 특별지원금 — 신청 자격과 방법",
+                    "유가 상승으로 어려움 겪는 소상공인·운수업자·취약계층 대상 정부 에너지 보조금",
+                    """**대상**: 소상공인, 화물·버스·택시 운수업자, 기초생활수급자·차상위계층
+
+**지원 내용**
+- 소상공인: 에너지비용 최대 50만원 (전기·가스·유류비)
+- 운수업자: 유가연동보조금 (운행km당 지원, 화물은 국토부 신청)
+- 취약계층: 에너지바우처 (연간 최대 30만원 상당)
+
+**신청 방법**
+- 소상공인: 소진공 홈페이지(semas.or.kr) 또는 가까운 소진공 지역센터
+- 운수업자: 국토교통부 화물서비스 시스템 (ftis.go.kr)
+- 취약계층: 주민센터 방문 또는 복지로(bokjiro.go.kr)
+
+**유의사항**: 지자체별 추가 지원이 있을 수 있으니 거주지 시·군·구청에도 문의하세요.""",
+                    "에너지·소상공인",
+                    "산업통상자원부·소진공",
+                    "https://www.semas.or.kr",
+                ),
+            )
+            _seed_conn.commit()
+            print("[HotIssueSeed] 고유가 보조금 초기 이슈 삽입 완료")
+        _seed_conn.close()
+    except Exception as _seed_err:
+        print(f"[HotIssueSeed] 오류 (non-critical): {_seed_err}")
+
     # ── 일일 통합 파이프라인 (매일 03:00 KST = 18:00 UTC) ──
     # docs/daily-pipeline.md 참조
     # PATROL_ENABLED=false 환경변수로 비활성화 가능

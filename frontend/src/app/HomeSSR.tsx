@@ -15,7 +15,7 @@ interface Ann {
 async function fetchPublicAnnouncements(targetType: "business" | "individual"): Promise<Ann[]> {
   try {
     const res = await fetch(
-      `${API}/api/announcements/public?page=1&size=9&target_type=${targetType}`,
+      `${API}/api/announcements/public?page=1&size=30&target_type=${targetType}`,
       {
         cache: "no-store",
         headers: {

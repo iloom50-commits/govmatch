@@ -180,28 +180,33 @@ function HotIssueTicker() {
 
   return (
     <>
-      {/* 우→좌 마퀴 티커 — HOT 배지는 고정, 텍스트만 스크롤 */}
-      <div className="w-full overflow-hidden bg-amber-50 border-y border-amber-200 py-1.5 flex items-center gap-2">
+      {/* 우→좌 마퀴 티커 */}
+      <div className="w-full bg-amber-50 border-y border-amber-200 py-1.5 flex items-center gap-2">
         <span className="shrink-0 text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full ml-3">HOT</span>
-        {/* inline-flex: 콘텐츠 너비만큼 자연 확장 → overflow 후 translateX 애니메이션 정상 동작 */}
-        <div
-          className="inline-flex items-center whitespace-nowrap gap-0"
-          style={{ animation: `ticker-scroll ${Math.max(18, issues.length * 10)}s linear infinite` }}
-        >
-          {/* 두 복사본 — 각 복사본이 최소 1화면 너비 확보해 동시 노출 방지 */}
-          {[0, 1].map(n => (
-            <span key={n} className="inline-flex items-center gap-10" style={{ minWidth: '100vw' }}>
-              {issues.map((issue, i) => (
-                <button
-                  key={`${n}-${i}`}
-                  onClick={() => openModal(issue)}
-                  className="text-xs font-semibold text-rose-700 hover:text-rose-900 hover:underline transition-colors shrink-0 px-2"
-                >
-                  {issue.ticker_text}
-                </button>
-              ))}
-            </span>
-          ))}
+        {/*
+          overflow-hidden 래퍼를 flex 컨텍스트 밖(block)으로 분리해야
+          inner inline-flex가 content 너비(200vw)로 계산되고
+          translateX(-50%) = -100vw 로 정확하게 동작
+        */}
+        <div className="overflow-hidden flex-1 min-w-0">
+          <div
+            className="inline-flex items-center whitespace-nowrap"
+            style={{ animation: `ticker-scroll ${Math.max(18, issues.length * 10)}s linear infinite` }}
+          >
+            {[0, 1].map(n => (
+              <span key={n} className="inline-flex items-center gap-10" style={{ minWidth: '100vw' }}>
+                {issues.map((issue, i) => (
+                  <button
+                    key={`${n}-${i}`}
+                    onClick={() => openModal(issue)}
+                    className="text-xs font-semibold text-rose-700 hover:text-rose-900 hover:underline transition-colors shrink-0 px-2"
+                  >
+                    {issue.ticker_text}
+                  </button>
+                ))}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 

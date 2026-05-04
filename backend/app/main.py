@@ -13196,28 +13196,45 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
     limit = min(limit, 100)
     conn = get_db_connection()
     cur = conn.cursor()
-    # 지역명 감지 (검색어에 포함 시 region 매칭 우선)
-    REGION_NAMES = {"서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"}
+    # 지역명 감지 — 지역어는 region 필터로 분리, 나머지는 키워드 AND 검색
+    REGION_NAMES = {"서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주",
+                    "부산광역시","대구광역시","인천광역시","광주광역시","대전광역시","울산광역시","경기도","강원도",
+                    "충청북도","충청남도","전라북도","전라남도","경상북도","경상남도","제주도","제주특별자치도"}
     try:
         if search_term:
             words = search_term.split()
+            detected_regions = [w for w in words if w in REGION_NAMES]
+            keyword_words = [w for w in words if w not in REGION_NAMES]
+
             where_parts = []
             params = []
-            for w in words:
-                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s OR region ILIKE %s)")
-                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
+
+            # 키워드 단어: title/department/summary/category에서 AND 매칭
+            for w in keyword_words:
+                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
+                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
+
+            # 지역 단어: region 필드 OR 전국 공고까지 포함
+            if detected_regions:
+                region_or_parts = []
+                for rg in detected_regions:
+                    region_or_parts.append("region ILIKE %s")
+                    params.append(f"%{rg}%")
+                # 전국 공고(region NULL 또는 '전국' 포함)도 항상 포함
+                region_or_parts.append("(region IS NULL OR region ILIKE '%전국%')")
+                where_parts.append(f"({' OR '.join(region_or_parts)})")
+
+            # 키워드도 지역도 없으면 전체 검색어를 OR로
+            if not where_parts:
+                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
+                params.extend([f"%{search_term}%"] * 4)
+
             where_sql = " AND ".join(where_parts)
 
-            # 검색어에서 지역명 추출
-            detected_regions = [w for w in words if w in REGION_NAMES]
-
-            # region 매칭 가산점 SQL
+            # 정렬 가산점: 지역 직접 매칭, 제목 매칭
             if detected_regions:
-                region_case_parts = []
-                region_params_pre = []
-                for rg in detected_regions:
-                    region_case_parts.append("WHEN region ILIKE %s THEN 1")
-                    region_params_pre.append(f"%{rg}%")
+                region_case_parts = [f"WHEN region ILIKE %s THEN 1" for rg in detected_regions]
+                region_params_pre = [f"%{rg}%" for rg in detected_regions]
                 region_score_sql = f"CASE {' '.join(region_case_parts)} ELSE 0 END"
             else:
                 region_score_sql = "0"

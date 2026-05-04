@@ -531,11 +531,8 @@ def _log_event(event_type: str, business_number: str = "", detail: str = "", ip:
 
 
 def _seed_keyword_synonyms(conn):
-    """동의어 풀 초기 데이터 (이미 있으면 스킵)"""
+    """동의어 풀 — 그룹별로 누락된 것만 INSERT (테이블 비어있어야만 실행하던 방식 폐기)"""
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) AS cnt FROM keyword_synonyms")
-    if cursor.fetchone()["cnt"] > 0:
-        return  # 이미 시드 완료
 
     seeds = [
         # ── 기업 ──
@@ -13191,12 +13188,10 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
 @app.get("/api/announcements/search")
 def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
     """공고 검색 — title/department/summary 매칭. keyword 또는 q 둘 다 지원"""
-    # q 파라미터도 지원 (프론트엔드 호환성)
     search_term = (keyword or q or "").strip()
     limit = min(limit, 100)
     conn = get_db_connection()
     cur = conn.cursor()
-    # 지역명 감지 — 지역어는 region 필터로 분리, 나머지는 키워드 AND 검색
     REGION_NAMES = {"서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주",
                     "부산광역시","대구광역시","인천광역시","광주광역시","대전광역시","울산광역시","경기도","강원도",
                     "충청북도","충청남도","전라북도","전라남도","경상북도","경상남도","제주도","제주특별자치도"}
@@ -13209,10 +13204,21 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
             where_parts = []
             params = []
 
-            # 키워드 단어: title/department/summary/category에서 AND 매칭
+            # 키워드 단어: 동의어 확장 후 AND 매칭
             for w in keyword_words:
-                where_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
-                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
+                cur.execute(
+                    "SELECT DISTINCT keyword FROM keyword_synonyms WHERE group_name = ("
+                    "  SELECT group_name FROM keyword_synonyms WHERE keyword = %s LIMIT 1"
+                    ")",
+                    (w,),
+                )
+                syn_rows = cur.fetchall()
+                synonyms = [r["keyword"] for r in syn_rows] if syn_rows else [w]
+                or_parts = []
+                for s in synonyms:
+                    or_parts.append("(title ILIKE %s OR department ILIKE %s OR summary_text ILIKE %s OR category ILIKE %s)")
+                    params.extend([f"%{s}%", f"%{s}%", f"%{s}%", f"%{s}%"])
+                where_parts.append("(" + " OR ".join(or_parts) + ")")
 
             # 지역 단어: region 필드 OR 전국 공고까지 포함
             if detected_regions:

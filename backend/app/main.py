@@ -3057,7 +3057,7 @@ def api_register(req: RegisterRequest, request: Request):
                 (req.email, hashed, now_iso, now_iso,
                  req.company_name or "", req.address_city or None,
                  req.industry_code or None, req.establishment_date,
-                 req.revenue_bracket, req.employee_count_bracket, req.interests,
+                 req.revenue_bracket, req.employee_count_bracket, req.interests or None,
                  req.business_number),
             )
             user_id = existing["user_id"]
@@ -9946,7 +9946,7 @@ def api_save_profile(profile: UserProfile, current_user: dict = Depends(_get_cur
             industry_code=COALESCE(EXCLUDED.industry_code, users.industry_code),
             revenue_bracket=COALESCE(EXCLUDED.revenue_bracket, users.revenue_bracket),
             employee_count_bracket=COALESCE(EXCLUDED.employee_count_bracket, users.employee_count_bracket),
-            interests=COALESCE(EXCLUDED.interests, users.interests),
+            interests=COALESCE(NULLIF(EXCLUDED.interests, ''), users.interests),
             user_type=COALESCE(EXCLUDED.user_type, users.user_type),
             age_range=COALESCE(EXCLUDED.age_range, users.age_range),
             income_level=COALESCE(EXCLUDED.income_level, users.income_level),

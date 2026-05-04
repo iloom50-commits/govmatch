@@ -13248,18 +13248,22 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
 
             cur.execute(
                 f"""SELECT announcement_id, title, department, category, deadline_date, support_amount, region,
-                           CASE WHEN title ILIKE %s THEN 1 ELSE 0 END as title_match,
+                           CASE WHEN title ILIKE %s THEN 2
+                                WHEN summary_text ILIKE %s THEN 1
+                                ELSE 0 END as title_match,
                            {region_score_sql} as region_match
                     FROM announcements
                     WHERE {where_sql}
                     ORDER BY
-                        region_match DESC,
                         title_match DESC,
-                        CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0 ELSE 1 END,
+                        region_match DESC,
+                        CASE WHEN deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE THEN 0
+                             WHEN deadline_date IS NULL THEN 1
+                             ELSE 2 END,
                         deadline_date ASC NULLS LAST,
                         MD5(announcement_id::text || %s)
                     LIMIT %s""",
-                [f"%{search_term}%"] + region_params_pre + params + [search_term, limit],
+                [f"%{search_term}%", f"%{search_term}%"] + region_params_pre + params + [search_term, limit],
             )
         else:
             cur.execute(

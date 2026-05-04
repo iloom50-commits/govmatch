@@ -207,7 +207,7 @@ class NotificationService:
         summary = (program.get('summary_text') or '').lower()
         text = title + ' ' + summary
 
-        score = 60  # 기본 통과 점수
+        score = 50  # 기본 점수 — 단독으로는 임계값 미달 (최소 1개 신호 필요)
 
         # 관심사 키워드 일치 보너스
         interests_str = user_data.get('interests') or ''
@@ -253,6 +253,33 @@ class NotificationService:
             except Exception:
                 return ""
 
+        def _fmt_amount(raw: str) -> str:
+            """'400000000 KRW', '4억원' 등 다양한 형식을 '4억원' 형태로 통일"""
+            if not raw:
+                return ""
+            # 이미 한글 단위 포함 → 그대로 (단, 'KRW' 접미어 제거 후)
+            cleaned = raw.replace("KRW", "").replace("krw", "").strip(" ,")
+            if any(u in cleaned for u in ["억", "만", "천", "백"]):
+                return cleaned[:35]
+            # 콤마·공백 제거 후 순수 숫자 시도
+            num_str = cleaned.replace(",", "").replace(" ", "").split(".")[0]
+            try:
+                n = int(num_str)
+            except ValueError:
+                # 파싱 불가 → 원본 앞부분만 반환
+                return raw[:35]
+            if n <= 0:
+                return raw[:35]
+            uk  = n // 100_000_000          # 억
+            man = (n % 100_000_000) // 10_000  # 만
+            prefix = "최대 " if "최대" in raw else ""
+            if uk > 0 and man > 0:
+                return f"{prefix}{uk}억 {man:,}만원"
+            elif uk > 0:
+                return f"{prefix}{uk}억원"
+            else:
+                return f"{prefix}{man:,}만원"
+
         def _card_html(m: dict) -> str:
             title      = m.get("program_title") or ""
             ann_id     = m.get("announcement_id") or m.get("id")
@@ -269,9 +296,9 @@ class NotificationService:
             # 상단 메타 (카테고리 + 기관명)
             meta_top = f'<div style="margin-bottom:8px;">{cat_html}{dept_html}</div>' if (category or department) else ""
 
-            # 금액
-            amount_short = amount[:40] + "…" if len(amount) > 40 else amount
-            amount_html = f'<div style="margin:10px 0 6px;"><span style="font-size:16px;font-weight:800;color:#2563eb;">💰 {amount_short}</span></div>' if amount_short else ""
+            # 금액 — 한국어 단위로 변환
+            amount_fmt = _fmt_amount(amount)
+            amount_html = f'<div style="margin:10px 0 6px;"><span style="font-size:16px;font-weight:800;color:#2563eb;">💰 {amount_fmt}</span></div>' if amount_fmt else ""
 
             # 마감일 뱃지
             dl_badge = _deadline_badge(deadline)
@@ -579,8 +606,8 @@ class NotificationService:
                         print(f"  [digest] AI match error: {e}")
                         match_result = {"score": 60, "reasoning": "AI 매칭 실패 — 기본 추천"}
 
-                    # 임계값 완화: 80 → 60 (매칭 확대 + AI 실패 시에도 통과)
-                    threshold = 60
+                    # 기본점수(50) + 최소 1개 신호(키워드·지역·금액·마감) 필요
+                    threshold = 65
                     try:
                         if user.get('matching_threshold'):
                             threshold = int(user['matching_threshold'])

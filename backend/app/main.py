@@ -13438,6 +13438,39 @@ def admin_announcements_search(q: str = "", limit: int = 10):
         conn.close()
 
 
+class AnnouncementPatchRequest(BaseModel):
+    title: Optional[str] = None
+    department: Optional[str] = None
+    category: Optional[str] = None
+    summary_text: Optional[str] = None
+    content: Optional[str] = None
+    support_amount: Optional[str] = None
+    region: Optional[str] = None
+    target_type: Optional[str] = None
+    deadline_date: Optional[str] = None
+
+
+@app.patch("/api/admin/announcements/{announcement_id}", dependencies=[Depends(_verify_admin)])
+def admin_patch_announcement(announcement_id: int, req: AnnouncementPatchRequest):
+    """공고 내용 직접 수정 (content/summary/금액 등 보완용)"""
+    fields = {k: v for k, v in req.dict().items() if v is not None}
+    if not fields:
+        return {"status": "NO_CHANGE"}
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        params = list(fields.values()) + [announcement_id]
+        cur.execute(
+            f"UPDATE announcements SET {set_clause}, updated_at = NOW() WHERE announcement_id = %s",
+            params,
+        )
+        conn.commit()
+        return {"status": "SUCCESS", "updated": announcement_id, "fields": list(fields.keys())}
+    finally:
+        conn.close()
+
+
 class HotIssueUpsertRequest(BaseModel):
     ticker_text: str
     title: str

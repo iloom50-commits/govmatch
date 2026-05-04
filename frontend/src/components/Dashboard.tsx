@@ -1795,8 +1795,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           </header>
 
-          {/* Hot이슈 티커 — 탭 바로 아래 */}
-          <HotIssueTicker />
+          {/* Hot이슈 티커 — 임시 비활성화 */}
+          {/* <HotIssueTicker /> */}
 
           {searchQuery.trim() && !searchLoading && searchResults && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">

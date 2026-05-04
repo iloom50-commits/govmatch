@@ -13462,7 +13462,7 @@ def admin_patch_announcement(announcement_id: int, req: AnnouncementPatchRequest
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         params = list(fields.values()) + [announcement_id]
         cur.execute(
-            f"UPDATE announcements SET {set_clause}, updated_at = NOW() WHERE announcement_id = %s",
+            f"UPDATE announcements SET {set_clause} WHERE announcement_id = %s",
             params,
         )
         conn.commit()

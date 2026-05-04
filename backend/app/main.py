@@ -13505,43 +13505,84 @@ class AnnouncementCreateRequest(BaseModel):
 
 @app.post("/api/admin/announcements", dependencies=[Depends(_verify_admin)])
 def admin_create_announcement(req: AnnouncementCreateRequest):
-    """공고 수동 등록 (정책자금 등 상시 공고)"""
+    """공고 수동 등록 (정책자금 등 상시 공고) — 임베딩 즉시 생성"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # origin_url 없으면 title 기반 unique 키 생성
         origin_url = req.origin_url or f"manual://jungzingo/{req.title.replace(' ', '_')}"
+        # deadline_date = None이면 상시 공고(ongoing)
+        deadline_type = "ongoing" if req.deadline_date is None else "fixed"
         cur.execute(
             """INSERT INTO announcements
                (title, department, category, summary_text, support_amount,
-                region, target_type, deadline_date, origin_url, origin_source,
-                analysis_status, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+                region, target_type, deadline_date, deadline_type,
+                origin_url, origin_source, analysis_status, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'analyzed', NOW())
                ON CONFLICT (origin_url) DO UPDATE
                SET title = EXCLUDED.title,
                    summary_text = EXCLUDED.summary_text,
                    support_amount = EXCLUDED.support_amount,
                    department = EXCLUDED.department,
-                   category = EXCLUDED.category
+                   category = EXCLUDED.category,
+                   deadline_type = EXCLUDED.deadline_type,
+                   analysis_status = 'analyzed'
                RETURNING announcement_id""",
             (
                 req.title, req.department, req.category, req.summary_text,
                 req.support_amount, req.region, req.target_type,
-                req.deadline_date, origin_url, req.origin_source,
+                req.deadline_date, deadline_type, origin_url, req.origin_source,
             ),
         )
         ann_id = cur.fetchone()["announcement_id"]
 
-        if req.full_text:
+        full_text = req.full_text or req.summary_text
+        if full_text:
             cur.execute(
                 """INSERT INTO announcement_analysis (announcement_id, full_text, source_type, created_at)
                    VALUES (%s, %s, 'manual', NOW())
                    ON CONFLICT (announcement_id) DO UPDATE
                    SET full_text = EXCLUDED.full_text, source_type = 'manual'""",
-                (ann_id, req.full_text),
+                (ann_id, full_text),
             )
 
         conn.commit()
+
+        # 임베딩 즉시 생성 (실패해도 공고 등록은 완료)
+        try:
+            import google.generativeai as _genai
+            _api_key = os.environ.get("GEMINI_API_KEY")
+            if _api_key:
+                _genai.configure(api_key=_api_key)
+                source_text = (
+                    f"제목: {req.title}\n부처: {req.department}\n카테고리: {req.category}\n"
+                    f"지원금액: {req.support_amount or ''}\n지역: {req.region}\n"
+                    f"내용: {req.summary_text}"
+                )
+                _res = _genai.embed_content(
+                    model="models/gemini-embedding-001",
+                    content=source_text,
+                    task_type="retrieval_document",
+                    output_dimensionality=768,
+                )
+                _vec = _res.get("embedding") if isinstance(_res, dict) else _res["embedding"]
+                if _vec and len(_vec) >= 100:
+                    vec_str = "[" + ",".join(f"{v:.6f}" for v in _vec) + "]"
+                    emb_cur = conn.cursor()
+                    emb_cur.execute(
+                        """INSERT INTO announcement_embeddings
+                           (announcement_id, embedding, source_text, model_name, updated_at)
+                           VALUES (%s, %s::vector, %s, %s, NOW())
+                           ON CONFLICT (announcement_id) DO UPDATE SET
+                               embedding = EXCLUDED.embedding,
+                               source_text = EXCLUDED.source_text,
+                               model_name = EXCLUDED.model_name,
+                               updated_at = NOW()""",
+                        (ann_id, vec_str, source_text[:5000], "gemini-embedding-001"),
+                    )
+                    conn.commit()
+        except Exception as _emb_err:
+            print(f"[admin_create emb] id={ann_id} {_emb_err}")
+
         return {"status": "CREATED", "announcement_id": ann_id}
     finally:
         conn.close()

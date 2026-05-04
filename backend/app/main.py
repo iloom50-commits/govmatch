@@ -13489,6 +13489,64 @@ def admin_patch_announcement(announcement_id: int, req: AnnouncementPatchRequest
         conn.close()
 
 
+class AnnouncementCreateRequest(BaseModel):
+    title: str
+    department: str
+    category: str
+    summary_text: str
+    full_text: Optional[str] = None
+    support_amount: Optional[str] = None
+    region: str = "전국"
+    target_type: str = "business"
+    deadline_date: Optional[str] = None   # None = 상시
+    origin_url: Optional[str] = None
+    origin_source: str = "manual"
+
+
+@app.post("/api/admin/announcements", dependencies=[Depends(_verify_admin)])
+def admin_create_announcement(req: AnnouncementCreateRequest):
+    """공고 수동 등록 (정책자금 등 상시 공고)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # origin_url 없으면 title 기반 unique 키 생성
+        origin_url = req.origin_url or f"manual://jungzingo/{req.title.replace(' ', '_')}"
+        cur.execute(
+            """INSERT INTO announcements
+               (title, department, category, summary_text, support_amount,
+                region, target_type, deadline_date, origin_url, origin_source,
+                analysis_status, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+               ON CONFLICT (origin_url) DO UPDATE
+               SET title = EXCLUDED.title,
+                   summary_text = EXCLUDED.summary_text,
+                   support_amount = EXCLUDED.support_amount,
+                   department = EXCLUDED.department,
+                   category = EXCLUDED.category
+               RETURNING announcement_id""",
+            (
+                req.title, req.department, req.category, req.summary_text,
+                req.support_amount, req.region, req.target_type,
+                req.deadline_date, origin_url, req.origin_source,
+            ),
+        )
+        ann_id = cur.fetchone()["announcement_id"]
+
+        if req.full_text:
+            cur.execute(
+                """INSERT INTO announcement_analysis (announcement_id, full_text, source_type, created_at)
+                   VALUES (%s, %s, 'manual', NOW())
+                   ON CONFLICT (announcement_id) DO UPDATE
+                   SET full_text = EXCLUDED.full_text, source_type = 'manual'""",
+                (ann_id, req.full_text),
+            )
+
+        conn.commit()
+        return {"status": "CREATED", "announcement_id": ann_id}
+    finally:
+        conn.close()
+
+
 class HotIssueUpsertRequest(BaseModel):
     ticker_text: str
     title: str

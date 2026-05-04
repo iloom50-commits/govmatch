@@ -13420,6 +13420,53 @@ def admin_hot_issues_list(status: str = "all"):
         conn.close()
 
 
+@app.get("/api/admin/keyword-synonyms", dependencies=[Depends(_verify_admin)])
+def admin_get_synonyms():
+    """동의어 그룹 전체 조회"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT group_name, keyword, target_type FROM keyword_synonyms ORDER BY group_name, keyword")
+        rows = [dict(r) for r in cur.fetchall()]
+        # 그룹별로 묶어서 반환
+        groups = {}
+        for r in rows:
+            g = r["group_name"]
+            if g not in groups:
+                groups[g] = {"target_type": r["target_type"], "keywords": []}
+            groups[g]["keywords"].append(r["keyword"])
+        return {"status": "SUCCESS", "groups": groups, "total_keywords": len(rows)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/keyword-synonyms", dependencies=[Depends(_verify_admin)])
+def admin_upsert_synonym(req: dict):
+    """동의어 그룹 추가/수정. req: {group_name, keywords: [], target_type}"""
+    group_name = req.get("group_name", "").strip()
+    keywords = req.get("keywords", [])
+    target_type = req.get("target_type", "both")
+    if not group_name or not keywords:
+        raise HTTPException(status_code=400, detail="group_name, keywords 필수")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        inserted = 0
+        for kw in [group_name] + keywords:
+            kw = kw.strip()
+            if not kw:
+                continue
+            cur.execute(
+                "INSERT INTO keyword_synonyms (group_name, keyword, target_type) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                (group_name, kw, target_type),
+            )
+            inserted += cur.rowcount
+        conn.commit()
+        return {"status": "SUCCESS", "inserted": inserted, "group": group_name}
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/announcements/search", dependencies=[Depends(_verify_admin)])
 def admin_announcements_search(q: str = "", limit: int = 10):
     """공고 키워드 검색 — Hot이슈 공고 연결용"""

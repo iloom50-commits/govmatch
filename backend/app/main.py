@@ -13443,7 +13443,7 @@ class AnnouncementPatchRequest(BaseModel):
     department: Optional[str] = None
     category: Optional[str] = None
     summary_text: Optional[str] = None
-    content: Optional[str] = None
+    full_text: Optional[str] = None   # announcement_analysis.full_text 업데이트
     support_amount: Optional[str] = None
     region: Optional[str] = None
     target_type: Optional[str] = None
@@ -13452,21 +13452,39 @@ class AnnouncementPatchRequest(BaseModel):
 
 @app.patch("/api/admin/announcements/{announcement_id}", dependencies=[Depends(_verify_admin)])
 def admin_patch_announcement(announcement_id: int, req: AnnouncementPatchRequest):
-    """공고 내용 직접 수정 (content/summary/금액 등 보완용)"""
-    fields = {k: v for k, v in req.dict().items() if v is not None}
-    if not fields:
+    """공고 내용 직접 수정 (summary/full_text/금액 등 보완용)"""
+    # announcements 테이블 업데이트 필드 (full_text 제외)
+    ann_fields = {k: v for k, v in req.dict().items() if v is not None and k != "full_text"}
+    full_text = req.full_text
+
+    if not ann_fields and not full_text:
         return {"status": "NO_CHANGE"}
+
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        set_clause = ", ".join(f"{k} = %s" for k in fields)
-        params = list(fields.values()) + [announcement_id]
-        cur.execute(
-            f"UPDATE announcements SET {set_clause} WHERE announcement_id = %s",
-            params,
-        )
+        updated = []
+
+        if ann_fields:
+            set_clause = ", ".join(f"{k} = %s" for k in ann_fields)
+            params = list(ann_fields.values()) + [announcement_id]
+            cur.execute(f"UPDATE announcements SET {set_clause} WHERE announcement_id = %s", params)
+            updated.extend(ann_fields.keys())
+
+        if full_text:
+            # announcement_analysis 테이블에 upsert (없으면 INSERT, 있으면 full_text만 UPDATE)
+            cur.execute(
+                """INSERT INTO announcement_analysis (announcement_id, full_text, source_type, created_at)
+                   VALUES (%s, %s, 'manual', NOW())
+                   ON CONFLICT (announcement_id) DO UPDATE
+                   SET full_text = EXCLUDED.full_text,
+                       source_type = 'manual'""",
+                (announcement_id, full_text),
+            )
+            updated.append("full_text")
+
         conn.commit()
-        return {"status": "SUCCESS", "updated": announcement_id, "fields": list(fields.keys())}
+        return {"status": "SUCCESS", "updated": announcement_id, "fields": updated}
     finally:
         conn.close()
 

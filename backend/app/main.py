@@ -3543,6 +3543,8 @@ class UpgradePlanRequest(BaseModel):
 
 
 PORTONE_API_SECRET = os.getenv("PORTONE_API_SECRET", "")
+PORTONE_V1_API_KEY = os.getenv("PORTONE_V1_API_KEY", "")
+PORTONE_V1_API_SECRET = os.getenv("PORTONE_V1_API_SECRET", "")
 
 # PLAN_PRICES는 상단에 정의됨
 
@@ -3649,6 +3651,7 @@ def api_plan_upgrade(
 class SubscribeRequest(BaseModel):
     billing_key: str
     target_plan: str = "lite"  # "lite" or "pro"
+    key_type: str = "v2"       # "v2" = PortOne V2 billing key, "v1" = iamport V1 customer_uid
 
 
 @app.post("/api/plan/subscribe")
@@ -3663,10 +3666,10 @@ def api_plan_subscribe(
 
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
+    is_v1 = req.key_type == "v1" or req.billing_key.startswith("cust_")
 
-    # 2차: PortOne V2 REST API로 billing_key 실존·소유 검증
-    #      — "결제창만 뜬 상태에서 자동 업그레이드" 현상 차단 (프론트엔드에서 더미 billing_key 전송 방지)
-    if PORTONE_API_SECRET:
+    # 2차: billing_key 검증 (V2만 — V1 customer_uid는 iamport 콜백이 신뢰 기반)
+    if not is_v1 and PORTONE_API_SECRET:
         import httpx as _httpx
         try:
             verify_res = _httpx.get(
@@ -3677,12 +3680,10 @@ def api_plan_subscribe(
             if verify_res.status_code == 404:
                 raise HTTPException(status_code=400, detail="등록되지 않은 빌링키입니다. 결제를 다시 시도해 주세요.")
             if verify_res.status_code != 200:
-                # 일시적 서비스 장애 — 보수적으로 차단
                 raise HTTPException(status_code=502, detail="결제 검증 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.")
             bk = verify_res.json()
             if bk.get("status") != "ISSUED":
                 raise HTTPException(status_code=400, detail="결제가 완료되지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
-            # 타 사용자 빌링키 도용 방지 (customerId는 프론트엔드에서 bn을 정규화한 값)
             expected_cid = "".join(c if (c.isalnum() or c in "_-") else "_" for c in (bn or ""))[:40]
             bk_customer_id = ((bk.get("customer") or {}).get("id") or "").strip()
             if expected_cid and bk_customer_id and bk_customer_id != expected_cid:
@@ -3691,11 +3692,12 @@ def api_plan_subscribe(
         except HTTPException:
             raise
         except _httpx.RequestError as e:
-            # 네트워크 오류는 서비스 연속성을 위해 경고 로그만 남기고 통과
             print(f"[subscribe] PortOne verify network error (허용): {e}")
         except Exception as e:
             print(f"[subscribe] PortOne verify unexpected error: {e}")
             raise HTTPException(status_code=502, detail="결제 검증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+    elif is_v1:
+        print(f"[subscribe] V1 customer_uid 등록: {req.billing_key[:20]}...")
     else:
         print("[subscribe] PORTONE_API_SECRET 미설정 — 빌링키 검증 건너뜀 (테스트 환경)")
 
@@ -3836,9 +3838,49 @@ def api_plan_refund(current_user: dict = Depends(_get_current_user)):
         raise HTTPException(status_code=500, detail=f"환불 처리 중 오류: {str(e)}")
 
 
+def _charge_v1(customer_uid: str, merchant_uid: str, amount: int, order_name: str) -> bool:
+    """iamport V1 API로 customer_uid 기반 정기결제 실행. 성공 시 True 반환."""
+    import httpx as _httpx
+    if not PORTONE_V1_API_KEY or not PORTONE_V1_API_SECRET:
+        print("[renew-v1] PORTONE_V1_API_KEY/SECRET 미설정 — V1 결제 불가")
+        return False
+    # 1) access token 발급
+    token_res = _httpx.post(
+        "https://api.iamport.kr/users/getToken",
+        json={"imp_key": PORTONE_V1_API_KEY, "imp_secret": PORTONE_V1_API_SECRET},
+        timeout=10,
+    )
+    if token_res.status_code != 200:
+        print(f"[renew-v1] 토큰 발급 실패: {token_res.status_code}")
+        return False
+    access_token = (token_res.json().get("response") or {}).get("access_token", "")
+    if not access_token:
+        print("[renew-v1] 빈 access_token")
+        return False
+    # 2) 정기결제
+    charge_res = _httpx.post(
+        "https://api.iamport.kr/subscribe/payments/again",
+        headers={"Authorization": access_token},
+        json={
+            "customer_uid": customer_uid,
+            "merchant_uid": merchant_uid,
+            "amount": amount,
+            "name": order_name,
+        },
+        timeout=15,
+    )
+    body = charge_res.json()
+    ok = charge_res.status_code == 200 and body.get("code") == 0 and (body.get("response") or {}).get("status") == "paid"
+    if not ok:
+        print(f"[renew-v1] 결제 실패: code={body.get('code')} msg={body.get('message')}")
+    return ok
+
+
 def _auto_renew_subscriptions():
-    """만료된 구독 자동 갱신 — 빌링키로 결제"""
-    if not PORTONE_API_SECRET:
+    """만료된 구독 자동 갱신 — V2 billing_key 또는 V1 customer_uid로 결제"""
+    has_v2 = bool(PORTONE_API_SECRET)
+    has_v1 = bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)
+    if not has_v2 and not has_v1:
         return
     import httpx
     try:
@@ -3859,6 +3901,7 @@ def _auto_renew_subscriptions():
             u = dict(row)
             plan = u["plan"]
             user_type = u.get("user_type") or "both"
+            stored_key = u["billing_key"] or ""
 
             # 가격 결정
             if plan == "lite":
@@ -3867,22 +3910,35 @@ def _auto_renew_subscriptions():
                 price = PLAN_PRICES.get("pro", 49000)
 
             payment_id = f"renew-{u['business_number']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M')}"
+            order_name = f"지원금AI {plan.upper()} 월 구독"
+            is_v1_key = stored_key.startswith("cust_")
 
             try:
-                resp = httpx.post(
-                    f"https://api.portone.io/payments/{payment_id}/billing-key",
-                    headers={
-                        "Authorization": f"PortOne {PORTONE_API_SECRET}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "billingKey": u["billing_key"],
-                        "orderName": f"지원금AI {plan.upper()} 월 구독",
-                        "amount": {"total": price, "currency": "KRW"},
-                    },
-                    timeout=15,
-                )
-                if resp.status_code == 200:
+                if is_v1_key and has_v1:
+                    # V1 customer_uid 기반 결제
+                    success = _charge_v1(stored_key, payment_id, price, order_name)
+                    status_ok = success
+                elif not is_v1_key and has_v2:
+                    # V2 billing_key 기반 결제
+                    resp = httpx.post(
+                        f"https://api.portone.io/payments/{payment_id}/billing-key",
+                        headers={
+                            "Authorization": f"PortOne {PORTONE_API_SECRET}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "billingKey": stored_key,
+                            "orderName": order_name,
+                            "amount": {"total": price, "currency": "KRW"},
+                        },
+                        timeout=15,
+                    )
+                    status_ok = resp.status_code == 200
+                else:
+                    print(f"[renew] {u.get('email','?')} API 설정 없음 (key_type={'v1' if is_v1_key else 'v2'}) — 건너뜀")
+                    continue
+
+                if status_ok:
                     now = datetime.datetime.utcnow()
                     new_expires = (now + datetime.timedelta(days=30)).isoformat()
                     cur.execute(
@@ -3895,13 +3951,12 @@ def _auto_renew_subscriptions():
                     print(f"[renew] {u.get('email','?')} {plan.upper()} {price:,}원 결제 완료")
                 else:
                     failed += 1
-                    # 결제 실패 → 플랜 만료 + 빌링키 삭제
                     cur.execute(
                         "UPDATE users SET plan = 'free', billing_key = NULL WHERE business_number = %s",
                         (u["business_number"],),
                     )
                     conn.commit()
-                    print(f"[renew] {u.get('email','?')} 결제 실패 → FREE 전환: {resp.status_code}")
+                    print(f"[renew] {u.get('email','?')} 결제 실패 → FREE 전환")
             except Exception as e:
                 failed += 1
                 cur.execute(

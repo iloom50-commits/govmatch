@@ -7,7 +7,7 @@ import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
-const CHANNEL_KEY = "channel-key-c9cf78e7-bb9a-4aeb-b167-5a7273f6d8bd";
+const IMP_CODE = "imp85430643"; // PortOne V1 고객사 식별코드 (KCP 카드 결제용)
 const CHANNEL_KEY_KAKAO = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_KAKAO || "channel-key-0872602d-c0dc-41fb-ac7f-dc95058eba02";
 
 interface PaymentModalProps {
@@ -38,6 +38,15 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
+  // iamport V1 SDK 로드 (KCP 카드 결제용)
+  useEffect(() => {
+    if (typeof window !== "undefined" && !(window as any).IMP) {
+      const script = document.createElement("script");
+      script.src = "https://cdn.iamport.kr/v1/iamport.js";
+      document.head.appendChild(script);
+    }
+  }, []);
+
   const cleanupPortone = () => {
     document.getElementById("imp-iframe-wrapper")?.remove();
     document.querySelectorAll("iframe[src*='portone'], iframe[src*='iamport']").forEach(el => {
@@ -55,71 +64,116 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     } catch { return {}; }
   };
 
+  const _submitSubscribe = async (billingKey: string, keyType: "v1" | "v2", targetPlan: "lite" | "pro", token: string) => {
+    const res = await fetch(`${API}/api/plan/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan, key_type: keyType }),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); setLoading(false); return; }
+    toast(data.message || "구독이 시작되었습니다!", "success");
+    onSuccess(data.token, data.plan);
+  };
+
   const handleSubscribe = async (targetPlan: "lite" | "pro") => {
+    if (payMethod === "samsung") {
+      toast("삼성페이는 곧 지원 예정입니다. 카드 또는 카카오페이를 이용해 주세요.", "info");
+      return;
+    }
+
     setLoading(true);
-    try {
-      const token = getToken();
-      const userClaims = decodeJwt(token);
-      const customerId = (userClaims.bn || String(userClaims.user_id || "")).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || `guest_${Date.now()}`;
-      const customerEmail = userClaims.email || "";
+    const token = getToken();
+    const userClaims = decodeJwt(token);
+    const customerId = (userClaims.bn || String(userClaims.user_id || "")).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || `guest_${Date.now()}`;
+    const customerEmail = userClaims.email || "";
+    const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/payment/billing-redirect` : "";
 
-      // 모바일 감지 — 모바일은 REDIRECTION 방식이 필수 (KCP 모바일 최적화 페이지 호출)
-      const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-      // 모바일 리다이렉트 복귀 후 컨텍스트 복원용 — 토큰/플랜 저장
-      if (isMobile) {
-        sessionStorage.setItem("portone_billing_context", JSON.stringify({
-          targetPlan,
-          payMethod,
-          token,
-          savedAt: Date.now(),
-        }));
-      }
-
-      const issueId = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
-      const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/payment/billing-redirect` : "";
-
-      const billingKeyResponse = await PortOne.requestIssueBillingKey({
-        storeId: STORE_ID,
-        channelKey: payMethod === "kakao" ? CHANNEL_KEY_KAKAO : CHANNEL_KEY,
-        billingKeyMethod: (payMethod === "kakao" || payMethod === "samsung") ? "EASY_PAY" : "CARD",
-        ...(payMethod === "samsung" ? { easyPay: { easyPayProvider: "SAMSUNGPAY" } } : {}),
-        issueId,
-        issueName,
-        customer: {
-          customerId,
-          email: customerEmail || undefined,
-        },
-        redirectUrl,
+    // ── 카카오페이: PortOne V2 SDK ──
+    if (payMethod === "kakao") {
+      try {
+        const issueId = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
+        const billingKeyResponse = await PortOne.requestIssueBillingKey({
+          storeId: STORE_ID,
+          channelKey: CHANNEL_KEY_KAKAO,
+          billingKeyMethod: "EASY_PAY",
+          issueId,
+          issueName,
+          customer: { customerId, email: customerEmail || undefined },
+          redirectUrl,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+        const code = billingKeyResponse?.code;
+        if (code === "USER_CANCEL" || code === "FAILURE" || code === "PORTONE_ERROR") {
+          toast("결제가 취소되었습니다.", "info"); setLoading(false); return;
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
-
-      // 모바일 REDIRECTION은 페이지가 이미 이동하므로 아래 코드는 데스크톱 IFRAME에서만 실행됨
-      const code = billingKeyResponse?.code;
-      if (code === "USER_CANCEL" || code === "FAILURE" || code === "PORTONE_ERROR") {
-        toast("결제가 취소되었습니다.", "info"); setLoading(false); return;
+        const billingKey = (billingKeyResponse as any)?.billingKey;
+        if (!billingKey || typeof billingKey !== "string" || billingKey.trim().length < 10) {
+          toast("카카오페이 등록에 실패했습니다. 다시 시도해 주세요.", "error"); setLoading(false); return;
+        }
+        await _submitSubscribe(billingKey, "v2", targetPlan, token);
+      } catch (err: unknown) {
+        cleanupPortone();
+        toast(err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.", "error");
+      } finally {
+        cleanupPortone();
+        setLoading(false);
       }
-      const billingKey = (billingKeyResponse as any)?.billingKey;  // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (!billingKey || typeof billingKey !== "string" || billingKey.trim().length < 10) {
-        toast("카드 등록에 실패했습니다. 다시 시도해 주세요.", "error"); setLoading(false); return;
+      return;
+    }
+
+    // ── 카드: iamport V1 SDK (KCP) ──
+    try {
+      const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        sessionStorage.setItem("portone_billing_context", JSON.stringify({ targetPlan, payMethod, token, savedAt: Date.now() }));
       }
 
-      const res = await fetch(`${API}/api/plan/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); setLoading(false); return; }
-      toast(data.message || "구독이 시작되었습니다!", "success");
-      onSuccess(data.token, data.plan);
+      const IMP = (typeof window !== "undefined" ? (window as any).IMP : null); // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!IMP) { toast("결제 모듈 로딩 중입니다. 잠시 후 다시 시도해 주세요.", "info"); setLoading(false); return; }
+
+      IMP.init(IMP_CODE);
+      const customer_uid = `cust_${customerId}_${Date.now()}`;
+      const merchantUid = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
+
+      IMP.request_pay(
+        {
+          pg: "kcp_billing",
+          pay_method: "card",
+          merchant_uid: merchantUid,
+          customer_uid,
+          name: issueName,
+          amount: 0,
+          buyer_email: customerEmail || undefined,
+          m_redirect_url: redirectUrl,
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        async (rsp: any) => {
+          if (!rsp.success) {
+            const msg = rsp.error_msg || "카드 등록에 실패했습니다.";
+            if (msg.includes("취소") || rsp.error_code === "F0000") {
+              toast("결제가 취소되었습니다.", "info");
+            } else {
+              toast(msg, "error");
+            }
+            setLoading(false);
+            return;
+          }
+          try {
+            await _submitSubscribe(customer_uid, "v1", targetPlan, token);
+          } catch (err: unknown) {
+            toast(err instanceof Error ? err.message : "구독 처리 중 오류가 발생했습니다.", "error");
+          } finally {
+            setLoading(false);
+          }
+        }
+      );
     } catch (err: unknown) {
       cleanupPortone();
-      const msg = err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.";
-      toast(msg, "error");
-    } finally {
-      cleanupPortone();
+      toast(err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.", "error");
       setLoading(false);
     }
   };

@@ -580,7 +580,9 @@ def _seed_keyword_synonyms(conn):
     print("  [Seed] keyword_synonyms 초기 데이터 삽입 완료")
 
 
-init_database()
+import threading as _threading
+_db_init_thread = _threading.Thread(target=init_database, daemon=True)
+_db_init_thread.start()
 
 
 SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "8"))
@@ -1292,27 +1294,29 @@ def _prewarm_response_cache(startup: bool = False):
 
 
 async def lifespan(app):
-    _log_expired_announcements()  # 시작 시 현황만 로그
-    # 서버 시작 시 사전매칭 캐시 (백그라운드)
     import threading
 
-    def _warmup():
-        _db_keepalive()  # 1. DB 연결 먼저 warm-up (cold start 40s 방지)
-        _prewarm_response_cache(startup=False)  # 2. warm DB로 응답 캐시 즉시 채우기
+    def _startup_tasks():
+        # DB init 완료 대기 (최대 60초)
+        _db_init_thread.join(timeout=60)
+
+        _log_expired_announcements()
+        _db_keepalive()
+        _prewarm_response_cache(startup=False)
         print(f"[Startup] Pre-match: {_run_prematch_cache()} users cached")
 
-    threading.Thread(target=_warmup, daemon=True).start()
+        # ── 금융 지식 시딩 (최초 1회) ──
+        try:
+            from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
+            seed_conn = get_db_connection()
+            seeded = seed_financial_knowledge(seed_conn)
+            seed_conn.close()
+            if seeded:
+                print(f"[KnowledgeSeed] {seeded} financial knowledge items seeded")
+        except Exception as seed_err:
+            print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
 
-    # ── 금융 지식 시딩 (최초 1회) ──
-    try:
-        from app.services.financial_analysis.knowledge_seed import seed_financial_knowledge
-        seed_conn = get_db_connection()
-        seeded = seed_financial_knowledge(seed_conn)
-        seed_conn.close()
-        if seeded:
-            print(f"[KnowledgeSeed] {seeded} financial knowledge items seeded")
-    except Exception as seed_err:
-        print(f"[KnowledgeSeed] Error (non-critical): {seed_err}")
+    threading.Thread(target=_startup_tasks, daemon=True).start()
 
     # ── Hot이슈 초기 시드 (최초 1회) ──
     try:

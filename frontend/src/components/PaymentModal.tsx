@@ -25,7 +25,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
     return () => { document.body.style.overflow = ""; };
   }, []);
   const [loading, setLoading] = useState(false);
-  const [payMethod, setPayMethod] = useState<"card" | "kakao">("card");
+  const [payMethod, setPayMethod] = useState<"card" | "kakao" | "samsung">("card");
   const [tab, setTab] = useState<"individual" | "business">(
     userType === "individual" ? "individual" : "business"
   );
@@ -83,7 +83,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
       const billingKeyResponse = await PortOne.requestIssueBillingKey({
         storeId: STORE_ID,
         channelKey: payMethod === "kakao" ? CHANNEL_KEY_KAKAO : CHANNEL_KEY,
-        billingKeyMethod: payMethod === "kakao" ? "EASY_PAY" : "CARD",
+        billingKeyMethod: (payMethod === "kakao" || payMethod === "samsung") ? "EASY_PAY" : "CARD",
+        ...(payMethod === "samsung" ? { easyPay: { easyPayProvider: "SAMSUNGPAY" } } : {}),
         issueId,
         issueName,
         customer: {
@@ -177,7 +178,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
           </div>
 
           {/* 결제 수단 선택 */}
-          <div className="flex justify-center gap-2 mb-4">
+          <div className="flex justify-center gap-2 mb-4 flex-wrap">
             <button
               onClick={() => setPayMethod("card")}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
@@ -197,6 +198,16 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               }`}
             >
               카카오페이
+            </button>
+            <button
+              onClick={() => setPayMethod("samsung")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
+                payMethod === "samsung"
+                  ? "bg-[#1428A0] text-white border-[#1428A0]"
+                  : "bg-white text-slate-500 border-slate-200 hover:border-[#1428A0]"
+              }`}
+            >
+              삼성페이
             </button>
           </div>
 

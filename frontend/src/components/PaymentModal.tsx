@@ -26,6 +26,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
   }, []);
   const [loading, setLoading] = useState(false);
   const [payMethod, setPayMethod] = useState<"card" | "kakao" | "samsung">("card");
+  const [pendingPlan, setPendingPlan] = useState<"lite" | "pro" | null>(null);
   const [tab, setTab] = useState<"individual" | "business">(
     userType === "individual" ? "individual" : "business"
   );
@@ -227,40 +228,6 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
             </button>
           </div>
 
-          {/* 결제 수단 선택 */}
-          <div className="flex justify-center gap-2 mb-4 flex-wrap">
-            <button
-              onClick={() => setPayMethod("card")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
-                payMethod === "card"
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-              }`}
-            >
-              💳 카드 결제
-            </button>
-            <button
-              onClick={() => setPayMethod("kakao")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
-                payMethod === "kakao"
-                  ? "bg-[#FEE500] text-[#191919] border-[#FEE500]"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-[#FEE500]"
-              }`}
-            >
-              카카오페이
-            </button>
-            <button
-              onClick={() => setPayMethod("samsung")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-bold border transition-all ${
-                payMethod === "samsung"
-                  ? "bg-[#1428A0] text-white border-[#1428A0]"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-[#1428A0]"
-              }`}
-            >
-              삼성페이
-            </button>
-          </div>
-
           {/* 3열 카드 — 수평/수직 정렬 */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 items-stretch">
 
@@ -326,9 +293,9 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                 ) : isPro ? (
                   <div className="w-full" />
                 ) : (
-                  <button onClick={() => handleSubscribe("lite")} disabled={loading}
+                  <button onClick={() => { setPayMethod("card"); setPendingPlan("lite"); }} disabled={loading}
                     className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    {loading ? "처리 중..." : "Lite 시작하기"}
+                    Lite 시작하기
                   </button>
                 )}
               </div>
@@ -376,14 +343,14 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
                     현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
                   </div>
                 ) : isLite ? (
-                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
+                  <button onClick={() => { setPayMethod("card"); setPendingPlan("pro"); }} disabled={loading}
                     className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    {loading ? "처리 중..." : "Pro로 업그레이드"}
+                    Pro로 업그레이드
                   </button>
                 ) : (
-                  <button onClick={() => handleSubscribe("pro")} disabled={loading}
+                  <button onClick={() => { setPayMethod("card"); setPendingPlan("pro"); }} disabled={loading}
                     className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    {loading ? "처리 중..." : "Pro 시작하기"}
+                    Pro 시작하기
                   </button>
                 )}
               </div>
@@ -408,6 +375,56 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               ) : <div className="h-[24px]" />}
             </div>
           </div>
+
+          {/* 결제수단 선택 시트 — 플랜 버튼 누른 후 표시 */}
+          {pendingPlan && (
+            <div className="mb-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/40 p-4 animate-in slide-in-from-bottom-2 duration-200">
+              <p className="text-[12px] font-bold text-slate-700 mb-3 text-center">
+                결제 수단 선택 — <span className="text-indigo-600">{pendingPlan === "lite" ? "Lite" : "Pro"}</span>
+              </p>
+              <div className="flex gap-2 mb-3 flex-wrap justify-center">
+                <button
+                  onClick={() => setPayMethod("card")}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[12px] font-bold border transition-all ${
+                    payMethod === "card"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"
+                  }`}
+                >
+                  💳 카드 결제
+                </button>
+                <button
+                  onClick={() => setPayMethod("kakao")}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[12px] font-bold border transition-all ${
+                    payMethod === "kakao"
+                      ? "bg-[#FEE500] text-[#191919] border-[#FEE500]"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-[#FEE500]"
+                  }`}
+                >
+                  카카오페이
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPendingPlan(null)}
+                  className="flex-1 py-2.5 bg-white text-slate-500 border border-slate-200 rounded-lg text-[12px] font-bold hover:bg-slate-50 transition-all"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => { const p = pendingPlan; setPendingPlan(null); handleSubscribe(p); }}
+                  disabled={loading}
+                  className={`flex-[2] py-2.5 rounded-lg text-[12px] font-bold transition-all active:scale-[0.98] disabled:opacity-50 ${
+                    pendingPlan === "lite"
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-violet-600 hover:bg-violet-700 text-white"
+                  }`}
+                >
+                  {loading ? "처리 중..." : `${payMethod === "kakao" ? "카카오페이로" : "카드로"} 결제하기`}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 친구 추천 */}
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between mb-3">

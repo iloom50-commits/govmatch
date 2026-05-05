@@ -6313,19 +6313,58 @@ def _verify_admin(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/seed-fund-knowledge", dependencies=[Depends(_verify_admin)])
 def api_seed_fund_knowledge():
-    """관리자: 정책자금/보증 시드 + 애매한 케이스 시드 knowledge_base에 적재 (중복 스킵)."""
+    """관리자: 정책자금/보증 시드 knowledge_base에 직접 적재 (중복 스킵)."""
     from app.db.fund_knowledge_seed import seed_fund_knowledge
-    from app.db.fund_ambiguous_seed import seed_ambiguous_knowledge
     conn = get_db_connection()
     try:
         r1 = seed_fund_knowledge(conn)
-        r2 = seed_ambiguous_knowledge(conn)
+        return {"status": "SUCCESS", "faq_seed": r1}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/load-ambiguous-to-queue", dependencies=[Depends(_verify_admin)])
+def api_load_ambiguous_to_queue():
+    """관리자: 애매한 케이스 시드 데이터를 qa_review_queue(검토 대기열)에 적재.
+    knowledge_base에 직접 넣지 않고 사장님 검토·승인 후 반영되도록 큐에 넣는다.
+    """
+    from app.db.fund_ambiguous_seed import FUND_AMBIGUOUS_DATA
+    conn = get_db_connection()
+    cur = conn.cursor()
+    inserted, skipped = 0, 0
+    try:
+        for item in FUND_AMBIGUOUS_DATA:
+            content = item.get("content", {})
+            question = content.get("question") or content.get("wrong_info") or content.get("topic", "")
+            answer = content.get("answer") or content.get("correct_info") or content.get("relationship", "")
+            category = item.get("category", "자금상담")
+            if not question or not answer:
+                continue
+            # 중복 체크
+            cur.execute(
+                "SELECT id FROM qa_review_queue WHERE question = %s",
+                (question,),
+            )
+            if cur.fetchone():
+                skipped += 1
+                continue
+            cur.execute(
+                """INSERT INTO qa_review_queue (question, ai_answer, category, source_keywords, status)
+                   VALUES (%s, %s, %s, %s, 'pending')""",
+                (question, answer, category, "ambiguous_seed"),
+            )
+            inserted += 1
+        conn.commit()
         return {
             "status": "SUCCESS",
-            "faq_seed": r1,
-            "ambiguous_seed": r2,
-            "total_inserted": r1.get("inserted", 0) + r2.get("inserted", 0),
+            "inserted": inserted,
+            "skipped": skipped,
+            "total": len(FUND_AMBIGUOUS_DATA),
+            "message": f"{inserted}건이 검토 대기열에 추가되었습니다. 관리자 검토 후 승인하면 AI가 학습합니다.",
         }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 

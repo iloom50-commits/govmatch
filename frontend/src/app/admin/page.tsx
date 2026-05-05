@@ -217,6 +217,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
   const [qaItems, setQaItems] = useState<QAItem[]>([]);
   const [qaFilter, setQaFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [qaLoadingSeed, setQaLoadingSeed] = useState(false);
   const [qaLoading, setQaLoading] = useState(false);
   const [qaGenerating, setQaGenerating] = useState(false);
   const [qaEditId, setQaEditId] = useState<number | null>(null);
@@ -351,6 +352,24 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       }
     } catch {
       toast('오류 발생', 'error');
+    }
+  };
+
+  const handleLoadAmbiguousSeed = async () => {
+    setQaLoadingSeed(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/load-ambiguous-to-queue`, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast(`📥 ${data.inserted}건 대기열 추가 (${data.skipped}건 중복 스킵)`, 'success');
+        loadQaItems('pending');
+      } else {
+        toast('불러오기 실패', 'error');
+      }
+    } catch {
+      toast('오류 발생', 'error');
+    } finally {
+      setQaLoadingSeed(false);
     }
   };
 
@@ -1012,7 +1031,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <h2 className="text-lg font-black text-slate-900">자금상담 AI 사전학습</h2>
                 <p className="text-xs text-slate-400 mt-0.5">AI가 생성한 Q&A를 검토·승인하면 knowledge_base에 학습됩니다.</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={handleLoadAmbiguousSeed}
+                  disabled={qaLoadingSeed}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  <FiDatabase size={14} /> {qaLoadingSeed ? '불러오는 중...' : '시드 데이터 불러오기'}
+                </button>
                 <button
                   onClick={handleQaGenerate}
                   disabled={qaGenerating}

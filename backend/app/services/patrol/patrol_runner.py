@@ -2,9 +2,13 @@
 
 매일 새벽 3시 실행:
 1. URL 헬스체크 + 자동 수정
-2. 분석 실패 재시도
-3. 인기 카테고리 미분석 발굴
-4. 결과를 patrol_history에 저장
+2. 인기 카테고리 미분석 발굴 (큐 등록)
+3. 오늘의 인기 공고 업데이트
+4. 최종 URL 수집
+4-1. 중기부 크롤링
+4-2. 소진공 지식 동기화
+5. 우선 카테고리 사전 분석 (소상공인/수출지원/금융, 마감 5일+)
+7. 분석 실패 재시도
 """
 import logging
 import json
@@ -21,7 +25,7 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
     """
     from app.main import get_db_connection
     from .url_health import scan_and_fix_urls
-    from .analysis_recovery import recover_failed_analyses, discover_unanalyzed
+    from .analysis_recovery import recover_failed_analyses, discover_unanalyzed, preanalyze_priority_categories
 
     summary: Dict[str, Any] = {
         "triggered_by": triggered_by,
@@ -29,6 +33,7 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         "url_health": None,
         "recovery": None,
         "discovery": None,
+        "priority_analysis": None,
         "elapsed_seconds": 0,
         "errors": [],
     }
@@ -122,7 +127,21 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
-    # ── 5. 분석 실패 재시도 (실제 분석 실행) ──
+    # ── 5. 우선 카테고리 사전 분석 (소상공인/수출지원/금융) ──
+    try:
+        logger.info("[Patrol] Pre-analyzing priority categories...")
+        result = preanalyze_priority_categories(conn, min_days_left=5, limit=50)
+        summary["priority_analysis"] = result
+        logger.info(
+            f"[Patrol] PriorityAnalysis: candidates={result['candidates']} "
+            f"succeeded={result['succeeded']} failed={result['failed']}"
+        )
+    except Exception as e:
+        msg = f"priority_analysis failed: {e}"
+        logger.error(f"[Patrol] {msg}")
+        summary["errors"].append(msg)
+
+    # ── 7. 분석 실패 재시도 (실제 분석 실행) ──
     try:
         logger.info("[Patrol] Recovering failed analyses...")
         result = recover_failed_analyses(conn, max_retries=100)

@@ -71,6 +71,84 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
     }
 
 
+PRIORITY_CATEGORIES = ["소상공인", "수출지원", "금융"]
+
+
+def preanalyze_priority_categories(
+    db_conn,
+    categories: list = None,
+    min_days_left: int = 5,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """마감 N일 이상 남은 우선 카테고리 미분석 공고를 즉시 분석.
+
+    discover_unanalyzed()는 큐에만 넣지만, 이 함수는 analyze_and_store()를 직접 호출해
+    사용자가 '나도 받을 수 있나?'를 클릭할 때 캐시 히트가 되도록 미리 채워둔다.
+    """
+    from app.services.doc_analysis_service import analyze_and_store
+    from app.main import get_db_connection
+
+    if categories is None:
+        categories = PRIORITY_CATEGORIES
+
+    cur = db_conn.cursor()
+    cur.execute("""
+        SELECT a.announcement_id, a.title, a.origin_url, a.summary_text, a.category,
+               a.deadline_date
+        FROM announcements a
+        LEFT JOIN announcement_analysis aa ON aa.announcement_id = a.announcement_id
+        WHERE aa.announcement_id IS NULL
+          AND a.is_archived = FALSE
+          AND a.category = ANY(%s)
+          AND a.deadline_date >= CURRENT_DATE + INTERVAL '1 day' * %s
+          AND a.origin_url IS NOT NULL AND a.origin_url != ''
+        ORDER BY a.deadline_date ASC
+        LIMIT %s
+    """, (categories, min_days_left, limit))
+    candidates = cur.fetchall()
+
+    attempted = 0
+    succeeded = 0
+    failed = 0
+
+    for row in candidates:
+        aid = row["announcement_id"]
+        attempted += 1
+        try:
+            sub_conn = get_db_connection()
+            try:
+                result = analyze_and_store(
+                    announcement_id=aid,
+                    origin_url=row["origin_url"] or "",
+                    title=row["title"] or "",
+                    db_conn=sub_conn,
+                    summary_text=row.get("summary_text") or "",
+                )
+                if result.get("success"):
+                    succeeded += 1
+                    logger.info(f"[PriorityAnalysis] ✓ #{aid} ({row['category']}) analyzed")
+                else:
+                    failed += 1
+                    logger.warning(f"[PriorityAnalysis] ✗ #{aid} failed: {result.get('error')}")
+            finally:
+                sub_conn.close()
+        except Exception as e:
+            failed += 1
+            logger.error(f"[PriorityAnalysis] error #{aid}: {e}")
+
+    logger.info(
+        f"[PriorityAnalysis] categories={categories} attempted={attempted} "
+        f"succeeded={succeeded} failed={failed}"
+    )
+    return {
+        "categories": categories,
+        "candidates": len(candidates),
+        "attempted": attempted,
+        "succeeded": succeeded,
+        "failed": failed,
+    }
+
+
 def discover_unanalyzed(db_conn, limit: int = 100) -> Dict[str, Any]:
     """분석되지 않은 공고를 자동 등록.
     아직 analysis_failures에도 없고 announcement_analysis에도 없는 항목을 큐에 추가.

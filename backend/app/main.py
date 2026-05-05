@@ -6239,6 +6239,23 @@ def api_refresh_trending(req: AdminAuthRequest):
         except: pass
 
 
+ADMIN_TOKEN_SECRET = os.getenv("ADMIN_PASSWORD", "fallback")
+
+
+def _create_admin_token() -> str:
+    payload = ADMIN_TOKEN_SECRET.encode()
+    return hmac.new(payload, b"admin-session", hashlib.sha256).hexdigest()
+
+
+def _verify_admin(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
+    token = authorization.split(" ", 1)[1]
+    expected = _create_admin_token()
+    if not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+
 @app.post("/api/admin/seed-fund-knowledge", dependencies=[Depends(_verify_admin)])
 def api_seed_fund_knowledge():
     """관리자: 정책자금/보증 시드 지식을 knowledge_base에 적재 (중복 스킵)."""
@@ -8431,23 +8448,6 @@ def api_analysis_stats(req: AdminAuthRequest = Depends()):
         "consult_logs": consults,
         "feedback_collected": feedback_count,
     }
-
-
-ADMIN_TOKEN_SECRET = os.getenv("ADMIN_PASSWORD", "fallback")
-
-
-def _create_admin_token() -> str:
-    payload = ADMIN_TOKEN_SECRET.encode()
-    return hmac.new(payload, b"admin-session", hashlib.sha256).hexdigest()
-
-
-def _verify_admin(authorization: Optional[str] = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
-    token = authorization.split(" ", 1)[1]
-    expected = _create_admin_token()
-    if not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
 
 
 @app.post("/api/admin/auth")

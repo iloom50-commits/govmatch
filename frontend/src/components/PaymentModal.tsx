@@ -91,10 +91,8 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
           customerId,
           email: customerEmail || undefined,
         },
-        // 모바일: REDIRECTION(전체 이동), 데스크톱: IFRAME(현재 페이지 위 팝업)
-        windowType: isMobile
-          ? { pc: "IFRAME", mobile: "REDIRECTION" }
-          : { pc: "IFRAME", mobile: "REDIRECTION" },
+        // KCP_BILLING은 PC IFRAME 미지원 → POPUP 사용, 모바일은 REDIRECTION
+        windowType: { pc: "POPUP", mobile: "REDIRECTION" },
         redirectUrl,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);

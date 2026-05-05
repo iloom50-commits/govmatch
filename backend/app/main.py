@@ -6313,12 +6313,19 @@ def _verify_admin(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/seed-fund-knowledge", dependencies=[Depends(_verify_admin)])
 def api_seed_fund_knowledge():
-    """관리자: 정책자금/보증 시드 지식을 knowledge_base에 적재 (중복 스킵)."""
+    """관리자: 정책자금/보증 시드 + 애매한 케이스 시드 knowledge_base에 적재 (중복 스킵)."""
     from app.db.fund_knowledge_seed import seed_fund_knowledge
+    from app.db.fund_ambiguous_seed import seed_ambiguous_knowledge
     conn = get_db_connection()
     try:
-        result = seed_fund_knowledge(conn)
-        return {"status": "SUCCESS", **result}
+        r1 = seed_fund_knowledge(conn)
+        r2 = seed_ambiguous_knowledge(conn)
+        return {
+            "status": "SUCCESS",
+            "faq_seed": r1,
+            "ambiguous_seed": r2,
+            "total_inserted": r1.get("inserted", 0) + r2.get("inserted", 0),
+        }
     finally:
         conn.close()
 

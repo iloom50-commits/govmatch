@@ -7,7 +7,7 @@ import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
-const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "";
+const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "channel-key-c9cf78e7-bb9a-4aeb-b167-5a7273f6d8bd";
 const CHANNEL_KEY_KAKAO = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_KAKAO || "channel-key-0872602d-c0dc-41fb-ac7f-dc95058eba02";
 
 interface PaymentModalProps {

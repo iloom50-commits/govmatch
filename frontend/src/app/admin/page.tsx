@@ -89,6 +89,11 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('admin_pw_saved');
+    if (saved) setPw(saved);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pw) return;
@@ -104,9 +109,12 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
         const data = await res.json();
         sessionStorage.setItem('admin_authed', '1');
         sessionStorage.setItem('admin_token', data.token);
+        sessionStorage.setItem('admin_password', pw);
+        localStorage.setItem('admin_pw_saved', pw);
         onLogin();
       } else {
         const data = await res.json();
+        localStorage.removeItem('admin_pw_saved');
         setError(data.detail || '인증 실패');
       }
     } catch {

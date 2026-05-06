@@ -2541,6 +2541,25 @@ def api_announcements_public(
                             _set_cache(cat_cache_key, category_counts)
                         except Exception:
                             category_counts = {}
+
+                    # 내지역/전국 탭 카운트 — 지역 필드 기준 단순 분류
+                    _rt_local_cnt = 0
+                    _rt_national_cnt = 0
+                    try:
+                        _nat_cond = "region IN ('전국', '', '전국 및 각 지역', 'All') OR region IS NULL"
+                        _pcur.execute(
+                            f"""SELECT
+                                COUNT(*) FILTER (WHERE NOT ({_nat_cond})) AS local_cnt,
+                                COUNT(*) FILTER (WHERE {_nat_cond}) AS national_cnt
+                            FROM announcements WHERE {full_where}""",
+                            type_params,
+                        )
+                        _cnt_r = _pcur.fetchone()
+                        _rt_local_cnt = _cnt_r["local_cnt"] or 0
+                        _rt_national_cnt = _cnt_r["national_cnt"] or 0
+                    except Exception:
+                        pass
+
                     _pc.close()
                     return {
                         "status": "SUCCESS",
@@ -2553,6 +2572,8 @@ def api_announcements_public(
                         "category_counts": category_counts,
                         "personalized": True,
                         "source": "realtime",
+                        "local_total": _rt_local_cnt,
+                        "national_total": _rt_national_cnt,
                     }
                 _pc.close()
         except Exception as _pe:

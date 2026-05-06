@@ -4,7 +4,7 @@ import asyncio
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request, UploadFile, File, Form
-from fastapi.responses import Response, RedirectResponse
+from fastapi.responses import Response, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -1454,30 +1454,8 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
-            async def _digest_job():
-                """평일 09:00 KST 매칭 이메일/푸시 발송 + 사전매칭 캐시 갱신"""
-                from app.services.notification_service import notification_service
-                try:
-                    print("[Digest] Running daily digest (평일 09:00 KST)...")
-                    results = await notification_service.generate_daily_digest()
-                    sent = sum(1 for r in results if r.get("email_sent"))
-                    push_sent = sum(r.get("push_sent", 0) for r in results)
-                    print(f"[Digest] Done: {len(results)} users, {sent} emails, {push_sent} pushes")
-                except Exception as e:
-                    print(f"[Digest] error: {e}")
-                try:
-                    count = _run_prematch_cache()
-                    print(f"[Digest] Pre-match cache: {count} users")
-                except Exception as e:
-                    print(f"[Digest] pre-match error: {e}")
-
-            pipeline_scheduler.add_job(
-                _digest_job,
-                CronTrigger(hour=DIGEST_HOUR, minute=0, day_of_week="mon-fri"),
-                id="daily_digest",
-                name=f"매칭 이메일 발송 (평일 {DIGEST_HOUR:02d}:00 UTC = KST 09:00)",
-                replace_existing=True,
-            )
+            # daily_digest는 Railway Cron → /api/internal/run-digest 엔드포인트로 이관
+            # APScheduler에서 제거하여 배포 재시작 시 중복 발송 방지
 
             # ── Hot이슈 자동 생성 — 월·목 23:00 UTC (KST 08:00) ──
             def _issue_monitor_job():
@@ -1546,6 +1524,36 @@ app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan, docs_ur
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+_CRON_SECRET = os.environ.get("CRON_SECRET", "")
+
+@app.post("/api/internal/run-digest")
+async def run_digest_endpoint(request: Request):
+    """Railway Cron 전용 — 맞춤 공고 이메일/푸시 발송 + 사전매칭 캐시 갱신.
+    CRON_SECRET 헤더로 인증. 외부 노출 차단.
+    """
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    from app.services.notification_service import notification_service
+    result = {"email_sent": 0, "push_sent": 0, "users": 0, "prematch": 0, "errors": []}
+
+    try:
+        results = await notification_service.generate_daily_digest()
+        result["users"] = len(results)
+        result["email_sent"] = sum(1 for r in results if r.get("email_sent"))
+        result["push_sent"] = sum(r.get("push_sent", 0) for r in results)
+    except Exception as e:
+        result["errors"].append(f"digest: {e}")
+
+    try:
+        result["prematch"] = _run_prematch_cache()
+    except Exception as e:
+        result["errors"].append(f"prematch: {e}")
+
+    return JSONResponse(content=result)
 
 
 

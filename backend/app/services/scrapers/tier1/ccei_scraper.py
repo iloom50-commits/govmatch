@@ -45,6 +45,39 @@ REGION_TO_SIDO = {
     "jeju": "제주", "pohang": "경북",
 }
 
+# 제목 브래킷 태그 [경남], [서울] 등 → 시도 약칭
+_BRACKET_REGION = {
+    "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
+    "광주": "광주", "대전": "대전", "울산": "울산", "세종": "세종",
+    "경기": "경기", "강원": "강원", "충북": "충북", "충남": "충남",
+    "전북": "전북", "전남": "전남", "경북": "경북", "경남": "경남",
+    "제주": "제주",
+}
+# 시·군·구 이름 → 시도 (URL 기반 지역이 실제 공고 지역과 다를 때 보조)
+_SIGUNGU_TO_SIDO = {
+    "양산": "경남", "창원": "경남", "김해": "경남", "진주": "경남",
+    "거제": "경남", "통영": "경남", "사천": "경남", "밀양": "경남",
+    "포항": "경북", "경주": "경북", "구미": "경북", "안동": "경북",
+    "목포": "전남", "여수": "전남", "순천": "전남", "광양": "전남",
+    "전주": "전북", "군산": "전북", "익산": "전북", "정읍": "전북",
+    "천안": "충남", "아산": "충남", "서산": "충남", "당진": "충남",
+    "청주": "충북", "충주": "충북", "제천": "충북",
+    "춘천": "강원", "원주": "강원", "강릉": "강원",
+}
+_BRACKET_RE = re.compile(r'\[([가-힣]{2,4})\]')
+
+
+def _region_from_title(title: str, fallback: str) -> str:
+    """제목에서 실제 지역 추출. 브래킷 태그 → 시·군·구 이름 → URL 기반 순 우선."""
+    m = _BRACKET_RE.search(title)
+    if m and m.group(1) in _BRACKET_REGION:
+        return _BRACKET_REGION[m.group(1)]
+    head = title[:40]
+    for sigungu, sido in _SIGUNGU_TO_SIDO.items():
+        if sigungu in head:
+            return sido
+    return fallback
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -90,10 +123,11 @@ class _CceiRegionScraper(BaseScraper):
             if any(it["origin_url"] == full_url for it in items):
                 continue
 
+            url_region = REGION_TO_SIDO.get(self.region_code, "")
             items.append({
                 "title": title[:400],
                 "origin_url": full_url,
-                "region": REGION_TO_SIDO.get(self.region_code, ""),
+                "region": _region_from_title(title, url_region),
                 "target_type": "business",
                 "category": None,
                 "summary_text": None,

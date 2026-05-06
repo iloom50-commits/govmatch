@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
 import IndustryPicker from "@/components/shared/IndustryPicker";
@@ -108,6 +108,17 @@ async function isPushSubscribed(): Promise<boolean> {
     const reg = await navigator.serviceWorker.getRegistration("/sw.js");
     return !!(reg && await reg.pushManager.getSubscription());
   } catch { return false; }
+}
+
+// iOS 일반 브라우저 감지 (홈 화면 PWA 제외)
+function isIosBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent;
+  const isIos = /iPhone|iPad|iPod/.test(ua);
+  if (!isIos) return false;
+  // standalone 모드 = 홈 화면에 추가된 PWA → 푸시 가능
+  const isPwa = (window.navigator as any).standalone === true;
+  return !isPwa;
 }
 
 // ── 스텝 테마: 개인=emerald, 기업=blue, 공통=indigo ──
@@ -317,6 +328,8 @@ export default function NotificationModal({
   useModalBack(isOpen, onClose);
   const { toast } = useToast();
   const [step, setStep] = useState(0);
+  const iosNoPush = isIosBrowser();  // iOS 일반 브라우저 여부 (마운트 시 1회 계산)
+  const pushLockRef = useRef(false);  // 이중 클릭 방지
 
   // 사용자 타입
   const [userType, setUserType] = useState<UserType>(profile?.user_type || "individual");
@@ -461,17 +474,22 @@ export default function NotificationModal({
   };
 
   const handlePushToggle = async (enabled: boolean) => {
+    if (pushLockRef.current) return;  // 이중 클릭 방지
+    pushLockRef.current = true;
     setPushLoading(true);
     try {
       if (enabled) {
         const ok = await subscribePush(businessNumber);
         setPushEnabled(ok);
-        if (!ok) toast("푸시 권한이 거부되었습니다.", "error");
+        if (!ok) toast("푸시 알림 권한이 없습니다. 브라우저 설정에서 허용해주세요.", "error");
       } else {
         await unsubscribePush();
         setPushEnabled(false);
       }
-    } finally { setPushLoading(false); }
+    } finally {
+      setPushLoading(false);
+      pushLockRef.current = false;
+    }
   };
 
   // ── 네비게이션 ──
@@ -877,31 +895,46 @@ export default function NotificationModal({
                 </div>
 
                 {/* 푸시 */}
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">🔔</span>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-700">브라우저 푸시</span>
-                      {pushLoading && (
-                        <span className="text-[10px] text-indigo-500 font-medium animate-pulse">설정 중... (최대 10초)</span>
-                      )}
+                {iosNoPush ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base mt-0.5">🔔</span>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800">브라우저 푸시 알림 미지원</p>
+                        <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                          iOS 브라우저에서는 푸시 알림이 지원되지 않습니다.<br />
+                          위 이메일로 매일 오전 9시에 맞춤 공고를 보내드려요.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    disabled={pushLoading}
-                    onClick={() => handlePushToggle(!pushEnabled)}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
-                  >
-                    {pushLoading ? (
-                      <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
-                      </svg>
-                    ) : (
-                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
-                    )}
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🔔</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-slate-700">브라우저 푸시</span>
+                        {pushLoading && (
+                          <span className="text-[10px] text-indigo-500 font-medium animate-pulse">설정 중... (최대 10초)</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      disabled={pushLoading}
+                      onClick={() => handlePushToggle(!pushEnabled)}
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${pushEnabled ? "bg-indigo-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                      {pushLoading ? (
+                        <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 {/* 카카오톡 */}
                 {isKakaoUser && (

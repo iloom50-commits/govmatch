@@ -1419,13 +1419,8 @@ async def lifespan(app):
             from apscheduler.triggers.interval import IntervalTrigger
 
             pipeline_scheduler = AsyncIOScheduler()
-            pipeline_scheduler.add_job(
-                _daily_pipeline_job,
-                CronTrigger(hour=18, minute=0),  # UTC 18:00 = KST 03:00
-                id="daily_pipeline",
-                name="일일 통합 파이프라인 (03:00 KST)",
-                replace_existing=True,
-            )
+            # daily_pipeline은 Railway Cron → /api/internal/run-pipeline 으로 이관
+            # APScheduler 재시작 시 중복 실행 방지 목적
             pipeline_scheduler.add_job(
                 _db_keepalive,
                 IntervalTrigger(minutes=2),
@@ -1602,6 +1597,36 @@ async def run_digest_endpoint(request: Request):
         result["errors"].append(f"coverage: {e}")
 
     return JSONResponse(content=result)
+
+
+@app.post("/api/internal/run-pipeline")
+async def run_pipeline_endpoint(request: Request):
+    """Railway Cron 전용 — 일일 통합 파이프라인 (매일 KST 03:00 = UTC 18:00).
+    공고 수집 → 크롤링 → DB 정리 → 분석 → 매칭 → 오케스트레이터 → 다이제스트.
+    CRON_SECRET 헤더로 인증.
+    """
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    import threading
+    def _run():
+        try:
+            from app.services.patrol.daily_pipeline import run_daily_pipeline
+            conn = get_db_connection()
+            try:
+                print("[Pipeline] Railway Cron triggered — starting daily pipeline...")
+                result = run_daily_pipeline(conn)
+                print(f"[Pipeline] Done: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
+            finally:
+                try: conn.close()
+                except: pass
+        except Exception as e:
+            print(f"[Pipeline] Error: {e}")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return JSONResponse(content={"status": "started", "message": "파이프라인 백그라운드 실행 시작"})
 
 
 @app.post("/api/internal/run-admin-scrape")

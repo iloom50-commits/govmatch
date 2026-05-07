@@ -1585,6 +1585,23 @@ async def run_digest_endpoint(request: Request):
     return JSONResponse(content=result)
 
 
+@app.post("/api/internal/run-admin-scrape")
+async def run_admin_scrape_endpoint(request: Request):
+    """Railway Cron 전용 — admin_urls 등록 기관 전체 수집 (매일 새벽 1시 KST).
+    CRON_SECRET 헤더로 인증. 시간이 걸려도 전체 153개 순환 처리.
+    """
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    try:
+        from app.services.admin_scraper import admin_scraper
+        result = await admin_scraper.run_batch(batch_size=9999)
+        return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함

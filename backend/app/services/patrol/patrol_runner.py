@@ -128,25 +128,6 @@ def run_patrol(triggered_by: str = "scheduler") -> Dict[str, Any]:
         logger.error(f"[Patrol] {msg}")
         summary["errors"].append(msg)
 
-    # ── 4-3. admin_urls 등록 기관 배치 수집 (30건/일 순환 → 153개 5일 주기) ──
-    try:
-        logger.info("[Patrol] Running admin_urls batch scrape (30/day rotation)...")
-        from app.services.admin_scraper import admin_scraper
-        result = asyncio.run(admin_scraper.run_batch(batch_size=30))
-        summary["admin_scrape"] = result
-        if result.get("skipped"):
-            logger.info(f"[Patrol] AdminScrape: skipped ({result.get('reason')})")
-        else:
-            logger.info(
-                f"[Patrol] AdminScrape: processed={result['processed']} "
-                f"saved={result['saved']} failed={result['failed']} "
-                f"elapsed={result['elapsed']}s"
-            )
-    except Exception as e:
-        msg = f"admin_scrape failed: {e}"
-        logger.error(f"[Patrol] {msg}")
-        summary["errors"].append(msg)
-
     # ── 5. 우선 카테고리 사전 분석 (소상공인/수출지원/금융) ──
     try:
         logger.info("[Patrol] Pre-analyzing priority categories...")

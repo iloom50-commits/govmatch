@@ -1585,29 +1585,6 @@ async def run_digest_endpoint(request: Request):
     return JSONResponse(content=result)
 
 
-@app.get("/api/admin/coverage", dependencies=[Depends(_verify_admin)])
-def admin_coverage_report():
-    """커버리지 현황 조회 (관리자 전용)."""
-    try:
-        from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
-        conn = get_db_connection()
-        seed_coverage_targets(conn)
-        report = run_coverage_check(conn)
-        # 상세 목록도 함께 반환
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT source_name, tier, status, last_collected_at, last_count, url
-            FROM coverage_targets
-            WHERE is_active = TRUE
-            ORDER BY tier, status DESC, source_name
-        """)
-        report["targets"] = [dict(r) for r in cur.fetchall()]
-        conn.close()
-        return JSONResponse(content=report)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함
@@ -6388,6 +6365,28 @@ def _verify_admin(authorization: Optional[str] = Header(None)):
     expected = _create_admin_token()
     if not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+
+@app.get("/api/admin/coverage", dependencies=[Depends(_verify_admin)])
+def admin_coverage_report():
+    """커버리지 현황 조회 (관리자 전용)."""
+    try:
+        from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
+        conn = get_db_connection()
+        seed_coverage_targets(conn)
+        report = run_coverage_check(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT source_name, tier, status, last_collected_at, last_count, url
+            FROM coverage_targets
+            WHERE is_active = TRUE
+            ORDER BY tier, status DESC, source_name
+        """)
+        report["targets"] = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return JSONResponse(content=report)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/admin/seed-fund-knowledge", dependencies=[Depends(_verify_admin)])

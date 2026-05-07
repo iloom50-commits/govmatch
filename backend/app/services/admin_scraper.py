@@ -2,6 +2,7 @@ import re
 import psycopg2
 import psycopg2.extras
 import asyncio
+import time
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 try:
@@ -450,6 +451,77 @@ class AdminScraper:
             "critical": critical,
             "recovered": recovered,
             "critical_urls": [dict(row) for row in critical_list],
+        }
+
+
+    async def run_batch(self, batch_size: int = 30) -> dict:
+        """가장 오래된 batch_size개 admin_urls 처리 (매일 순환 수집).
+
+        last_scraped ASC NULLS FIRST 순서로 처리 → 모든 기관이 고르게 수집됨.
+        153개 / 30건 = 약 5일 주기로 전체 순환.
+        """
+        if not PLAYWRIGHT_AVAILABLE:
+            return {"skipped": True, "reason": "playwright not installed", "processed": 0, "saved": 0}
+
+        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM admin_urls
+            WHERE is_active = 1
+            ORDER BY last_scraped ASC NULLS FIRST
+            LIMIT %s
+        """, (batch_size,))
+        targets = cursor.fetchall()
+
+        total_saved = 0
+        total_failed = 0
+        start_time = time.time()
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+
+            for target in targets:
+                target_id = target["id"]
+                url = target.get("recovered_url") or target["url"]
+                source_name = target["source_name"]
+                print(f"\n  [AdminBatch] [{source_name}] {url[:60]}")
+
+                success, error_reason, items = await self._try_scrape(url, browser)
+
+                if success:
+                    saved = 0
+                    for item in items:
+                        if self._save_to_db(item, source_name, conn):
+                            saved += 1
+                    total_saved += saved
+                    print(f"     -> {len(items)}건 분석 / {saved}건 신규 저장")
+                    cursor.execute("""
+                        UPDATE admin_urls SET
+                            last_scraped = %s, last_success = %s,
+                            fail_count = 0, last_fail_reason = NULL
+                        WHERE id = %s
+                    """, (datetime.now().isoformat(), datetime.now().isoformat(), target_id))
+                    conn.commit()
+                else:
+                    total_failed += 1
+                    new_fail_count = (target.get("fail_count") or 0) + 1
+                    cursor.execute("""
+                        UPDATE admin_urls SET
+                            last_scraped = %s, fail_count = %s, last_fail_reason = %s
+                        WHERE id = %s
+                    """, (datetime.now().isoformat(), new_fail_count, error_reason[:500], target_id))
+                    conn.commit()
+                    print(f"     실패 (연속 {new_fail_count}회): {error_reason[:80]}")
+
+            await browser.close()
+
+        conn.close()
+        return {
+            "processed": len(targets),
+            "saved": total_saved,
+            "failed": total_failed,
+            "elapsed": round(time.time() - start_time, 1),
         }
 
 

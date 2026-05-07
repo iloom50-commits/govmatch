@@ -489,6 +489,25 @@ def init_database():
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_patrol_history_started ON patrol_history(started_at DESC)")
 
+            # 커버리지 목표 기관 목록
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coverage_targets (
+                    id SERIAL PRIMARY KEY,
+                    source_name VARCHAR(200) NOT NULL,
+                    url VARCHAR(500),
+                    tier INTEGER DEFAULT 2,
+                    scraper_name VARCHAR(100),
+                    is_active BOOLEAN DEFAULT TRUE,
+                    last_collected_at TIMESTAMP,
+                    last_count INTEGER DEFAULT 0,
+                    status VARCHAR(20) DEFAULT 'unknown',
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_targets_name ON coverage_targets(source_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_coverage_targets_status ON coverage_targets(status)")
+
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1553,9 +1572,40 @@ async def run_digest_endpoint(request: Request):
     except Exception as e:
         result["errors"].append(f"prematch: {e}")
 
+    # 커버리지 갭 체크 (digest와 함께 실행)
+    try:
+        from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
+        conn = get_db_connection()
+        seed_coverage_targets(conn)
+        result["coverage"] = run_coverage_check(conn)
+        conn.close()
+    except Exception as e:
+        result["errors"].append(f"coverage: {e}")
+
     return JSONResponse(content=result)
 
 
+@app.get("/api/admin/coverage", dependencies=[Depends(_verify_admin)])
+def admin_coverage_report():
+    """커버리지 현황 조회 (관리자 전용)."""
+    try:
+        from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
+        conn = get_db_connection()
+        seed_coverage_targets(conn)
+        report = run_coverage_check(conn)
+        # 상세 목록도 함께 반환
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT source_name, tier, status, last_collected_at, last_count, url
+            FROM coverage_targets
+            WHERE is_active = TRUE
+            ORDER BY tier, status DESC, source_name
+        """)
+        report["targets"] = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return JSONResponse(content=report)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")

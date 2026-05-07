@@ -6,6 +6,9 @@
 # 창조경제혁신센터 통합 (18개 센터 공통 CMS)
 from . import ccei_scraper  # noqa: F401
 
+# 경남테크노파크 (JS 렌더링 필요 — Playwright)
+from . import gntp_scraper  # noqa: F401
+
 # 추후 추가될 스크래퍼들:
 # from . import keit_scraper  # 한국산업기술평가관리원
 # from . import kiat_scraper  # 한국산업기술진흥원

@@ -1537,13 +1537,32 @@ async def lifespan(app):
         except: pass
 
 
-app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title="Gov Support Matching Assistant", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
+
+# ── 어드민 로그인 레이트 리미터 (IP당 1분에 10회) ──────────────────────
+import time as _time
+from collections import defaultdict as _defaultdict
+_admin_auth_attempts: dict = _defaultdict(list)  # ip → [timestamp, ...]
+_ADMIN_RATE_LIMIT = 10   # 허용 횟수
+_ADMIN_RATE_WINDOW = 60  # 초
+
+def _check_admin_rate_limit(client_ip: str) -> bool:
+    """True = 차단, False = 허용"""
+    now = _time.time()
+    window_start = now - _ADMIN_RATE_WINDOW
+    attempts = _admin_auth_attempts[client_ip]
+    # 윈도우 밖 기록 제거
+    _admin_auth_attempts[client_ip] = [t for t in attempts if t > window_start]
+    if len(_admin_auth_attempts[client_ip]) >= _ADMIN_RATE_LIMIT:
+        return True
+    _admin_auth_attempts[client_ip].append(now)
+    return False
 
 _CRON_SECRET = os.environ.get("CRON_SECRET", "")
 
@@ -8647,7 +8666,10 @@ def api_analysis_stats(req: AdminAuthRequest = Depends()):
 
 
 @app.post("/api/admin/auth")
-def admin_auth(request: AdminAuthRequest):
+def admin_auth(request: AdminAuthRequest, req: Request):
+    client_ip = req.headers.get("X-Forwarded-For", req.client.host if req.client else "unknown").split(",")[0].strip()
+    if _check_admin_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
     admin_pw = os.getenv("ADMIN_PASSWORD", "")
     if not admin_pw:
         raise HTTPException(status_code=500, detail="ADMIN_PASSWORD가 설정되지 않았습니다.")

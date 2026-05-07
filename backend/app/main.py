@@ -2210,7 +2210,8 @@ def valid_announcement_where(alias: str = "") -> str:
         f"({p}is_archived = FALSE AND ("
         f"  {p}deadline_type = 'ongoing'"
         f"  OR ({p}deadline_type = 'fixed' AND {p}deadline_date >= CURRENT_DATE)"
-        f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= CURRENT_DATE - INTERVAL '3 months')"
+        f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= CURRENT_DATE - INTERVAL '3 months'"
+        f"      AND ({p}deadline_date IS NULL OR {p}deadline_date >= CURRENT_DATE))"
         f"))"
     )
 

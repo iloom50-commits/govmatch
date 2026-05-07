@@ -101,9 +101,9 @@ def run_coverage_check(conn) -> Dict[str, Any]:
         if tier == 1 and scraper:
             # tier1: scraper_runs 테이블에서 마지막 실행 확인
             cur.execute("""
-                SELECT MAX(started_at) as last_run, SUM(new_count) as total
+                SELECT MAX(started_at) as last_run, SUM(items_saved) as total
                 FROM scraper_runs
-                WHERE scraper_name = %s AND started_at > NOW() - INTERVAL '7 days'
+                WHERE source = %s AND started_at > NOW() - INTERVAL '7 days'
             """, (scraper,))
             row = cur.fetchone()
             if row and row["total"]:

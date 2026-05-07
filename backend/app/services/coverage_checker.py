@@ -123,11 +123,11 @@ def run_coverage_check(conn) -> Dict[str, Any]:
                 count = int(row["cnt"] or 0)
                 last_dt = row["last_dt"]
         elif tier == 3:
-            # tier3: announcements의 department 또는 source로 조회
+            # tier3: announcements의 department 또는 origin_source로 조회
             cur.execute("""
                 SELECT COUNT(*) as cnt, MAX(created_at) as last_dt
                 FROM announcements
-                WHERE (department LIKE %s OR source LIKE %s)
+                WHERE (department LIKE %s OR origin_source LIKE %s)
                   AND created_at > NOW() - INTERVAL '7 days'
             """, (f"%{name[:8]}%", f"%{name[:8]}%"))
             row = cur.fetchone()

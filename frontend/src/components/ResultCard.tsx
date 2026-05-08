@@ -396,6 +396,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           {/* D-day 뱃지 — 인라인 */}
           <span className={`ml-auto px-2 py-0.5 rounded-full border text-[12px] font-bold whitespace-nowrap ${URGENCY_STYLES[dDay.urgency]}`}>
             {res.deadline_date ? (() => {
+              if (dDay.urgency === "expired") return "마감";
               const d = new Date(res.deadline_date);
               if (isNaN(d.getTime())) return dDay.text;
               const days = ["일","월","화","수","목","금","토"];

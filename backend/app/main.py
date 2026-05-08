@@ -1593,39 +1593,51 @@ _CRON_SECRET = os.environ.get("CRON_SECRET", "")
 @app.post("/api/internal/run-digest")
 async def run_digest_endpoint(request: Request):
     """Railway Cron 전용 — 맞춤 공고 이메일/푸시 발송 + 사전매칭 캐시 갱신.
-    CRON_SECRET 헤더로 인증. 외부 노출 차단.
+    CRON_SECRET 헤더로 인증. 백그라운드 실행 후 즉시 200 응답 (5분 timeout 방지).
     """
     secret = request.headers.get("X-Cron-Secret", "")
     if not _CRON_SECRET or secret != _CRON_SECRET:
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
-    from app.services.notification_service import notification_service
-    result = {"email_sent": 0, "push_sent": 0, "users": 0, "prematch": 0, "errors": []}
+    import threading
+    def _run():
+        try:
+            import asyncio
+            from app.services.notification_service import notification_service
+            result = {"email_sent": 0, "push_sent": 0, "users": 0, "prematch": 0, "errors": []}
 
-    try:
-        results = await notification_service.generate_daily_digest()
-        result["users"] = len(results)
-        result["email_sent"] = sum(1 for r in results if r.get("email_sent"))
-        result["push_sent"] = sum(r.get("push_sent", 0) for r in results)
-    except Exception as e:
-        result["errors"].append(f"digest: {e}")
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(notification_service.generate_daily_digest())
+                loop.close()
+                result["users"] = len(results)
+                result["email_sent"] = sum(1 for r in results if r.get("email_sent"))
+                result["push_sent"] = sum(r.get("push_sent", 0) for r in results)
+            except Exception as e:
+                result["errors"].append(f"digest: {e}")
 
-    try:
-        result["prematch"] = _run_prematch_cache()
-    except Exception as e:
-        result["errors"].append(f"prematch: {e}")
+            try:
+                result["prematch"] = _run_prematch_cache()
+            except Exception as e:
+                result["errors"].append(f"prematch: {e}")
 
-    # 커버리지 갭 체크 (digest와 함께 실행)
-    try:
-        from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
-        conn = get_db_connection()
-        seed_coverage_targets(conn)
-        result["coverage"] = run_coverage_check(conn)
-        conn.close()
-    except Exception as e:
-        result["errors"].append(f"coverage: {e}")
+            try:
+                from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
+                conn = get_db_connection()
+                seed_coverage_targets(conn)
+                result["coverage"] = run_coverage_check(conn)
+                conn.close()
+            except Exception as e:
+                result["errors"].append(f"coverage: {e}")
 
-    return JSONResponse(content=result)
+            print(f"[Digest] 완료: users={result['users']}, email={result['email_sent']}, push={result['push_sent']}, prematch={result['prematch']}, errors={result['errors']}")
+        except Exception as e:
+            print(f"[Digest] Error: {e}")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return JSONResponse(content={"status": "started", "message": "다이제스트 백그라운드 실행 시작"})
 
 
 @app.post("/api/internal/run-pipeline")

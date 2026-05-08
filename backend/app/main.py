@@ -1540,21 +1540,50 @@ def health_check():
     return {"status": "ok"}
 
 
-# ── 어드민 로그인 레이트 리미터 (IP당 1분에 10회) ──────────────────────
+# ── 어드민 엔드포인트 보안 레이트 리미터 ────────────────────────────────
 import time as _time
 from collections import defaultdict as _defaultdict
-_admin_auth_attempts: dict = _defaultdict(list)  # ip → [timestamp, ...]
-_ADMIN_RATE_LIMIT = 10   # 허용 횟수
-_ADMIN_RATE_WINDOW = 60  # 초
+
+# IP별 제한 (10회/분)
+_admin_auth_attempts: dict = _defaultdict(list)
+_ADMIN_RATE_LIMIT = 10
+_ADMIN_RATE_WINDOW = 60
+
+# 전체 제한 (분당 60회 초과 시 서비스 전체 차단)
+_admin_global_attempts: list = []
+_ADMIN_GLOBAL_LIMIT = 60
+
+# 스캐너 패턴 감지: IP별 연속 실패 추적 → 5회 이상 시 10분 블랙리스트
+_admin_fail_counts: dict = _defaultdict(int)
+_admin_blacklist: dict = {}  # ip → 차단 만료 시각
+_BLACKLIST_DURATION = 600  # 10분
 
 def _check_admin_rate_limit(client_ip: str) -> bool:
-    """True = 차단, False = 허용"""
+    """True = 차단, False = 허용. IP별 + 전체 + 블랙리스트 3중 차단."""
     now = _time.time()
     window_start = now - _ADMIN_RATE_WINDOW
-    attempts = _admin_auth_attempts[client_ip]
-    # 윈도우 밖 기록 제거
-    _admin_auth_attempts[client_ip] = [t for t in attempts if t > window_start]
+
+    # 1. 블랙리스트 확인
+    if client_ip in _admin_blacklist:
+        if now < _admin_blacklist[client_ip]:
+            return True
+        else:
+            del _admin_blacklist[client_ip]
+            _admin_fail_counts[client_ip] = 0
+
+    # 2. 전체 요청량 제한 (분산 공격 대응)
+    _admin_global_attempts[:] = [t for t in _admin_global_attempts if t > window_start]
+    if len(_admin_global_attempts) >= _ADMIN_GLOBAL_LIMIT:
+        return True
+    _admin_global_attempts.append(now)
+
+    # 3. IP별 제한
+    _admin_auth_attempts[client_ip] = [t for t in _admin_auth_attempts[client_ip] if t > window_start]
     if len(_admin_auth_attempts[client_ip]) >= _ADMIN_RATE_LIMIT:
+        # 반복 위반 시 블랙리스트 등록
+        _admin_fail_counts[client_ip] += 1
+        if _admin_fail_counts[client_ip] >= 5:
+            _admin_blacklist[client_ip] = now + _BLACKLIST_DURATION
         return True
     _admin_auth_attempts[client_ip].append(now)
     return False

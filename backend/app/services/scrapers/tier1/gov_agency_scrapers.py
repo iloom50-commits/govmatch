@@ -188,23 +188,24 @@ SCRAPER_REGISTRY.append(KoccaScraper())
 
 
 # ─────────────────────────────────────────────────────────────
-# 3. 소상공인시장진흥공단 (semas.or.kr) — 공고 목록 (452건+)
+# 3. 소상공인시장진흥공단 (ols.semas.or.kr) — 자금공고 POST API
+#    구 sbiz24.kr HTML 스크래핑 방식 → OLS API 방식으로 교체
 # ─────────────────────────────────────────────────────────────
-_SEMAS_LIST = (
-    "https://www.semas.or.kr/web/board/webBoardList.kmdc"
-    "?bCd=2001&pNm=BOA0101&page={page}"
-)
-# 실제 상세 링크는 sbiz24.kr SPA 해시 URL
-_SEMAS_RE = re.compile(
-    r"""href=['"]https://www\.sbiz24\.kr/#/pbanc/(\d+)['"]\s*[^>]*>(.*?)</a>""",
-    re.DOTALL,
-)
+_SEMAS_API = "https://ols.semas.or.kr/ols/man/SMAN051M/search.do"
+_SEMAS_DETAIL = "https://ols.semas.or.kr/ols/man/SMAN052M/page.do"
+_SEMAS_API_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://ols.semas.or.kr/ols/man/SMAN051M/page.do",
+}
+_SEMAS_EXCLUDE = re.compile(r"채용|입찰|구매|계약|입사|인재|면접|합격자|공사|용역|물품|청소|경비|보안")
 
 
 class SemasScraper(BaseScraper):
     name = "semas"
-    display_name = "소상공인시장진흥공단"
-    origin_url_prefix = "https://www.sbiz24.kr/#/pbanc/"
+    display_name = "소상공인시장진흥공단(SEMAS)"
+    origin_url_prefix = _SEMAS_DETAIL
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -212,34 +213,53 @@ class SemasScraper(BaseScraper):
 
         for page in range(1, 11):
             try:
-                html = _get(_SEMAS_LIST.format(page=page))
+                resp = requests.post(
+                    _SEMAS_API,
+                    headers=_SEMAS_API_HEADERS,
+                    data={"pageNo": str(page), "pageSize": "20"},
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                data = resp.json()
             except Exception:
                 break
 
+            result = data.get("result", [])
+            if not result:
+                break
+
             found_new = False
-            for m in _SEMAS_RE.finditer(html):
-                pbanc_id = m.group(1)
-                if pbanc_id in seen:
+            for item in result:
+                seq = str(item.get("bltwtrSeq", ""))
+                if not seq or seq in seen:
                     continue
-                seen.add(pbanc_id)
+                seen.add(seq)
                 found_new = True
 
-                title = _clean(m.group(2))
-                if not title or len(title) < 5:
+                raw_title = item.get("bltwtrTitNm", "").strip()
+                loan_type = item.get("loanSeCdNm", "").strip()
+                category_nm = item.get("bltwtrClcd", "").strip()
+
+                if not raw_title or len(raw_title) < 5:
                     continue
-                if _EXCLUDE_KW.search(title):
+                if _SEMAS_EXCLUDE.search(raw_title):
                     continue
 
-                ctx = html[max(0, m.start() - 400): m.end() + 400]
+                # 대출 구분을 제목에 포함해 검색 품질 향상
+                title = raw_title
+                if loan_type and loan_type not in title:
+                    title = f"[{loan_type}] {title}"
+
+                reg_date = item.get("frstRegDt", "")
 
                 items.append({
                     "title": title[:400],
-                    "origin_url": f"https://www.sbiz24.kr/#/pbanc/{pbanc_id}",
+                    "origin_url": f"{_SEMAS_DETAIL}?bltwtrSeq={seq}",
                     "region": "전국",
                     "target_type": "individual",
-                    "category": "소상공인",
+                    "category": category_nm or "소상공인",
                     "summary_text": None,
-                    "deadline_date": _parse_deadline(ctx),
+                    "deadline_date": None,
                     "support_amount": None,
                 })
 

@@ -1,145 +1,131 @@
-"""창조경제혁신센터 통합 스크래퍼 — 18개 지역 CCEI 공통 CMS.
+"""창조경제혁신센터(CCEI) 통합 스크래퍼 — 18개 지역.
 
-구조: https://ccei.creativekorea.or.kr/{region}/custom/notice_list.do
-  - seoul/busan/daegu/incheon/gwangju/daejeon/ulsan/sejong/gyeonggi/gangwon/
-    chungbuk/chungnam/jeonbuk/jeonnam/gyeongbuk/gyeongnam/jeju/pohang
-
-공통 CMS라 HTML 구조 동일. 리스트 + 상세 페이지 둘 다 같은 형식.
+구조: POST https://ccei.creativekorea.or.kr/{region}/custom/noticeList.json
+      kind=my → 해당 센터 + 통합 공고만 반환
+      SEQ 기반 상세 URL: /custom/notice_view.do?SEQ={SEQ}
 """
 from __future__ import annotations
 import re
-import time
-import datetime
-from typing import List, Dict, Any, Optional
 import requests
-from bs4 import BeautifulSoup
+from typing import List, Dict, Any
 
 from .base import BaseScraper, SCRAPER_REGISTRY
 
+BASE = "https://ccei.creativekorea.or.kr"
+
 CCEI_REGIONS = {
-    "seoul":    "서울창조경제혁신센터",
-    "busan":    "부산창조경제혁신센터",
-    "daegu":    "대구창조경제혁신센터",
-    "incheon":  "인천창조경제혁신센터",
-    "gwangju":  "광주창조경제혁신센터",
-    "daejeon":  "대전창조경제혁신센터",
-    "ulsan":    "울산창조경제혁신센터",
-    "sejong":   "세종창조경제혁신센터",
-    "gyeonggi": "경기창조경제혁신센터",
-    "gangwon":  "강원창조경제혁신센터",
-    "chungbuk": "충북창조경제혁신센터",
-    "chungnam": "충남창조경제혁신센터",
-    "jeonbuk":  "전북창조경제혁신센터",
-    "jeonnam":  "전남창조경제혁신센터",
-    "gyeongbuk":"경북창조경제혁신센터",
-    "gyeongnam":"경남창조경제혁신센터",
-    "jeju":     "제주창조경제혁신센터",
-    "pohang":   "포항창조경제혁신센터",
+    "seoul":    ("서울", "서울창조경제혁신센터"),
+    "busan":    ("부산", "부산창조경제혁신센터"),
+    "daegu":    ("대구", "대구창조경제혁신센터"),
+    "incheon":  ("인천", "인천창조경제혁신센터"),
+    "gwangju":  ("광주", "광주창조경제혁신센터"),
+    "daejeon":  ("대전", "대전창조경제혁신센터"),
+    "ulsan":    ("울산", "울산창조경제혁신센터"),
+    "sejong":   ("세종", "세종창조경제혁신센터"),
+    "gyeonggi": ("경기", "경기창조경제혁신센터"),
+    "gangwon":  ("강원", "강원창조경제혁신센터"),
+    "chungbuk": ("충북", "충북창조경제혁신센터"),
+    "chungnam": ("충남", "충남창조경제혁신센터"),
+    "jeonbuk":  ("전북", "전북창조경제혁신센터"),
+    "jeonnam":  ("전남", "전남창조경제혁신센터"),
+    "gyeongbuk":("경북", "경북창조경제혁신센터"),
+    "gyeongnam":("경남", "경남창조경제혁신센터"),
+    "jeju":     ("제주", "제주창조경제혁신센터"),
+    "pohang":   ("경북", "포항창조경제혁신센터"),
 }
 
-REGION_TO_SIDO = {
-    "seoul": "서울", "busan": "부산", "daegu": "대구", "incheon": "인천",
-    "gwangju": "광주", "daejeon": "대전", "ulsan": "울산", "sejong": "세종",
-    "gyeonggi": "경기", "gangwon": "강원", "chungbuk": "충북", "chungnam": "충남",
-    "jeonbuk": "전북", "jeonnam": "전남", "gyeongbuk": "경북", "gyeongnam": "경남",
-    "jeju": "제주", "pohang": "경북",
-}
-
-# 제목 브래킷 태그 [경남], [서울] 등 → 시도 약칭
-_BRACKET_REGION = {
-    "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
-    "광주": "광주", "대전": "대전", "울산": "울산", "세종": "세종",
-    "경기": "경기", "강원": "강원", "충북": "충북", "충남": "충남",
-    "전북": "전북", "전남": "전남", "경북": "경북", "경남": "경남",
-    "제주": "제주",
-}
-# 시·군·구 이름 → 시도 (URL 기반 지역이 실제 공고 지역과 다를 때 보조)
-_SIGUNGU_TO_SIDO = {
-    "양산": "경남", "창원": "경남", "김해": "경남", "진주": "경남",
-    "거제": "경남", "통영": "경남", "사천": "경남", "밀양": "경남",
-    "포항": "경북", "경주": "경북", "구미": "경북", "안동": "경북",
-    "목포": "전남", "여수": "전남", "순천": "전남", "광양": "전남",
-    "전주": "전북", "군산": "전북", "익산": "전북", "정읍": "전북",
-    "천안": "충남", "아산": "충남", "서산": "충남", "당진": "충남",
-    "청주": "충북", "충주": "충북", "제천": "충북",
-    "춘천": "강원", "원주": "강원", "강릉": "강원",
-}
-_BRACKET_RE = re.compile(r'\[([가-힣]{2,4})\]')
+_SUPPORT_KW = re.compile(r"모집|지원|공모|사업|창업|육성|선발|참여|공고")
+_EXCLUDE_KW = re.compile(r"채용|인재|직원|합격자|서류전형|면접|입사|퇴사|인사|결과발표")
+_DATE_RE = re.compile(r"(\d{4})[.\-/](\d{2})[.\-/](\d{2})")
 
 
-def _region_from_title(title: str, fallback: str) -> str:
-    """제목에서 실제 지역 추출. 브래킷 태그 → 시·군·구 이름 → URL 기반 순 우선."""
-    m = _BRACKET_RE.search(title)
-    if m and m.group(1) in _BRACKET_REGION:
-        return _BRACKET_REGION[m.group(1)]
-    head = title[:40]
-    for sigungu, sido in _SIGUNGU_TO_SIDO.items():
-        if sigungu in head:
-            return sido
-    return fallback
-
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "ko-KR,ko;q=0.9",
-}
+def _parse_date(text: str):
+    m = _DATE_RE.search(text or "")
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return None
 
 
 class _CceiRegionScraper(BaseScraper):
-    """지역별 CCEI 스크래퍼 — 동적 생성되어 SCRAPER_REGISTRY에 등록됨."""
 
-    def __init__(self, region_code: str, display_name: str):
+    def __init__(self, region_code: str, sido: str, display_name: str):
         self.region_code = region_code
+        self.sido = sido
         self.name = f"ccei_{region_code}"
         self.display_name = display_name
-        self.origin_url_prefix = f"https://ccei.creativekorea.or.kr/{region_code}/"
+        self.origin_url_prefix = f"{BASE}/{region_code}/custom/notice_view.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
-        """공고 리스트 페이지에서 최근 공고 추출."""
-        list_url = f"https://ccei.creativekorea.or.kr/{self.region_code}/custom/notice_list.do"
-        resp = requests.get(list_url, headers=_HEADERS, timeout=20)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
+        api_url = f"{BASE}/{self.region_code}/custom/noticeList.json"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": f"{BASE}/{self.region_code}/custom/notice_list.do",
+            "X-Requested-With": "XMLHttpRequest",
+        }
         items: List[Dict[str, Any]] = []
-        # CCEI는 리스트를 테이블 또는 div.board-list 형식으로 제공
-        # 공고 상세 링크 패턴: /region/custom/notice_view.do?...
-        for a in soup.find_all("a", href=True):
-            href = a.get("href", "")
-            if "notice_view" not in href and "pbancId" not in href.lower():
-                continue
-            title = a.get_text(strip=True)
-            if not title or len(title) < 5:
-                continue
-            # 상대 URL → 절대 URL
-            if href.startswith("/"):
-                full_url = f"https://ccei.creativekorea.or.kr{href}"
-            elif href.startswith("http"):
-                full_url = href
-            else:
-                full_url = f"https://ccei.creativekorea.or.kr/{self.region_code}/custom/{href}"
+        page = 1
+        seen: set = set()
 
-            # 중복 제거 (같은 링크)
-            if any(it["origin_url"] == full_url for it in items):
-                continue
-
-            url_region = REGION_TO_SIDO.get(self.region_code, "")
-            items.append({
-                "title": title[:400],
-                "origin_url": full_url,
-                "region": _region_from_title(title, url_region),
-                "target_type": "business",
-                "category": None,
-                "summary_text": None,
-                "deadline_date": None,
-                "support_amount": None,
-            })
-            if len(items) >= 30:
+        while len(items) < 30:
+            try:
+                resp = requests.post(
+                    api_url,
+                    data={"pn": page, "kind": "my"},
+                    headers=headers,
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                result = data.get("result") or {}
+                rows = result.get("list") or []
+            except Exception:
                 break
+
+            if not rows:
+                break
+
+            for row in rows:
+                seq = str(row.get("SEQ", ""))
+                if not seq or seq in seen:
+                    continue
+                seen.add(seq)
+
+                title = (row.get("TITLE") or "").strip()
+                if not title or len(title) < 5:
+                    continue
+                if not _SUPPORT_KW.search(title):
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                country = (row.get("COUNTRY_NM") or "").strip()
+                region = country if country and country != "통합" else self.sido
+                if not title.startswith("["):
+                    title = f"[{region}] {title}"
+
+                origin_url = f"{BASE}/{self.region_code}/custom/notice_view.do?SEQ={seq}"
+                reg_date = _parse_date(row.get("REG_DATE", ""))
+
+                items.append({
+                    "title": title[:400],
+                    "origin_url": origin_url,
+                    "region": region,
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": None,
+                    "support_amount": None,
+                })
+
+            total = int(result.get("size", 0))
+            row_size = int(result.get("rowSize", 5))
+            if page * row_size >= total or page >= 6:
+                break
+            page += 1
 
         return items
 
 
-# 18개 지역 스크래퍼 일괄 등록
-for _code, _name in CCEI_REGIONS.items():
-    SCRAPER_REGISTRY.append(_CceiRegionScraper(_code, _name))
+for _code, (_sido, _name) in CCEI_REGIONS.items():
+    SCRAPER_REGISTRY.append(_CceiRegionScraper(_code, _sido, _name))

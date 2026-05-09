@@ -6,12 +6,13 @@
 # 창조경제혁신센터 통합 (18개 센터 공통 CMS)
 from . import ccei_scraper  # noqa: F401
 
-# 경남테크노파크 (JS 렌더링 필요 — Playwright)
+# 경남테크노파크
 from . import gntp_scraper  # noqa: F401
+
+# 테크노파크 6개 (부산/광주/전남/전북/충남/울산)
+from . import tp_scrapers  # noqa: F401
 
 # 추후 추가될 스크래퍼들:
 # from . import keit_scraper  # 한국산업기술평가관리원
 # from . import kiat_scraper  # 한국산업기술진흥원
 # from . import sba_scraper   # 서울산업진흥원
-# from . import kto_scraper   # 한국관광공사
-# from . import seoul_tp_scraper / gyeonggi_tp_scraper / busan_tp_scraper 등

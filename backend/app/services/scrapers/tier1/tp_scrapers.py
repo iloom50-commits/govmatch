@@ -1,0 +1,425 @@
+"""테크노파크 스크래퍼 — 6개 기관.
+
+부산TP / 광주TP / 전남TP / 전북TP / 충남TP / 울산TP
+각 사이트 고유 URL 구조로 개별 구현.
+"""
+from __future__ import annotations
+import re
+import requests
+from typing import List, Dict, Any
+
+from .base import BaseScraper, SCRAPER_REGISTRY
+
+_DATE_RE = re.compile(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})")
+_HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,ko;q=0.9"}
+
+
+def _get(url: str, **kwargs) -> str:
+    resp = requests.get(url, headers=_HEADERS, timeout=15, **kwargs)
+    resp.raise_for_status()
+    return resp.text
+
+
+def _strip_tags(html: str) -> str:
+    return re.sub(r"<[^>]+>", " ", html).strip()
+
+
+def _clean_title(raw: str) -> str:
+    return re.sub(r"\s+", " ", _strip_tags(raw)).strip()
+
+
+def _parse_deadline(text: str) -> str | None:
+    """두 번째 날짜를 마감일로 사용, 없으면 첫 번째."""
+    dates = _DATE_RE.findall(text or "")
+    if len(dates) >= 2:
+        y, m, d = dates[1]
+        return f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+    if dates:
+        y, m, d = dates[0]
+        return f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+    return None
+
+
+def _extract_rows(html: str, link_re: re.Pattern, key_group: int,
+                  base_url: str, region: str, url_builder) -> List[Dict[str, Any]]:
+    """공통 행 추출 헬퍼: link_re로 (href_full, key, title_raw) 추출."""
+    results = []
+    for m in link_re.finditer(html):
+        key = m.group(key_group)
+        title_raw = m.group(m.lastindex)  # 마지막 그룹 = 제목 raw HTML
+        title = _clean_title(title_raw)
+        if not title or len(title) < 5:
+            continue
+        # 제목 앞뒤 TR 컨텍스트에서 날짜 추출 시도
+        start = max(0, m.start() - 400)
+        ctx = html[start: m.end() + 400]
+        deadline = _parse_deadline(ctx)
+        if not title.startswith("["):
+            title = f"[{region}] {title}"
+        results.append({
+            "title": title[:400],
+            "origin_url": url_builder(key),
+            "region": region,
+            "target_type": "business",
+            "category": None,
+            "summary_text": None,
+            "deadline_date": deadline,
+            "support_amount": None,
+        })
+    return results
+
+
+# ─────────────────────────────────────────────────
+# 1. 부산테크노파크 (btp.or.kr)
+# ─────────────────────────────────────────────────
+_BTP_BASE = "https://www.btp.or.kr"
+_BTP_LIST = f"{_BTP_BASE}/kor/CMS/Board/Board.do?mCode=MN013&page={{page}}"
+# <a href='...board_seq=N...'><span class="titleHover">제목</span><span class="subjectWr">제목(중복)</span></a>
+# → 첫 번째 span만 추출
+_BTP_RE = re.compile(
+    r"""href=['"]([^'"]*board_seq=(\d+)[^'"]*)['"]\s*[^>]*>.*?<span[^>]*>(.*?)</span>""",
+    re.DOTALL,
+)
+
+
+class BtpScraper(BaseScraper):
+    name = "busan_tp"
+    display_name = "부산테크노파크"
+    origin_url_prefix = f"{_BTP_BASE}/kor/CMS/Board/"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_BTP_LIST.format(page=page))
+            except Exception:
+                break
+            found_new = False
+            for m in _BTP_RE.finditer(html):
+                seq = m.group(2)
+                if seq in seen:
+                    continue
+                seen.add(seq)
+                found_new = True
+                title = _clean_title(m.group(3))
+                if not title or len(title) < 5:
+                    continue
+                ctx = html[max(0, m.start()-300): m.end()+300]
+                if not title.startswith("["):
+                    title = f"[부산] {title}"
+                items.append({
+                    "title": title[:400],
+                    "origin_url": f"{_BTP_BASE}/kor/CMS/Board/Board.do?mCode=MN013&mode=view&mgr_seq=16&board_seq={seq}",
+                    "region": "부산",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(BtpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 2. 광주테크노파크 (gjtp.or.kr)
+# ─────────────────────────────────────────────────
+_GJTP_BASE = "https://www.gjtp.or.kr"
+_GJTP_LIST = f"{_GJTP_BASE}/home/business.cs?pageIndex={{page}}"
+_GJTP_RE = re.compile(
+    r"""href=['"]([^'"]*bsnssId=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class GjtpScraper(BaseScraper):
+    name = "gwangju_tp"
+    display_name = "광주테크노파크"
+    origin_url_prefix = f"{_GJTP_BASE}/home/business.cs"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_GJTP_LIST.format(page=page))
+            except Exception:
+                break
+            found_new = False
+            for m in _GJTP_RE.finditer(html):
+                bid = m.group(2)
+                if bid in seen:
+                    continue
+                seen.add(bid)
+                found_new = True
+                title = _clean_title(m.group(3))
+                if not title or len(title) < 5:
+                    continue
+                ctx = html[max(0, m.start()-300): m.end()+300]
+                if not title.startswith("["):
+                    title = f"[광주] {title}"
+                items.append({
+                    "title": title[:400],
+                    "origin_url": f"{_GJTP_BASE}/home/business.cs?act=view&bsnssId={bid}",
+                    "region": "광주",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(GjtpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 3. 전남테크노파크 (jntp.or.kr)
+# ─────────────────────────────────────────────────
+_JNTP_BASE = "https://www.jntp.or.kr"
+# 정부사업공고(boardManagementNo=13) + JNTP사업공고(11) 두 게시판 수집
+_JNTP_BOARDS = [
+    (13, 46, "정부사업공고"),
+    (11, 44, "JNTP사업공고"),
+]
+_JNTP_RE = re.compile(
+    r"""href=['"]([^'"]*boardNo=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class JntpScraper(BaseScraper):
+    name = "jeonnam_tp"
+    display_name = "전남테크노파크"
+    origin_url_prefix = f"{_JNTP_BASE}/base/board/read"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for board_no, menu_no, _ in _JNTP_BOARDS:
+            for page in range(1, 11):
+                try:
+                    url = (
+                        f"{_JNTP_BASE}/base/board/list"
+                        f"?boardManagementNo={board_no}&menuLevel=2&menuNo={menu_no}&page={page}"
+                    )
+                    html = _get(url)
+                except Exception:
+                    break
+                found_new = False
+                for m in _JNTP_RE.finditer(html):
+                    bn = m.group(2)
+                    if bn in seen:
+                        continue
+                    seen.add(bn)
+                    found_new = True
+                    title = _clean_title(m.group(3))
+                    if not title or len(title) < 5:
+                        continue
+                    ctx = html[max(0, m.start()-300): m.end()+300]
+                    if not title.startswith("["):
+                        title = f"[전남] {title}"
+                    items.append({
+                        "title": title[:400],
+                        "origin_url": (
+                            f"{_JNTP_BASE}/base/board/read"
+                            f"?boardManagementNo={board_no}&boardNo={bn}&menuLevel=2&menuNo={menu_no}"
+                        ),
+                        "region": "전남",
+                        "target_type": "business",
+                        "category": None,
+                        "summary_text": None,
+                        "deadline_date": _parse_deadline(ctx),
+                        "support_amount": None,
+                    })
+                if not found_new:
+                    break
+        return items
+
+
+SCRAPER_REGISTRY.append(JntpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 4. 전북테크노파크 (jbtp.or.kr)
+# ─────────────────────────────────────────────────
+_JBTP_BASE = "https://www.jbtp.or.kr"
+_JBTP_LIST = (
+    f"{_JBTP_BASE}/board/list.jbtp"
+    "?boardId=BBS_0000006&menuCd=DOM_000000102001000000&pageNo={page}"
+)
+_JBTP_RE = re.compile(
+    r"""href=['"]([^'"]*dataSid=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class JbtpScraper(BaseScraper):
+    name = "jeonbuk_tp"
+    display_name = "전북테크노파크"
+    origin_url_prefix = f"{_JBTP_BASE}/board/view.jbtp"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_JBTP_LIST.format(page=page))
+            except Exception:
+                break
+            found_new = False
+            for m in _JBTP_RE.finditer(html):
+                sid = m.group(2)
+                if sid in seen:
+                    continue
+                seen.add(sid)
+                found_new = True
+                title = _clean_title(m.group(3))
+                if not title or len(title) < 5:
+                    continue
+                ctx = html[max(0, m.start()-300): m.end()+300]
+                if not title.startswith("["):
+                    title = f"[전북] {title}"
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"{_JBTP_BASE}/board/view.jbtp"
+                        f"?menuCd=DOM_000000102001000000&boardId=BBS_0000006&dataSid={sid}"
+                    ),
+                    "region": "전북",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(JbtpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 5. 충남테크노파크 (ctp.or.kr)
+# ─────────────────────────────────────────────────
+_CTP_BASE = "https://www.ctp.or.kr"
+_CTP_LIST = f"{_CTP_BASE}/business/data.do?pn={{page}}"
+_CTP_RE = re.compile(
+    r"""href=['"]([^'"]*datadetail\.do\?seq=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class CtpScraper(BaseScraper):
+    name = "chungnam_tp"
+    display_name = "충남테크노파크"
+    origin_url_prefix = f"{_CTP_BASE}/business/datadetail.do"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_CTP_LIST.format(page=page))
+            except Exception:
+                break
+            found_new = False
+            for m in _CTP_RE.finditer(html):
+                seq = m.group(2)
+                if seq in seen:
+                    continue
+                seen.add(seq)
+                found_new = True
+                title = _clean_title(m.group(3))
+                if not title or len(title) < 5:
+                    continue
+                ctx = html[max(0, m.start()-300): m.end()+300]
+                if not title.startswith("["):
+                    title = f"[충남] {title}"
+                items.append({
+                    "title": title[:400],
+                    "origin_url": f"{_CTP_BASE}/business/datadetail.do?seq={seq}",
+                    "region": "충남",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(CtpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 6. 울산테크노파크 (utp.or.kr)
+# ─────────────────────────────────────────────────
+_UTP_BASE = "https://www.utp.or.kr"
+_UTP_LIST = (
+    f"{_UTP_BASE}/board/board.php"
+    "?bo_table=sub0203_02&mnuno=M0000019&menu_group=1&sno=&page={page}"
+)
+_UTP_RE = re.compile(
+    r"""href=['"]([^'"]*wr_id=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class UtpScraper(BaseScraper):
+    name = "ulsan_tp"
+    display_name = "울산테크노파크"
+    origin_url_prefix = f"{_UTP_BASE}/board/board.php"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_UTP_LIST.format(page=page))
+            except Exception:
+                break
+            found_new = False
+            for m in _UTP_RE.finditer(html):
+                wid = m.group(2)
+                if wid in seen:
+                    continue
+                seen.add(wid)
+                found_new = True
+                title = _clean_title(m.group(3))
+                if not title or len(title) < 5:
+                    continue
+                ctx = html[max(0, m.start()-300): m.end()+300]
+                if not title.startswith("["):
+                    title = f"[울산] {title}"
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"{_UTP_BASE}/board/board.php"
+                        f"?bo_table=sub0203_02&wr_id={wid}&mnuno=M0000019&menu_group=1"
+                    ),
+                    "region": "울산",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(UtpScraper())

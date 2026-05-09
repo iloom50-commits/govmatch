@@ -400,7 +400,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               const d = new Date(res.deadline_date);
               if (isNaN(d.getTime())) return dDay.text;
               const days = ["일","월","화","수","목","금","토"];
-              return `~${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
+              const yearPrefix = d.getFullYear() !== new Date().getFullYear() ? `'${String(d.getFullYear()).slice(2)} ` : "";
+              return `~${yearPrefix}${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
             })() : dDay.text}
           </span>
         </div>

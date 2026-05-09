@@ -68,20 +68,44 @@ class BaseScraper:
 
         items_found = 0
         items_saved = 0
+        items_expired = 0
+        items_existing = 0
         status = "ok"
         error_message = None
 
         try:
             items = self.fetch_items() or []
             items_found = len(items)
+            today = datetime.date.today()
+            consecutive_existing = 0
+
             for it in items:
+                # 마감일 지난 것 스킵
+                dl = it.get("deadline_date")
+                if dl:
+                    try:
+                        if datetime.date.fromisoformat(str(dl)) < today:
+                            items_expired += 1
+                            continue
+                    except Exception:
+                        pass
+
                 try:
-                    if self._save_item(it, db_conn):
+                    saved = self._save_item(it, db_conn)
+                    if saved:
                         items_saved += 1
+                        consecutive_existing = 0
+                    else:
+                        items_existing += 1
+                        consecutive_existing += 1
+                        # 연속 5건 이미 DB에 있으면 나머지 스킵 (오래된 공고 재수집 방지)
+                        if consecutive_existing >= 5:
+                            break
                 except Exception as e:
                     logger.warning(f"[{self.name}] save error on {it.get('title','')[:30]}: {e}")
                     try: db_conn.rollback()
                     except: pass
+
             if items_found == 0:
                 status = "empty"
         except Exception as e:
@@ -110,6 +134,8 @@ class BaseScraper:
             "status": status,
             "items_found": items_found,
             "items_saved": items_saved,
+            "items_expired": items_expired,
+            "items_existing": items_existing,
             "elapsed_sec": elapsed,
             "error": error_message,
         }

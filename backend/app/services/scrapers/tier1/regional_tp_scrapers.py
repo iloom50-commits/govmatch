@@ -406,15 +406,19 @@ class DgtpScraper(BaseScraper):
     origin_url_prefix = f"{_DGTP_BASE}/bbs/BoardControllView.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
+        import datetime as _dt
         items: List[Dict[str, Any]] = []
         seen: set = set()
         sess = _dgtp_session()
+        today = _dt.date.today()
 
-        for page in range(1, 11):
+        for page_idx in range(1, 51):  # 최대 50페이지 (pageUnit=10 → 500건)
             try:
-                resp = sess.get(
-                    _DGTP_LIST.format(page=page),
-                    headers=_HEADERS,
+                resp = sess.post(
+                    f"{_DGTP_BASE}/bbs/BoardControll.do",
+                    headers={**_HEADERS, "Content-Type": "application/x-www-form-urlencoded",
+                             "Referer": f"{_DGTP_BASE}/bbs/BoardControll.do?bbsId={_DGTP_BBS_ID}"},
+                    data={"bbsId": _DGTP_BBS_ID, "pageIndex": str(page_idx), "pageUnit": "10"},
                     timeout=20,
                 )
                 resp.raise_for_status()
@@ -429,8 +433,12 @@ class DgtpScraper(BaseScraper):
 
             rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html_clean, re.DOTALL)
             bbs_rows = [r for r in rows if "fn_egov_inqire_notice" in r]
+            if not bbs_rows:
+                break
 
             found_new = False
+            all_expired = True  # 페이지 전체가 마감 완료이면 중단
+
             for row in bbs_rows:
                 m = _DGTP_ITEM_RE.search(row)
                 if not m:
@@ -439,7 +447,20 @@ class DgtpScraper(BaseScraper):
                 if ntt_id in seen:
                     continue
                 seen.add(ntt_id)
-                found_new = True
+
+                dl_m = _DGTP_DEADLINE_RE.search(row)
+                deadline = dl_m.group(2) if dl_m else None
+
+                # 마감일 확인 — 지난 것은 스킵, 단 deadline 없는 것(상시모집)은 통과
+                if deadline:
+                    try:
+                        if _dt.date.fromisoformat(deadline) < today:
+                            continue  # 마감 지난 것은 수집 안 함
+                    except Exception:
+                        pass
+                    all_expired = False  # 마감일 있고 아직 유효
+                else:
+                    all_expired = False  # 상시모집은 유효로 간주
 
                 title_raw = re.sub(r"<[^>]+>", " ", m.group(2))
                 title = re.sub(r"\s+", " ", title_raw).strip()
@@ -448,9 +469,7 @@ class DgtpScraper(BaseScraper):
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                dl_m = _DGTP_DEADLINE_RE.search(row)
-                deadline = dl_m.group(2) if dl_m else None
-
+                found_new = True
                 items.append({
                     "title": title[:400],
                     "origin_url": (
@@ -465,6 +484,9 @@ class DgtpScraper(BaseScraper):
                     "support_amount": None,
                 })
 
+            # 이 페이지의 모든 공고가 마감됐으면 이후 페이지도 마감 → 중단
+            if all_expired:
+                break
             if not found_new:
                 break
 
@@ -498,10 +520,12 @@ class JejuTpScraper(BaseScraper):
     origin_url_prefix = f"{_JEJU_BASE}/board/business/detail/"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
+        import datetime as _dt
         items: List[Dict[str, Any]] = []
         seen: set = set()
+        today = _dt.date.today()
 
-        for page in range(0, 10):  # 0-indexed Spring pagination
+        for page in range(0, 30):  # 0-indexed Spring pagination, 최대 30페이지
             try:
                 resp = requests.get(
                     _JEJU_API,
@@ -519,12 +543,26 @@ class JejuTpScraper(BaseScraper):
                 break
 
             found_new = False
+            all_expired = True
+
             for item in content:
                 post_id = str(item.get("id", ""))
                 if not post_id or post_id in seen:
                     continue
                 seen.add(post_id)
-                found_new = True
+
+                deadline = item.get("receiptEDate") or None
+
+                # 마감일 지난 것 스킵
+                if deadline:
+                    try:
+                        if _dt.date.fromisoformat(str(deadline)) < today:
+                            continue
+                    except Exception:
+                        pass
+                    all_expired = False
+                else:
+                    all_expired = False
 
                 title = (item.get("annoName") or item.get("businessName") or "").strip()
                 if not title or len(title) < 5:
@@ -532,7 +570,7 @@ class JejuTpScraper(BaseScraper):
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                deadline = item.get("receiptEDate") or None
+                found_new = True
                 items.append({
                     "title": title[:400],
                     "origin_url": f"{_JEJU_BASE}/board/business/detail/{post_id}",
@@ -544,6 +582,8 @@ class JejuTpScraper(BaseScraper):
                     "support_amount": None,
                 })
 
+            if all_expired:
+                break
             if not found_new:
                 break
 

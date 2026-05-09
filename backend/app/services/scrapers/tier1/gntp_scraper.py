@@ -1,12 +1,11 @@
 """경남테크노파크(GNTP) 스크래퍼.
 
 사이트: https://www.gntp.or.kr/biz/apply
-구조: JS 렌더링 필요, 공고 링크는 onclick=goPage('S', null, '/biz/applyInfo/{id}') 형식
+구조: 정적 HTML — li.table-li[onclick=goPage(...,'/biz/applyInfo/{id}')] 형식
 """
 from __future__ import annotations
 import re
-import asyncio
-import datetime
+import urllib.request
 from typing import List, Dict, Any
 
 from .base import BaseScraper, SCRAPER_REGISTRY
@@ -14,14 +13,34 @@ from .base import BaseScraper, SCRAPER_REGISTRY
 BASE_URL = "https://www.gntp.or.kr"
 LIST_URL = f"{BASE_URL}/biz/apply"
 
-_GOPAGE_RE = re.compile(r"goPage\([^,]+,\s*[^,]+,\s*'(/biz/applyInfo/\d+)'\)")
+_ITEM_RE = re.compile(
+    r'<li[^>]+class="table-li"[^>]+onclick="goPage\([^,]+,\s*[^,]+,\s*\'(/biz/applyInfo/\d+)\'\)">(.*?)</li>',
+    re.DOTALL,
+)
+_DATE_RE = re.compile(r"(\d{4})[.\-](\d{2})[.\-](\d{2})")
 
 
-def _parse_date(text: str) -> str | None:
-    """YYYY-MM-DD 형식 날짜 추출."""
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
-    if m:
-        return m.group(0)
+def _fetch_html(url: str) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,ko;q=0.9"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.read().decode("utf-8", errors="ignore")
+
+
+def _strip_tags(html: str) -> str:
+    return re.sub(r"<[^>]+>", " ", html).strip()
+
+
+def _parse_deadline(body: str) -> str | None:
+    dates = _DATE_RE.findall(body)
+    if len(dates) >= 2:
+        y, m, d = dates[1]
+        return f"{y}-{m}-{d}"
+    if dates:
+        y, m, d = dates[0]
+        return f"{y}-{m}-{d}"
     return None
 
 
@@ -31,75 +50,38 @@ class GntpScraper(BaseScraper):
     origin_url_prefix = "https://www.gntp.or.kr/biz/applyInfo/"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
-        return asyncio.run(self._fetch_async())
-
-    async def _fetch_async(self) -> List[Dict[str, Any]]:
         try:
-            from playwright.async_api import async_playwright
-        except ImportError:
+            html = _fetch_html(LIST_URL)
+        except Exception:
             return []
 
         items: List[Dict[str, Any]] = []
+        for m in _ITEM_RE.finditer(html):
+            path, body = m.group(1), m.group(2)
+            title = _strip_tags(body)
+            # 제목은 table-title div에서 추출
+            title_m = re.search(r'class="table-title"[^>]*>(.*?)</div>', body, re.DOTALL)
+            if title_m:
+                title = _strip_tags(title_m.group(1))
+            title = re.sub(r"\s+", " ", title).strip()
+            # "담당자 : ..." 접미어 제거
+            title = re.sub(r"\s*담당자\s*:.*$", "", title).strip()[:400]
+            if not title or len(title) < 5:
+                continue
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page(
-                extra_http_headers={"Accept-Language": "ko-KR,ko;q=0.9"}
-            )
-            try:
-                await page.goto(LIST_URL, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(2000)
+            items.append({
+                "title": title,
+                "origin_url": f"{BASE_URL}{path}",
+                "region": "경남",
+                "target_type": "business",
+                "category": None,
+                "summary_text": None,
+                "deadline_date": _parse_deadline(body),
+                "support_amount": None,
+            })
 
-                # onclick에서 공고 ID 추출 (a 태그 onclick 구조)
-                tds = await page.eval_on_selector_all("a[onclick*='/biz/applyInfo/']", """
-                    els => els.map(e => ({
-                        text: e.innerText.trim(),
-                        onclick: e.getAttribute('onclick') || ''
-                    }))
-                """)
-
-                # 날짜 텍스트: tr 전체에서 추출
-                rows = await page.eval_on_selector_all("tr", """
-                    els => els.map(tr => tr.innerText.trim())
-                """)
-
-                # td onclick → applyInfo URL 매핑
-                row_texts = "\n".join(rows)
-                for td in tds:
-                    m = _GOPAGE_RE.search(td["onclick"])
-                    if not m:
-                        continue
-                    path = m.group(1)
-                    origin_url = f"{BASE_URL}{path}"
-                    title = td["text"][:400]
-                    if not title or len(title) < 5:
-                        continue
-
-                    # 마감일 추출 (같은 행 텍스트에서)
-                    deadline = None
-                    for row in rows:
-                        if title[:20] in row:
-                            dates = re.findall(r"\d{4}-\d{2}-\d{2}", row)
-                            if len(dates) >= 2:
-                                deadline = dates[1]  # 두 번째 날짜 = 마감일
-                            break
-
-                    items.append({
-                        "title": title,
-                        "origin_url": origin_url,
-                        "region": "경남",
-                        "target_type": "business",
-                        "category": None,
-                        "summary_text": None,
-                        "deadline_date": deadline,
-                        "support_amount": None,
-                    })
-
-                    if len(items) >= 30:
-                        break
-
-            finally:
-                await browser.close()
+            if len(items) >= 30:
+                break
 
         return items
 

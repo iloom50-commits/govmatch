@@ -2433,11 +2433,12 @@ def api_announcements_public(
 
                     all_ids = eligible_ids + ineligible_ids
                     total = len(all_ids)
-                    page_ids = all_ids[offset: offset + size]
 
-                    if page_ids:
-                        # ID 순서를 유지하면서 공고 본문 조회
-                        id_list = ",".join(str(i) for i in page_ids)
+                    # 만료 공고가 섞여 있을 수 있으므로 여유있게 3배 가져와서 필터 후 size개 확보
+                    fetch_ids = all_ids[offset: offset + size * 3]
+                    rows = []
+                    if fetch_ids:
+                        id_list = ",".join(str(i) for i in fetch_ids)
                         _pcur.execute(
                             f"""SELECT announcement_id, title, region, category, department,
                                        support_amount, support_amount_max, support_amount_min, support_amount_type,
@@ -2450,10 +2451,8 @@ def api_announcements_public(
                                   AND {valid_announcement_where()}"""
                         )
                         rows_map = {r["announcement_id"]: dict(r) for r in _pcur.fetchall()}
-                        # 캐시 순서 복원 (신규 추가/삭제된 공고는 자연스럽게 제외됨)
-                        rows = [rows_map[i] for i in page_ids if i in rows_map]
-                    else:
-                        rows = []
+                        # 캐시 순서 복원 후 size개로 제한
+                        rows = [rows_map[i] for i in fetch_ids if i in rows_map][:size]
 
                     cat_cache_key = f"cat_counts:{target_type or 'all'}"
                     category_counts = _get_cached(cat_cache_key)

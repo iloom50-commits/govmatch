@@ -372,3 +372,182 @@ class GwtpScraper(BaseScraper):
 
 
 SCRAPER_REGISTRY.append(GwtpScraper())
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. 대구테크노파크 (dgtp.or.kr)
+#    eGovFramework 표준 게시판 — SSL 인증서 오류 우회 필요
+#    GET /bbs/BoardControll.do?bbsId=BBSMSTR_000000000003&pageNo={page}
+#    fn_egov_inqire_notice(nttId, bbsId, userId) → BoardControllView.do
+# ─────────────────────────────────────────────────────────────
+_DGTP_BASE = "https://dgtp.or.kr"
+_DGTP_LIST = (
+    f"{_DGTP_BASE}/bbs/BoardControll.do"
+    "?bbsId=BBSMSTR_000000000003&pageNo={page}"
+)
+_DGTP_BBS_ID = "BBSMSTR_000000000003"
+_DGTP_ITEM_RE = re.compile(
+    r"""fn_egov_inqire_notice\('(\d+)',\s*'BBSMSTR_000000000003',\s*'[^']*'\)">\s*(.*?)\s*</a>""",
+    re.DOTALL,
+)
+_DGTP_DEADLINE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})")
+
+
+def _dgtp_session() -> requests.Session:
+    """SSL 인증서 검증 비활성화 세션 (자체 서명 인증서)."""
+    sess = requests.Session()
+    sess.verify = False
+    return sess
+
+
+class DgtpScraper(BaseScraper):
+    name = "dgtp"
+    display_name = "대구테크노파크(DGTP)"
+    origin_url_prefix = f"{_DGTP_BASE}/bbs/BoardControllView.do"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        sess = _dgtp_session()
+
+        for page in range(1, 11):
+            try:
+                resp = sess.get(
+                    _DGTP_LIST.format(page=page),
+                    headers=_HEADERS,
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                html = resp.content.decode("utf-8", errors="replace")
+            except Exception:
+                break
+
+            # tooltip span 제거 — 동일 텍스트 중복 방지
+            html_clean = re.sub(
+                r'<span\s+class="tooltiptext">.*?</span>', "", html, flags=re.DOTALL
+            )
+
+            rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html_clean, re.DOTALL)
+            bbs_rows = [r for r in rows if "fn_egov_inqire_notice" in r]
+
+            found_new = False
+            for row in bbs_rows:
+                m = _DGTP_ITEM_RE.search(row)
+                if not m:
+                    continue
+                ntt_id = m.group(1)
+                if ntt_id in seen:
+                    continue
+                seen.add(ntt_id)
+                found_new = True
+
+                title_raw = re.sub(r"<[^>]+>", " ", m.group(2))
+                title = re.sub(r"\s+", " ", title_raw).strip()
+                if not title or len(title) < 5:
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                dl_m = _DGTP_DEADLINE_RE.search(row)
+                deadline = dl_m.group(2) if dl_m else None
+
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"{_DGTP_BASE}/bbs/BoardControllView.do"
+                        f"?nttId={ntt_id}&bbsId={_DGTP_BBS_ID}"
+                    ),
+                    "region": "대구",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": deadline,
+                    "support_amount": None,
+                })
+
+            if not found_new:
+                break
+
+        return items
+
+
+SCRAPER_REGISTRY.append(DgtpScraper())
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. 제주테크노파크 (jejutp.or.kr)
+#    Spring + Vue 2.6 — 내부 JSON API 사용
+#    GET /board/business/list?keyword=&page={page}&size=30&businessDiv=
+#    Content-Type: application/json 필수 (axios 기본값 일치)
+#    Spring Page 응답: {content: [...], totalPages, totalElements}
+# ─────────────────────────────────────────────────────────────
+_JEJU_BASE = "https://www.jejutp.or.kr"
+_JEJU_API = f"{_JEJU_BASE}/board/business/list"
+_JEJU_API_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "Referer": f"{_JEJU_BASE}/board/business",
+}
+
+
+class JejuTpScraper(BaseScraper):
+    name = "jejutp"
+    display_name = "제주테크노파크(JTP)"
+    origin_url_prefix = f"{_JEJU_BASE}/board/business/detail/"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for page in range(0, 10):  # 0-indexed Spring pagination
+            try:
+                resp = requests.get(
+                    _JEJU_API,
+                    headers=_JEJU_API_HEADERS,
+                    params={"keyword": "", "page": page, "size": 30, "businessDiv": ""},
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
+                break
+
+            content = data.get("content", [])
+            if not content:
+                break
+
+            found_new = False
+            for item in content:
+                post_id = str(item.get("id", ""))
+                if not post_id or post_id in seen:
+                    continue
+                seen.add(post_id)
+                found_new = True
+
+                title = (item.get("annoName") or item.get("businessName") or "").strip()
+                if not title or len(title) < 5:
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                deadline = item.get("receiptEDate") or None
+                items.append({
+                    "title": title[:400],
+                    "origin_url": f"{_JEJU_BASE}/board/business/detail/{post_id}",
+                    "region": "제주",
+                    "target_type": "business",
+                    "category": item.get("businessDivName") or None,
+                    "summary_text": None,
+                    "deadline_date": deadline,
+                    "support_amount": None,
+                })
+
+            if not found_new:
+                break
+
+        return items
+
+
+SCRAPER_REGISTRY.append(JejuTpScraper())

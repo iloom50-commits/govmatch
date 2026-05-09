@@ -1,7 +1,8 @@
-"""공공기관 스크래퍼 — 기업마당 + KOCCA.
+"""공공기관 스크래퍼 배치 6 — KHIDI, MSS, K-Startup.
 
-bizinfo.go.kr : 중소벤처기업부 지원사업 공고 포털 (1,200건+, 86페이지)
-kocca.kr      : 한국콘텐츠진흥원 지원공고 (콘텐츠·미디어 분야)
+khidi.or.kr         : 한국보건산업진흥원 (보건의료 지원, 직접 href)
+mss.go.kr           : 중소벤처기업부 (정책 공고, doBbsFView onclick bcIdx 추출)
+k-startup.go.kr     : K-Startup (창업진흥원 포털, go_view onclick ID 추출)
 """
 from __future__ import annotations
 import re
@@ -16,7 +17,7 @@ _HEADERS = {
     "Accept-Language": "ko-KR,ko;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
-_EXCLUDE_KW = re.compile(r"채용|입찰|구매|계약|입사|인재|면접|합격자|공사|용역|물품")
+_EXCLUDE_KW = re.compile(r"채용|입찰|구매|계약|입사|인재|면접|합격자|공사|용역|물품|청소|경비|보안")
 
 
 def _get(url: str, **kwargs) -> str:
@@ -44,30 +45,21 @@ def _parse_deadline(text: str) -> str | None:
     return None
 
 
-def _extract_bracket_region(title: str) -> str | None:
-    """제목 앞 [지역] 패턴에서 지역 추출."""
-    m = re.match(r"^\[([가-힣]{1,6})\]", title)
-    return m.group(1) if m else None
-
-
 # ─────────────────────────────────────────────────────────────
-# 1. 기업마당 (bizinfo.go.kr) — 중소벤처기업부 지원사업 공고 포털
+# 1. 한국보건산업진흥원 (khidi.or.kr) — 보건·의료·바이오 지원공고
 # ─────────────────────────────────────────────────────────────
-_BIZINFO_BASE = "https://www.bizinfo.go.kr"
-_BIZINFO_LIST = (
-    f"{_BIZINFO_BASE}/web/lay1/bbs/S1T122C128/AS/74/list.do"
-    "?cpage={page}"  # pageIndex는 무시됨, cpage가 실제 페이지 파라미터
-)
-_BIZINFO_RE = re.compile(
-    r"""href\s*=\s*['"]([^'"]*pblancId=(PBLN_\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+_KHIDI_BASE = "https://www.khidi.or.kr"
+_KHIDI_LIST = f"{_KHIDI_BASE}/board?menuId=MENU01108&pageIndex={{page}}"
+_KHIDI_RE = re.compile(
+    r"""href=['"]/board/view\?linkId=(\d+)&menuId=MENU01108['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 
 
-class BizinfoScraper(BaseScraper):
-    name = "bizinfo"
-    display_name = "기업마당(중소벤처기업부)"
-    origin_url_prefix = f"{_BIZINFO_BASE}/sii/siia/selectSIIA200Detail.do"
+class KhidiScraper(BaseScraper):
+    name = "khidi"
+    display_name = "한국보건산업진흥원(KHIDI)"
+    origin_url_prefix = f"{_KHIDI_BASE}/board/view"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -75,34 +67,103 @@ class BizinfoScraper(BaseScraper):
 
         for page in range(1, 11):
             try:
-                html = _get(_BIZINFO_LIST.format(page=page))
+                html = _get(_KHIDI_LIST.format(page=page))
             except Exception:
                 break
 
             found_new = False
-            for m in _BIZINFO_RE.finditer(html):
-                pblanc_id = m.group(2)
-                if pblanc_id in seen:
+            for m in _KHIDI_RE.finditer(html):
+                link_id = m.group(1)
+                if link_id in seen:
                     continue
-                seen.add(pblanc_id)
+                seen.add(link_id)
                 found_new = True
 
-                title = _clean(m.group(3))
+                title = _clean(m.group(2))
                 if not title or len(title) < 5:
                     continue
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                region = _extract_bracket_region(title) or "전국"
                 ctx = html[max(0, m.start() - 400): m.end() + 400]
 
                 items.append({
                     "title": title[:400],
                     "origin_url": (
-                        f"{_BIZINFO_BASE}/sii/siia/selectSIIA200Detail.do"
-                        f"?pblancId={pblanc_id}"
+                        f"{_KHIDI_BASE}/board/view"
+                        f"?linkId={link_id}&menuId=MENU01108"
                     ),
-                    "region": region,
+                    "region": "전국",
+                    "target_type": "business",
+                    "category": "바이오",
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(ctx),
+                    "support_amount": None,
+                })
+
+            if not found_new:
+                break
+
+        return items
+
+
+SCRAPER_REGISTRY.append(KhidiScraper())
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. 중소벤처기업부 (mss.go.kr) — 정책/공고
+#    onclick="doBbsFView('310','bcIdx',...)" 에서 bcIdx 추출
+# ─────────────────────────────────────────────────────────────
+_MSS_BASE = "https://www.mss.go.kr"
+_MSS_LIST = (
+    f"{_MSS_BASE}/site/smba/ex/bbs/List.do"
+    "?cbIdx=310&pageIndex={page}"
+)
+# doBbsFView('310', '1068080', '16010100', '1068080') → bcIdx = 두 번째 인자
+_MSS_RE = re.compile(
+    r"""doBbsFView\('[^']*','(\d+)'[^)]*\)[^>]*>(.*?)</a>""",
+    re.DOTALL,
+)
+
+
+class MssScraper(BaseScraper):
+    name = "mss"
+    display_name = "중소벤처기업부(MSS)"
+    origin_url_prefix = f"{_MSS_BASE}/site/smba/ex/bbs/View.do"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for page in range(1, 11):
+            try:
+                html = _get(_MSS_LIST.format(page=page))
+            except Exception:
+                break
+
+            found_new = False
+            for m in _MSS_RE.finditer(html):
+                bc_idx = m.group(1)
+                if bc_idx in seen:
+                    continue
+                seen.add(bc_idx)
+                found_new = True
+
+                title = _clean(m.group(2))
+                if not title or len(title) < 5:
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                ctx = html[max(0, m.start() - 400): m.end() + 400]
+
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"{_MSS_BASE}/site/smba/ex/bbs/View.do"
+                        f"?cbIdx=310&bcIdx={bc_idx}"
+                    ),
+                    "region": "전국",
                     "target_type": "business",
                     "category": None,
                     "summary_text": None,
@@ -116,27 +177,28 @@ class BizinfoScraper(BaseScraper):
         return items
 
 
-SCRAPER_REGISTRY.append(BizinfoScraper())
+SCRAPER_REGISTRY.append(MssScraper())
 
 
 # ─────────────────────────────────────────────────────────────
-# 2. 한국콘텐츠진흥원 (kocca.kr) — 지원공고 (콘텐츠/미디어 분야)
+# 3. K-Startup (k-startup.go.kr) — 창업 지원사업 공고
+#    onclick="go_view(ID)" 에서 ID 추출, 상세 URL 직접 GET 가능 확인됨
 # ─────────────────────────────────────────────────────────────
-_KOCCA_BASE = "https://www.kocca.kr"
-_KOCCA_LIST = (
-    f"{_KOCCA_BASE}/kocca/pims/list.do"
-    "?menuNo=204104&pageIndex={page}"
+_KSTARTUP_BASE = "https://www.k-startup.go.kr"
+_KSTARTUP_LIST = (
+    f"{_KSTARTUP_BASE}/web/contents/bizpbanc-ongoing.do"
+    "?schPageSize=10&page={page}"
 )
-_KOCCA_RE = re.compile(
-    r"""href=['"]([^'"]*intcNo=([A-Z0-9]+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
+_KSTARTUP_RE = re.compile(
+    r"""go_view\((\d+)\)[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 
 
-class KoccaScraper(BaseScraper):
-    name = "kocca"
-    display_name = "한국콘텐츠진흥원"
-    origin_url_prefix = f"{_KOCCA_BASE}/kocca/pims/view.do"
+class KstartupScraper(BaseScraper):
+    name = "k_startup"
+    display_name = "K-Startup(창업진흥원 포털)"
+    origin_url_prefix = f"{_KSTARTUP_BASE}/web/contents/bizpbanc-read.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -144,84 +206,16 @@ class KoccaScraper(BaseScraper):
 
         for page in range(1, 11):
             try:
-                html = _get(_KOCCA_LIST.format(page=page))
+                html = _get(_KSTARTUP_LIST.format(page=page))
             except Exception:
                 break
 
             found_new = False
-            for m in _KOCCA_RE.finditer(html):
-                intc_no = m.group(2)
-                if intc_no in seen:
+            for m in _KSTARTUP_RE.finditer(html):
+                pbanc_sn = m.group(1)
+                if pbanc_sn in seen:
                     continue
-                seen.add(intc_no)
-                found_new = True
-
-                title = _clean(m.group(3))
-                if not title or len(title) < 5:
-                    continue
-                if _EXCLUDE_KW.search(title):
-                    continue
-
-                ctx = html[max(0, m.start() - 400): m.end() + 400]
-
-                items.append({
-                    "title": title[:400],
-                    "origin_url": (
-                        f"{_KOCCA_BASE}/kocca/pims/view.do"
-                        f"?intcNo={intc_no}&menuNo=204104"
-                    ),
-                    "region": "전국",
-                    "target_type": "business",
-                    "category": "콘텐츠",
-                    "summary_text": None,
-                    "deadline_date": _parse_deadline(ctx),
-                    "support_amount": None,
-                })
-
-            if not found_new:
-                break
-
-        return items
-
-
-SCRAPER_REGISTRY.append(KoccaScraper())
-
-
-# ─────────────────────────────────────────────────────────────
-# 3. 소상공인시장진흥공단 (semas.or.kr) — 공고 목록 (452건+)
-# ─────────────────────────────────────────────────────────────
-_SEMAS_LIST = (
-    "https://www.semas.or.kr/web/board/webBoardList.kmdc"
-    "?bCd=2001&pNm=BOA0101&page={page}"
-)
-# 실제 상세 링크는 sbiz24.kr SPA 해시 URL
-_SEMAS_RE = re.compile(
-    r"""href=['"]https://www\.sbiz24\.kr/#/pbanc/(\d+)['"]\s*[^>]*>(.*?)</a>""",
-    re.DOTALL,
-)
-
-
-class SemasScraper(BaseScraper):
-    name = "semas"
-    display_name = "소상공인시장진흥공단"
-    origin_url_prefix = "https://www.sbiz24.kr/#/pbanc/"
-
-    def fetch_items(self) -> List[Dict[str, Any]]:
-        items: List[Dict[str, Any]] = []
-        seen: set = set()
-
-        for page in range(1, 11):
-            try:
-                html = _get(_SEMAS_LIST.format(page=page))
-            except Exception:
-                break
-
-            found_new = False
-            for m in _SEMAS_RE.finditer(html):
-                pbanc_id = m.group(1)
-                if pbanc_id in seen:
-                    continue
-                seen.add(pbanc_id)
+                seen.add(pbanc_sn)
                 found_new = True
 
                 title = _clean(m.group(2))
@@ -234,10 +228,13 @@ class SemasScraper(BaseScraper):
 
                 items.append({
                     "title": title[:400],
-                    "origin_url": f"https://www.sbiz24.kr/#/pbanc/{pbanc_id}",
+                    "origin_url": (
+                        f"{_KSTARTUP_BASE}/web/contents/bizpbanc-read.do"
+                        f"?pbancSn={pbanc_sn}"
+                    ),
                     "region": "전국",
-                    "target_type": "individual",
-                    "category": "소상공인",
+                    "target_type": "business",
+                    "category": "창업",
                     "summary_text": None,
                     "deadline_date": _parse_deadline(ctx),
                     "support_amount": None,
@@ -249,4 +246,4 @@ class SemasScraper(BaseScraper):
         return items
 
 
-SCRAPER_REGISTRY.append(SemasScraper())
+SCRAPER_REGISTRY.append(KstartupScraper())

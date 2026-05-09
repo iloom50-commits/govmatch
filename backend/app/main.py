@@ -6245,6 +6245,81 @@ def api_umbrella_purge(req: AdminAuthRequest):
         except: pass
 
 
+_SBIZ24_WHERE = "origin_url LIKE %s"
+_SBIZ24_PATTERN = ["https://www.sbiz24.kr/%"]
+
+
+@app.post("/api/admin/sbiz24-scan")
+def api_sbiz24_scan(req: AdminAuthRequest):
+    """sbiz24.kr 구 스크래핑 공고 현황 조회."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_SBIZ24_WHERE}", _SBIZ24_PATTERN)
+        total = cur.fetchone()["cnt"]
+        cur.execute(
+            f"""SELECT announcement_id, title, origin_url, created_at
+                FROM announcements
+                WHERE {_SBIZ24_WHERE}
+                ORDER BY announcement_id DESC
+                LIMIT 20""",
+            _SBIZ24_PATTERN,
+        )
+        samples = [dict(r) for r in cur.fetchall()]
+        return {"status": "SUCCESS", "total_matched": total, "samples": samples}
+    finally:
+        try: conn.close()
+        except: pass
+
+
+@app.post("/api/admin/sbiz24-purge")
+def api_sbiz24_purge(req: AdminAuthRequest):
+    """sbiz24.kr 구 스크래핑 공고 전체 삭제 — OLS API 데이터로 교체됐으므로 안전."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT announcement_id FROM announcements WHERE {_SBIZ24_WHERE}", _SBIZ24_PATTERN)
+        ids = [r["announcement_id"] for r in cur.fetchall()]
+        if not ids:
+            return {"status": "SUCCESS", "deleted": 0, "message": "대상 없음"}
+
+        deleted_by_table = {}
+        for tbl, col in [
+            ("announcement_sections", "announcement_id"),
+            ("announcement_analysis", "announcement_id"),
+            ("announcement_embeddings", "announcement_id"),
+            ("saved_announcements", "announcement_id"),
+            ("trending_announcements", "announcement_id"),
+            ("match_history", "announcement_id"),
+        ]:
+            try:
+                cur.execute(f"DELETE FROM {tbl} WHERE {col} = ANY(%s)", (ids,))
+                deleted_by_table[tbl] = cur.rowcount
+            except Exception as e:
+                conn.rollback()
+                deleted_by_table[tbl] = f"error: {str(e)[:120]}"
+                continue
+        try:
+            cur.execute("DELETE FROM announcements WHERE announcement_id = ANY(%s)", (ids,))
+            deleted_by_table["announcements"] = cur.rowcount
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return {"status": "ERROR", "error": str(e)[:300], "partial": deleted_by_table}
+        return {
+            "status": "SUCCESS",
+            "deleted": len(ids),
+            "deleted_by_table": deleted_by_table,
+        }
+    finally:
+        try: conn.close()
+        except: pass
+
+
 class InspectAnnouncementRequest(BaseModel):
     password: str
     announcement_id: int

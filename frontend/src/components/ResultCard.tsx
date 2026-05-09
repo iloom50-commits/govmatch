@@ -276,6 +276,10 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const targetText = bizTypes.length > 0
     ? bizTypes.join(" · ")
     : (res.region && res.region !== "All" && res.region !== "전국" ? res.region : "전국");
+  // 제목에 [지역] 태그가 없고 region이 특정 지역이면 앞에 표시
+  const regionTag = (res.region && res.region !== "All" && res.region !== "전국" && !/^\[/.test(res.title || ""))
+    ? `[${res.region}] `
+    : "";
 
   // 금액 뱃지: support_amount_max(숫자) 우선 사용, 없으면 텍스트 파싱 (엄격)
   // 이전 버그: "P1/P2 과정..." → "1원", "~25개 조직..." → "25원" 오노출
@@ -436,7 +440,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 {amountLabel}
               </span>
             )}
-            {res.title}
+            {regionTag && <span className="text-indigo-500 font-black">{regionTag}</span>}{res.title}
           </a>
         ) : (
           <h3
@@ -448,7 +452,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 {amountLabel}
               </span>
             )}
-            {res.title}
+            {regionTag && <span className="text-indigo-500 font-black">{regionTag}</span>}{res.title}
           </h3>
         )}
 

@@ -85,7 +85,10 @@ def _extract_items(html: str, seen: set) -> List[Dict[str, Any]]:
         title_m = re.search(r'class="table-title"[^>]*>(.*?)</div>', body, re.DOTALL)
         title = _strip_tags(title_m.group(1)) if title_m else _strip_tags(body)
         title = re.sub(r"\s+", " ", title).strip()
-        title = re.sub(r"\s*담당자\s*:.*$", "", title).strip()[:400]
+        title = re.sub(r"\s*담당자\s*:.*$", "", title).strip()
+        if not title.startswith("["):
+            title = f"[경남] {title}"
+        title = title[:400]
         if not title or len(title) < 5:
             continue
 

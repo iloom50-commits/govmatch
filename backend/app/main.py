@@ -2418,9 +2418,18 @@ def api_announcements_public(
                         _pc.close()
                         raise ValueError("no-cache-tab-fallthrough")
 
-                    # ── 전체 탭 (tab=None): eligible_ids + ineligible_ids 기존 로직 ──
+                    # ── 전체 탭 (tab=None): 신형식(local+national) 또는 구형식(eligible+ineligible) 자동 감지 ──
                     eligible_ids = cached.get("eligible_ids") or []
                     ineligible_ids = cached.get("ineligible_ids") or []
+
+                    # 신형식 캐시: local/national 키만 있고 eligible_ids 없는 경우
+                    if not eligible_ids and not ineligible_ids:
+                        local_ids = cached.get("local") or []
+                        national_ids = cached.get("national") or []
+                        # 중복 제거 후 합산 (local 우선)
+                        seen = set(local_ids)
+                        combined = list(local_ids) + [i for i in national_ids if i not in seen]
+                        eligible_ids = combined
 
                     all_ids = eligible_ids + ineligible_ids
                     total = len(all_ids)

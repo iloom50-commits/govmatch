@@ -51,7 +51,7 @@ def _parse_deadline(text: str) -> str | None:
 _KHIDI_BASE = "https://www.khidi.or.kr"
 _KHIDI_LIST = f"{_KHIDI_BASE}/board?menuId=MENU01108&pageIndex={{page}}"
 _KHIDI_RE = re.compile(
-    r"""href=['"]/board/view\?linkId=(\d+)&menuId=MENU01108['"]\s*[^>]*>(.*?)</a>""",
+    r"""href=['"]/board/view\?[^'"]*linkId=(\d+)[^'"]*menuId=MENU01108[^'"]*['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 

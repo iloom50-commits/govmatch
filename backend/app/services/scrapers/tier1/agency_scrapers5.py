@@ -55,7 +55,7 @@ _KCA_LIST = (
     "?boardId=NOTICE&pageId=www47&movePage={page}"
 )
 _KCA_RE = re.compile(
-    r"""href=['"]/boardView\.do\?pageId=www47&boardId=NOTICE&seq=(\d+)[^'"]*['"]\s*[^>]*>(.*?)</a>""",
+    r"""href=['"]/boardView\.do\?pageId=www47(?:&amp;|&)boardId=NOTICE(?:&amp;|&)seq=(\d+)[^'"]*['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 

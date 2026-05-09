@@ -54,7 +54,7 @@ def _parse_deadline(text: str) -> str | None:
 _KICET_BASE = "https://www.kicet.re.kr"
 _KICET_LIST = f"{_KICET_BASE}/00020/00117/00120.web?page={{page}}"
 _KICET_RE = re.compile(
-    r"""href=['"]\?gcode=1015&idx=(\d+)&amode=view[^'"]*['"]\s*[^>]*>(.*?)</a>""",
+    r"""href=['"]\?gcode=1015(?:&amp;|&)idx=(\d+)(?:&amp;|&)amode=view[^'"]*['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 
@@ -119,7 +119,7 @@ SCRAPER_REGISTRY.append(KicetScraper())
 _KIMS_BASE = "https://www.kims.re.kr"
 _KIMS_LIST = f"{_KIMS_BASE}/v17/bbx/board.php?bx_table=05_02&page={{page}}"
 _KIMS_RE = re.compile(
-    r"""href=['"]https://www\.kims\.re\.kr/v17/bbx/board\.php\?bx_table=05_02&wr_id=(\d+)['"]\s*[^>]*>(.*?)</a>""",
+    r"""href=['"]https://www\.kims\.re\.kr/v17/bbx/board\.php\?bx_table=05_02(?:&amp;|&)wr_id=(\d+)[^'"]*['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 
@@ -249,7 +249,7 @@ SCRAPER_REGISTRY.append(EtriScraper())
 _KITECH_BASE = "https://www.kitech.re.kr"
 _KITECH_LIST = f"{_KITECH_BASE}/pages/19?page={{page}}"
 _KITECH_RE = re.compile(
-    r"""href=['"]/pages/19\?id=(\d+)&menuMode=READ[^'"]*['"]\s*[^>]*>(.*?)</a>""",
+    r"""href=['"]/pages/19\?id=(\d+)(?:&amp;|&)menuMode=READ[^'"]*['"]\s*[^>]*>(.*?)</a>""",
     re.DOTALL,
 )
 

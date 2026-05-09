@@ -1,6 +1,6 @@
 """공공기관 스크래퍼 배치 4 — KOSEA, KOVWA.
 
-socialenterprise.or.kr : 한국사회적기업진흥원 (사회적기업 지원공고, page 페이지네이션)
+socialenterprise.or.kr : 한국사회적기업진흥원 (사회적기업 지원공고, JSON AJAX API)
 kovwa.or.kr            : 한국여성벤처협회 (여성벤처 지원공고, WordPress page 페이지네이션)
 """
 from __future__ import annotations
@@ -45,18 +45,17 @@ def _parse_deadline(text: str) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────
-# 1. 한국사회적기업진흥원 (socialenterprise.or.kr)
+# 1. 한국사회적기업진흥원 (socialenterprise.or.kr) — JSON AJAX API
 # ─────────────────────────────────────────────────────────────
 _KOSEA_BASE = "https://www.socialenterprise.or.kr"
-_KOSEA_LIST = (
-    f"{_KOSEA_BASE}/homepage/bbs/board.do"
-    "?bsIdx=10002&menuId=822&page={page}"
-)
-# bsIdx=10002 고정 → 해당 게시판 공고만 매칭
-_KOSEA_RE = re.compile(
-    r"""href=['"][^'"]*bsIdx=10002[^'"]*bIdx=(\d+)[^'"]*['"]\s*[^>]*>(.*?)</a>""",
-    re.DOTALL,
-)
+_KOSEA_API = f"{_KOSEA_BASE}/homepage/bbs/ajax/boardList.do"
+_KOSEA_AJAX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": f"{_KOSEA_BASE}/homepage/bbs/board.do?bsIdx=10002&menuId=822",
+}
 
 
 class KoseaScraper(BaseScraper):
@@ -70,37 +69,52 @@ class KoseaScraper(BaseScraper):
 
         for page in range(1, 11):
             try:
-                html = _get(_KOSEA_LIST.format(page=page))
+                resp = requests.post(
+                    _KOSEA_API,
+                    data={"bsIdx": "10002", "menuId": "822", "page": str(page)},
+                    headers=_KOSEA_AJAX_HEADERS,
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                data = resp.json()
             except Exception:
                 break
 
+            result_list = data.get("resultList", [])
+            if not result_list:
+                break
+
             found_new = False
-            for m in _KOSEA_RE.finditer(html):
-                b_idx = m.group(1)
-                if b_idx in seen:
+            for item in result_list:
+                b_idx = str(item.get("B_IDX", ""))
+                if not b_idx or b_idx in seen:
                     continue
                 seen.add(b_idx)
                 found_new = True
 
-                title = _clean(m.group(2))
+                title = _clean(item.get("SUBJECT", ""))
                 if not title or len(title) < 5:
                     continue
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                ctx = html[max(0, m.start() - 400): m.end() + 400]
+                # END_EDATE: YYYYMMDD or "99991231" (no deadline)
+                end_date_raw = item.get("END_EDATE", "")
+                deadline = None
+                if end_date_raw and end_date_raw != "99991231" and len(end_date_raw) == 8:
+                    deadline = f"{end_date_raw[:4]}-{end_date_raw[4:6]}-{end_date_raw[6:]}"
 
                 items.append({
                     "title": title[:400],
                     "origin_url": (
                         f"{_KOSEA_BASE}/homepage/bbs/boardView.do"
-                        f"?bsIdx=10002&bIdx={b_idx}&page={page}&menuId=822"
+                        f"?bsIdx=10002&bIdx={b_idx}&menuId=822"
                     ),
                     "region": "전국",
                     "target_type": "business",
                     "category": "사회적기업",
                     "summary_text": None,
-                    "deadline_date": _parse_deadline(ctx),
+                    "deadline_date": deadline,
                     "support_amount": None,
                 })
 

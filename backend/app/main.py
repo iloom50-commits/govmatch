@@ -6208,6 +6208,13 @@ def api_umbrella_purge(req: AdminAuthRequest):
             return {"status": "SUCCESS", "deleted": 0, "message": "대상 없음"}
 
         deleted_by_table = {}
+        # ai_consult_logs: FK 참조 해제
+        try:
+            cur.execute("UPDATE ai_consult_logs SET announcement_id = NULL WHERE announcement_id = ANY(%s)", (ids,))
+            deleted_by_table["ai_consult_logs(nulled)"] = cur.rowcount
+        except Exception as e:
+            conn.rollback()
+            deleted_by_table["ai_consult_logs(nulled)"] = f"error: {str(e)[:120]}"
         # 관련 테이블 순서대로 정리
         for tbl, col in [
             ("announcement_sections", "announcement_id"),
@@ -6215,11 +6222,7 @@ def api_umbrella_purge(req: AdminAuthRequest):
             ("announcement_embeddings", "announcement_id"),
             ("saved_announcements", "announcement_id"),
             ("trending_announcements", "announcement_id"),
-            ("match_history", "announcement_id"),
-            ("section_feedback", "section_id"),  # section_feedback은 section_id 기반이라 스킵
         ]:
-            if tbl == "section_feedback":
-                continue
             try:
                 cur.execute(f"DELETE FROM {tbl} WHERE {col} = ANY(%s)", (ids,))
                 deleted_by_table[tbl] = cur.rowcount
@@ -6288,13 +6291,19 @@ def api_sbiz24_purge(req: AdminAuthRequest):
             return {"status": "SUCCESS", "deleted": 0, "message": "대상 없음"}
 
         deleted_by_table = {}
+        # ai_consult_logs: FK 참조 해제 (NULL로 set — 상담 이력은 보존)
+        try:
+            cur.execute("UPDATE ai_consult_logs SET announcement_id = NULL WHERE announcement_id = ANY(%s)", (ids,))
+            deleted_by_table["ai_consult_logs(nulled)"] = cur.rowcount
+        except Exception as e:
+            conn.rollback()
+            deleted_by_table["ai_consult_logs(nulled)"] = f"error: {str(e)[:120]}"
         for tbl, col in [
             ("announcement_sections", "announcement_id"),
             ("announcement_analysis", "announcement_id"),
             ("announcement_embeddings", "announcement_id"),
             ("saved_announcements", "announcement_id"),
             ("trending_announcements", "announcement_id"),
-            ("match_history", "announcement_id"),
         ]:
             try:
                 cur.execute(f"DELETE FROM {tbl} WHERE {col} = ANY(%s)", (ids,))

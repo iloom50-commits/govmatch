@@ -32,3 +32,6 @@ from . import agency_scrapers6  # noqa: F401
 
 # 공공기관 배치 7 (KICET/KIMS/ETRI/KITECH/KRISS/KIMM — 출연연)
 from . import agency_scrapers7  # noqa: F401
+
+# 지역 테크노파크 (경기/경북/충북/강원)
+from . import regional_tp_scrapers  # noqa: F401

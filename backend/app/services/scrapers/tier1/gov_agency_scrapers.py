@@ -270,3 +270,73 @@ class SemasScraper(BaseScraper):
 
 
 SCRAPER_REGISTRY.append(SemasScraper())
+
+
+# ── SBA 서울경제진흥원 ─────────────────────────────────────────────────────────
+_SBA_BASE = "https://www.sba.seoul.kr"
+_SBA_LIST_URL = f"{_SBA_BASE}/Pages/BusinessApply/OngoingList.aspx"
+_SBA_DETAIL_URL = f"{_SBA_BASE}/Pages/BusinessApply/PostingDetail.aspx"
+_SBA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+}
+# ASP.NET GridView 필드 패턴
+_SBA_GUID_RE = re.compile(r'new_displayId[^>]+value="([a-fA-F0-9\-]{36})"')
+_SBA_TITLE_RE = re.compile(r'GridView1_new_name_\d+">(.*?)</span>')
+_SBA_TYPE_RE = re.compile(r'lb_apply_templatename_\d+">(.*?)</span>')
+_SBA_END_RE = re.compile(r'lb_receipt_end_\d+">([\d\-]+)</span>')
+
+
+class SbaScraper(BaseScraper):
+    """SBA 서울경제진흥원 — ASP.NET WebForms, OngoingList에 진행중 공고 전체 노출."""
+
+    name = "sba"
+    display_name = "서울경제진흥원(SBA)"
+    origin_url_prefix = f"{_SBA_DETAIL_URL}?p=1&mid="
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        try:
+            resp = requests.get(_SBA_LIST_URL, headers=_SBA_HEADERS, timeout=20, verify=False)
+            resp.raise_for_status()
+        except Exception:
+            return []
+
+        html = resp.text
+        guids = _SBA_GUID_RE.findall(html)
+        titles = _SBA_TITLE_RE.findall(html)
+        types = _SBA_TYPE_RE.findall(html)
+        end_dates = _SBA_END_RE.findall(html)
+
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for i, guid in enumerate(guids):
+            if guid in seen:
+                continue
+            seen.add(guid)
+
+            title = _clean(titles[i]) if i < len(titles) else ""
+            if not title or len(title) < 5:
+                continue
+            if _EXCLUDE_KW.search(title):
+                continue
+
+            cat = types[i].strip() if i < len(types) else None
+            deadline = end_dates[i].strip() if i < len(end_dates) else None
+
+            items.append({
+                "title": title[:400],
+                "origin_url": f"{_SBA_DETAIL_URL}?p=1&mid={guid}",
+                "region": "서울",
+                "target_type": "business",
+                "category": cat,
+                "summary_text": None,
+                "deadline_date": deadline,
+                "support_amount": None,
+            })
+
+        return items
+
+
+SCRAPER_REGISTRY.append(SbaScraper())

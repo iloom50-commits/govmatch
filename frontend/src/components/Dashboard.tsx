@@ -1803,8 +1803,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
 
             {/* 카테고리 필터 칩 + 정렬 */}
-            <div className="flex items-center gap-1">
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+            <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).map((chip) => {
                   const isActive = activeChips.has(chip.key);
                   const isLocal = chip.key === "내 지역";
@@ -1823,7 +1823,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                         });
                         setCurrentPage(1);
                       }}
-                      className={`flex items-center gap-1 px-1.5 py-1.5 text-[11px] font-semibold transition-all duration-150 whitespace-nowrap flex-shrink-0 ${
+                      className={`flex items-center gap-0.5 px-1 py-1.5 text-[11px] font-semibold transition-all duration-150 whitespace-nowrap flex-shrink-0 ${
                         isActive
                           ? `${activeColor} shadow-sm`
                           : isLocal

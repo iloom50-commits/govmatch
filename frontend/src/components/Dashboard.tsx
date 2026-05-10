@@ -1848,7 +1848,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
-                className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-bold transition-all border-r border-b border-slate-200 active:scale-95 ${
+                className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[13px] font-bold transition-all border-r border-b border-slate-200 active:scale-95 ${
                   showMatchedMode ? "bg-amber-50 text-amber-700" : "text-slate-400 hover:bg-amber-50/50 hover:text-amber-600"
                 }`}
               >
@@ -1862,7 +1862,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`flex items-center justify-center py-2.5 text-[11px] font-bold transition-all border-b border-slate-200 active:scale-95 ${i < 2 ? "border-r" : ""} ${isActive ? activeColor : "text-slate-500 hover:bg-slate-100"}`}
+                    className={`flex items-center justify-center py-2.5 text-[13px] font-bold transition-all border-b border-slate-200 active:scale-95 ${i < 2 ? "border-r" : ""} ${isActive ? activeColor : "text-slate-500 hover:bg-slate-100"}`}
                   >
                     {chip.label}
                   </button>
@@ -1871,7 +1871,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {/* Row 2: 📍내지역 | 칩3 | 칩4 | 칩5 */}
               <button
                 onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
-                className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-bold transition-all border-r border-slate-200 active:scale-95 ${
+                className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[13px] font-bold transition-all border-r border-slate-200 active:scale-95 ${
                   activeChips.has("내 지역") ? "bg-blue-600 text-white" : "text-blue-600 hover:bg-blue-50"
                 }`}
               >
@@ -1885,7 +1885,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`flex items-center justify-center py-2.5 text-[11px] font-bold transition-all border-slate-200 active:scale-95 ${i < 2 ? "border-r" : ""} ${isActive ? activeColor : "text-slate-500 hover:bg-slate-100"}`}
+                    className={`flex items-center justify-center py-2.5 text-[13px] font-bold transition-all border-slate-200 active:scale-95 ${i < 2 ? "border-r" : ""} ${isActive ? activeColor : "text-slate-500 hover:bg-slate-100"}`}
                   >
                     {chip.label}
                   </button>

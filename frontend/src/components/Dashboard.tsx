@@ -1851,19 +1851,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 })}
               </div>
 
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {onRefresh && (
-                  <button
-                    onClick={onRefresh}
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all active:scale-95"
-                    title="공고 새로고침"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-                    </svg>
-                  </button>
-                )}
-              </div>
             </div>
 
           </header>
@@ -1878,7 +1865,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               className={`w-full flex items-center justify-between px-4 py-3 border transition-all active:scale-[0.99] ${
                 showMatchedMode
                   ? "bg-amber-50 border-amber-300 shadow-sm"
-                  : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
+                  : "bg-amber-50/60 border-amber-200 hover:border-amber-300 hover:bg-amber-50"
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">

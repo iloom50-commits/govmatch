@@ -701,6 +701,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [saving, setSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+  const [isMobile, setIsMobile] = useState(false);
+  const [infiniteItems, setInfiniteItems] = useState<any[]>([]);
+  const lastLoadedPageRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [smartMatches, setSmartMatches] = useState<any[]>([]);
   const [smartLoading, setSmartLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -939,13 +943,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [matchedTotal, setMatchedTotal] = useState(0);
   const [matchedLoading, setMatchedLoading] = useState(false);
 
-  const fetchMatchedAnnouncements = useCallback(async (targetType: string) => {
+  const fetchMatchedAnnouncements = useCallback(async (targetType: string, page = 1) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (!token) return;
     setMatchedLoading(true);
     try {
       const res = await fetch(
-        `${API}/api/announcements/public?page=1&size=20&target_type=${targetType}&tab=local`,
+        `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=local`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const d = await res.json();
@@ -970,6 +974,43 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 탭 전환 시 맞춤모드 해제
   useEffect(() => { setShowMatchedMode(false); }, [majorTab]);
+
+  // 맞춤모드 활성 상태에서 페이지 변경 시 재fetch
+  useEffect(() => {
+    if (!showMatchedMode) return;
+    const targetType = majorTab === "business" ? "business" : "individual";
+    fetchMatchedAnnouncements(targetType, currentPage);
+  }, [showMatchedMode, currentPage, majorTab, fetchMatchedAnnouncements]);
+
+  // 모바일 감지
+  useEffect(() => { setIsMobile(window.innerWidth < 768); }, []);
+
+  // 필터 변경 시 무한스크롤 누적 초기화
+  useEffect(() => { setInfiniteItems([]); lastLoadedPageRef.current = 0; }, [majorTab, chipKey, searchQuery, showMatchedMode]);
+
+  // 모바일: publicData 누적
+  useEffect(() => {
+    if (!isMobile || publicData.length === 0) return;
+    if (currentPage === 1 || currentPage <= lastLoadedPageRef.current) {
+      setInfiniteItems(publicData);
+    } else {
+      setInfiniteItems(prev => [...prev, ...publicData]);
+    }
+    lastLoadedPageRef.current = currentPage;
+  }, [publicData]); // eslint-disable-line
+
+  // 모바일: IntersectionObserver sentinel → 자동 다음 페이지
+  useEffect(() => {
+    if (!isMobile || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || publicLoading) return;
+      const totalItems = publicServerTotal > 0 ? publicServerTotal : filteredMatches.length;
+      const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+      if (currentPage < totalPages) setCurrentPage(p => p + 1);
+    }, { rootMargin: "300px" });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isMobile, publicLoading, currentPage, publicServerTotal, filteredMatches.length]);
 
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
@@ -2006,6 +2047,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               ) : (
                 (() => {
                   if (showMatchedMode && matchedData.length > 0) return matchedData;
+                  if (isMobile) return infiniteItems.length > 0 ? infiniteItems : publicData;
                   if (publicData.length > 0) return publicData;
                   return filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
                 })().map((res, idx) => (
@@ -2028,48 +2070,49 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 ))
               )}
             </div>
-            {(() => {
-              const totalItems = publicServerTotal > 0 ? publicServerTotal : filteredMatches.length;
-              const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-              if (totalPages <= 1) return <div className="pb-20" />;
-              const maxVisible = 7;
-              let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-              let endPage = startPage + maxVisible - 1;
-              if (endPage > totalPages) { endPage = totalPages; startPage = Math.max(1, endPage - maxVisible + 1); }
-              const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
-              const goTo = (p: number) => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
-              return (
-                <div className="flex items-center justify-center gap-1.5 py-6 pb-20">
-                  <button
-                    onClick={() => goTo(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    이전
-                  </button>
-                  {pages.map(p => (
-                    <button
-                      key={p}
-                      onClick={() => goTo(p)}
-                      className={`w-9 h-9 text-sm font-bold rounded-lg transition-all ${
-                        p === currentPage
-                          ? "bg-indigo-600 text-white shadow-md"
-                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      {p}
+            {isMobile ? (
+              // 모바일: 무한 스크롤 sentinel
+              <>
+                <div ref={sentinelRef} className="h-2" />
+                {publicLoading && (
+                  <div className="flex justify-center py-4">
+                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+                <div className="pb-20" />
+              </>
+            ) : (
+              // PC: 번호 페이지네이션
+              (() => {
+                const totalItems = showMatchedMode ? matchedTotal : publicServerTotal > 0 ? publicServerTotal : filteredMatches.length;
+                const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+                if (totalPages <= 1) return <div className="pb-20" />;
+                const maxVisible = 7;
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                let endPage = startPage + maxVisible - 1;
+                if (endPage > totalPages) { endPage = totalPages; startPage = Math.max(1, endPage - maxVisible + 1); }
+                const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+                const goTo = (p: number) => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
+                return (
+                  <div className="flex items-center justify-center gap-1.5 py-6 pb-20">
+                    <button onClick={() => goTo(currentPage - 1)} disabled={currentPage === 1}
+                      className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                      이전
                     </button>
-                  ))}
-                  <button
-                    onClick={() => goTo(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    다음
-                  </button>
-                </div>
-              );
-            })()}
+                    {pages.map(p => (
+                      <button key={p} onClick={() => goTo(p)}
+                        className={`w-9 h-9 text-sm font-bold rounded-lg transition-all ${p === currentPage ? "bg-indigo-600 text-white shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"}`}>
+                        {p}
+                      </button>
+                    ))}
+                    <button onClick={() => goTo(currentPage + 1)} disabled={currentPage === totalPages}
+                      className="px-3 py-2 text-sm font-bold rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                      다음
+                    </button>
+                  </div>
+                );
+              })()
+            )}
             </>
           )}
 

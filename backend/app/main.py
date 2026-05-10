@@ -2394,7 +2394,7 @@ def api_announcements_public(
                                     WHERE announcement_id IN ({id_list})
                                       AND {valid_announcement_where()}"""
                             )
-                            rows_map = {{r["announcement_id"]: dict(r) for r in _pcur.fetchall()}}
+                            rows_map = {r["announcement_id"]: dict(r) for r in _pcur.fetchall()}
                             rows = [rows_map[i] for i in page_ids if i in rows_map]
                         else:
                             rows = []

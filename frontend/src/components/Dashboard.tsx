@@ -1057,6 +1057,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   // 모바일 뒤로가기로 사이드바 닫기
   useModalBack(sidebarOpen, () => setSidebarOpen(false));
+  useModalBack(showMatchedMode, () => setShowMatchedMode(false));
 
   const isFree = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
 

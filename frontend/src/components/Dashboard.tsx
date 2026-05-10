@@ -396,7 +396,18 @@ interface MatchItem {
 // 대분류
 type MajorTab = "business" | "individual";
 
-// 지역/전국 2탭 구조 (카테고리 탭 대체)
+// 카테고리 필터 칩 — 복수 선택 가능, "내 지역"은 tab=local 매핑
+const CATEGORY_CHIPS: { label: string; key: string }[] = [
+  { label: "자금",    key: "자금·지원" },
+  { label: "기술",    key: "기술·개발" },
+  { label: "수출",    key: "수출·판로" },
+  { label: "인력",    key: "인력·교육" },
+  { label: "창업",    key: "창업·스케일업" },
+  { label: "경영",    key: "경영·법률" },
+  { label: "내 지역", key: "내 지역" },
+];
+
+// 하위 호환 — activeTab 단일값 기반 로직이 남아있는 동안 유지
 const PUBLIC_TABS: { label: string; key: string; tabParam: string }[] = [
   { label: "전체",    key: "all",      tabParam: "" },
   { label: "내 지역", key: "local",    tabParam: "local" },
@@ -520,11 +531,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const userType = profile?.user_type || "both";
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
-  const [activeTab, setActiveTab] = useState("all");
+  // 카테고리 필터 칩 — 복수 선택 Set (빈 Set = 전체)
+  const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
+  // useEffect dependency용 — Set은 참조 비교라 문자열로 변환
+  const chipKey = Array.from(activeChips).sort().join(",");
+  // 하위 호환: activeTab / setActiveTab 별칭 (단계적 제거 예정)
+  const activeTab = activeChips.size === 0 ? "all" : activeChips.has("내 지역") && activeChips.size === 1 ? "local" : "category";
+  const setActiveTab = (v: string) => { if (v === "all") setActiveChips(new Set()); };
   // 탭 전환 — View Transitions API (미지원 브라우저는 즉시 전환)
   const switchMajorTab = (next: MajorTab) => {
     if (next === majorTab) return;
-    const apply = () => { setMajorTab(next); setActiveTab("all"); onMajorTabChange?.(next); };
+    const apply = () => { setMajorTab(next); setActiveChips(new Set()); onMajorTabChange?.(next); };
     // PC(마우스 호버 가능 + 정밀 포인터)에서는 View Transitions API 잔상 이슈로 즉시 전환
     // 모바일(터치)에서만 슬라이드 애니메이션 사용
     const isDesktop = typeof window !== "undefined"
@@ -564,9 +581,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (dx < 0 && majorTab === "business") switchMajorTab("individual");
     else if (dx > 0 && majorTab === "individual") switchMajorTab("business");
   };
-  // 지역/전국 2탭 구조 (기업/개인 공통)
-  const currentTabs = PUBLIC_TABS;
-
   // 탭 노출: 모든 사용자에게 전체 탭 표시 (열람은 자유, AI매칭/알림만 user_type 기반)
   const showBusinessTab = true;
   const showIndividualTab = true;
@@ -902,7 +916,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
 
   // 탭/검색 변경 시 페이지 리셋
-  useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, activeTab, searchQuery]);
+  useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
 
   const newMatchCount = 0;
 
@@ -911,7 +925,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [publicServerTotal, setPublicServerTotal] = useState(0);  // 현재 탭 페이지네이션용
   const [publicAllTotal, setPublicAllTotal] = useState(0);         // 전체 탭 카운트 표시용
   const [publicLoading, setPublicLoading] = useState(false);
-  const [tabCacheCounts, setTabCacheCounts] = useState<Record<string, number>>({});
   const publicCache = useRef<Record<string, { data: any[]; total: number }>>({});
 
   const usePublicData = true;  // 전체 공고 항상 API 데이터 사용 (일별 로테이션 맞춤 정렬)
@@ -919,16 +932,18 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 서버 데이터 로드
   useEffect(() => {
     const targetType = majorTab === "business" ? "business" : "individual";
-    const tabDef = currentTabs.find((t) => t.key === activeTab);
-    const tabParam = tabDef?.tabParam || "";
     const search = searchQuery.trim();
     const page = currentPage;
 
-    const cacheKey = `${targetType}:${tabParam}:${page}:${search}`;
+    // 칩 기반 파라미터 계산
+    const hasLocal = activeChips.has("내 지역");
+    const catChips = Array.from(activeChips).filter(c => c !== "내 지역").sort();
+    const cacheKey = `${targetType}:${chipKey}:${page}:${search}`;
+
     if (publicCache.current[cacheKey]) {
       setPublicData(publicCache.current[cacheKey].data);
       setPublicServerTotal(publicCache.current[cacheKey].total);
-      if (activeTab === "all") setPublicAllTotal(publicCache.current[cacheKey].total);
+      if (activeChips.size === 0) setPublicAllTotal(publicCache.current[cacheKey].total);
       return;
     }
 
@@ -937,7 +952,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
     let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
-    else if (tabParam) url += `&tab=${tabParam}`;
+    else {
+      if (hasLocal) url += `&tab=local`;
+      if (catChips.length > 0) url += `&category=${encodeURIComponent(catChips.join(","))}`;
+    }
 
     const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     fetch(url, {
@@ -948,37 +966,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         if (d.status === "SUCCESS") {
           setPublicData(d.data || []);
           setPublicServerTotal(d.total || 0);
-          if (activeTab === "all") {
+          if (activeChips.size === 0) {
             setPublicAllTotal(d.total || 0);
-            // 전체 탭 응답에 local/national 카운트가 포함된 경우 즉시 반영
-            if (d.local_total !== undefined || d.national_total !== undefined) {
-              setTabCacheCounts({
-                local: d.local_total || 0,
-                national: d.national_total || 0,
-              });
-            }
-            // 백그라운드 pre-fetch: 현재 탭 local/national + 반대 타겟타입 all/local/national
+            // 전체(칩 미선택) — 반대 타겟타입 백그라운드 pre-fetch
             const _t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
             const _h: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {};
-            const _bgFetch = (tt: string, tab: string) => {
-              const bgKey = `${tt}:${tab}:1:`;
-              if (!publicCache.current[bgKey]) {
-                const url = `${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${tt}${tab ? `&tab=${tab}` : ""}`;
-                fetch(url, { headers: _h })
-                  .then(r => r.json())
-                  .then(bd => {
-                    if (bd.status === "SUCCESS") {
-                      publicCache.current[bgKey] = { data: bd.data || [], total: bd.total || 0 };
-                    }
-                  })
-                  .catch(() => {});
-              }
-            };
-            // 현재 타겟타입: local/national
-            (["local", "national"] as const).forEach(tab => _bgFetch(targetType, tab));
-            // 반대 타겟타입: all/local/national 전부
             const otherType = targetType === "business" ? "individual" : "business";
-            (["", "local", "national"] as const).forEach(tab => _bgFetch(otherType, tab));
+            const bgKey = `${otherType}::1:`;
+            if (!publicCache.current[bgKey]) {
+              fetch(`${API}/api/announcements/public?page=1&size=${ITEMS_PER_PAGE}&target_type=${otherType}`, { headers: _h })
+                .then(r => r.json())
+                .then(bd => {
+                  if (bd.status === "SUCCESS") publicCache.current[bgKey] = { data: bd.data || [], total: bd.total || 0 };
+                })
+                .catch(() => {});
+            }
           }
           publicCache.current[cacheKey] = { data: d.data || [], total: d.total || 0 };
           if (d.total) setTotalAnnouncementCount(prev => prev || d.total);
@@ -989,7 +991,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       })
       .catch(() => {})
       .finally(() => setPublicLoading(false));
-  }, [isPublic, majorTab, activeTab, currentPage, searchQuery]);
+  }, [isPublic, majorTab, chipKey, currentPage, searchQuery]);
 
 
   // 사이드바 열릴 때 body 스크롤 잠금
@@ -1152,8 +1154,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       return n;
     };
 
-    // 카테고리 탭이 "전체"가 아닌 경우 → 서버 공고 데이터 사용 (카테고리 필터링은 서버에서)
-    if (activeTab !== "all" && publicData.length > 0) {
+    // 카테고리 칩이 하나라도 선택된 경우 → 서버 공고 데이터 사용 (카테고리 필터링은 서버에서)
+    if (activeChips.size > 0 && publicData.length > 0) {
       let result = [...publicData];
       if (sortKey === "amount") {
         result.sort((a, b) => _parseAmount(b.support_amount || "") - _parseAmount(a.support_amount || ""));
@@ -1205,15 +1207,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
 
     return result;
-  }, [baseMatches, activeTab, sortKey, currentTabs, searchQuery, isPublic, publicData]);
+  }, [baseMatches, activeChips, chipKey, sortKey, searchQuery, isPublic, publicData]);
 
   const searchedMatches = baseMatches;
-
-  const tabCounts = useMemo((): Record<string, number> => ({
-    all: publicAllTotal,
-    local: tabCacheCounts.local ?? 0,
-    national: tabCacheCounts.national ?? 0,
-  }), [publicAllTotal, tabCacheCounts]);
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
@@ -1747,35 +1743,48 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </div>
 
-            {/* 하위 카테고리 탭 + 정렬 */}
-            <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1.5 rounded-lg border border-white/80 shadow-sm">
-              {/* 전체/내 지역/전국 탭 버튼 — 모바일·데스크탑 공통 */}
+            {/* 카테고리 필터 칩 + 정렬 */}
+            <div className="flex items-center gap-1.5">
+              {/* 필터 칩 — 복수 선택, 토글 */}
               <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
-                {currentTabs.map((tab) => {
-                  const count = tabCounts[tab.key] || 0;
+                {CATEGORY_CHIPS.map((chip) => {
+                  const isActive = activeChips.has(chip.key);
+                  const isLocal = chip.key === "내 지역";
+                  const activeColor = majorTab === "business"
+                    ? "bg-slate-950 text-white shadow-md"
+                    : "bg-emerald-700 text-white shadow-md";
                   return (
                     <button
-                      key={tab.key}
-                      onClick={() => setActiveTab(tab.key)}
-                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[11px] font-bold transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
-                        activeTab === tab.key
-                          ? majorTab === "business"
-                            ? "bg-slate-950 text-white shadow-md"
-                            : "bg-emerald-700 text-white shadow-md"
-                          : "text-slate-500 hover:bg-slate-50"
+                      key={chip.key}
+                      onClick={() => {
+                        setActiveChips(prev => {
+                          const next = new Set(prev);
+                          if (next.has(chip.key)) next.delete(chip.key);
+                          else next.add(chip.key);
+                          return next;
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 border ${
+                        isActive
+                          ? `${activeColor} border-transparent`
+                          : isLocal
+                            ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                            : "bg-white/80 text-slate-500 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
-                      {tab.label}
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
-                        activeTab === tab.key
-                          ? "bg-white/20 text-white/80"
-                          : "bg-slate-100 text-slate-400"
-                      }`}>
-                        {count.toLocaleString()}
-                      </span>
+                      {isLocal ? "📍 " : ""}{chip.label}
                     </button>
                   );
                 })}
+                {activeChips.size > 0 && (
+                  <button
+                    onClick={() => { setActiveChips(new Set()); setCurrentPage(1); }}
+                    className="px-2 py-1.5 rounded-full text-[10px] font-bold text-slate-400 hover:text-slate-600 whitespace-nowrap flex-shrink-0"
+                  >
+                    전체
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">

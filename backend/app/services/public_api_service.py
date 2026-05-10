@@ -829,7 +829,7 @@ class GovernmentAPIService:
 
     async def fetch_gov24_services(self, page=1, per_page=100):
         """보조금24 (정부24) 공공서비스 목록 조회 - 기업/소상공인 + 부처별 확장"""
-        api_key = os.getenv("GOV24_API_KEY")
+        api_key = os.getenv("GOV24_API_KEY") or self._get_api_key()
         if not api_key:
             print("  [WARN] GOV24_API_KEY not set. Skipping 보조금24.")
             return []
@@ -1067,6 +1067,114 @@ class GovernmentAPIService:
             })
         return mapped
 
+    # ─── 중앙부처 복지서비스 API (한국사회보장정보원) ───
+
+    async def fetch_national_welfare(self, per_page=100):
+        """중앙부처복지서비스 목록 조회 (한국사회보장정보원 API, XML 응답)
+        엔드포인트: apis.data.go.kr/B554287/NationalWelfareInformations/NationalWelfarelist
+        총 약 400~600건, 개인 대상 복지급여·혜택 중심
+        """
+        import xml.etree.ElementTree as ET
+
+        api_key = self._get_api_key()
+        if not api_key:
+            print("  [WARN] PUBLIC_DATA_PORTAL_KEY not set. Skipping 중앙부처복지서비스.")
+            return []
+
+        all_items = []
+        for pg in range(1, 20):  # 최대 20페이지 (2,000건)
+            try:
+                url = (
+                    "https://apis.data.go.kr/B554287/NationalWelfareInformations/NationalWelfarelist"
+                    f"?serviceKey={api_key}&pageNo={pg}&numOfRows={per_page}"
+                )
+                print(f"  [API] 중앙부처복지서비스 page {pg}...")
+                resp = requests.get(url, timeout=15)
+
+                if resp.status_code != 200:
+                    print(f"    [ERR] 중앙부처복지 API Status {resp.status_code}")
+                    break
+
+                resp.encoding = "utf-8"
+                root = ET.fromstring(resp.text)
+
+                result_code = root.findtext(".//resultCode")
+                if result_code and result_code not in ("0", "00"):
+                    msg = root.findtext(".//resultMsg", "")
+                    print(f"    [ERR] 중앙부처복지 API: {result_code} - {msg}")
+                    break
+
+                items = root.findall(".//servList") or root.findall(".//item")
+                if not items:
+                    break
+
+                for item in items:
+                    entry = {child.tag: (child.text or "") for child in item}
+                    all_items.append(entry)
+
+                total = root.findtext(".//totalCount") or root.findtext(".//totalCnt")
+                if total and pg * per_page >= int(total):
+                    break
+
+            except Exception as e:
+                print(f"    [ERR] 중앙부처복지 Exception: {e}")
+                break
+
+        print(f"  [API] 중앙부처복지서비스: {len(all_items)} items fetched")
+        return self._map_national_welfare_fields(all_items)
+
+    def _map_national_welfare_fields(self, items):
+        """중앙부처복지서비스 XML 응답 매핑 → target_type='individual'"""
+        mapped = []
+        for item in items:
+            title = item.get("servNm") or ""
+            if not title:
+                continue
+
+            serv_id = item.get("servId") or ""
+            detail_url = (
+                item.get("servDtlLink") or
+                (f"https://www.bokjiro.go.kr/ssis-teu/twataa/wlfareInfo/moveTWAT52011M.do"
+                 f"?wlfareInfoId={serv_id}" if serv_id else "")
+            )
+            if not detail_url:
+                continue
+
+            dept = item.get("jurMnofNm") or item.get("jurOrgNm") or "보건복지부"
+            summary = item.get("servDgst") or item.get("servSumry") or ""
+            target = item.get("trgterIndvdlNm") or item.get("sprtTrgtCn") or ""
+            theme = item.get("intrsThemaNmArray") or ""
+            life_stage = item.get("lifeNmArray") or ""
+
+            # 지역: 중앙부처는 대부분 전국
+            region = item.get("ctpvNm") or "전국"
+
+            category = self._map_individual_category(theme or summary)
+
+            eligibility = {}
+            if target:
+                eligibility["target_description"] = target[:500]
+            if life_stage:
+                eligibility["life_stage"] = life_stage
+            if theme:
+                eligibility["theme"] = theme
+
+            support_amount = self._extract_amount_from_text(summary or target or title)
+            mapped.append({
+                "title": title,
+                "url": detail_url,
+                "description": (summary or target)[:1000],
+                "department": dept,
+                "category": category,
+                "origin_source": "national-welfare-api",
+                "region": region,
+                "deadline_date": None,
+                "eligibility_logic": eligibility,
+                "target_type": "individual",
+                "support_amount": support_amount,
+            })
+        return mapped
+
     async def enrich_local_welfare_details(self, batch_size=100):
         """지자체복지서비스 상세 API 호출하여 마감일·지원내용 보강 (배치)
 
@@ -1214,7 +1322,7 @@ class GovernmentAPIService:
         summary_text를 풍부하게 보강합니다.
         보강 완료: summary_text 앞에 '[상세보강]' 마커 추가.
         """
-        api_key = os.getenv("GOV24_API_KEY")
+        api_key = os.getenv("GOV24_API_KEY") or self._get_api_key()
         if not api_key:
             print("  [Enrich-Gov24] GOV24_API_KEY not set. Skipping.")
             return {"updated": 0, "skipped": 0, "errors": 0}
@@ -1341,7 +1449,7 @@ class GovernmentAPIService:
         기존: 19개 키워드 검색 → 2,380건만 수집
         변경: 전체 페이지네이션으로 10,918건 전부 수집, 사용자구분=개인/가구 필터
         """
-        api_key = os.getenv("GOV24_API_KEY")
+        api_key = os.getenv("GOV24_API_KEY") or self._get_api_key()
         if not api_key:
             print("  [WARN] GOV24_API_KEY not set. Skipping 개인 복지서비스.")
             return []

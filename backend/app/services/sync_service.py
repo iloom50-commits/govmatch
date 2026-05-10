@@ -185,6 +185,9 @@ class SyncService:
 
                 local_welfare_results = await gov_api_service.fetch_local_gov_welfare()
                 all_results.extend(local_welfare_results)
+
+                national_welfare_results = await gov_api_service.fetch_national_welfare()
+                all_results.extend(national_welfare_results)
             else:
                 print("  [Skip] 개인 복지서비스 — 주 1회(월요일)만 전체 동기화")
         except Exception as e:

@@ -933,6 +933,44 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const newMatchCount = 0;
 
+  // 맞춤공고 모드
+  const [showMatchedMode, setShowMatchedMode] = useState(false);
+  const [matchedData, setMatchedData] = useState<any[]>([]);
+  const [matchedTotal, setMatchedTotal] = useState(0);
+  const [matchedLoading, setMatchedLoading] = useState(false);
+
+  const fetchMatchedAnnouncements = useCallback(async (targetType: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    setMatchedLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/api/announcements/public?page=1&size=20&target_type=${targetType}&tab=local`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const d = await res.json();
+      if (d.status === "SUCCESS") {
+        setMatchedData(d.data || []);
+        setMatchedTotal(d.total || 0);
+      }
+    } catch { /* silent */ }
+    setMatchedLoading(false);
+  }, []);
+
+  const toggleMatchedMode = useCallback(() => {
+    if (!profile) { handleLoginRequired(); return; }
+    setShowMatchedMode(prev => {
+      if (!prev) {
+        const targetType = majorTab === "business" ? "business" : "individual";
+        fetchMatchedAnnouncements(targetType);
+      }
+      return !prev;
+    });
+  }, [profile, majorTab, fetchMatchedAnnouncements]);
+
+  // 탭 전환 시 맞춤모드 해제
+  useEffect(() => { setShowMatchedMode(false); }, [majorTab]);
+
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
   const [publicServerTotal, setPublicServerTotal] = useState(0);  // 현재 탭 페이지네이션용
@@ -1832,6 +1870,46 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* Hot이슈 티커 — 임시 비활성화 */}
           {/* <HotIssueTicker /> */}
 
+          {/* ⭐ 맞춤공고 배너 */}
+          {!searchQuery.trim() && (
+            <button
+              onClick={toggleMatchedMode}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all active:scale-[0.99] ${
+                showMatchedMode
+                  ? "bg-amber-50 border-amber-300 shadow-sm"
+                  : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"
+              }`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="text-lg flex-shrink-0">⭐</span>
+                <div className="text-left min-w-0">
+                  <p className={`text-[13px] font-bold leading-none ${showMatchedMode ? "text-amber-700" : "text-slate-700"}`}>
+                    {profile ? "내 맞춤공고" : "맞춤공고 (로그인 필요)"}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    {profile
+                      ? (showMatchedMode ? `${matchedTotal}건 · 클릭하면 전체 목록으로` : "내 프로필 기반 AI 맞춤 공고 보기")
+                      : "로그인 후 AI가 선별한 맞춤 공고를 확인하세요"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                {matchedLoading && (
+                  <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                )}
+                {!matchedLoading && showMatchedMode && (
+                  <span className="text-[11px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">{matchedTotal}건</span>
+                )}
+                <svg
+                  className={`w-4 h-4 transition-transform ${showMatchedMode ? "rotate-90 text-amber-500" : "text-slate-400"}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+          )}
+
           {searchQuery.trim() && !searchLoading && searchResults && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">
               &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>
@@ -1966,12 +2044,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <div className="h-8 w-32 bg-slate-100 rounded-lg mt-2" />
                   </div>
                 ))
+              ) : matchedLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-amber-50 rounded-2xl border border-amber-100 p-4 space-y-3 animate-pulse">
+                    <div className="flex gap-2">
+                      <div className="h-5 w-16 bg-amber-100 rounded-full" />
+                      <div className="h-5 w-20 bg-amber-100 rounded-full" />
+                    </div>
+                    <div className="h-4 w-full bg-amber-100 rounded" />
+                    <div className="h-4 w-4/5 bg-amber-100 rounded" />
+                  </div>
+                ))
               ) : (
                 (() => {
-                  // 항상 서버 공고 표시 (맞춤 결과는 ⭐맞춤 탭에서만)
-                  if (publicData.length > 0) {
-                    return publicData;
-                  }
+                  if (showMatchedMode && matchedData.length > 0) return matchedData;
+                  if (publicData.length > 0) return publicData;
                   return filteredMatches.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
                 })().map((res, idx) => (
                   <div

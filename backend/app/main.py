@@ -2744,8 +2744,8 @@ def api_announcements_public(
                 _tab_where += " AND category = %s"
                 _tab_params.append(_tab_cats[0])
             elif len(_tab_cats) > 1:
-                _tab_where += " AND category = ANY(%s)"
-                _tab_params.append(_tab_cats)
+                _tab_where += " AND category IN (" + ", ".join(["%s"] * len(_tab_cats)) + ")"
+                _tab_params.extend(_tab_cats)
         if tab == "national":
             _tab_where += " AND (region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All'))"
         elif tab == "local":
@@ -2831,8 +2831,8 @@ def api_announcements_public(
             where_clauses.append("category = %s")
             params.append(_cats[0])
         elif len(_cats) > 1:
-            where_clauses.append("category = ANY(%s)")
-            params.append(_cats)
+            where_clauses.append("category IN (" + ", ".join(["%s"] * len(_cats)) + ")")
+            params.extend(_cats)
     if search:
         # 공백으로 단어 분리
         words = search.strip().split()

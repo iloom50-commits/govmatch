@@ -1874,7 +1874,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {!searchQuery.trim() && (
             <button
               onClick={toggleMatchedMode}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all active:scale-[0.99] ${
+              className={`w-full flex items-center justify-between px-4 py-3 border transition-all active:scale-[0.99] ${
                 showMatchedMode
                   ? "bg-amber-50 border-amber-300 shadow-sm"
                   : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/40"

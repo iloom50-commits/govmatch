@@ -591,3 +591,118 @@ class JejuTpScraper(BaseScraper):
 
 
 SCRAPER_REGISTRY.append(JejuTpScraper())
+
+
+# ── 인천테크노파크 (itp.or.kr) ─────────────────────────────────────────────────
+_ITP_BASE = "https://itp.or.kr"
+_ITP_BOARD_URL = f"{_ITP_BASE}/intro.asp"
+_ITP_TMID = "13"
+_ITP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "Connection": "keep-alive",
+}
+# 게시판 행: href="javascript:fncShow('SEQ')">TITLE</a>
+_ITP_ITEM_RE = re.compile(
+    r'href="javascript:fncShow\(\'(\d+)\'\)">(.*?)</a>', re.DOTALL
+)
+_ITP_STATUS_RE = re.compile(r"alt='(진행중|마감)'")
+_ITP_CAT_RE = re.compile(r'<td class="subjectc">(.*?)</td>', re.DOTALL)
+
+
+class ItpScraper(BaseScraper):
+    """인천테크노파크 (itp.or.kr) — Classic ASP + session cookie 필요."""
+
+    name = "itp"
+    display_name = "인천테크노파크(ITP)"
+    origin_url_prefix = f"{_ITP_BASE}/intro.asp?tmid={_ITP_TMID}&seq="
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        import datetime as _dt
+
+        sess = requests.Session()
+        sess.verify = False
+        # 메인 방문으로 ASPSESSIONID 쿠키 획득
+        try:
+            sess.get(_ITP_BASE + "/", headers=_ITP_HEADERS, timeout=15, allow_redirects=True)
+        except Exception:
+            pass
+
+        page_headers = {**_ITP_HEADERS, "Referer": f"{_ITP_BOARD_URL}?tmid={_ITP_TMID}"}
+
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for page_num in range(1, 50):
+            try:
+                if page_num == 1:
+                    resp = sess.get(
+                        _ITP_BOARD_URL,
+                        params={"tmid": _ITP_TMID},
+                        headers=page_headers,
+                        timeout=20,
+                    )
+                else:
+                    resp = sess.post(
+                        _ITP_BOARD_URL,
+                        params={"tmid": _ITP_TMID},
+                        data={"PageNum": str(page_num), "PageYOffset": "0"},
+                        headers={
+                            **page_headers,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                        timeout=20,
+                    )
+                resp.raise_for_status()
+            except Exception:
+                break
+
+            html = resp.text
+            seqs_titles = _ITP_ITEM_RE.findall(html)
+            statuses = _ITP_STATUS_RE.findall(html)
+            categories = [_clean(c) for c in _ITP_CAT_RE.findall(html)]
+
+            if not seqs_titles:
+                break
+
+            found_new = False
+            all_expired = True
+
+            for i, (seq, raw_title) in enumerate(seqs_titles):
+                if seq in seen:
+                    continue
+                seen.add(seq)
+
+                status = statuses[i] if i < len(statuses) else "진행중"
+                if status == "마감":
+                    continue  # 마감된 공고 제외
+                all_expired = False
+
+                title = _clean(raw_title)
+                if not title or len(title) < 5:
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                found_new = True
+                items.append({
+                    "title": title[:400],
+                    "origin_url": f"{_ITP_BASE}/intro.asp?tmid={_ITP_TMID}&seq={seq}",
+                    "region": "인천",
+                    "target_type": "business",
+                    "category": categories[i] if i < len(categories) else None,
+                    "summary_text": None,
+                    "deadline_date": None,  # 목록에 마감일 미노출 — 상태로 필터
+                    "support_amount": None,
+                })
+
+            if all_expired:
+                break
+            if not found_new:
+                break
+
+        return items
+
+
+SCRAPER_REGISTRY.append(ItpScraper())

@@ -1803,8 +1803,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
 
             {/* 카테고리 필터 칩 + 정렬 */}
-            <div className="flex items-center gap-0.5">
-              <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+            <div className="flex items-center">
+              <div className="flex items-center overflow-x-auto scrollbar-hide min-w-0 flex-1">
                 {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).map((chip) => {
                   const isActive = activeChips.has(chip.key);
                   const isLocal = chip.key === "내 지역";

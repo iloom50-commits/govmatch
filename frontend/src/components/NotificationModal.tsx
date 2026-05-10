@@ -507,7 +507,6 @@ export default function NotificationModal({
   // 유형 변경 시 스텝 리셋 + 자동 다음
   const handleTypeChange = (val: UserType) => {
     setUserType(val);
-    setInterests([]);
     setCustomKeywords([]);
     // 선택 즉시 다음 스텝으로 이동 (짧은 딜레이로 애니메이션 느낌)
     setTimeout(() => setStep(s => s + 1), 150);

@@ -205,6 +205,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
+  const [localScraperRunning, setLocalScraperRunning] = useState(false);
+  const [localScraperResult, setLocalScraperResult] = useState<{name:string;label:string;saved:number;expired:number;dup:number;total:number;error?:string}[]|null>(null);
+  const [localScraperFinishedAt, setLocalScraperFinishedAt] = useState<string|null>(null);
   const [digestSending, setDigestSending] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -613,6 +616,45 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     } catch {
       toast('수동 URL 수집 오류', 'error');
       setManualSyncing(false);
+    }
+  };
+
+  const pollLocalScraperStatus = useCallback(async () => {
+    const poll = async () => {
+      try {
+        const res = await authFetch(`${API_URL}/api/admin/local-scrapers/status`);
+        const data = await res.json();
+        const d = data.data;
+        if (!d.running) {
+          setLocalScraperRunning(false);
+          setLocalScraperResult(d.result || null);
+          setLocalScraperFinishedAt(d.finished_at || null);
+        } else {
+          setTimeout(poll, 3000);
+        }
+      } catch {
+        setLocalScraperRunning(false);
+      }
+    };
+    poll();
+  }, [authFetch]);
+
+  const handleRunLocalScrapers = async () => {
+    setLocalScraperRunning(true);
+    setLocalScraperResult(null);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/local-scrapers/run`, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'ALREADY_RUNNING') {
+        toast('이미 수집 중입니다.', 'info');
+        pollLocalScraperStatus();
+      } else if (data.status === 'STARTED') {
+        toast('로컬 스크래퍼 수집 시작', 'info');
+        pollLocalScraperStatus();
+      }
+    } catch {
+      toast('수집 오류 — 로컬 백엔드(127.0.0.1:8000)가 실행 중인지 확인하세요.', 'error');
+      setLocalScraperRunning(false);
     }
   };
 
@@ -1600,6 +1642,70 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Section: 로컬 전용 스크래퍼 */}
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FiGlobe className="text-orange-500" /> 로컬 전용 스크래퍼
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">Railway 서버 IP가 차단된 사이트 — 로컬 PC에서만 수집 가능</p>
+            </div>
+            <button
+              onClick={handleRunLocalScrapers}
+              disabled={localScraperRunning}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all border ${
+                localScraperRunning
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'
+              }`}
+            >
+              <FiRefreshCw className={localScraperRunning ? 'animate-spin' : ''} size={14} />
+              {localScraperRunning ? '수집 중...' : '지금 수집'}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">기관</th>
+                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">사이트</th>
+                  <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">저장</th>
+                  <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">마감제외</th>
+                  <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">중복</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {[
+                  {name:'gwangju_tp', label:'광주테크노파크',   site:'www.gjtp.or.kr'},
+                  {name:'jeonnam_tp', label:'전남테크노파크',   site:'www.jntp.or.kr'},
+                  {name:'jeonbuk_tp', label:'전북테크노파크',   site:'www.jbtp.or.kr'},
+                  {name:'kicet',      label:'한국세라믹기술원', site:'www.kicet.re.kr'},
+                ].map(info => {
+                  const r = localScraperResult?.find(x => x.name === info.name);
+                  return (
+                    <tr key={info.name} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3 font-medium text-slate-800">{info.label}</td>
+                      <td className="px-5 py-3 text-slate-400 text-xs">{info.site}</td>
+                      <td className="px-5 py-3 text-right">
+                        {r ? <span className={`font-bold ${r.saved > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{r.error ? '오류' : `${r.saved}건`}</span> : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-5 py-3 text-right text-slate-400 text-xs">{r && !r.error ? `${r.expired}건` : '—'}</td>
+                      <td className="px-5 py-3 text-right text-slate-400 text-xs">{r && !r.error ? `${r.dup}건` : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {localScraperFinishedAt && (
+              <div className="px-5 py-2 border-t border-slate-100 text-xs text-slate-400">
+                마지막 수집: {localScraperFinishedAt}
+              </div>
+            )}
           </div>
         </section>
 

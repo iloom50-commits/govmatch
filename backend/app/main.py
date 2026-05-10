@@ -2738,6 +2738,14 @@ def api_announcements_public(
         if target_type:
             _tab_where += " AND (target_type = %s OR target_type = 'both')"
             _tab_params.append(target_type)
+        if category:
+            _tab_cats = [c.strip() for c in category.split(",") if c.strip()]
+            if len(_tab_cats) == 1:
+                _tab_where += " AND category = %s"
+                _tab_params.append(_tab_cats[0])
+            elif len(_tab_cats) > 1:
+                _tab_where += " AND category = ANY(%s)"
+                _tab_params.append(_tab_cats)
         if tab == "national":
             _tab_where += " AND (region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All'))"
         elif tab == "local":
@@ -2818,8 +2826,13 @@ def api_announcements_public(
             where_clauses.append("(region = %s OR region = %s)")
             params.extend([region, _nr])
     if category:
-        where_clauses.append("category ILIKE %s")
-        params.append(f"%{category}%")
+        _cats = [c.strip() for c in category.split(",") if c.strip()]
+        if len(_cats) == 1:
+            where_clauses.append("category = %s")
+            params.append(_cats[0])
+        elif len(_cats) > 1:
+            where_clauses.append("category = ANY(%s)")
+            params.append(_cats)
     if search:
         # 공백으로 단어 분리
         words = search.strip().split()
@@ -9877,6 +9890,108 @@ async def trigger_admin_sync():
 @app.get("/api/admin/sync-manual-status", dependencies=[Depends(_verify_admin)])
 def get_manual_sync_status():
     return {"status": "SUCCESS", "data": manual_sync_status}
+
+
+# ── 로컬 전용 스크래퍼 (Railway IP 차단 사이트) ──────────────────────────────
+_local_scraper_status: dict = {"running": False, "result": None}
+
+_LOCAL_SCRAPER_INFO = [
+    {"name": "gwangju_tp",  "label": "광주테크노파크",   "site": "www.gjtp.or.kr"},
+    {"name": "jeonnam_tp",  "label": "전남테크노파크",   "site": "www.jntp.or.kr"},
+    {"name": "jeonbuk_tp",  "label": "전북테크노파크",   "site": "www.jbtp.or.kr"},
+    {"name": "kicet",       "label": "한국세라믹기술원", "site": "www.kicet.re.kr"},
+    {"name": "daejeon_tp",  "label": "대전테크노파크",   "site": "djtp.or.kr"},
+]
+
+def _run_local_scrapers_in_thread():
+    import datetime
+    _local_scraper_status["running"] = True
+    _local_scraper_status["result"] = None
+    results = []
+    try:
+        from app.services.scrapers.tier1.tp_scrapers import GjtpScraper, JntpScraper, JbtpScraper, DjtpScraper
+        from app.services.scrapers.tier1.agency_scrapers7 import KicetScraper
+
+        scraper_map = [
+            (GjtpScraper(), "gwangju_tp",  "광주테크노파크",   "scraper:gwangju_tp"),
+            (JntpScraper(), "jeonnam_tp",  "전남테크노파크",   "scraper:jeonnam_tp"),
+            (JbtpScraper(), "jeonbuk_tp",  "전북테크노파크",   "scraper:jeonbuk_tp"),
+            (KicetScraper(),"kicet",       "한국세라믹기술원", "scraper:kicet"),
+            (DjtpScraper(), "daejeon_tp",  "대전테크노파크",   "scraper:daejeon_tp"),
+        ]
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        today = datetime.date.today()
+
+        for scraper, name, label, source in scraper_map:
+            try:
+                items = scraper.fetch_items() or []
+            except Exception as e:
+                results.append({"name": name, "label": label, "error": str(e), "saved": 0, "expired": 0, "dup": 0})
+                continue
+
+            saved = expired = dup = 0
+            for it in items:
+                dl = it.get("deadline_date")
+                if dl:
+                    try:
+                        if datetime.date.fromisoformat(str(dl)) < today:
+                            expired += 1
+                            continue
+                    except Exception:
+                        pass
+                url = it["origin_url"]
+                cur.execute("SELECT 1 FROM announcements WHERE origin_url = %s", (url,))
+                if cur.fetchone():
+                    dup += 1
+                    continue
+                cur.execute(
+                    """INSERT INTO announcements
+                       (title, origin_url, department, region, category, target_type,
+                        support_amount, deadline_date, summary_text, origin_source,
+                        is_archived, analysis_status, deadline_type, created_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,'pending',%s,CURRENT_TIMESTAMP)""",
+                    (
+                        it["title"][:500], url, label,
+                        it.get("region"), it.get("category"),
+                        it.get("target_type") or "business",
+                        it.get("support_amount"), it.get("deadline_date"),
+                        it.get("summary_text"), source,
+                        "fixed" if it.get("deadline_date") else "unknown",
+                    ),
+                )
+                saved += 1
+            conn.commit()
+            results.append({"name": name, "label": label, "saved": saved, "expired": expired, "dup": dup, "total": len(items)})
+
+        cur.close()
+        conn.close()
+    except Exception as e:
+        results.append({"error": str(e)})
+    finally:
+        _local_scraper_status["running"] = False
+        _local_scraper_status["result"] = results
+        _local_scraper_status["finished_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+@app.post("/api/admin/local-scrapers/run", dependencies=[Depends(_verify_admin)])
+async def run_local_scrapers():
+    if _local_scraper_status["running"]:
+        return {"status": "ALREADY_RUNNING"}
+    import threading
+    threading.Thread(target=_run_local_scrapers_in_thread, daemon=True).start()
+    return {"status": "STARTED"}
+
+
+@app.get("/api/admin/local-scrapers/status", dependencies=[Depends(_verify_admin)])
+def get_local_scraper_status():
+    return {"status": "SUCCESS", "data": _local_scraper_status}
+
+
+@app.get("/api/admin/local-scrapers/info", dependencies=[Depends(_verify_admin)])
+def get_local_scraper_info():
+    return {"status": "SUCCESS", "data": _LOCAL_SCRAPER_INFO}
 
 def _run_reanalyze_in_thread(limit: int):
     """재분석을 별도 스레드에서 실행 — 상세 페이지 크롤링 + AI 추출 + DB 컬럼 업데이트"""

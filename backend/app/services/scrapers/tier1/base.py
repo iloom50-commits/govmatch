@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 SCRAPER_REGISTRY: List["BaseScraper"] = []
 
+# 저장 차단 도메인 — AI 생성 페이지, 비정부 양식 플랫폼 등
+BLOCKED_ORIGIN_DOMAINS = {
+    "gensparkspace.com",  # Genspark AI 생성 페이지
+}
+
 
 def register(cls):
     """데코레이터: 서브클래스를 전역 레지스트리에 등록."""
@@ -145,6 +150,9 @@ class BaseScraper:
         title = (item.get("title") or "").strip()
         origin_url = (item.get("origin_url") or "").strip()
         if not title or not origin_url:
+            return False
+        if any(d in origin_url for d in BLOCKED_ORIGIN_DOMAINS):
+            logger.info(f"[{self.name}] 블랙리스트 도메인 스킵: {origin_url[:60]}")
             return False
 
         cur = db_conn.cursor()

@@ -141,6 +141,11 @@ async def _fetch_page_text(page, url: str) -> str:
         return ""
 
 
+_BLOCKED_DOMAINS = {
+    "gensparkspace.com",  # Genspark AI 생성 페이지 — 실제 정부 공고 아님
+}
+
+
 class AdminScraper:
     """관리자가 등록한 URL을 AI로 분석하여 수집하는 동적 스크래퍼
 
@@ -340,6 +345,9 @@ class AdminScraper:
         try:
             for link in links:
                 try:
+                    if any(d in link for d in _BLOCKED_DOMAINS):
+                        print(f"      [스킵-블랙리스트] {link[:60]}")
+                        continue
                     text = await _fetch_page_text(detail_page, link)
                     if not text or len(text) < 100:
                         continue

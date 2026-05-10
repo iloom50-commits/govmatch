@@ -470,12 +470,12 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   }, []);
 
   const handleBackPress = useCallback(() => {
-    if (messages.length > 0 && !isDone) {
+    if (messages.some(m => m.role === "user") && !isDone) {
       setShowSaveDialog(true);
     } else {
       handleClose();
     }
-  }, [messages.length, isDone, handleClose]);
+  }, [messages, isDone, handleClose]);
 
   // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)
   useModalBack(open, handleBackPress);

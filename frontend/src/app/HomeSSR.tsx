@@ -53,7 +53,7 @@ export default async function HomeSSR() {
 
   return (
     <section
-      className="home-seo-section w-full border-t border-slate-200/60 bg-white"
+      className="sr-only"
       aria-label="최신 정부지원금 공고"
     >
       <div className="max-w-5xl mx-auto px-4 py-8">

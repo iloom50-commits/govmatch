@@ -397,13 +397,23 @@ interface MatchItem {
 type MajorTab = "business" | "individual";
 
 // 카테고리 필터 칩 — 복수 선택 가능, "내 지역"은 tab=local 매핑
-const CATEGORY_CHIPS: { label: string; key: string }[] = [
+const BUSINESS_CHIPS: { label: string; key: string }[] = [
   { label: "자금",    key: "자금·지원" },
   { label: "기술",    key: "기술·개발" },
-  { label: "수출",    key: "수출·판로" },
+  { label: "수출·판로", key: "수출·판로" },
   { label: "인력",    key: "인력·교육" },
   { label: "창업",    key: "창업·스케일업" },
   { label: "경영",    key: "경영·법률" },
+  { label: "내 지역", key: "내 지역" },
+];
+
+const INDIVIDUAL_CHIPS: { label: string; key: string }[] = [
+  { label: "복지",    key: "복지" },
+  { label: "의료",    key: "의료" },
+  { label: "교육",    key: "교육" },
+  { label: "주거",    key: "주거" },
+  { label: "출산·육아", key: "출산" },
+  { label: "자금",    key: "자금·지원" },
   { label: "내 지역", key: "내 지역" },
 ];
 
@@ -915,6 +925,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
 
+  // 대분류 탭 변경 시 칩 초기화 (기업↔개인 칩 세트가 다름)
+  useEffect(() => { setActiveChips(new Set()); }, [majorTab]);
+
   // 탭/검색 변경 시 페이지 리셋
   useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
 
@@ -1210,6 +1223,24 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [baseMatches, activeChips, chipKey, sortKey, searchQuery, isPublic, publicData]);
 
   const searchedMatches = baseMatches;
+
+  // 사이드바 로고 블록 (데스크탑 전용)
+  const SidebarLogo = () => (
+    <div className="hidden md:flex items-center justify-between mb-4 px-1">
+      <div className="flex items-center gap-2">
+        <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+        <span className="text-xs font-medium text-slate-400 tracking-normal">지원금 다나와</span>
+      </div>
+      {!isPwaInstalled && (
+        <button
+          onClick={() => { if (deferredPrompt) handlePwaInstall(); else setShowInstallGuide(true); }}
+          className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all active:scale-95"
+        >
+          <span>⬇️</span><span>설치</span>
+        </button>
+      )}
+    </div>
+  );
 
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
@@ -1622,6 +1653,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
         {/* 데스크탑 사이드바 */}
         <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto scrollbar-hide">
+          <SidebarLogo />
           {isPublic && !profile ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>
 
@@ -1644,77 +1676,65 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
-          {/* 대분류 탭 — 밑줄(underline) 스타일, 스크롤 시 상단 고정 */}
-          <div className="sticky top-0 z-30 -mx-3 md:-mx-6 px-3 md:px-6 mb-5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md">
-            <div className="flex items-center gap-6">
+          {/* 모바일 전용 로고 헤더 */}
+          <div className="flex lg:hidden items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+              <span className="text-xs font-medium text-slate-400">지원금 다나와</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {profile && !hasNotificationSet && (
+                <button
+                  onClick={() => { setNotifyShortcut(hasProfile); setIsNotifyOpen(true); }}
+                  className="flex items-center gap-1 py-1 px-2 text-[11px] font-black text-rose-600 bg-rose-50 border border-rose-200 rounded-full active:scale-95 relative"
+                >
+                  <span>🔔</span><span>알림</span>
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full ring-1 ring-white animate-pulse" />
+                </button>
+              )}
+              {!isPwaInstalled && (
+                <button
+                  onClick={() => { if (deferredPrompt) handlePwaInstall(); else setShowInstallGuide(true); }}
+                  className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all active:scale-95"
+                >
+                  <span>⬇️</span><span>설치</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
+          <header className="space-y-3">
+
+            {/* 대분류 탭 — 토글 버튼 그룹 */}
+            <div className="flex w-full border border-slate-300">
               {([
-                { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab, color: "indigo" },
-                { key: "individual" as MajorTab, label: "개인 지원금", icon: "👤", show: showIndividualTab, color: "emerald" },
-              ]).map((tab) => {
+                { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab },
+                { key: "individual" as MajorTab, label: "개인 지원금", icon: "👤", show: showIndividualTab },
+              ]).map((tab, idx) => {
                 if (!tab.show) return null;
                 const isActive = majorTab === tab.key;
                 return (
                   <button
                     key={tab.key}
                     onClick={() => switchMajorTab(tab.key)}
-                    className={`relative flex items-center gap-1.5 pb-3 pt-1 text-sm font-bold transition-all duration-200 ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold transition-all duration-150 ${
+                      idx === 0 ? "" : "border-l border-slate-300"
+                    } ${
                       isActive
-                        ? "text-slate-900"
-                        : "text-slate-400 hover:text-slate-600"
+                        ? "bg-slate-900 text-white"
+                        : "bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                     }`}
                   >
                     <span>{tab.icon}</span>
                     {tab.label}
-                    {/* 활성 밑줄 */}
-                    {isActive && (
-                      <span className={`absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full ${
-                        tab.color === "indigo" ? "bg-indigo-600" : "bg-emerald-600"
-                      }`} />
-                    )}
                   </button>
                 );
               })}
             </div>
-          </div>
-
-          <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
-          <header className="space-y-3">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-950 tracking-tighter leading-tight flex items-baseline gap-1.5 sm:gap-3 flex-wrap">
-                <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
-                <span className="text-[11px] sm:text-xs md:text-sm font-medium text-slate-500 tracking-normal">
-                  지원금 다나와
-                </span>
-              </h2>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {/* 🔔 맞춤 알림 켜기 — 데스크탑 전용 compact (미설정 시만, 모바일은 빨간 점 뱃지로 대체) */}
-                {profile && !hasNotificationSet && (
-                  <button
-                    onClick={() => { setNotifyShortcut(hasProfile); setIsNotifyOpen(true); }}
-                    className="hidden sm:flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-rose-600 hover:text-white hover:bg-rose-500 bg-rose-50 border border-rose-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none relative"
-                    title="맞춤 알림 켜기"
-                  >
-                    <span className="text-[12px]">🔔</span><span>알림 켜기</span>
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" />
-                  </button>
-                )}
-                {/* 지원금AI 설치 */}
-                {!isPwaInstalled && (
-                  <button
-                    onClick={() => {
-                      if (deferredPrompt) handlePwaInstall();
-                      else setShowInstallGuide(true);
-                    }}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-[12px] font-black text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all whitespace-nowrap active:scale-95 leading-none"
-                  >
-                    <span className="text-[12px]">⬇️</span><span>지원금AI 설치</span>
-                  </button>
-                )}
-              </div>
-            </div>
 
             {/* 키워드 검색 */}
-            <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 rounded-lg border border-slate-200/60 shadow-sm">
+            <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 border border-slate-200/60 shadow-sm">
               <div className="flex items-center gap-1.5 px-2 text-slate-400 flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1745,14 +1765,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
             {/* 카테고리 필터 칩 + 정렬 */}
             <div className="flex items-center gap-1.5">
-              {/* 필터 칩 — 복수 선택, 토글 */}
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 flex-1">
-                {CATEGORY_CHIPS.map((chip) => {
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+                {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).map((chip) => {
                   const isActive = activeChips.has(chip.key);
                   const isLocal = chip.key === "내 지역";
                   const activeColor = majorTab === "business"
-                    ? "bg-slate-950 text-white shadow-md"
-                    : "bg-emerald-700 text-white shadow-md";
+                    ? "bg-slate-950 text-white border-slate-950"
+                    : "bg-emerald-700 text-white border-emerald-700";
                   return (
                     <button
                       key={chip.key}
@@ -1765,26 +1784,32 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                         });
                         setCurrentPage(1);
                       }}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 border ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-150 whitespace-nowrap flex-shrink-0 ${
                         isActive
-                          ? `${activeColor} border-transparent`
+                          ? `${activeColor} shadow-sm`
                           : isLocal
-                            ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
-                            : "bg-white/80 text-slate-500 border-slate-200 hover:bg-slate-50"
+                            ? "text-blue-600 hover:bg-blue-50"
+                            : "text-slate-500 hover:bg-slate-100"
                       }`}
                     >
+                      {/* 체크박스 아이콘 */}
+                      <span className={`w-3 h-3 flex-shrink-0 border flex items-center justify-center transition-all ${
+                        isActive
+                          ? "bg-white/30 border-white/50"
+                          : isLocal
+                            ? "border-blue-300"
+                            : "border-slate-400"
+                      }`}>
+                        {isActive && (
+                          <svg className="w-2 h-2" viewBox="0 0 10 10" fill="none">
+                            <path d="M1.5 5L4 7.5L8.5 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </span>
                       {isLocal ? "📍 " : ""}{chip.label}
                     </button>
                   );
                 })}
-                {activeChips.size > 0 && (
-                  <button
-                    onClick={() => { setActiveChips(new Set()); setCurrentPage(1); }}
-                    className="px-2 py-1.5 rounded-full text-[10px] font-bold text-slate-400 hover:text-slate-600 whitespace-nowrap flex-shrink-0"
-                  >
-                    전체
-                  </button>
-                )}
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -1811,6 +1836,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">
               &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>
             </p>
+          )}
+
+          {/* [내 지역] 칩 선택 + 비로그인 or 지역 미설정 → 안내 */}
+          {activeChips.has("내 지역") && (isPublic || !profileCity) && (
+            <div className="flex flex-col items-center gap-3 py-10 px-6 text-center bg-blue-50/60 rounded-2xl border border-blue-100">
+              <span className="text-3xl">📍</span>
+              <p className="text-sm font-bold text-slate-700">
+                {isPublic ? "로그인하면 내 지역 공고를 볼 수 있어요" : "프로필에서 지역을 설정하면 내 지역 공고가 표시됩니다"}
+              </p>
+              <p className="text-xs text-slate-400">지역 설정 후 해당 지역 지원사업만 모아서 보여드립니다</p>
+              <button
+                onClick={isPublic ? handleLoginRequired : () => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
+                className="mt-1 px-5 py-2 bg-blue-600 text-white text-xs font-bold rounded-full hover:bg-blue-700 transition-all active:scale-95"
+              >
+                {isPublic ? "로그인하기" : "지역 설정하기"}
+              </button>
+            </div>
           )}
 
           {filteredMatches.length === 0 && !searchLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (

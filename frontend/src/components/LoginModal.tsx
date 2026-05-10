@@ -137,20 +137,20 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
           {/* 헤더 — 혜택 안내 */}
           <div className="text-center mb-5">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-3">
-              무료가입하면 바로 이용 가능
+              모든 기본 기능 무료 제공
             </h2>
             <div className="flex flex-col gap-1.5 text-left max-w-[260px] mx-auto">
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
-                <span className="text-slate-700 font-medium">이 공고, 내가 지원 가능한지 <strong>AI 즉시 판별</strong></span>
-              </div>
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
                 <span className="text-slate-700 font-medium">내 조건에 맞는 공고 <strong>자동 매칭</strong></span>
               </div>
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
-                <span className="text-slate-700 font-medium">저장 · 알림 · 일정관리 <strong>7일 무료 체험</strong></span>
+                <span className="text-slate-700 font-medium">관심공고 저장 · 알림 · <strong>일정관리</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
+                <span className="text-slate-700 font-medium">AI 공고상담 <strong>월 3회 무료</strong></span>
               </div>
             </div>
           </div>

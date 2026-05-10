@@ -4,11 +4,14 @@
 각 사이트 고유 URL 구조로 개별 구현.
 """
 from __future__ import annotations
+import logging
 import re
 import requests
 from typing import List, Dict, Any
 
 from .base import BaseScraper, SCRAPER_REGISTRY
+
+logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})")
 _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,ko;q=0.9"}
@@ -148,7 +151,8 @@ class GjtpScraper(BaseScraper):
         for page in range(1, 11):
             try:
                 html = _get(_GJTP_LIST.format(page=page))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[gwangju_tp] 페이지{page} 요청 실패: {type(e).__name__}: {e}")
                 break
             found_new = False
             for m in _GJTP_RE.finditer(html):
@@ -212,7 +216,8 @@ class JntpScraper(BaseScraper):
                         f"?boardManagementNo={board_no}&menuLevel=2&menuNo={menu_no}&page={page}"
                     )
                     html = _get(url)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"[jeonnam_tp] board{board_no} 페이지{page} 요청 실패: {type(e).__name__}: {e}")
                     break
                 found_new = False
                 for m in _JNTP_RE.finditer(html):
@@ -273,7 +278,8 @@ class JbtpScraper(BaseScraper):
         for page in range(1, 11):
             try:
                 html = _get(_JBTP_LIST.format(page=page))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[jeonbuk_tp] 페이지{page} 요청 실패: {type(e).__name__}: {e}")
                 break
             found_new = False
             for m in _JBTP_RE.finditer(html):
@@ -423,3 +429,75 @@ class UtpScraper(BaseScraper):
 
 
 SCRAPER_REGISTRY.append(UtpScraper())
+
+
+# ─────────────────────────────────────────────────
+# 7. 대전테크노파크 (djtp.or.kr)
+# 목록: /pbanc?mid=a20101000000&nPage=N
+# 상세: pms.dips.or.kr/sso/business.jsp?gubun=pbancView&pbanc_no=XXXX
+# ─────────────────────────────────────────────────
+_DJTP_BASE = "https://djtp.or.kr"
+_DJTP_LIST = f"{_DJTP_BASE}/pbanc?mid=a20101000000&nPage={{page}}"
+_DJTP_PBANC_RE = re.compile(r"pbanc_no=([\d\-]+)")
+_DJTP_PDF_TITLE_RE = re.compile(
+    r'href=["\'][^"\']*pdfviewer[^"\']*["\'][^>]*>\s*(.*?)\s*</a>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+class DjtpScraper(BaseScraper):
+    name = "daejeon_tp"
+    display_name = "대전테크노파크"
+    origin_url_prefix = "https://pms.dips.or.kr/sso/business.jsp"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+        for page in range(1, 11):
+            try:
+                html = _get(_DJTP_LIST.format(page=page))
+            except Exception as e:
+                logger.warning(f"[daejeon_tp] 페이지{page} 요청 실패: {type(e).__name__}: {e}")
+                break
+            found_new = False
+            rows = re.split(r"<tr[\s>]", html, flags=re.IGNORECASE)
+            for row in rows:
+                pbanc_m = _DJTP_PBANC_RE.search(row)
+                if not pbanc_m:
+                    continue
+                pbanc_no = pbanc_m.group(1)
+                if pbanc_no in seen:
+                    continue
+                seen.add(pbanc_no)
+                found_new = True
+                title_m = _DJTP_PDF_TITLE_RE.search(row)
+                if title_m:
+                    raw = _clean_title(title_m.group(1))
+                    # "YYYY-NN-NNNN" 형식 pbanc_no 접두어 제거 (구분자: " - " 또는 공백)
+                    raw = re.sub(r"^\d{4}-\d{2}-\d{4}\s*[-–]?\s*", "", raw).strip()
+                else:
+                    raw = ""
+                if not raw or len(raw) < 5:
+                    continue
+                title = f"[대전] {raw}" if not raw.startswith("[") else raw
+                # pbanc_no 문자열("2026-01-0078")이 날짜로 오인되지 않도록 제거 후 파싱
+                row_for_date = _DJTP_PBANC_RE.sub("", row)
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"https://pms.dips.or.kr/sso/business.jsp"
+                        f"?gubun=pbancView&pbanc_no={pbanc_no}"
+                    ),
+                    "region": "대전",
+                    "target_type": "business",
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_deadline(row_for_date),
+                    "support_amount": None,
+                })
+            if not found_new:
+                break
+        return items
+
+
+SCRAPER_REGISTRY.append(DjtpScraper())

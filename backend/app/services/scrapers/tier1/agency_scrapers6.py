@@ -5,6 +5,7 @@ mss.go.kr           : 중소벤처기업부 (정책 공고, doBbsFView onclick b
 k-startup.go.kr     : K-Startup (창업진흥원 포털, go_view onclick ID 추출)
 """
 from __future__ import annotations
+import html as html_lib
 import re
 import requests
 from typing import List, Dict, Any
@@ -182,15 +183,21 @@ SCRAPER_REGISTRY.append(MssScraper())
 
 # ─────────────────────────────────────────────────────────────
 # 3. K-Startup (k-startup.go.kr) — 창업 지원사업 공고
-#    onclick="go_view(ID)" 에서 ID 추출, 상세 URL 직접 GET 가능 확인됨
+#    onclick="go_view(ID)" 에서 ID 추출, <p class="tit"> 로 제목만 추출
 # ─────────────────────────────────────────────────────────────
 _KSTARTUP_BASE = "https://www.k-startup.go.kr"
 _KSTARTUP_LIST = (
     f"{_KSTARTUP_BASE}/web/contents/bizpbanc-ongoing.do"
     "?schPageSize=10&page={page}"
 )
-_KSTARTUP_RE = re.compile(
-    r"""go_view\((\d+)\)[^>]*>(.*?)</a>""",
+# <a> 블록 전체 캡처 (ID + 내부 HTML)
+_KSTARTUP_BLOCK_RE = re.compile(
+    r"""go_view\((\d+)\).*?</a>""",
+    re.DOTALL,
+)
+# <a> 블록 내에서 실제 제목만 추출
+_KSTARTUP_TIT_RE = re.compile(
+    r'<p[^>]+class="tit"[^>]*>(.*?)</p>',
     re.DOTALL,
 )
 
@@ -206,25 +213,31 @@ class KstartupScraper(BaseScraper):
 
         for page in range(1, 11):
             try:
-                html = _get(_KSTARTUP_LIST.format(page=page))
+                page_html = _get(_KSTARTUP_LIST.format(page=page))
             except Exception:
                 break
 
             found_new = False
-            for m in _KSTARTUP_RE.finditer(html):
+            for m in _KSTARTUP_BLOCK_RE.finditer(page_html):
                 pbanc_sn = m.group(1)
                 if pbanc_sn in seen:
                     continue
                 seen.add(pbanc_sn)
                 found_new = True
 
-                title = _clean(m.group(2))
+                block = m.group(0)
+                tit_m = _KSTARTUP_TIT_RE.search(block)
+                if not tit_m:
+                    continue
+
+                # HTML 엔티티(&amp; 등) 디코딩 후 태그 제거
+                title = html_lib.unescape(_clean(tit_m.group(1)))
                 if not title or len(title) < 5:
                     continue
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                ctx = html[max(0, m.start() - 400): m.end() + 400]
+                ctx = page_html[max(0, m.start() - 400): m.end() + 400]
 
                 items.append({
                     "title": title[:400],

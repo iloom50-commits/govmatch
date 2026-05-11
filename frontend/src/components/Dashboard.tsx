@@ -417,6 +417,48 @@ const INDIVIDUAL_CHIPS: { label: string; key: string }[] = [
   { label: "내 지역", key: "내 지역" },
 ];
 
+// 프로필 interests 키워드 → 칩 키 매핑
+const INTEREST_TO_CHIP: Record<string, string> = {
+  // 자금·지원
+  "자금": "자금·지원", "정책자금": "자금·지원", "금융": "자금·지원",
+  "대출": "자금·지원", "투자": "자금·지원", "보증": "자금·지원", "융자": "자금·지원",
+  // 기술·개발
+  "기술": "기술·개발", "r&d": "기술·개발", "연구": "기술·개발",
+  "개발": "기술·개발", "기술개발": "기술·개발", "ict": "기술·개발", "디지털": "기술·개발",
+  // 수출·판로
+  "수출": "수출·판로", "판로": "수출·판로", "마케팅": "수출·판로",
+  "글로벌": "수출·판로", "무역": "수출·판로", "해외": "수출·판로",
+  // 인력·교육
+  "인력": "인력·교육", "교육": "인력·교육", "고용": "인력·교육",
+  "훈련": "인력·교육", "채용": "인력·교육", "인재": "인력·교육",
+  // 창업·스케일업
+  "창업": "창업·스케일업", "스케일업": "창업·스케일업", "창업지원": "창업·스케일업",
+  // 경영·법률
+  "경영": "경영·법률", "법률": "경영·법률", "컨설팅": "경영·법률",
+  "경영혁신": "경영·법률", "지식재산": "경영·법률", "특허": "경영·법률",
+  // 개인용
+  "복지": "복지", "의료": "의료", "주거": "주거",
+  "출산": "출산", "육아": "출산", "임신": "출산", "보육": "교육",
+};
+
+function mapInterestsToChips(interests: string[]): string[] {
+  const result = new Set<string>();
+  for (const raw of interests) {
+    const key = raw.toLowerCase().trim();
+    if (INTEREST_TO_CHIP[key]) {
+      result.add(INTEREST_TO_CHIP[key]);
+      continue;
+    }
+    for (const [mapKey, chipVal] of Object.entries(INTEREST_TO_CHIP)) {
+      if (key.includes(mapKey) || mapKey.includes(key)) {
+        result.add(chipVal);
+        break;
+      }
+    }
+  }
+  return Array.from(result);
+}
+
 // 하위 호환 — activeTab 단일값 기반 로직이 남아있는 동안 유지
 const PUBLIC_TABS: { label: string; key: string; tabParam: string }[] = [
   { label: "전체",    key: "all",      tabParam: "" },
@@ -542,7 +584,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   // 카테고리 필터 칩 — 복수 선택 Set (빈 Set = 전체)
-  const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
+  const [activeChips, setActiveChips] = useState<Set<string>>(() => {
+    if (!profile?.interests) return new Set();
+    const interests = String(profile.interests).split(",").map((s: string) => s.trim()).filter(Boolean);
+    const chips = mapInterestsToChips(interests);
+    return chips.length > 0 ? new Set(chips) : new Set();
+  });
+  const [chipsFromProfile, setChipsFromProfile] = useState(false);
   // useEffect dependency용 — Set은 참조 비교라 문자열로 변환
   const chipKey = Array.from(activeChips).sort().join(",");
   // 하위 호환: activeTab / setActiveTab 별칭 (단계적 제거 예정)
@@ -933,6 +981,17 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { setActiveChips(new Set()); }, [majorTab]);
 
   // 탭/검색 변경 시 페이지 리셋
+  // 프로필 interests → 칩 자동 선택 (최초 1회, 사용자 수동 변경 이후엔 덮어쓰지 않음)
+  useEffect(() => {
+    if (chipsFromProfile || !profile?.interests) return;
+    const interests = String(profile.interests).split(",").map((s: string) => s.trim()).filter(Boolean);
+    const chips = mapInterestsToChips(interests);
+    if (chips.length > 0) {
+      setActiveChips(new Set(chips));
+      setChipsFromProfile(true);
+    }
+  }, [profile, chipsFromProfile]);
+
   useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
 
   const newMatchCount = 0;

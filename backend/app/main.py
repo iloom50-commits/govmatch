@@ -9943,6 +9943,68 @@ def admin_reclassify_all(batch_size: int = 20, max_batches: int = 200):
     }
 
 
+@app.post("/api/admin/target-type/fix-business-sources", dependencies=[Depends(_verify_admin)])
+def admin_fix_business_sources():
+    """기업 전용 출처(origin_source) 공고를 SQL로 즉시 business 강제 분류.
+    Gemini 없이 바로 실행 — 수초 내 완료.
+    """
+    BUSINESS_SOURCES = [
+        "kstartup", "kstartup-api", "kised-api",
+        "bizinfo", "bizinfo-api", "bizinfo-portal-api",
+        "smes24-api", "mss-direct",
+        "kosme", "smba", "kotra", "kibo", "kdb", "ibk", "kventure",
+    ]
+    BUSINESS_SOURCE_KEYWORDS = ["창조경제혁신센터", "ccei"]
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        # 1. 정확한 출처 매칭
+        placeholders = ",".join(["%s"] * len(BUSINESS_SOURCES))
+        cur.execute(
+            f"""UPDATE announcements
+                SET target_type = 'business'
+                WHERE origin_source IN ({placeholders})
+                  AND COALESCE(target_type, '') != 'business'""",
+            BUSINESS_SOURCES,
+        )
+        exact_updated = cur.rowcount
+
+        # 2. 키워드 포함 출처 (admin-manual:창조경제혁신센터 등)
+        keyword_updated = 0
+        for kw in BUSINESS_SOURCE_KEYWORDS:
+            cur.execute(
+                """UPDATE announcements
+                   SET target_type = 'business'
+                   WHERE origin_source LIKE %s
+                     AND COALESCE(target_type, '') != 'business'""",
+                (f"%{kw}%",),
+            )
+            keyword_updated += cur.rowcount
+
+        conn.commit()
+        total = exact_updated + keyword_updated
+
+        # 3. 영향받은 사용자의 match_cache 무효화
+        cur.execute("DELETE FROM user_match_cache WHERE target_type IN ('public_ind', 'public_biz')")
+        cache_deleted = cur.rowcount
+        conn.commit()
+
+        conn.close()
+        return {
+            "status": "SUCCESS",
+            "exact_updated": exact_updated,
+            "keyword_updated": keyword_updated,
+            "total_updated": total,
+            "cache_invalidated": cache_deleted,
+        }
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _run_manual_sync_in_thread():
     """관리자 수동 동기화 — 일일 통합 파이프라인 전체를 실행.
 

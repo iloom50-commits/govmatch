@@ -1,6 +1,6 @@
 """광역시도청 사업공고 스크래퍼 — requests 기반
 
-정상 수집 (8개):
+정상 수집 (9개):
   대전시청  daejeon.go.kr        소상공인 지원 게시판
   울산시청  ulsan.go.kr          고시공고
   강원도청  state.gwd.go.kr      공고/고시 (onclick goPage)
@@ -9,6 +9,7 @@
   전북도청  jeonbuk.go.kr        공고/고시
   전남도청  jeonnam.go.kr        기업지원 자금지원
   경남도청  gyeongnam.go.kr      고시공고
+  서울시청  seoulboard.seoul.go.kr RSS feed (bbsNo=277)
 
 Playwright 필요 (로컬 전용 — 향후 agency_scrapers_pw.py에 추가):
   대구시청  JS 렌더링
@@ -17,14 +18,12 @@ Playwright 필요 (로컬 전용 — 향후 agency_scrapers_pw.py에 추가):
   인천시청  bizok.incheon.go.kr  JS 렌더링 (rows=0)
   세종시청  sejong.go.kr         JS 링크 (nttId HTML 미포함)
   부산시청  bepa.kr              SSL+JS (list URL 미확인)
-
-미확인:
-  서울시청  JS 함수(fnTbbsView) 링크, 직접 URL 없음
-  광주시청  실제 게시판 boardId 미확인
+  광주시청  gwangju.go.kr        JS 렌더링 (테이블 없음, requests 불가)
 """
 from __future__ import annotations
 import re
 import requests
+import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 import warnings
@@ -837,3 +836,158 @@ class BusanScraper(BaseScraper):
 
 # BusanScraper: SSL + list URL 미확인 → 비활성
 # SCRAPER_REGISTRY.append(BusanScraper())
+
+
+# ─────────────────────────────────────────────────────────────
+# 12. 광주광역시 — 공지사항 게시판 (BD_0000000022)
+# ─────────────────────────────────────────────────────────────
+_GWANGJU_BASE = "https://www.gwangju.go.kr"
+_GWANGJU_LIST = (
+    f"{_GWANGJU_BASE}/boardList.do"
+    "?boardId=BD_0000000022&pageId=www788&movePage={page}&recordCnt=10"
+)
+_GWANGJU_ID_RE = re.compile(r"seq=(\d+)")
+
+
+class GwangjuScraper(BaseScraper):
+    name = "gwangju_sido"
+    display_name = "광주광역시청"
+    origin_url_prefix = f"{_GWANGJU_BASE}/boardView.do"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for page in range(1, 6):
+            try:
+                soup = _get(_GWANGJU_LIST.format(page=page))
+            except Exception:
+                break
+
+            found_new = False
+            for row in _extract_rows(soup):
+                link = row.select_one("a[href*='seq']") or row.select_one("a[href*='boardView']")
+                if not link:
+                    continue
+                href = link.get("href", "")
+                m = _GWANGJU_ID_RE.search(href)
+                if not m:
+                    continue
+                sid = m.group(1)
+                if sid in seen:
+                    continue
+
+                title = _clean(link.get_text())
+                if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
+                    continue
+
+                seen.add(sid)
+                found_new = True
+                row_text = row.get_text(" ")
+
+                items.append({
+                    "title": title[:400],
+                    "origin_url": (
+                        f"{_GWANGJU_BASE}/boardView.do"
+                        f"?pageId=www788&boardId=BD_0000000022&seq={sid}"
+                        f"&movePage={page}&recordCnt=10"
+                    ),
+                    "region": "광주",
+                    "target_type": None,
+                    "category": None,
+                    "summary_text": None,
+                    "deadline_date": _parse_date(row_text),
+                    "support_amount": None,
+                })
+
+            if not found_new:
+                break
+
+        return items
+
+
+# GwangjuScraper: JS 렌더링 필요 (테이블 0개) → 비활성
+# SCRAPER_REGISTRY.append(GwangjuScraper())
+
+
+# ─────────────────────────────────────────────────────────────
+# 13. 서울특별시 — RSS 피드 (bbsNo=277, 기업지원 공고)
+# ─────────────────────────────────────────────────────────────
+_SEOUL_RSS_URL = "https://seoulboard.seoul.go.kr/rss/RSSGenerator?bbsNo=277"
+_SEOUL_DATE_RE = re.compile(
+    r"(\w{3}),\s+(\d{1,2})\s+(\w{3})\s+(\d{4})"
+)
+_MONTH_MAP = {
+    "Jan": "01", "Feb": "02", "Mar": "03", "Apr": "04",
+    "May": "05", "Jun": "06", "Jul": "07", "Aug": "08",
+    "Sep": "09", "Oct": "10", "Nov": "11", "Dec": "12",
+}
+
+
+def _parse_rss_date(pub_date: str) -> str | None:
+    """'Mon, 12 May 2025 09:00:00 +0900' 형식 파싱 → 'YYYY-MM-DD'."""
+    m = _SEOUL_DATE_RE.search(pub_date or "")
+    if not m:
+        return None
+    _, day, mon, year = m.groups()
+    month_num = _MONTH_MAP.get(mon)
+    if not month_num:
+        return None
+    return f"{year}-{month_num}-{day.zfill(2)}"
+
+
+class SeoulRssScraper(BaseScraper):
+    name = "seoul_sido"
+    display_name = "서울특별시청(RSS)"
+    origin_url_prefix = "https://seoulboard.seoul.go.kr"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        try:
+            resp = requests.get(_SEOUL_RSS_URL, headers=_HEADERS, timeout=20)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+        except Exception:
+            return items
+
+        ns = {}
+        channel = root.find("channel")
+        if channel is None:
+            return items
+
+        for item_el in channel.findall("item"):
+            title_el = item_el.find("title")
+            link_el = item_el.find("link")
+            pub_el = item_el.find("pubDate")
+
+            if title_el is None or link_el is None:
+                continue
+
+            title = _clean(title_el.text or "")
+            link = (link_el.text or "").strip()
+
+            if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
+                continue
+            if link in seen:
+                continue
+
+            seen.add(link)
+            pub_date = _parse_rss_date(pub_el.text if pub_el is not None else "")
+
+            items.append({
+                "title": title[:400],
+                "origin_url": link,
+                "region": "서울",
+                "target_type": None,
+                "category": None,
+                "summary_text": None,
+                "deadline_date": pub_date,
+                "support_amount": None,
+            })
+
+        return items
+
+
+SCRAPER_REGISTRY.append(SeoulRssScraper())

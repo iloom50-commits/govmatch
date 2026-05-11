@@ -988,30 +988,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 필터 변경 시 무한스크롤 누적 초기화
   useEffect(() => { setInfiniteItems([]); lastLoadedPageRef.current = 0; }, [majorTab, chipKey, searchQuery, showMatchedMode]);
 
-  // 모바일: publicData 누적
-  useEffect(() => {
-    if (!isMobile || publicData.length === 0) return;
-    if (currentPage === 1 || currentPage <= lastLoadedPageRef.current) {
-      setInfiniteItems(publicData);
-    } else {
-      setInfiniteItems(prev => [...prev, ...publicData]);
-    }
-    lastLoadedPageRef.current = currentPage;
-  }, [publicData]); // eslint-disable-line
-
-  // 모바일: IntersectionObserver sentinel → 자동 다음 페이지
-  useEffect(() => {
-    if (!isMobile || !sentinelRef.current) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || publicLoading) return;
-      const totalItems = publicServerTotal > 0 ? publicServerTotal : filteredMatches.length;
-      const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-      if (currentPage < totalPages) setCurrentPage(p => p + 1);
-    }, { rootMargin: "300px" });
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [isMobile, publicLoading, currentPage, publicServerTotal, filteredMatches.length]);
-
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
   const [publicServerTotal, setPublicServerTotal] = useState(0);  // 현재 탭 페이지네이션용
@@ -1085,6 +1061,28 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .finally(() => setPublicLoading(false));
   }, [isPublic, majorTab, chipKey, currentPage, searchQuery]);
 
+  // 모바일: publicData 누적
+  useEffect(() => {
+    if (!isMobile || publicData.length === 0) return;
+    if (currentPage === 1 || currentPage <= lastLoadedPageRef.current) {
+      setInfiniteItems(publicData);
+    } else {
+      setInfiniteItems(prev => [...prev, ...publicData]);
+    }
+    lastLoadedPageRef.current = currentPage;
+  }, [publicData]); // eslint-disable-line
+
+  // 모바일: IntersectionObserver sentinel → 자동 다음 페이지
+  useEffect(() => {
+    if (!isMobile || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || publicLoading) return;
+      const totalPages = Math.ceil(publicServerTotal / ITEMS_PER_PAGE);
+      if (currentPage < totalPages) setCurrentPage(p => p + 1);
+    }, { rootMargin: "300px" });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isMobile, publicLoading, currentPage, publicServerTotal]);
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {

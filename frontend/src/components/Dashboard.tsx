@@ -1901,8 +1901,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </div>
 
-            {/* 2×4 카테고리 그리드 — 맞춤공고 통합 */}
-            <div className="grid grid-cols-4 border border-slate-200">
+          </header>
+
+          {/* 2×4 카테고리 그리드 — 맞춤공고 통합 (sticky 해제, 스크롤과 함께 이동) */}
+          <div className="grid grid-cols-4 border border-slate-200">
               {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
@@ -1949,9 +1951,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </button>
                 );
               })}
-            </div>
-
-          </header>
+          </div>
 
           {/* Hot이슈 티커 — 임시 비활성화 */}
           {/* <HotIssueTicker /> */}

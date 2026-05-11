@@ -1847,11 +1847,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
-                className={`flex flex-col items-center justify-center gap-0.5 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all border-r border-b border-slate-200 active:scale-95 ${
+                className={`flex items-center justify-center gap-1 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all border-r border-b border-slate-200 active:scale-95 ${
                   showMatchedMode ? "bg-amber-50 text-amber-700" : "text-slate-400 hover:bg-amber-50/50 hover:text-amber-600"
                 }`}
               >
-                <span className="text-sm leading-none">⭐</span>
+                <span className="leading-none">⭐</span>
                 <span>맞춤</span>
               </button>
               {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(0, 3).map((chip, i) => {
@@ -1870,11 +1870,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {/* Row 2: 📍내지역 | 칩3 | 칩4 | 칩5 */}
               <button
                 onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
-                className={`flex flex-col items-center justify-center gap-0.5 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all border-r border-slate-200 active:scale-95 ${
+                className={`flex items-center justify-center gap-1 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all border-r border-slate-200 active:scale-95 ${
                   activeChips.has("내 지역") ? "bg-blue-600 text-white" : "text-blue-600 hover:bg-blue-50"
                 }`}
               >
-                <span className="text-sm leading-none">📍</span>
+                <span className="leading-none">📍</span>
                 <span>내지역</span>
               </button>
               {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(3, 6).map((chip, i) => {

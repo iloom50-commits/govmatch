@@ -458,7 +458,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
 
         {/* Info & Buttons */}
         <div className="relative bg-slate-50/80 p-3 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all overflow-hidden">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
             <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
               <span className="text-slate-400">대상 :</span>

@@ -35,3 +35,6 @@ from . import agency_scrapers7  # noqa: F401
 
 # 지역 테크노파크 (경기/경북/충북/강원)
 from . import regional_tp_scrapers  # noqa: F401
+
+# 공공기관 배치 8 (고비즈코리아/신용보증기금)
+from . import agency_scrapers8  # noqa: F401

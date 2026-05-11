@@ -10812,6 +10812,16 @@ def api_get_analysis(announcement_id: int, raw: bool = False, _: None = Depends(
             raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
 
         result = _format_analysis_response(announcement_id, analysis, dict(ann))
+
+        # blog_analysis 포함 (있는 경우만)
+        blog_analysis = analysis.get("blog_analysis")
+        if blog_analysis:
+            result["blog_analysis"] = blog_analysis
+            result["blog_analysis_verified"] = True
+        else:
+            result["blog_analysis"] = None
+            result["blog_analysis_verified"] = False
+
         response = {"status": "SUCCESS", "data": result}
 
         # raw=true면 DB 원본 데이터도 포함 (디버그용)

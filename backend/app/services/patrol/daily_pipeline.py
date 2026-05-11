@@ -164,6 +164,15 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④-2 외부 검색 학습", step_4c_search_learn)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-3. 블로그용 AI 분석 (full_text → blog_analysis)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4d_blog_analysis():
+        from app.services.patrol.blog_analyzer import run_blog_analysis_batch
+        return run_blog_analysis_batch(db_conn, batch_size=20)
+
+    _run_step("④-3 블로그 AI 분석", step_4d_blog_analysis)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑤ 학습 전파 정리
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_5_learning():

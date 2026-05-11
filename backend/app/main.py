@@ -2566,9 +2566,9 @@ def api_announcements_public(
                         _other_region_sql = "FALSE"
                     bucket_sql = f"""
                         CASE
-                            WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 4
-                            WHEN COALESCE(target_type, 'business') != %s THEN 4
-                            WHEN {inelig_sql} THEN 4
+                            WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 5
+                            WHEN COALESCE(target_type, 'business') != %s THEN 5
+                            WHEN {inelig_sql} THEN 5
                             WHEN {_other_region_sql} THEN 4
                             WHEN {region_sql} AND {has_amount_sql} THEN 0
                             WHEN ({_nationwide_sql}) AND {has_amount_sql} THEN 1
@@ -2607,7 +2607,8 @@ def api_announcements_public(
                             )
                             SELECT * FROM ann
                             ORDER BY
-                                CASE WHEN bucket = 4 THEN 11
+                                CASE WHEN bucket = 5 THEN 12
+                                     WHEN bucket = 4 THEN 11
                                      WHEN bucket = 3 THEN 10
                                      WHEN %s = 'individual' THEN
                                          CASE WHEN bucket = 0 THEN 0
@@ -2633,7 +2634,7 @@ def api_announcements_public(
                                     SELECT announcement_id, {_bs} AS bucket
                                     FROM announcements WHERE {_fw}
                                 ) SELECT announcement_id FROM ann
-                                ORDER BY CASE WHEN bucket=4 THEN 11 WHEN bucket=3 THEN 10
+                                ORDER BY CASE WHEN bucket=5 THEN 12 WHEN bucket=4 THEN 11 WHEN bucket=3 THEN 10
                                      WHEN %s='individual' THEN CASE WHEN bucket=0 THEN 0 WHEN bucket=2 THEN 1 WHEN bucket=1 THEN 2 ELSE 5 END
                                      ELSE (bucket-%s+3)%%3 END,
                                 deadline_date ASC NULLS LAST, created_at DESC""",

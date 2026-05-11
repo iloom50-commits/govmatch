@@ -3,68 +3,14 @@ supervisor.py — 오케스트레이터 AI COO 메인 실행기
 매일 09:30 KST (UTC 00:30) 자동 실행
 
 실행 흐름:
-  1. 상담 지표 수집
-  2. 품질 체크 (Gemini 채점)
-  3. 학습 감시 (knowledge_base 현황)
-  4. 보고서 생성 + 이메일/카카오 발송
+  1. 비즈니스 지표 수집 (회원/상담/DAU/매칭)
+  2. 학습 현황 감시 (knowledge_base)
+  3. 보고서 생성 + 이메일/카카오 발송
 """
 import os
 import time
 import traceback
 from datetime import datetime
-
-
-def collect_metrics(db_conn) -> dict:
-    """에이전트별 상담 건수, 오늘 활동량 등 기본 지표 수집"""
-    metrics = {}
-    cur = db_conn.cursor()
-
-    try:
-        cur.execute("SELECT COUNT(*) AS cnt FROM ai_consult_logs")
-        row = cur.fetchone()
-        metrics["total_consults"] = row["cnt"] if row else 0
-    except Exception:
-        metrics["total_consults"] = "N/A"
-
-    try:
-        cur.execute("""
-            SELECT COUNT(*) AS cnt FROM ai_consult_logs
-            WHERE updated_at >= CURRENT_DATE
-        """)
-        row = cur.fetchone()
-        metrics["today_consults"] = row["cnt"] if row else 0
-    except Exception:
-        metrics["today_consults"] = "N/A"
-
-    try:
-        cur.execute("SELECT COUNT(*) AS cnt FROM pro_consult_sessions")
-        row = cur.fetchone()
-        metrics["pro_sessions"] = row["cnt"] if row else 0
-    except Exception:
-        metrics["pro_sessions"] = "N/A"
-
-    try:
-        cur.execute("""
-            SELECT COUNT(*) AS cnt FROM pro_consult_sessions
-            WHERE updated_at >= CURRENT_DATE
-        """)
-        row = cur.fetchone()
-        metrics["pro_sessions_today"] = row["cnt"] if row else 0
-    except Exception:
-        metrics["pro_sessions_today"] = "N/A"
-
-    try:
-        cur.execute("""
-            SELECT COUNT(DISTINCT business_number) AS cnt
-            FROM ai_consult_logs
-            WHERE updated_at >= CURRENT_DATE - INTERVAL '7 days'
-        """)
-        row = cur.fetchone()
-        metrics["active_users_7d"] = row["cnt"] if row else 0
-    except Exception:
-        metrics["active_users_7d"] = "N/A"
-
-    return metrics
 
 
 def run_daily_supervision(db_conn=None) -> dict:
@@ -73,7 +19,7 @@ def run_daily_supervision(db_conn=None) -> dict:
     db_conn: 외부에서 주입 가능. None이면 내부 생성.
     """
     start = time.time()
-    print(f"[AI COO] 일일 감시 시작 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[AI COO] 일일 보고 시작 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     _own_conn = False
     if db_conn is None:
@@ -90,31 +36,25 @@ def run_daily_supervision(db_conn=None) -> dict:
     results = {}
 
     try:
-        # ── 1. 지표 수집 ──
-        print("[AI COO] Step 1/4: 상담 지표 수집 중...")
+        # ── 1. 비즈니스 지표 수집 ──
+        print("[AI COO] Step 1/3: 비즈니스 지표 수집 중...")
         try:
-            metrics = collect_metrics(db_conn)
+            from .metrics_collector import collect_business_metrics
+            metrics = collect_business_metrics(db_conn)
             results["metrics"] = metrics
-            print(f"  → 총 상담 {metrics.get('total_consults')}건, 오늘 {metrics.get('today_consults')}건")
+            print(
+                f"  → 총 회원 {metrics.get('users_total')}명 "
+                f"| 어제 신규 {metrics.get('new_users_yesterday')}명 "
+                f"| DAU {metrics.get('dau_yesterday')}명"
+            )
         except Exception as e:
             results["metrics"] = {"error": str(e)}
+            metrics = {}
             print(f"  → 지표 수집 오류: {e}")
-
-        # ── 2. 품질 체크 ──
-        print("[AI COO] Step 2/4: 상담 품질 체크 중...")
-        try:
-            from .quality_checker import check_quality
-            quality = check_quality(db_conn)
-            results["quality"] = quality
-            print(f"  → 평균 품질 {quality.get('avg_total', 0)}/50점, 저품질 {quality.get('low_quality_count', 0)}건")
-        except Exception as e:
-            results["quality"] = {"error": str(e)}
-            quality = {}
-            print(f"  → 품질 체크 오류: {e}")
             traceback.print_exc()
 
-        # ── 3. 학습 감시 ──
-        print("[AI COO] Step 3/4: 학습 현황 감시 중...")
+        # ── 2. 학습 현황 감시 ──
+        print("[AI COO] Step 2/3: 학습 현황 감시 중...")
         try:
             from .learning_monitor import check_learning
             learning = check_learning(db_conn)
@@ -126,13 +66,12 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 학습 감시 오류: {e}")
             traceback.print_exc()
 
-        # ── 4. 보고서 발송 ──
-        print("[AI COO] Step 4/4: 보고서 생성 + 발송 중...")
+        # ── 3. 보고서 발송 ──
+        print("[AI COO] Step 3/3: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
             report_result = send_report(
                 metrics=results.get("metrics", {}),
-                quality=results.get("quality", {}),
                 learning=results.get("learning", {}),
             )
             results["report"] = report_result
@@ -151,5 +90,5 @@ def run_daily_supervision(db_conn=None) -> dict:
 
     elapsed = round(time.time() - start, 1)
     results["elapsed"] = elapsed
-    print(f"[AI COO] 일일 감시 완료 — {elapsed}초 소요")
+    print(f"[AI COO] 일일 보고 완료 — {elapsed}초 소요")
     return results

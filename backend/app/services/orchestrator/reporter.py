@@ -1,144 +1,175 @@
 """
-reporter.py — 일일 감시 보고서 생성 + 이메일/카카오 발송
+reporter.py — GovMatch 일일 현황 보고서 생성 + 이메일/카카오 발송
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
-def _build_report_text(metrics: dict, quality: dict, learning: dict) -> str:
-    """사람이 읽기 좋은 텍스트 보고서 생성"""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    avg = quality.get("avg_scores", {})
-    avg_total = quality.get("avg_total", 0)
-    low = quality.get("low_quality_count", 0)
-    sample_n = quality.get("sample_count", 0)
+# ── 텍스트 보고서 ──────────────────────────────────────────────
+def _build_report_text(metrics: dict, learning: dict) -> str:
+    now   = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    yest  = (now - timedelta(days=1)).strftime("%m-%d")
 
-    score_lines = "\n".join(
-        f"  - {k}: {v}/10" for k, v in avg.items()
-    ) if avg else "  - 평가 데이터 없음"
+    u_total = metrics.get("users_total", "N/A")
+    u_pro   = metrics.get("users_pro",   "N/A")
+    u_lite  = metrics.get("users_lite",  "N/A")
+    u_new   = metrics.get("new_users_yesterday", "N/A")
+    u_biz   = metrics.get("new_users_yesterday_business",   0)
+    u_ind   = metrics.get("new_users_yesterday_individual", 0)
+    conv_rt = metrics.get("pro_conversion_rate", "N/A")
 
-    kb_total = learning.get("total", 0)
+    dau        = metrics.get("dau_yesterday", "N/A")
+    ai_cnt     = metrics.get("ai_consults_yesterday", "N/A")
+    pro_cnt    = metrics.get("pro_consults_yesterday", "N/A")
+    match_cnt  = metrics.get("matching_yesterday", "N/A")
+
+    total_consults = metrics.get("total_real_consults", "N/A")
+    total_pro      = metrics.get("total_pro_sessions",  "N/A")
+    total_match    = metrics.get("total_match_history", "N/A")
+
+    kb_total = learning.get("total", "N/A")
     kb_today = learning.get("today_added", 0)
-    consult_today = learning.get("consult_log_today", 0)
-    no_emb = learning.get("no_embedding_count", 0)
 
-    agent_lines = "\n".join(
-        f"  - {agent}: {cnt}건"
-        for agent, cnt in (learning.get("by_source_agent") or {}).items()
-    ) or "  - 데이터 없음"
+    # 주간 DAU 막대
+    weekly = metrics.get("weekly_dau", [])
+    weekly_lines = ""
+    if weekly:
+        max_dau = max((w["dau"] for w in weekly), default=1) or 1
+        for w in weekly:
+            bar = "■" * max(1, round(w["dau"] / max_dau * 10))
+            weekly_lines += f"  {w['date'][5:]}  {bar} {w['dau']}명\n"
+    else:
+        weekly_lines = "  데이터 없음\n"
 
-    # 품질 경고 판단
-    quality_alert = ""
-    if avg_total > 0 and avg_total < 30:
-        quality_alert = "⚠️ 평균 품질 점수 낮음 — 프롬프트 개선 검토 필요\n"
-    elif low > 2:
-        quality_alert = f"⚠️ 저품질 상담 {low}건 감지됨\n"
+    return f"""[GovMatch 일일 현황] {today}
+{'─' * 38}
 
-    report = f"""📊 [GovMatch AI COO 일일 보고서]
-날짜: {now} KST
-{'─' * 40}
+▌ 회원 현황
+  누적: {u_total}명 (lite {u_lite} / pro {u_pro})
+  유료 전환율: {conv_rt}%
+  어제({yest}) 신규: {u_new}명 (기업 {u_biz} / 개인 {u_ind})
 
-🤖 상담 품질 체크 ({sample_n}건 샘플)
-{quality_alert}평균 점수: {avg_total}/50점
-{score_lines}
+▌ 어제({yest}) 활동
+  로그인(DAU): {dau}명
+  AI 상담: {ai_cnt}건  |  PRO 상담: {pro_cnt}건
+  매칭 실행: {match_cnt}건
 
-📚 학습 현황
-  - 지식베이스 총: {kb_total}건
-  - 오늘 추가: {kb_today}건
-  - 오늘 상담 로그: {consult_today}건
-  - 임베딩 누락: {no_emb}건
+▌ 주간 DAU 추이
+{weekly_lines}
+▌ 누적 현황
+  실질 상담: {total_consults}건
+  PRO 세션: {total_pro}건
+  매칭 이력: {total_match}건
+  지식베이스: {kb_total}건 (오늘 +{kb_today})
 
-🧠 에이전트별 지식 기여
-{agent_lines}
-
-📈 상담 통계
-  - 총 상담 건수: {metrics.get('total_consults', 'N/A')}건
-  - 오늘: {metrics.get('today_consults', 'N/A')}건
-  - PRO 세션: {metrics.get('pro_sessions', 'N/A')}건
-
----
-GovMatch AI COO | govmatch.kr"""
-
-    return report
+{'─' * 38}
+GovMatch | govmatch.kr"""
 
 
-def _build_report_html(metrics: dict, quality: dict, learning: dict, report_text: str) -> str:
-    avg = quality.get("avg_scores", {})
-    avg_total = quality.get("avg_total", 0)
-    low = quality.get("low_quality_count", 0)
-    kb_total = learning.get("total", 0)
+# ── HTML 보고서 ───────────────────────────────────────────────
+def _build_report_html(metrics: dict, learning: dict) -> str:
+    now   = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    yest  = (now - timedelta(days=1)).strftime("%m-%d")
+
+    u_total = metrics.get("users_total", "N/A")
+    u_pro   = metrics.get("users_pro",   "N/A")
+    u_lite  = metrics.get("users_lite",  "N/A")
+    u_new   = metrics.get("new_users_yesterday", "N/A")
+    u_biz   = metrics.get("new_users_yesterday_business",   0)
+    u_ind   = metrics.get("new_users_yesterday_individual", 0)
+    conv_rt = metrics.get("pro_conversion_rate", "N/A")
+
+    dau       = metrics.get("dau_yesterday", "N/A")
+    ai_cnt    = metrics.get("ai_consults_yesterday", "N/A")
+    pro_cnt   = metrics.get("pro_consults_yesterday", "N/A")
+    match_cnt = metrics.get("matching_yesterday", "N/A")
+
+    total_consults = metrics.get("total_real_consults", "N/A")
+    total_pro      = metrics.get("total_pro_sessions",  "N/A")
+    total_match    = metrics.get("total_match_history", "N/A")
+
+    kb_total = learning.get("total", "N/A")
     kb_today = learning.get("today_added", 0)
-    consult_today = learning.get("consult_log_today", 0)
 
-    score_bars = ""
-    for k, v in avg.items():
-        pct = int(v * 10)
-        color = "#22c55e" if v >= 7 else "#f59e0b" if v >= 5 else "#ef4444"
-        score_bars += f"""
-        <div style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;font-size:13px">
-            <span>{k}</span><span style="font-weight:bold">{v}/10</span>
+    # 주간 DAU 막대 HTML
+    weekly = metrics.get("weekly_dau", [])
+    max_dau = max((w["dau"] for w in weekly), default=1) or 1
+    weekly_html = ""
+    for w in weekly:
+        pct = max(4, round(w["dau"] / max_dau * 100))
+        weekly_html += f"""
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px">
+          <span style="width:36px;color:#6b7280">{w['date'][5:]}</span>
+          <div style="flex:1;background:#e5e7eb;border-radius:4px;height:16px">
+            <div style="background:#6d28d9;width:{pct}%;height:16px;border-radius:4px"></div>
           </div>
-          <div style="background:#e5e7eb;border-radius:4px;height:8px;margin-top:4px">
-            <div style="background:{color};width:{pct}%;height:8px;border-radius:4px"></div>
-          </div>
+          <span style="width:28px;text-align:right">{w['dau']}</span>
         </div>"""
+    if not weekly_html:
+        weekly_html = '<p style="color:#9ca3af;font-size:13px">데이터 없음</p>'
 
-    alert_html = ""
-    if low > 0 or (avg_total > 0 and avg_total < 30):
-        alert_html = f'<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;margin-bottom:16px">⚠️ 품질 점검 필요: 저품질 {low}건, 평균 {avg_total}/50점</div>'
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    def stat_row(label, value):
+        return f'<tr><td style="padding:5px 0;color:#6b7280;font-size:13px">{label}</td><td style="font-weight:bold;font-size:13px">{value}</td></tr>'
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
-<body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;color:#111">
-  <h2 style="color:#6d28d9">📊 GovMatch AI COO 일일 보고서</h2>
-  <p style="color:#6b7280;font-size:13px">{now} KST</p>
+<body style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px;color:#111">
+
+  <h2 style="color:#6d28d9;margin-bottom:4px">GovMatch 일일 현황</h2>
+  <p style="color:#6b7280;font-size:13px;margin-top:0">{today} 보고</p>
   <hr style="border-color:#e5e7eb">
 
-  {alert_html}
-
-  <h3>🤖 상담 품질</h3>
-  <p>평균: <strong>{avg_total}/50점</strong> ({quality.get('sample_count',0)}건 샘플)</p>
-  {score_bars}
-
-  <h3>📚 학습 현황</h3>
-  <table style="width:100%;border-collapse:collapse;font-size:14px">
-    <tr><td style="padding:6px 0;color:#6b7280">지식베이스 총</td><td style="font-weight:bold">{kb_total}건</td></tr>
-    <tr><td style="padding:6px 0;color:#6b7280">오늘 추가</td><td style="font-weight:bold">{kb_today}건</td></tr>
-    <tr><td style="padding:6px 0;color:#6b7280">오늘 상담 로그</td><td style="font-weight:bold">{consult_today}건</td></tr>
-    <tr><td style="padding:6px 0;color:#6b7280">임베딩 누락</td><td style="font-weight:bold">{learning.get('no_embedding_count',0)}건</td></tr>
+  <h3 style="color:#111;font-size:15px">&#128101; 회원</h3>
+  <table style="width:100%;border-collapse:collapse">
+    {stat_row("누적 회원", f"{u_total}명")}
+    {stat_row("&nbsp;&nbsp;├ lite", f"{u_lite}명")}
+    {stat_row("&nbsp;&nbsp;└ pro", f'<span style="color:#6d28d9">{u_pro}명</span>')}
+    {stat_row("유료 전환율", f'<span style="color:#6d28d9">{conv_rt}%</span>')}
+    {stat_row(f"어제({yest}) 신규", f'{u_new}명 &nbsp;<span style="color:#6b7280;font-weight:normal;font-size:12px">(기업 {u_biz} / 개인 {u_ind})</span>')}
   </table>
 
-  <h3>📈 상담 통계</h3>
-  <table style="width:100%;border-collapse:collapse;font-size:14px">
-    <tr><td style="padding:6px 0;color:#6b7280">총 상담</td><td style="font-weight:bold">{metrics.get('total_consults','N/A')}건</td></tr>
-    <tr><td style="padding:6px 0;color:#6b7280">오늘 상담</td><td style="font-weight:bold">{metrics.get('today_consults','N/A')}건</td></tr>
-    <tr><td style="padding:6px 0;color:#6b7280">PRO 세션</td><td style="font-weight:bold">{metrics.get('pro_sessions','N/A')}건</td></tr>
+  <h3 style="color:#111;font-size:15px;margin-top:20px">&#9889; 어제({yest}) 활동</h3>
+  <table style="width:100%;border-collapse:collapse">
+    {stat_row("로그인(DAU)", f"{dau}명")}
+    {stat_row("AI 상담", f"{ai_cnt}건")}
+    {stat_row("PRO 상담", f"{pro_cnt}건")}
+    {stat_row("매칭 실행", f"{match_cnt}건")}
+  </table>
+
+  <h3 style="color:#111;font-size:15px;margin-top:20px">&#128200; 주간 DAU 추이</h3>
+  {weekly_html}
+
+  <h3 style="color:#111;font-size:15px;margin-top:20px">&#128202; 누적 현황</h3>
+  <table style="width:100%;border-collapse:collapse">
+    {stat_row("실질 AI 상담", f"{total_consults}건")}
+    {stat_row("PRO 세션", f"{total_pro}건")}
+    {stat_row("매칭 이력", f"{total_match}건")}
+    {stat_row("지식베이스", f"{kb_total}건 <span style='color:#6b7280;font-weight:normal;font-size:12px'>(오늘 +{kb_today})</span>")}
   </table>
 
   <hr style="border-color:#e5e7eb;margin-top:24px">
-  <p style="color:#9ca3af;font-size:12px">GovMatch AI COO | <a href="https://govmatch.kr">govmatch.kr</a></p>
+  <p style="color:#9ca3af;font-size:12px">GovMatch | <a href="https://govmatch.kr" style="color:#9ca3af">govmatch.kr</a></p>
 </body></html>"""
 
 
-def send_report(metrics: dict, quality: dict, learning: dict) -> dict:
-    """보고서 생성 후 이메일 + 카카오 발송"""
-    report_text = _build_report_text(metrics, quality, learning)
-    report_html = _build_report_html(metrics, quality, learning, report_text)
+# ── 발송 ──────────────────────────────────────────────────────
+def send_report(metrics: dict, learning: dict) -> dict:
+    report_text = _build_report_text(metrics, learning)
+    report_html = _build_report_html(metrics, learning)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
-    # ── 이메일 발송 ──
-    owner_email = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
+    # ── 이메일 ──
+    owner_email    = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
     resend_api_key = os.environ.get("RESEND_API_KEY")
-    resend_from = os.environ.get("RESEND_FROM", "noreply@govmatch.kr")
+    resend_from    = os.environ.get("RESEND_FROM", "info@govmatch.kr")
 
     if owner_email and resend_api_key:
         try:
             import requests
-            now_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = datetime.now().strftime("%Y-%m-%d")
             resp = requests.post(
                 "https://api.resend.com/emails",
                 headers={
@@ -148,86 +179,88 @@ def send_report(metrics: dict, quality: dict, learning: dict) -> dict:
                 json={
                     "from": resend_from,
                     "to": [owner_email],
-                    "subject": f"[AI COO] GovMatch 일일 보고서 {now_str}",
+                    "subject": f"[GovMatch] 일일 현황 {today_str}",
                     "html": report_html,
+                    "text": report_text,
                 },
                 timeout=15,
             )
             result["email_sent"] = resp.status_code in (200, 202)
             if result["email_sent"]:
-                print(f"[Orchestrator/reporter] 이메일 발송 완료 → {owner_email}")
+                print(f"[reporter] 이메일 발송 완료 → {owner_email}")
             else:
-                print(f"[Orchestrator/reporter] 이메일 발송 실패: {resp.status_code} {resp.text[:100]}")
+                print(f"[reporter] 이메일 발송 실패: {resp.status_code} {resp.text[:100]}")
         except Exception as e:
-            print(f"[Orchestrator/reporter] 이메일 오류: {e}")
+            print(f"[reporter] 이메일 오류: {e}")
     else:
-        print("[Orchestrator/reporter] OWNER_EMAIL 또는 RESEND_API_KEY 미설정 — 이메일 스킵")
+        print("[reporter] OWNER_EMAIL 또는 RESEND_API_KEY 미설정 — 이메일 스킵")
 
-    # ── 카카오 발송 (사장님 계정) ──
-    owner_email = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
+    # ── 카카오 ──
     kakao_client_id = os.environ.get("KAKAO_CLIENT_ID")
-
     if owner_email and kakao_client_id:
         try:
-            import asyncio
-            import psycopg2
-            import psycopg2.extras
-
-            DATABASE_URL = os.environ.get("DATABASE_URL", "")
-            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+            import psycopg2, psycopg2.extras
+            conn = psycopg2.connect(
+                os.environ.get("DATABASE_URL", ""),
+                cursor_factory=psycopg2.extras.RealDictCursor,
+            )
             cur = conn.cursor()
-            cur.execute("SELECT kakao_refresh_token FROM users WHERE email = %s", (owner_email,))
+            cur.execute(
+                "SELECT kakao_refresh_token FROM users WHERE email = %s",
+                (owner_email,),
+            )
             row = cur.fetchone()
             conn.close()
 
             if row and row.get("kakao_refresh_token"):
-                async def _send_kakao():
-                    import httpx
+                import asyncio, httpx
+
+                async def _send():
                     async with httpx.AsyncClient() as client:
-                        token_res = await client.post("https://kauth.kakao.com/oauth/token", data={
-                            "grant_type": "refresh_token",
-                            "client_id": kakao_client_id,
-                            "client_secret": os.environ.get("KAKAO_CLIENT_SECRET", ""),
-                            "refresh_token": row["kakao_refresh_token"],
-                        })
+                        token_res = await client.post(
+                            "https://kauth.kakao.com/oauth/token",
+                            data={
+                                "grant_type": "refresh_token",
+                                "client_id": kakao_client_id,
+                                "client_secret": os.environ.get("KAKAO_CLIENT_SECRET", ""),
+                                "refresh_token": row["kakao_refresh_token"],
+                            },
+                        )
                         access_token = token_res.json().get("access_token")
                         if not access_token:
                             return False
 
-                        now_str = datetime.now().strftime("%Y-%m-%d")
-                        avg_total = quality.get("avg_total", 0)
-                        kb_today = learning.get("today_added", 0)
-                        consult_today = learning.get("consult_log_today", 0)
+                        today_str  = datetime.now().strftime("%Y-%m-%d")
+                        yest_short = (datetime.now() - timedelta(days=1)).strftime("%m-%d")
                         kakao_text = (
-                            f"[AI COO] {now_str} 보고\n"
-                            f"품질: {avg_total}/50점\n"
-                            f"오늘 상담: {consult_today}건\n"
-                            f"신규 지식: {kb_today}건\n"
+                            f"[GovMatch] {today_str}\n"
+                            f"누적 회원 {metrics.get('users_total')}명 (PRO {metrics.get('users_pro')})\n"
+                            f"어제({yest_short}) 신규 {metrics.get('new_users_yesterday')}명 | DAU {metrics.get('dau_yesterday')}명\n"
+                            f"AI상담 {metrics.get('ai_consults_yesterday')}건 | 매칭 {metrics.get('matching_yesterday')}건\n"
                             f"govmatch.kr"
                         )
-
                         msg_res = await client.post(
                             "https://kapi.kakao.com/v2/api/talk/memo/default/send",
                             headers={"Authorization": f"Bearer {access_token}"},
                             data={"template_object": json.dumps({
                                 "object_type": "text",
                                 "text": kakao_text,
-                                "link": {"web_url": "https://govmatch.kr", "mobile_web_url": "https://govmatch.kr"},
+                                "link": {
+                                    "web_url": "https://govmatch.kr",
+                                    "mobile_web_url": "https://govmatch.kr",
+                                },
                             }, ensure_ascii=False)},
                         )
                         return msg_res.json().get("result_code") == 0
 
-                try:
-                    loop = asyncio.new_event_loop()
-                    result["kakao_sent"] = loop.run_until_complete(_send_kakao())
-                    loop.close()
-                    if result["kakao_sent"]:
-                        print("[Orchestrator/reporter] 카카오 발송 완료")
-                except Exception as e:
-                    print(f"[Orchestrator/reporter] 카카오 오류: {e}")
+                loop = asyncio.new_event_loop()
+                result["kakao_sent"] = loop.run_until_complete(_send())
+                loop.close()
+                if result["kakao_sent"]:
+                    print("[reporter] 카카오 발송 완료")
         except Exception as e:
-            print(f"[Orchestrator/reporter] 카카오 DB 조회 오류: {e}")
+            print(f"[reporter] 카카오 오류: {e}")
     else:
-        print("[Orchestrator/reporter] OWNER_EMAIL 또는 KAKAO_CLIENT_ID 미설정 — 카카오 스킵")
+        print("[reporter] OWNER_EMAIL 또는 KAKAO_CLIENT_ID 미설정 — 카카오 스킵")
 
     return result

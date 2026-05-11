@@ -9929,11 +9929,13 @@ def get_manual_sync_status():
 _local_scraper_status: dict = {"running": False, "result": None}
 
 _LOCAL_SCRAPER_INFO = [
-    {"name": "gwangju_tp",  "label": "광주테크노파크",   "site": "www.gjtp.or.kr"},
-    {"name": "jeonnam_tp",  "label": "전남테크노파크",   "site": "www.jntp.or.kr"},
-    {"name": "jeonbuk_tp",  "label": "전북테크노파크",   "site": "www.jbtp.or.kr"},
-    {"name": "kicet",       "label": "한국세라믹기술원", "site": "www.kicet.re.kr"},
-    {"name": "daejeon_tp",  "label": "대전테크노파크",   "site": "djtp.or.kr"},
+    {"name": "gwangju_tp",  "label": "광주테크노파크",        "site": "www.gjtp.or.kr"},
+    {"name": "jeonnam_tp",  "label": "전남테크노파크",        "site": "www.jntp.or.kr"},
+    {"name": "jeonbuk_tp",  "label": "전북테크노파크",        "site": "www.jbtp.or.kr"},
+    {"name": "kicet",       "label": "한국세라믹기술원",      "site": "www.kicet.re.kr"},
+    {"name": "daejeon_tp",  "label": "대전테크노파크",        "site": "djtp.or.kr"},
+    {"name": "kosmes",      "label": "중소기업진흥공단(중진공)", "site": "www.kosmes.or.kr"},
+    {"name": "kiat",        "label": "한국산업기술진흥원(KIAT)", "site": "www.kiat.or.kr"},
 ]
 
 def _run_local_scrapers_in_thread():
@@ -9944,13 +9946,16 @@ def _run_local_scrapers_in_thread():
     try:
         from app.services.scrapers.tier1.tp_scrapers import GjtpScraper, JntpScraper, JbtpScraper, DjtpScraper
         from app.services.scrapers.tier1.agency_scrapers7 import KicetScraper
+        from app.services.scrapers.tier1.agency_scrapers_pw import KosmesPWScraper, KiatPWScraper
 
         scraper_map = [
-            (GjtpScraper(), "gwangju_tp",  "광주테크노파크",   "scraper:gwangju_tp"),
-            (JntpScraper(), "jeonnam_tp",  "전남테크노파크",   "scraper:jeonnam_tp"),
-            (JbtpScraper(), "jeonbuk_tp",  "전북테크노파크",   "scraper:jeonbuk_tp"),
-            (KicetScraper(),"kicet",       "한국세라믹기술원", "scraper:kicet"),
-            (DjtpScraper(), "daejeon_tp",  "대전테크노파크",   "scraper:daejeon_tp"),
+            (GjtpScraper(),    "gwangju_tp",  "광주테크노파크",           "scraper:gwangju_tp"),
+            (JntpScraper(),    "jeonnam_tp",  "전남테크노파크",           "scraper:jeonnam_tp"),
+            (JbtpScraper(),    "jeonbuk_tp",  "전북테크노파크",           "scraper:jeonbuk_tp"),
+            (KicetScraper(),   "kicet",       "한국세라믹기술원",         "scraper:kicet"),
+            (DjtpScraper(),    "daejeon_tp",  "대전테크노파크",           "scraper:daejeon_tp"),
+            (KosmesPWScraper(),"kosmes",      "중소기업진흥공단(중진공)", "scraper:kosmes"),
+            (KiatPWScraper(),  "kiat",        "한국산업기술진흥원(KIAT)", "scraper:kiat"),
         ]
 
         conn = get_db_connection()

@@ -1783,7 +1783,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
 
           <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
-          <header className="space-y-3">
+          <header className="space-y-3 sticky top-0 z-20 bg-white">
 
             {/* 대분류 탭 — 토글 버튼 그룹 */}
             <div className="flex w-full border border-slate-300">

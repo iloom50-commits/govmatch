@@ -1904,7 +1904,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </header>
 
           {/* 2×4 카테고리 그리드 — 맞춤공고 통합 (sticky 해제, 스크롤과 함께 이동) */}
-          <div className="grid grid-cols-4 gap-px mt-3 mb-3 bg-slate-300 border border-slate-300">
+          <div className="grid grid-cols-4 mt-3 mb-3 border border-slate-200 divide-x divide-y divide-slate-200">
               {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}

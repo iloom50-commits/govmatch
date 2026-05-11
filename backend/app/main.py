@@ -2844,10 +2844,16 @@ def api_announcements_public(
                                if c.strip() and c.strip() != "전국"]
                 _user_city_std = _nrm_std(_cities_std[0]) if _cities_std else ""
                 if _user_city_std:
+                    # 전국 공고이더라도 제목에 타지역 브래킷(예: [강원])이 있으면 제외
+                    # title LIKE '[%' = 제목이 [로 시작하는 지역한정 공고
                     where_clauses.append(
-                        "(region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All')"
-                        " OR region ILIKE %s)"
+                        "("
+                        "  (region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All'))"
+                        "  AND NOT (title LIKE '[%%' AND title NOT ILIKE %s)"
+                        "  OR region ILIKE %s"
+                        ")"
                     )
+                    params.append(f"[{_user_city_std}]%")
                     params.append(f"%{_user_city_std}%")
         except Exception:
             pass

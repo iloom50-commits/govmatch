@@ -2,7 +2,7 @@
 blog_analyzer.py — 블로그용 공고 AI 분석 배치
 
 매일 patrol 시 실행:
-  - full_text 있고 blog_analysis 미완료 공고 선별
+  - 실제 자금 지원 공고(support_amount 명시) 중 마감 10일 이상 남은 것 선별
   - 공고상담AI(Gemini)로 구조화 분석
   - announcement_analysis.blog_analysis 컬럼에 저장
   - 블로그봇은 /api/announcements/public 응답의 blog_analysis 필드로 접근
@@ -63,22 +63,24 @@ def _call_gemini(prompt: str) -> dict | None:
 
 def run_blog_analysis_batch(db_conn, batch_size: int = 20) -> dict:
     """
-    full_text 있고 blog_analysis 없는 공고를 Gemini로 분석 후 저장.
+    자금 지원 공고(support_amount 명시) 중 마감 10일 이상 남은 것을 Gemini로 분석 후 저장.
     반환: {"processed": N, "skipped": N, "errors": N}
     """
     cur = db_conn.cursor()
 
-    # 대상: 활성 공고 + full_text 보유 + blog_analysis 미완료
+    # 대상: 실제 금액 명시 공고 + 마감 10일 이상(또는 상시) + full_text 보유 + blog_analysis 미완료
     cur.execute("""
         SELECT a.announcement_id, a.title, a.deadline_date,
                aa.id AS analysis_id, aa.full_text
         FROM announcements a
         JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE a.is_archived = FALSE
+          AND a.support_amount_type IN ('numeric', 'text_only')
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE + INTERVAL '10 days')
           AND aa.full_text IS NOT NULL
           AND LENGTH(aa.full_text) > 200
           AND aa.blog_analysis IS NULL
-        ORDER BY a.announcement_id DESC
+        ORDER BY a.deadline_date ASC NULLS LAST
         LIMIT %s
     """, (batch_size,))
     rows = cur.fetchall()

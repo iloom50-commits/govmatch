@@ -1957,6 +1957,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* <HotIssueTicker /> */}
 
 
+          {/* 관심분야 미설정 유도 배너 — 로그인O + interests 없음 + 칩 미선택 */}
+          {profile && !profile.interests && activeChips.size === 0 && !searchQuery.trim() && (
+            <button
+              onClick={() => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
+              className="w-full flex items-center gap-2.5 px-4 py-3 mb-2 bg-indigo-50 border border-indigo-100 rounded-xl text-left hover:bg-indigo-100 transition-colors"
+            >
+              <span className="text-lg shrink-0">🎯</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-indigo-700">관심분야를 설정하면 맞춤 공고가 먼저 보여요</p>
+                <p className="text-[11px] text-indigo-400 mt-0.5">프로필에서 관심분야를 입력하면 칩이 자동 선택됩니다</p>
+              </div>
+              <span className="text-indigo-300 text-xs shrink-0">설정 →</span>
+            </button>
+          )}
+
           {searchQuery.trim() && !searchLoading && searchResults && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">
               &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>

@@ -933,7 +933,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { setActiveChips(new Set()); }, [majorTab]);
 
   // 탭/검색 변경 시 페이지 리셋
-  useEffect(() => { if (!isPublic) setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
+  useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
 
   const newMatchCount = 0;
 
@@ -1921,7 +1921,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
-          {filteredMatches.length === 0 && !searchLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (
+          {filteredMatches.length === 0 && !searchLoading && !publicLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               {/* 봇 캐릭터 — 컴퓨터 치는 장면 */}
               {!searchQuery.trim() && matches.length === 0 ? (

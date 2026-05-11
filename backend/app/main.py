@@ -2347,14 +2347,24 @@ def api_announcements_public(
         raise HTTPException(status_code=400, detail="페이지 범위를 초과했습니다.")
     offset = (page - 1) * size
 
-    # ── 로그인 사용자 + 필터 없음 → 사전캐시 우선, 없으면 실시간 CTE ──
-    _is_logged_in = False  # 로그인 여부 — 공유 캐시 우회 판단용
-    if authorization and authorization.startswith("Bearer ") and not search and not region and not category:
+    # ── 로그인 여부: category/search 유무와 무관하게 토큰만으로 판별 ──
+    _is_logged_in = False
+    _auth_bn: str | None = None
+    if authorization and authorization.startswith("Bearer "):
         try:
-            current_user = _decode_jwt(authorization.split(" ", 1)[1])
-            bn = current_user.get("bn")
-            if bn:
+            _auth_jwt = _decode_jwt(authorization.split(" ", 1)[1])
+            _auth_bn = _auth_jwt.get("bn")
+            if _auth_bn:
                 _is_logged_in = True
+        except Exception:
+            pass
+
+    # ── 로그인 사용자 + 필터 없음 → 사전캐시 우선, 없으면 실시간 CTE ──
+    if _is_logged_in and not search and not region and not category:
+        try:
+            bn = _auth_bn
+            current_user = {"bn": bn}
+            if bn:
                 cache_type = "public_ind" if target_type == "individual" else "public_biz"
 
                 _pc = get_db_connection()
@@ -2751,12 +2761,10 @@ def api_announcements_public(
         elif tab == "local":
             # 사용자 지역 조회
             _user_city = ""
-            if _is_logged_in:
+            if _is_logged_in and _auth_bn:
                 try:
-                    _u_jwt = _decode_jwt(authorization.split(" ", 1)[1])
-                    _u_bn = _u_jwt.get("bn")
-                    if _u_bn:
-                        _tab_cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_u_bn,))
+                    if _auth_bn:
+                        _tab_cur.execute("SELECT address_city FROM users WHERE business_number = %s", (_auth_bn,))
                         _urow = _tab_cur.fetchone()
                         if _urow and _urow.get("address_city"):
                             _cities = [c.strip() for c in str(_urow["address_city"]).split(",") if c.strip() and c.strip() != "전국"]

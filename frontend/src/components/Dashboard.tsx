@@ -943,15 +943,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [matchedTotal, setMatchedTotal] = useState(0);
   const [matchedLoading, setMatchedLoading] = useState(false);
 
-  const fetchMatchedAnnouncements = useCallback(async (targetType: string, page = 1) => {
+  const fetchMatchedAnnouncements = useCallback(async (targetType: string, page = 1, catFilter = "") => {
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (!token) return;
     setMatchedLoading(true);
     try {
-      const res = await fetch(
-        `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=local`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=local`;
+      if (catFilter) url += `&category=${encodeURIComponent(catFilter)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.status === "SUCCESS") {
         setMatchedData(d.data || []);
@@ -975,12 +974,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 탭 전환 시 맞춤모드 해제
   useEffect(() => { setShowMatchedMode(false); }, [majorTab]);
 
-  // 맞춤모드 활성 상태에서 페이지 변경 시 재fetch
+  // 맞춤모드 활성 상태에서 페이지·칩 변경 시 재fetch
   useEffect(() => {
     if (!showMatchedMode) return;
     const targetType = majorTab === "business" ? "business" : "individual";
-    fetchMatchedAnnouncements(targetType, currentPage);
-  }, [showMatchedMode, currentPage, majorTab, fetchMatchedAnnouncements]);
+    // "내 지역"은 맞춤모드가 이미 tab=local이므로 제외, 나머지 카테고리만 AND 필터
+    const catFilter = chipKey.split(",").filter(c => c && c !== "내 지역").join(",");
+    fetchMatchedAnnouncements(targetType, currentPage, catFilter);
+  }, [showMatchedMode, currentPage, majorTab, chipKey, fetchMatchedAnnouncements]);
 
   // 모바일 감지
   useEffect(() => { setIsMobile(window.innerWidth < 768); }, []);

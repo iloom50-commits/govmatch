@@ -336,7 +336,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
 
-      <div className="flex flex-col gap-4 h-full relative z-[1]">
+      <div className="flex flex-col gap-2 h-full relative z-[1]">
 
         {/* Tags + Deadline inline */}
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -457,8 +457,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
         )}
 
         {/* Info & Buttons */}
-        <div className="relative bg-slate-50/80 p-4 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all overflow-hidden">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-5">
+        <div className="relative bg-slate-50/80 p-3 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
             <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
               <span className="text-slate-400">대상 :</span>

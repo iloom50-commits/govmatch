@@ -10801,7 +10801,13 @@ def api_get_analysis(announcement_id: int, raw: bool = False, _: None = Depends(
         from app.services.doc_analysis_service import get_deep_analysis
         analysis = get_deep_analysis(announcement_id, conn)
         if not analysis:
+            # 분석 row 존재 여부 직접 확인 (404 원인 추적)
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM announcement_analysis WHERE announcement_id = %s", (announcement_id,))
+            exists = cur.fetchone()
             conn.close()
+            if exists:
+                raise HTTPException(status_code=500, detail=f"분석 row 존재(id={exists['id']})하나 로드 실패 — 서버 로그 확인")
             raise HTTPException(status_code=404, detail="분석 데이터가 없습니다. POST /analyze로 분석을 먼저 실행하세요.")
 
         cur = conn.cursor()

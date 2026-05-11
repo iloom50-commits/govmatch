@@ -1473,7 +1473,7 @@ def get_deep_analysis(announcement_id: int, db_conn) -> Optional[Dict[str, Any]]
     try:
         cur = db_conn.cursor()
         cur.execute(
-            "SELECT parsed_sections, deep_analysis, form_templates, full_text, source_type FROM announcement_analysis WHERE announcement_id = %s",
+            "SELECT parsed_sections, deep_analysis, form_templates, full_text, source_type, blog_analysis FROM announcement_analysis WHERE announcement_id = %s",
             (announcement_id,)
         )
         row = cur.fetchone()
@@ -1485,9 +1485,10 @@ def get_deep_analysis(announcement_id: int, db_conn) -> Optional[Dict[str, Any]]
             "form_templates": row["form_templates"] if isinstance(row["form_templates"], list) else json.loads(row["form_templates"] or "[]"),
             "full_text": row["full_text"],
             "source_type": row["source_type"],
+            "blog_analysis": row["blog_analysis"] if isinstance(row["blog_analysis"], dict) else json.loads(row["blog_analysis"]) if row["blog_analysis"] else None,
         }
     except Exception as e:
-        print(f"[DocAnalysis] Fetch error: {e}")
+        print(f"[DocAnalysis] Fetch error id={announcement_id}: {e}")
         return None
 
 

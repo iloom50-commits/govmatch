@@ -38,3 +38,6 @@ from . import regional_tp_scrapers  # noqa: F401
 
 # 공공기관 배치 8 (고비즈코리아/신용보증기금)
 from . import agency_scrapers8  # noqa: F401
+
+# 광역시도청 11개 (인천/대전/울산/세종/강원/충북/충남/전북/전남/경남/부산)
+from . import sido_scrapers  # noqa: F401

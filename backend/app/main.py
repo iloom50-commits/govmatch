@@ -637,11 +637,17 @@ async def _daily_sync_loop():
             await sync_service.sync_all()
             print("[Scheduler] Step 1/3: 공고 수집 완료")
 
-            # Step 1.5: DB 정리 (비지원사업 제거 + 중복 제거)
+            # Step 1.5: DB 정리 (비지원사업 제거 + 중복 제거 + AI 분류)
             print("[Scheduler] Step 1.5: DB 정리 + 분류...")
             _cleanup_non_support_announcements()
             _deduplicate_announcements()
-            _auto_classify_target_type()
+            try:
+                from app.services.patrol.target_type_classifier import ai_classify_pending
+                _sched_conn = get_db_connection()
+                ai_classify_pending(_sched_conn, batch_size=20)
+                _sched_conn.close()
+            except Exception as _e:
+                print(f"[Scheduler] AI 분류 오류: {_e}")
 
             # Step 2a: 지자체복지 상세 보강 (매일 100건씩 점진적)
             print("[Scheduler] Step 2a: 지자체복지 상세 보강...")
@@ -2583,7 +2589,8 @@ def api_announcements_public(
 
                     valid_where = valid_announcement_where()
                     if target_type:
-                        type_filter = "AND (target_type = %s OR target_type = 'both' OR target_type IS NULL)"
+                        # NULL은 AI 분류 대기 중 → 양쪽 탭에 노출되지 않도록 제외
+                        type_filter = "AND (target_type = %s OR target_type = 'both')"
                         type_params = [target_type]
                     else:
                         type_filter = ""
@@ -9873,11 +9880,67 @@ def admin_seed_urls():
 
 @app.post("/api/admin/cleanup-db", dependencies=[Depends(_verify_admin)])
 def admin_cleanup_db():
-    """DB 정리: 비지원사업 제거 + 중복 제거 + target_type 분류"""
+    """DB 정리: 비지원사업 제거 + 중복 제거 + AI target_type 분류"""
     _cleanup_non_support_announcements()
     _deduplicate_announcements()
-    _auto_classify_target_type()
-    return {"status": "SUCCESS", "message": "DB 정리 + 분류 완료"}
+    try:
+        from app.services.patrol.target_type_classifier import ai_classify_pending
+        conn = get_db_connection()
+        classify_result = ai_classify_pending(conn, batch_size=20)
+        conn.close()
+    except Exception as e:
+        classify_result = {"error": str(e)[:200]}
+    return {"status": "SUCCESS", "message": "DB 정리 + 분류 완료", "classify": classify_result}
+
+
+@app.post("/api/admin/target-type/backup", dependencies=[Depends(_verify_admin)])
+def admin_backup_target_type(label: str = "manual"):
+    """현재 target_type 값 전체 백업 (롤백용 안전장치)"""
+    from app.services.patrol.target_type_classifier import backup_target_types
+    conn = get_db_connection()
+    try:
+        count = backup_target_types(conn, label=label)
+        return {"status": "SUCCESS", "backed_up": count, "label": label}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/target-type/rollback", dependencies=[Depends(_verify_admin)])
+def admin_rollback_target_type(label: str = "manual"):
+    """백업된 target_type 값으로 원복"""
+    from app.services.patrol.target_type_classifier import rollback_target_types
+    conn = get_db_connection()
+    try:
+        count = rollback_target_types(conn, label=label)
+        if count == 0:
+            return {"status": "ERROR", "message": f"백업 없음 (label={label})"}
+        return {"status": "SUCCESS", "restored": count, "label": label}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/target-type/reclassify-all", dependencies=[Depends(_verify_admin)])
+def admin_reclassify_all(batch_size: int = 20, max_batches: int = 200):
+    """기존 DB 전체 공고 AI 재분류 (1회성 마이그레이션).
+    실행 전 자동 백업 → 오류 시 /rollback?label=before_reclassify_all 으로 복원.
+    """
+    import threading
+    from app.services.patrol.target_type_classifier import reclassify_all
+
+    def _run():
+        conn = get_db_connection()
+        try:
+            reclassify_all(conn, batch_size=batch_size, max_batches=max_batches)
+        finally:
+            conn.close()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {
+        "status": "STARTED",
+        "message": "백그라운드 재분류 시작. 완료까지 수분 소요.",
+        "rollback_endpoint": "/api/admin/target-type/rollback?label=before_reclassify_all",
+    }
 
 
 def _run_manual_sync_in_thread():

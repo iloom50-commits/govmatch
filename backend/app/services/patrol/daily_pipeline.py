@@ -109,12 +109,19 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         from app.main import (
             _cleanup_non_support_announcements,
             _deduplicate_announcements,
-            _auto_classify_target_type,
         )
+        from app.services.patrol.target_type_classifier import ai_classify_pending
+
         _cleanup_non_support_announcements()
         _deduplicate_announcements()
-        _auto_classify_target_type()
-        return {"cleaned": True}
+
+        # AI 기반 target_type 분류 (NULL 공고만 대상, 배치 20건)
+        try:
+            classify_result = ai_classify_pending(db_conn, batch_size=20)
+        except Exception as e:
+            classify_result = {"error": str(e)[:200]}
+
+        return {"cleaned": True, "classify": classify_result}
 
     _run_step("③ DB 정리", step_3_cleanup)
 

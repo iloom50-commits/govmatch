@@ -331,7 +331,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card p-3 pb-[4px] md:p-5 md:pb-[4px] rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />

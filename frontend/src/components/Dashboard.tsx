@@ -1842,7 +1842,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
 
           <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
-          <header className="space-y-3 sticky top-0 z-20 bg-white">
+          <header className="sticky top-0 z-20 bg-white">
 
             {/* 대분류 탭 — 토글 버튼 그룹 */}
             <div className="flex w-full border border-slate-300">
@@ -1871,8 +1871,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               })}
             </div>
 
-            {/* 키워드 검색 */}
-            <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 border border-slate-200/60 shadow-sm">
+          </header>
+
+          {/* 키워드 검색 — 스크롤과 함께 이동 */}
+          <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 border border-slate-200/60 shadow-sm mt-3">
               <div className="flex items-center gap-1.5 px-2 text-slate-400 flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1899,9 +1901,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   </svg>
                 </button>
               )}
-            </div>
-
-          </header>
+          </div>
 
           {/* 2×4 카테고리 그리드 — 맞춤공고 통합 (sticky 해제, 스크롤과 함께 이동) */}
           <div className="grid grid-cols-4 mt-3 mb-3 border border-slate-200">

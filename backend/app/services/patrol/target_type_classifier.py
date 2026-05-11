@@ -125,8 +125,12 @@ def rollback_target_types(conn, label: str = "auto") -> int:
 _BUSINESS_ONLY_SOURCES = {
     "kstartup",          # K-Startup 창업진흥원 포털
     "kstartup-api",
+    "kised-api",         # 창업진흥원(KISED) API
     "bizinfo",           # 비즈인포 (중기부)
     "bizinfo-api",
+    "bizinfo-portal-api",
+    "smes24-api",        # 중소기업24 (중기부 직접 연계)
+    "mss-direct",        # 중소벤처기업부 직접
     "kosme",             # 중소벤처기업진흥공단
     "smba",              # 중소벤처기업부
     "kotra",             # KOTRA 수출
@@ -134,6 +138,8 @@ _BUSINESS_ONLY_SOURCES = {
     "kdb",               # KDB 산업은행
     "ibk",               # IBK 기업은행
     "kventure",          # 벤처기업협회
+    "ccei",              # 창조경제혁신센터
+    "창조경제혁신센터",   # admin-manual:창조경제혁신센터 형태 대응
 }
 
 

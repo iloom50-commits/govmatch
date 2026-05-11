@@ -2833,6 +2833,25 @@ def api_announcements_public(
             _nr = _nrm(region)
             where_clauses.append("(region = %s OR region = %s)")
             params.extend([region, _nr])
+    # 회원 + 프로필 완성 + 지역 미지정 → 전국 + 내 지역 자동 필터 (타지역 공고 제외)
+    if _is_logged_in and _auth_bn and not region and not tab:
+        try:
+            from app.services.rule_engine import _normalize_region as _nrm_std
+            cursor.execute("SELECT address_city FROM users WHERE business_number = %s", (_auth_bn,))
+            _urow_std = cursor.fetchone()
+            if _urow_std and _urow_std.get("address_city"):
+                _cities_std = [c.strip() for c in str(_urow_std["address_city"]).split(",")
+                               if c.strip() and c.strip() != "전국"]
+                _user_city_std = _nrm_std(_cities_std[0]) if _cities_std else ""
+                if _user_city_std:
+                    where_clauses.append(
+                        "(region IS NULL OR region IN ('전국', '', '전국 및 각 지역', 'All')"
+                        " OR region ILIKE %s)"
+                    )
+                    params.append(f"%{_user_city_std}%")
+        except Exception:
+            pass
+
     if category:
         _cats = [c.strip() for c in category.split(",") if c.strip()]
         if len(_cats) == 1:

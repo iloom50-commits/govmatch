@@ -42,6 +42,27 @@ function SocialCallbackInner() {
 
     (async () => {
       try {
+        // 카카오 연동 모드 (기존 계정에 카카오 연결)
+        const isLinkMode = sessionStorage.getItem("kakao_link_mode") === "1";
+        if (isLinkMode && provider === "kakao") {
+          sessionStorage.removeItem("kakao_link_mode");
+          const token = localStorage.getItem("auth_token");
+          const res = await fetch(`${API}/api/auth/kakao/link-save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ code }),
+          });
+          const data = await res.json();
+          if (data.status === "SUCCESS") {
+            window.location.href = "/?kakao_linked=1";
+          } else {
+            setStatus("error");
+            setErrorMsg(data.detail || "카카오 연결에 실패했습니다.");
+          }
+          return;
+        }
+
+        // 일반 소셜 로그인
         const res = await fetch(`${API}/api/auth/social/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

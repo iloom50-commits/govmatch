@@ -221,6 +221,27 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
               </>
             )}
 
+            {/* 카카오 연결하기 — 카카오 로그인이 아닌 사용자 대상 */}
+            {!profile?.kakao_linked && (
+              <>
+                <Row
+                  label="카카오 알림 연결"
+                  value="연결하기 →"
+                  onClick={() => {
+                    sessionStorage.setItem("kakao_link_mode", "1");
+                    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/social/kakao`;
+                  }}
+                />
+                <Divider />
+              </>
+            )}
+            {profile?.kakao_linked && (
+              <>
+                <Row label="카카오 알림" value="연결됨 ✓" />
+                <Divider />
+              </>
+            )}
+
             <Row
               label="📋 내 상담 이력"
               value=""

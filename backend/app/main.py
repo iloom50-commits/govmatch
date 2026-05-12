@@ -3561,6 +3561,44 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
     return token, plan_status, u, is_new
 
 
+class KakaoLinkSaveRequest(BaseModel):
+    code: str
+
+@app.post("/api/auth/kakao/link-save")
+async def api_kakao_link_save(req: KakaoLinkSaveRequest, current_user: dict = Depends(_get_current_user)):
+    """기존 계정에 카카오 refresh_token 연결 (연동 전용 — 로그인과 무관)."""
+    import httpx
+    redirect_uri = f"{FRONTEND_URL}/auth/callback/kakao"
+
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post("https://kauth.kakao.com/oauth/token", data={
+            "grant_type": "authorization_code",
+            "client_id": KAKAO_CLIENT_ID,
+            "client_secret": KAKAO_CLIENT_SECRET,
+            "code": req.code,
+            "redirect_uri": redirect_uri,
+        })
+        token_data = token_res.json()
+
+    refresh_token = token_data.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail=f"카카오 인증 실패: {token_data.get('error_description', '')}")
+
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE users SET kakao_refresh_token = %s WHERE business_number = %s",
+            (refresh_token, bn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"status": "SUCCESS", "message": "카카오 연결 완료"}
+
+
 @app.get("/api/auth/social/{provider}")
 def api_social_auth_redirect(provider: str):
     """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""
@@ -3756,6 +3794,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
             "user_type": u.get("user_type") or None,
             "is_social": bool(u.get("kakao_id")),
             "social_provider": u.get("kakao_id", "").split(":")[0] if u.get("kakao_id") else None,
+            "kakao_linked": bool(u.get("kakao_refresh_token")),
             "custom_needs": u.get("custom_needs"),
             "custom_keywords": u.get("custom_keywords"),
             "gender": u.get("gender"),

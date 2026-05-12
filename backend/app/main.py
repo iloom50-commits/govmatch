@@ -2763,6 +2763,16 @@ def api_announcements_public(
         _m_conn = get_db_connection()
         _m_cur = _m_conn.cursor()
 
+        # 탭 기준 유효 관심사 카테고리 (기업/개인 혼입 방지)
+        _BIZ_INTEREST_CATS = {
+            "창업지원", "기술개발", "수출마케팅", "고용지원", "시설개선", "정책자금",
+            "디지털전환", "판로개척", "교육훈련", "에너지환경", "소상공인", "R&D",
+        }
+        _INDIV_INTEREST_CATS = {
+            "취업", "주거", "교육", "청년", "출산", "육아", "다자녀",
+            "장학금", "의료", "장애", "저소득", "노인", "문화",
+        }
+
         # 사용자 interests·지역 조회
         _m_interests: list[str] = []
         _m_city = ""
@@ -2775,7 +2785,15 @@ def api_announcements_public(
                 _m_urow = _m_cur.fetchone()
                 if _m_urow:
                     raw_interests = str(_m_urow.get("interests") or "")
-                    _m_interests = [i.strip() for i in raw_interests.split(",") if i.strip()]
+                    all_interests = [i.strip() for i in raw_interests.split(",") if i.strip()]
+                    # 현재 탭에 맞는 관심사만 사용 (기업/개인 혼입 방지)
+                    if target_type == "individual":
+                        _m_interests = [i for i in all_interests if i in _INDIV_INTEREST_CATS]
+                    else:
+                        _m_interests = [i for i in all_interests if i in _BIZ_INTEREST_CATS]
+                    # 분류된 관심사가 없으면 전체 사용 (사용자가 자유 키워드 입력한 경우)
+                    if not _m_interests:
+                        _m_interests = all_interests
                     raw_city = str(_m_urow.get("address_city") or "")
                     _m_cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
                     _m_city = _nrm_matched(_m_cities[0]) if _m_cities else ""

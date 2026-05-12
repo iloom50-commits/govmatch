@@ -94,9 +94,26 @@ class NotificationService:
         else:
             region_clause = "region IN ('전국', 'All', '온라인', '해외', '기타', '')"
 
-        # 관심사 키워드 절 (설정 시 해당 공고만 필터)
+        # 기업/개인 탭 기준 유효 관심사 카테고리 (혼입 방지)
+        _BIZ_CATS = {
+            "창업지원", "기술개발", "수출마케팅", "고용지원", "시설개선", "정책자금",
+            "디지털전환", "판로개척", "교육훈련", "에너지환경", "소상공인", "R&D",
+        }
+        _INDIV_CATS = {
+            "취업", "주거", "교육", "청년", "출산", "육아", "다자녀",
+            "장학금", "의료", "장애", "저소득", "노인", "문화",
+        }
+
+        # 관심사 키워드 절 (user_type에 맞는 카테고리만 필터)
         interests_str = user_dict.get('interests') or ''
-        interests_kw = [i.strip() for i in interests_str.split(',') if i.strip()]
+        all_interests = [i.strip() for i in interests_str.split(',') if i.strip()]
+        if user_type == 'individual':
+            interests_kw = [i for i in all_interests if i in _INDIV_CATS]
+        else:
+            interests_kw = [i for i in all_interests if i in _BIZ_CATS]
+        # 분류된 관심사 없으면 전체 사용 (자유 키워드 입력 케이스)
+        if not interests_kw:
+            interests_kw = all_interests
         if interests_kw:
             kw_parts = " OR ".join(
                 ["(title ILIKE %s OR category ILIKE %s)" for _ in interests_kw]

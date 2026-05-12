@@ -1,10 +1,11 @@
-"""복지로 Open API 스크래퍼 — 중앙부처 + 지자체 복지서비스
+"""복지로 Open API 스크래퍼 — 중앙부처 복지서비스
 
-출처:
-  - 중앙부처: apis.data.go.kr/B554287/NationalWelfareInformations/NationalWelfarelist
-  - 지자체:   apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LocalWelfarelist
-인증: PUBLIC_DATA_PORTAL_KEY
-커버: 복지·취업·주거·교육·청년·출산·육아·장애·저소득 등
+출처: apis.data.go.kr/B554287/NationalWelfareInformationsV001/NationalWelfarelistV001
+인증: PUBLIC_DATA_PORTAL_KEY (공공데이터포털 인증키)
+커버: 복지·취업·주거·교육·청년·출산·육아·장애·저소득 등 (413건+)
+
+지자체 복지서비스 API는 별도 활용신청 후 추가 예정:
+  LocalGovernmentWelfareInformationsV001/LocalWelfarelistV001
 """
 from __future__ import annotations
 import os
@@ -20,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 _KEY = os.getenv("PUBLIC_DATA_PORTAL_KEY", "")
 _CENTRAL_URL = (
-    "http://apis.data.go.kr/B554287/NationalWelfareInformations/NationalWelfarelist"
+    "https://apis.data.go.kr/B554287/NationalWelfareInformationsV001/NationalWelfarelistV001"
 )
 _LOCAL_URL = (
-    "http://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LocalWelfarelist"
+    "https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformationsV001/LocalWelfarelistV001"
 )
-_NUM_ROWS = 500
-_MAX_PAGES = 10  # 최대 5,000건
+_NUM_ROWS = 100  # 복지로는 100이 안정적 (500은 타임아웃 위험)
+_MAX_PAGES = 20  # 최대 2,000건
 
 _EXCLUDE_KW = re.compile(
     r"채용|입찰|구매|계약|임원|면접|합격자|공사|용역|물품|청소|경비"
@@ -69,6 +70,11 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def _t(el_parent, tag: str) -> str:
+    el = el_parent.find(tag)
+    return _clean(el.text if el is not None and el.text else "")
+
+
 def _fetch_page(url: str, page: int) -> ET.Element | None:
     try:
         resp = requests.get(
@@ -78,11 +84,18 @@ def _fetch_page(url: str, page: int) -> ET.Element | None:
                 "callTp": "L",
                 "pageNo": page,
                 "numOfRows": _NUM_ROWS,
+                "srchKeyCode": "003",  # 전체검색 (필수 파라미터)
             },
             timeout=30,
         )
         resp.raise_for_status()
-        return ET.fromstring(resp.content)
+        root = ET.fromstring(resp.content)
+        result_code = root.findtext(".//resultCode") or ""
+        if result_code != "0":
+            msg = root.findtext(".//resultMessage") or ""
+            logger.warning(f"[bokjiro] API 오류 {result_code}: {msg}")
+            return None
+        return root
     except Exception as e:
         logger.warning(f"[bokjiro] {url} page {page} 실패: {e}")
         return None
@@ -90,31 +103,25 @@ def _fetch_page(url: str, page: int) -> ET.Element | None:
 
 def _parse_items(root: ET.Element, dept_fallback: str) -> List[Dict[str, Any]]:
     results = []
-    body = root.find(".//body")
-    if body is None:
-        return results
-
-    for item in body.findall("items/item"):
-        def t(tag: str) -> str:
-            el = item.find(tag)
-            return _clean(el.text if el is not None else "")
-
-        title = t("servNm")
+    # V001 응답 구조: <wantedList><servList>...</servList>...
+    for item in root.findall(".//servList"):
+        title = _t(item, "servNm")
         if not title or _EXCLUDE_KW.search(title):
             continue
 
-        detail_url = t("servDtlLink")
+        detail_url = _t(item, "servDtlLink")
         if not detail_url:
-            serv_id = t("servId")
+            serv_id = _t(item, "servId")
             if serv_id:
-                detail_url = f"https://www.bokjiro.go.kr/ssis-tbu/twatsa/welfare/welfareDetail.do?welfareId={serv_id}"
-
+                detail_url = (
+                    f"https://www.bokjiro.go.kr/ssis-tbu/twataa/wlfareInfo/"
+                    f"moveTWAT52011M.do?wlfareInfId={serv_id}&wlfareInfSclCd=1"
+                )
         if not detail_url:
             continue
 
-        summary = t("servDgst") or t("servSumry") or None
-        dept = t("jurMnofNm") or t("wlfareInstitutionNm") or dept_fallback
-        region = t("ctpvNm") or "전국"  # 시도명 있으면 사용, 없으면 전국
+        summary = _t(item, "servDgst") or None
+        dept = _t(item, "jurMnofNm") or _t(item, "jurOrgNm") or dept_fallback
 
         content_txt = title + " " + (summary or "")
         category = _guess_category(content_txt)
@@ -126,7 +133,7 @@ def _parse_items(root: ET.Element, dept_fallback: str) -> List[Dict[str, Any]]:
                 "deadline_date": None,
                 "support_amount": None,
                 "summary_text": summary,
-                "region": region,
+                "region": "전국",  # 복지로 중앙은 전국 단위
                 "category": category,
                 "target_type": None,
                 "department": dept,
@@ -178,7 +185,11 @@ class BokjiroCentralScraper(BaseScraper):
 
 @register
 class BokjiroLocalScraper(BaseScraper):
-    """복지로 — 지자체 복지서비스 (시·군·구 단위 포함)"""
+    """복지로 — 지자체 복지서비스 (시·군·구 단위 포함)
+
+    활용신청 승인 후 활성화됨. 미승인 시 빈 배열 반환.
+    신청: data.go.kr/data/15108347/openapi.do
+    """
 
     name = "bokjiro_local"
     display_name = "복지로(지자체)"

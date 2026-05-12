@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 
 # ── 텍스트 보고서 ──────────────────────────────────────────────
-def _build_report_text(metrics: dict, learning: dict) -> str:
+def _build_report_text(metrics: dict, learning: dict, quality: dict) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -43,6 +43,26 @@ def _build_report_text(metrics: dict, learning: dict) -> str:
     else:
         weekly_lines = "  데이터 없음\n"
 
+    # 에이전트 품질
+    quality_lines = ""
+    agents = quality.get("agents", {})
+    if agents:
+        for key, info in agents.items():
+            score = info.get("avg_score")
+            status = info.get("status", "no_data")
+            flag = "⚠️" if status == "warning" else ("✅" if score is not None else "–")
+            score_str = f"{score}점" if score is not None else "데이터 없음"
+            quality_lines += f"  {flag} {info['label']}: {score_str}\n"
+        low = quality.get("total_low_quality", 0)
+        if low:
+            quality_lines += f"  ⚠️ 점검 필요 {low}건\n"
+            # 이슈 목록
+            for info in agents.values():
+                for iss in info.get("issues", []):
+                    quality_lines += f"    · {iss}\n"
+    else:
+        quality_lines = "  데이터 없음\n"
+
     return f"""[GovMatch 일일 현황] {today}
 {'─' * 38}
 
@@ -58,6 +78,8 @@ def _build_report_text(metrics: dict, learning: dict) -> str:
 
 ▌ 주간 DAU 추이
 {weekly_lines}
+▌ 에이전트 역할 점검
+{quality_lines}
 ▌ 누적 현황
   실질 상담: {total_consults}건
   PRO 세션: {total_pro}건
@@ -69,7 +91,7 @@ GovMatch | govmatch.kr"""
 
 
 # ── HTML 보고서 ───────────────────────────────────────────────
-def _build_report_html(metrics: dict, learning: dict) -> str:
+def _build_report_html(metrics: dict, learning: dict, quality: dict) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -111,6 +133,30 @@ def _build_report_html(metrics: dict, learning: dict) -> str:
     if not weekly_html:
         weekly_html = '<p style="color:#9ca3af;font-size:13px">데이터 없음</p>'
 
+    # 에이전트 품질 HTML
+    agents = quality.get("agents", {})
+    quality_html = ""
+    if agents:
+        for key, info in agents.items():
+            score = info.get("avg_score")
+            status = info.get("status", "no_data")
+            flag = "⚠️" if status == "warning" else ("✅" if score is not None else "–")
+            score_str = f"{score}점" if score is not None else "–"
+            color = "#dc2626" if status == "warning" else "#16a34a" if score is not None else "#6b7280"
+            quality_html += f"""
+            <tr>
+              <td style="padding:5px 0;font-size:13px">{flag} {info['label']}</td>
+              <td style="font-weight:bold;font-size:13px;color:{color}">{score_str}</td>
+            </tr>"""
+        for info in agents.values():
+            for iss in info.get("issues", []):
+                quality_html += f"""
+            <tr>
+              <td colspan="2" style="padding:2px 0 2px 16px;font-size:12px;color:#dc2626">· {iss}</td>
+            </tr>"""
+    else:
+        quality_html = '<tr><td colspan="2" style="color:#9ca3af;font-size:13px">데이터 없음</td></tr>'
+
     def stat_row(label, value):
         return f'<tr><td style="padding:5px 0;color:#6b7280;font-size:13px">{label}</td><td style="font-weight:bold;font-size:13px">{value}</td></tr>'
 
@@ -142,6 +188,11 @@ def _build_report_html(metrics: dict, learning: dict) -> str:
   <h3 style="color:#111;font-size:15px;margin-top:20px">&#128200; 주간 DAU 추이</h3>
   {weekly_html}
 
+  <h3 style="color:#111;font-size:15px;margin-top:20px">&#129302; 에이전트 역할 점검</h3>
+  <table style="width:100%;border-collapse:collapse">
+    {quality_html}
+  </table>
+
   <h3 style="color:#111;font-size:15px;margin-top:20px">&#128202; 누적 현황</h3>
   <table style="width:100%;border-collapse:collapse">
     {stat_row("실질 AI 상담", f"{total_consults}건")}
@@ -155,10 +206,120 @@ def _build_report_html(metrics: dict, learning: dict) -> str:
 </body></html>"""
 
 
+# ── 카카오 발송 (동기 requests 버전) ──────────────────────────
+def _send_kakao(metrics: dict) -> bool:
+    """카카오 나에게 보내기 — 동기 requests 사용 (asyncio 충돌 방지)."""
+    import requests as _req
+    import psycopg2, psycopg2.extras
+
+    kakao_client_id     = os.environ.get("KAKAO_CLIENT_ID", "")
+    kakao_client_secret = os.environ.get("KAKAO_CLIENT_SECRET", "")
+    owner_email         = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
+    db_url              = os.environ.get("DATABASE_URL", "")
+
+    if not kakao_client_id or not owner_email or not db_url:
+        print("[reporter] 카카오 필수 환경변수 미설정 (KAKAO_CLIENT_ID/OWNER_EMAIL) — 스킵")
+        return False
+
+    # refresh_token 조회 — email 또는 kakao_id 기준
+    try:
+        conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT business_number, kakao_refresh_token FROM users WHERE email = %s",
+            (owner_email,),
+        )
+        row = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        print(f"[reporter] 카카오 DB 조회 오류: {e}")
+        return False
+
+    if not row or not row.get("kakao_refresh_token"):
+        print(f"[reporter] 카카오 refresh_token 없음 (email={owner_email})")
+        return False
+
+    refresh_token = row["kakao_refresh_token"]
+    bn = row.get("business_number")
+
+    # 1. refresh_token → access_token
+    try:
+        token_res = _req.post(
+            "https://kauth.kakao.com/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": kakao_client_id,
+                "client_secret": kakao_client_secret,
+                "refresh_token": refresh_token,
+            },
+            timeout=10,
+        )
+        token_data = token_res.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            print(f"[reporter] 카카오 access_token 발급 실패: {token_data}")
+            return False
+
+        # refresh_token 갱신 시 DB 업데이트
+        new_refresh = token_data.get("refresh_token")
+        if new_refresh and bn:
+            try:
+                conn2 = psycopg2.connect(db_url)
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    "UPDATE users SET kakao_refresh_token = %s WHERE business_number = %s",
+                    (new_refresh, bn),
+                )
+                conn2.commit()
+                conn2.close()
+            except Exception as upd_err:
+                print(f"[reporter] refresh_token 갱신 저장 실패: {upd_err}")
+    except Exception as e:
+        print(f"[reporter] 카카오 토큰 갱신 오류: {e}")
+        return False
+
+    # 2. 나에게 보내기
+    now = datetime.now()
+    yest = (now - timedelta(days=1)).strftime("%m-%d")
+    kakao_text = (
+        f"[GovMatch] {now.strftime('%Y-%m-%d')}\n"
+        f"누적 회원 {metrics.get('users_total')}명 (PRO {metrics.get('users_pro')})\n"
+        f"어제({yest}) 신규 {metrics.get('new_users_yesterday')}명 | DAU {metrics.get('dau_yesterday')}명\n"
+        f"AI상담 {metrics.get('ai_consults_yesterday')}건 | 매칭 {metrics.get('matching_yesterday')}건\n"
+        f"govmatch.kr"
+    )
+    try:
+        msg_res = _req.post(
+            "https://kapi.kakao.com/v2/api/talk/memo/default/send",
+            headers={"Authorization": f"Bearer {access_token}"},
+            data={"template_object": json.dumps({
+                "object_type": "text",
+                "text": kakao_text,
+                "link": {
+                    "web_url": "https://govmatch.kr",
+                    "mobile_web_url": "https://govmatch.kr",
+                },
+            }, ensure_ascii=False)},
+            timeout=10,
+        )
+        result = msg_res.json()
+        success = result.get("result_code") == 0
+        if success:
+            print("[reporter] 카카오 발송 완료")
+        else:
+            print(f"[reporter] 카카오 발송 실패: {result}")
+        return success
+    except Exception as e:
+        print(f"[reporter] 카카오 메시지 전송 오류: {e}")
+        return False
+
+
 # ── 발송 ──────────────────────────────────────────────────────
-def send_report(metrics: dict, learning: dict) -> dict:
-    report_text = _build_report_text(metrics, learning)
-    report_html = _build_report_html(metrics, learning)
+def send_report(metrics: dict, learning: dict, quality: dict = None) -> dict:
+    if quality is None:
+        quality = {}
+    report_text = _build_report_text(metrics, learning, quality)
+    report_html = _build_report_html(metrics, learning, quality)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──
@@ -195,72 +356,7 @@ def send_report(metrics: dict, learning: dict) -> dict:
     else:
         print("[reporter] OWNER_EMAIL 또는 RESEND_API_KEY 미설정 — 이메일 스킵")
 
-    # ── 카카오 ──
-    kakao_client_id = os.environ.get("KAKAO_CLIENT_ID")
-    if owner_email and kakao_client_id:
-        try:
-            import psycopg2, psycopg2.extras
-            conn = psycopg2.connect(
-                os.environ.get("DATABASE_URL", ""),
-                cursor_factory=psycopg2.extras.RealDictCursor,
-            )
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT kakao_refresh_token FROM users WHERE email = %s",
-                (owner_email,),
-            )
-            row = cur.fetchone()
-            conn.close()
-
-            if row and row.get("kakao_refresh_token"):
-                import asyncio, httpx
-
-                async def _send():
-                    async with httpx.AsyncClient() as client:
-                        token_res = await client.post(
-                            "https://kauth.kakao.com/oauth/token",
-                            data={
-                                "grant_type": "refresh_token",
-                                "client_id": kakao_client_id,
-                                "client_secret": os.environ.get("KAKAO_CLIENT_SECRET", ""),
-                                "refresh_token": row["kakao_refresh_token"],
-                            },
-                        )
-                        access_token = token_res.json().get("access_token")
-                        if not access_token:
-                            return False
-
-                        today_str  = datetime.now().strftime("%Y-%m-%d")
-                        yest_short = (datetime.now() - timedelta(days=1)).strftime("%m-%d")
-                        kakao_text = (
-                            f"[GovMatch] {today_str}\n"
-                            f"누적 회원 {metrics.get('users_total')}명 (PRO {metrics.get('users_pro')})\n"
-                            f"어제({yest_short}) 신규 {metrics.get('new_users_yesterday')}명 | DAU {metrics.get('dau_yesterday')}명\n"
-                            f"AI상담 {metrics.get('ai_consults_yesterday')}건 | 매칭 {metrics.get('matching_yesterday')}건\n"
-                            f"govmatch.kr"
-                        )
-                        msg_res = await client.post(
-                            "https://kapi.kakao.com/v2/api/talk/memo/default/send",
-                            headers={"Authorization": f"Bearer {access_token}"},
-                            data={"template_object": json.dumps({
-                                "object_type": "text",
-                                "text": kakao_text,
-                                "link": {
-                                    "web_url": "https://govmatch.kr",
-                                    "mobile_web_url": "https://govmatch.kr",
-                                },
-                            }, ensure_ascii=False)},
-                        )
-                        return msg_res.json().get("result_code") == 0
-
-                loop = asyncio.new_event_loop()
-                result["kakao_sent"] = loop.run_until_complete(_send())
-                loop.close()
-                if result["kakao_sent"]:
-                    print("[reporter] 카카오 발송 완료")
-        except Exception as e:
-            print(f"[reporter] 카카오 오류: {e}")
-    else:
-        print("[reporter] OWNER_EMAIL 또는 KAKAO_CLIENT_ID 미설정 — 카카오 스킵")
+    # ── 카카오 (동기 방식으로 교체) ──
+    result["kakao_sent"] = _send_kakao(metrics)
 
     return result

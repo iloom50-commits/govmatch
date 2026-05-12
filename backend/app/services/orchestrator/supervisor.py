@@ -37,7 +37,7 @@ def run_daily_supervision(db_conn=None) -> dict:
 
     try:
         # ── 1. 비즈니스 지표 수집 ──
-        print("[AI COO] Step 1/3: 비즈니스 지표 수집 중...")
+        print("[AI COO] Step 1/4: 비즈니스 지표 수집 중...")
         try:
             from .metrics_collector import collect_business_metrics
             metrics = collect_business_metrics(db_conn)
@@ -53,8 +53,28 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 지표 수집 오류: {e}")
             traceback.print_exc()
 
-        # ── 2. 학습 현황 감시 ──
-        print("[AI COO] Step 2/3: 학습 현황 감시 중...")
+        # ── 2. 에이전트 품질 감시 ──
+        print("[AI COO] Step 2/4: 에이전트 역할 적합성 평가 중...")
+        try:
+            from .quality_checker import check_quality
+            quality = check_quality(db_conn)
+            results["quality"] = quality
+            agents = quality.get("agents", {})
+            for key, info in agents.items():
+                score = info.get("avg_score")
+                status = info.get("status", "no_data")
+                flag = "⚠️" if status == "warning" else ("✅" if score is not None else "–")
+                print(f"  → {flag} {info['label']}: {score if score is not None else 'N/A'}점")
+            if quality.get("total_low_quality", 0) > 0:
+                print(f"  → ⚠️ 저품질 {quality['total_low_quality']}건 발견")
+        except Exception as e:
+            results["quality"] = {"error": str(e)}
+            quality = {}
+            print(f"  → 품질 평가 오류: {e}")
+            traceback.print_exc()
+
+        # ── 3. 학습 현황 감시 ──
+        print("[AI COO] Step 3/4: 학습 현황 감시 중...")
         try:
             from .learning_monitor import check_learning
             learning = check_learning(db_conn)
@@ -66,13 +86,14 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 학습 감시 오류: {e}")
             traceback.print_exc()
 
-        # ── 3. 보고서 발송 ──
-        print("[AI COO] Step 3/3: 보고서 생성 + 발송 중...")
+        # ── 4. 보고서 발송 ──
+        print("[AI COO] Step 4/4: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
             report_result = send_report(
                 metrics=results.get("metrics", {}),
                 learning=results.get("learning", {}),
+                quality=results.get("quality", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

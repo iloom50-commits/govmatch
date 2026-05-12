@@ -1129,9 +1129,17 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
         try:
             cur = db_conn.cursor()
             tt_filter = "business" if target_type == "business" else "individual"
-            like_kw = f"%{keywords[:50]}%"
+            # 키워드를 단어 단위로 분리 → 각 단어 OR 매칭 (구문 전체 일치 방식 탈피)
+            kw_words = [w for w in keywords.split() if len(w) >= 2][:6]
+            if not kw_words:
+                kw_words = [keywords[:20]]
+            kw_word_clause = " OR ".join(
+                "(title ILIKE %s OR summary_text ILIKE %s)" for _ in kw_words
+            )
             region_filter2 = ""
-            params2 = [tt_filter, like_kw, like_kw]
+            params2 = [tt_filter]
+            for w in kw_words:
+                params2 += [f"%{w}%", f"%{w}%"]
             if user_region:
                 region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
                 params2.append(f"%{user_region[:10]}%")
@@ -1144,7 +1152,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 FROM announcements
                 WHERE COALESCE(target_type, 'business') IN (%s, 'both')
                   AND (deadline_date >= CURRENT_DATE OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '6 months'))
-                  AND (title ILIKE %s OR summary_text ILIKE %s)
+                  AND ({kw_word_clause})
                   AND (
                       title ~* '정책자금|융자|대출|보증|자금|금리|한도'
                       OR category ~* '금융|보증|자금'

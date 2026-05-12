@@ -178,7 +178,7 @@ class BaseScraper:
             (
                 title[:500],
                 origin_url,
-                self.display_name,
+                (item.get("department") or self.display_name),
                 item.get("region") or None,
                 item.get("category") or None,
                 None,  # 항상 NULL 저장 → AI 분류 에이전트가 처리 (스크래퍼 하드코딩 무시)

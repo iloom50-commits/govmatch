@@ -41,3 +41,7 @@ from . import agency_scrapers8  # noqa: F401
 
 # 광역시도청 11개 (인천/대전/울산/세종/강원/충북/충남/전북/전남/경남/부산)
 from . import sido_scrapers  # noqa: F401
+
+# 공공 API — 보조금24(정부24) + 복지로(중앙+지자체)
+from . import gov24_scraper  # noqa: F401
+from . import bokjiro_scraper  # noqa: F401

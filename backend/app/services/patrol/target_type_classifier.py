@@ -18,33 +18,50 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_CLASSIFY_PROMPT = """당신은 한국 정부 지원사업 공고의 신청 대상을 분류하는 전문가입니다.
+_CLASSIFY_PROMPT = """당신은 한국 정부 지원사업 공고의 신청 대상을 분류하는 전문 AI입니다.
 
-아래 공고 목록을 보고 각 공고의 신청 대상을 정확히 분류하세요.
+아래 공고 목록을 보고 각 공고의 신청 대상과 분류 신뢰도를 반환하세요.
 
-분류 기준:
-- business: 기업/법인/사업체/창업기업이 신청 대상 (중소기업, 스타트업, 법인, 협동조합, 창업기업, 창업팀 등)
-- individual: 개인이 신청 대상 (청년, 취업자, 구직자, 1인 가구, 임산부, 노인, 장애인, 학생, 저소득층 등 사업자등록 없이 개인 자격으로 신청)
-- both: 개인사업자(사업자등록증 보유)와 법인 모두 신청 가능한 경우만 해당 (주로 소상공인 대상 공고)
+━━━ 분류 기준 ━━━
+- business: 기업/법인/사업체/창업기업이 신청 대상
+  (중소기업, 스타트업, 법인, 협동조합, 창업기업, 창업팀, 벤처기업 등)
+- individual: 개인이 신청 대상
+  (사업자등록 없이 개인 자격으로 신청하는 청년·취업자·구직자·임산부·노인·장애인·학생·저소득층 등)
+- both: 개인사업자(사업자등록증 보유)와 법인 모두 신청 가능
+  (주로 소상공인, 자영업자, 1인창조기업 대상)
 
-판단 원칙 (엄격 적용):
-- 창업기업/스타트업/벤처 모집 공고 → business (법인 여부 무관, 창업 "기업" 대상이면 business)
+━━━ 판단 원칙 (엄격 적용) ━━━
+- 창업기업/스타트업/벤처 모집 → business
 - 예비창업자 개인 단독 대상 → individual
-- 예비창업자 + 창업기업 모두 대상 → both
-- 소상공인 (개인사업자 + 법인 모두) → both
-- R&D, 수출, 투자유치, 기업인증, 입주, 판로 → business
-- K-Startup, 창업진흥원, 중기부 창업 지원사업 → business
+- 예비창업자 + 창업기업 모두 → both
+- 소상공인/자영업자 (개인사업자+법인) → both
+- R&D, 수출, 투자유치, 기업인증, 입주, 판로지원 → business
 - 주거지원, 복지급여, 장학금, 취업지원, 의료비, 육아, 출산 → individual
-- 청년창업: "창업기업" 또는 "창업팀" 신청 → business / "예비창업자 개인" 신청 → individual
+- 청년창업팀/창업기업 신청 → business / 예비창업자 개인 신청 → individual
 
-⚠️ 핵심: "both"는 소상공인처럼 개인사업자와 법인이 동시에 신청 가능한 경우만 사용하세요.
-창업기업 모집공고, 스타트업 모집공고는 "both"가 아니라 "business"입니다.
+⚠️ "both"는 소상공인처럼 개인사업자+법인이 동시 신청 가능한 경우만. 창업기업 모집은 "business".
 
-공고 목록 (JSON):
+━━━ 분류 예시 (few-shot) ━━━
+- "중소기업 R&D 사업화 지원" → business (90)
+- "스타트업 투자유치 프로그램 모집" → business (95)
+- "소상공인 경영 안정자금 지원" → both (92)
+- "자영업자 고용보험 지원" → both (88)
+- "청년 예비창업자 창업지원금" → individual (85)
+- "청년 취업 연계 프로그램" → individual (90)
+- "임산부 의료비 지원사업" → individual (98)
+- "1인 가구 주거 임차 보증금 지원" → individual (95)
+- "창업기업 글로벌 진출 지원" → business (88)
+- "예비창업자·창업초기기업 공모전" → both (80)
+
+━━━ 공고 목록 (JSON) ━━━
 {items_json}
 
-응답은 반드시 아래 형식의 JSON 배열만 반환하세요. 설명 없이 JSON만:
-[{{"id": 1, "type": "business"}}, {{"id": 2, "type": "individual"}}, ...]"""
+━━━ 응답 형식 ━━━
+반드시 아래 JSON 배열만 반환하세요. 설명 없이 JSON만:
+[{{"id": 1, "type": "business", "confidence": 90}}, {{"id": 2, "type": "individual", "confidence": 75}}, ...]
+
+confidence는 0~100 정수. 판단이 불확실할수록 낮게 (70 미만이면 "both" 권장).
+반드시 모든 id를 포함하세요."""
 
 
 def _ensure_backup_table(cur):
@@ -191,22 +208,37 @@ def _call_gemini_classify(items: list[dict]) -> dict[int, str]:
         raw = m.group(1).strip() if m else raw
 
     result_list = json.loads(raw)
-    return {item["id"]: item["type"] for item in result_list}
+    # {id: {"type": ..., "confidence": ...}} 형태로 반환
+    return {item["id"]: {"type": item["type"], "confidence": item.get("confidence", 80)}
+            for item in result_list}
 
 
 def ai_classify_pending(conn, batch_size: int = 20) -> dict:
-    """NULL 또는 분류 미확정 공고만 AI로 분류.
+    """신규/미분류 공고 AI 분류.
 
-    daily_pipeline ③ DB 정리 단계에서 호출.
-    신규 수집 공고(target_type IS NULL)를 대상으로 실행.
+    대상:
+    1. target_type IS NULL — 새로 수집된 공고 (base.py가 항상 NULL로 저장)
+    2. 최근 30일 내 비화이트리스트 출처의 "business" — 하드코딩 잔재 재분류
     """
     cur = conn.cursor()
 
-    cur.execute("""
+    # 비화이트리스트 출처 패턴 (이 출처는 Gemini로 재분류)
+    non_whitelist_condition = " AND ".join(
+        f"origin_source NOT ILIKE '%{s}%'" for s in _BUSINESS_ONLY_SOURCES
+    )
+
+    cur.execute(f"""
         SELECT announcement_id AS id, title, category, summary_text AS summary, origin_source
         FROM announcements
-        WHERE target_type IS NULL
-          AND is_archived = FALSE
+        WHERE is_archived = FALSE
+          AND (
+            target_type IS NULL
+            OR (
+              target_type = 'business'
+              AND created_at >= NOW() - INTERVAL '30 days'
+              AND {non_whitelist_condition}
+            )
+          )
         ORDER BY created_at DESC
         LIMIT %s
     """, (batch_size,))
@@ -285,21 +317,35 @@ def _classify_and_update(conn, cur, items: list[dict], label: Optional[str]) -> 
         logger.info(f"[classifier] 출처 강제 business: {len(forced_map)}건")
 
     # 2단계: 나머지만 Gemini 분류
-    gemini_map: dict[int, str] = {}
+    # gemini_map: {id: {"type": str, "confidence": int}}
+    gemini_map: dict[int, dict] = {}
     if remaining:
         try:
             gemini_map = _call_gemini_classify(remaining)
         except Exception as e:
             logger.error(f"[classifier] Gemini 호출 오류: {e}")
-            gemini_map = _keyword_fallback([it["id"] for it in remaining],
-                                           {it["id"]: it for it in remaining})
+            fallback = _keyword_fallback([it["id"] for it in remaining],
+                                         {it["id"]: it for it in remaining})
+            gemini_map = {aid: {"type": t, "confidence": 60} for aid, t in fallback.items()}
             errors += 1
-
-    type_map = {**forced_map, **gemini_map}
 
     for item in items:
         aid = item["id"]
-        new_type = type_map.get(aid, "business")
+        if aid in forced_map:
+            new_type = forced_map[aid]
+        elif aid in gemini_map:
+            result = gemini_map[aid]
+            raw_type = result.get("type", "business")
+            confidence = result.get("confidence", 80)
+            # 신뢰도 70 미만 → 양쪽 탭에 노출되는 "both"로 안전 처리
+            if confidence < 70:
+                new_type = "both"
+                logger.info(f"[classifier] id={aid} 신뢰도 낮음({confidence}) → both 처리")
+            else:
+                new_type = raw_type
+        else:
+            new_type = "business"
+
         if new_type not in valid_types:
             new_type = "business"
 

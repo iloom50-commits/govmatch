@@ -181,7 +181,7 @@ class BaseScraper:
                 self.display_name,
                 item.get("region") or None,
                 item.get("category") or None,
-                item.get("target_type") or None,  # NULL → daily_pipeline ③에서 AI 분류
+                None,  # 항상 NULL 저장 → AI 분류 에이전트가 처리 (스크래퍼 하드코딩 무시)
                 (item.get("support_amount") or None),
                 item.get("deadline_date") or None,
                 (item.get("summary_text") or "")[:4000] or None,

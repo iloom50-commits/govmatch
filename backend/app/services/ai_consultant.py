@@ -1275,7 +1275,7 @@ def _tool_search_knowledge_base(db_conn, query: str, limit: int = 5) -> List[Dic
         cur.execute("""
             SELECT id, knowledge_type, category, content, confidence
             FROM knowledge_base
-            WHERE (category IN ('금융', '보증') OR knowledge_type IN ('faq', 'insight'))
+            WHERE (category IN ('금융', '보증', '정책자금') OR knowledge_type IN ('faq', 'insight'))
               AND confidence >= 0.4
               AND content::text ILIKE ANY(%s)
             ORDER BY confidence DESC, use_count DESC

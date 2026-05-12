@@ -9977,6 +9977,18 @@ def admin_rollback_target_type(label: str = "manual"):
         conn.close()
 
 
+@app.post("/api/admin/knowledge/seed-kosme-funds", dependencies=[Depends(_verify_admin)])
+def admin_seed_kosme_funds():
+    """2026년 중진공 정책자금 세부 자금 데이터를 knowledge_base에 삽입/갱신."""
+    from app.services.knowledge_seeds.kosme_policy_funds_2026 import seed_kosme_policy_funds
+    conn = get_db_connection()
+    try:
+        result = seed_kosme_policy_funds(conn)
+        return {"status": "SUCCESS", **result}
+    finally:
+        conn.close()
+
+
 @app.post("/api/admin/target-type/reclassify-all", dependencies=[Depends(_verify_admin)])
 def admin_reclassify_all(batch_size: int = 20, max_batches: int = 200):
     """기존 DB 전체 공고 AI 재분류 (1회성 마이그레이션).

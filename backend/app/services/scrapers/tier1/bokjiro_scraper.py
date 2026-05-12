@@ -24,7 +24,7 @@ _CENTRAL_URL = (
     "https://apis.data.go.kr/B554287/NationalWelfareInformationsV001/NationalWelfarelistV001"
 )
 _LOCAL_URL = (
-    "https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformationsV001/LocalWelfarelistV001"
+    "https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LocalWelfarelist"
 )
 _NUM_ROWS = 100  # 복지로는 100이 안정적 (500은 타임아웃 위험)
 _MAX_PAGES = 20  # 최대 2,000건

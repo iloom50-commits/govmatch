@@ -773,8 +773,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const urlAid = typeof window !== "undefined" ? Number(new URLSearchParams(window.location.search).get("aid")) || 0 : 0;
   const [highlightAid, setHighlightAid] = useState(urlAid);
   const [searchQuery, setSearchQuery] = useState(urlQ);
-  const [searchResults, setSearchResults] = useState<MatchItem[] | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoading] = useState(false); // deprecated — publicLoading으로 대체됨, 타입 호환 유지
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showMyMenu, setShowMyMenu] = useState(false);
   const [totalAnnouncementCount, setTotalAnnouncementCount] = useState(0);
@@ -889,34 +888,19 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     setDeferredPrompt(null);
   };
 
-  // 백엔드 검색 API 호출 (debounce 500ms)
-  const doSearch = useCallback((q: string, tab: MajorTab) => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (!q.trim()) { setSearchResults(null); setSearchLoading(false); return; }
-    setSearchLoading(true);
-    searchTimer.current = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `${API}/api/announcements/public?page=1&size=100&search=${encodeURIComponent(q.trim())}&target_type=${tab}`
-        );
-        const data = await res.json();
-        if (data.status === "SUCCESS" && data.data?.length > 0) {
-          setSearchResults(data.data);
-        } else {
-          setSearchResults(null); // fallback to local filter
-        }
-      } catch {
-        setSearchResults(null); // fallback to local filter
-      }
-      setSearchLoading(false);
-    }, 500);
-  }, []);
-
-  // searchQuery 또는 majorTab 변경 시 검색 실행
+  // 검색어 변경 시 publicData fetch에 500ms 디바운스 적용
+  // (칩·페이지 변경은 즉시 실행, 검색 타이핑은 디바운스)
   useEffect(() => {
-    doSearch(searchQuery, majorTab);
+    if (!searchQuery.trim()) return;
+    // 검색어 입력 중: 이전 타이머 취소 후 500ms 대기
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    // 실제 fetch는 publicData 서버 데이터 로드 effect에서 처리됨
+    // 여기서는 페이지를 1로 리셋해 재fetch 트리거만 함
+    searchTimer.current = setTimeout(() => {
+      setCurrentPage(1);
+    }, 100); // currentPage가 이미 1이면 effect 미실행 → 즉시 fetch
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [searchQuery, majorTab, doSearch]);
+  }, [searchQuery]);
 
   // FAB에서 "고객 관리" 클릭 시 ProDashboard 열기
   useEffect(() => {
@@ -1080,12 +1064,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     setPublicLoading(true);
     publicLoadingRef.current = true;
 
+    // 내지역+칩 = AND / 칩+칩 = OR / 내지역+검색어 = AND / 칩+검색어 = AND
+    // → 검색어 유무와 무관하게 tab/category 파라미터를 항상 전송
     let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
-    else {
-      if (hasLocal) url += `&tab=local`;
-      if (catChips.length > 0) url += `&category=${encodeURIComponent(catChips.join(","))}`;
-    }
+    if (hasLocal) url += `&tab=local`;
+    if (catChips.length > 0) url += `&category=${encodeURIComponent(catChips.join(","))}`;
 
     const _tok = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     fetch(url, {
@@ -1280,11 +1264,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     });
   }, [rawMatches, majorTab]);
 
-  // 검색어가 있으면 백엔드 결과 사용, 없으면 로컬 필터링 fallback
+  // 검색어 있으면 publicData(서버 검색 결과) 사용, 없으면 displayMatches(로컬 매칭)
   const baseMatches = useMemo(() => {
     if (!searchQuery.trim()) return displayMatches;
-    if (searchResults) return searchResults;
-    // fallback: 백엔드 결과 없으면 로컬 필터링
+    // 검색 시: publicData에 서버 검색+필터 결과가 담겨 있음 (없으면 로컬 fallback)
+    if (publicData.length > 0) return publicData;
     const q = searchQuery.trim().toLowerCase();
     return displayMatches.filter(m =>
       (m.title || "").toLowerCase().includes(q) ||
@@ -1292,7 +1276,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       (m.department || "").toLowerCase().includes(q) ||
       (m.category || "").toLowerCase().includes(q)
     );
-  }, [searchQuery, searchResults, displayMatches]);
+  }, [searchQuery, publicData, displayMatches]);
 
   const filteredMatches = useMemo(() => {
     // 비로그인 또는 프로필 미완성: 서버에서 이미 필터링/정렬된 데이터 사용
@@ -1892,10 +1876,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 placeholder={majorTab === "business" ? "공고명, 키워드 검색 (예: 창업, R&D, 수출)" : "공고명, 키워드 검색 (예: 복지, 육아, 주거, 취업)"}
                 className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
               />
-              {searchLoading && (
+              {publicLoading && searchQuery && (
                 <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
               )}
-              {searchQuery && !searchLoading && (
+              {searchQuery && !publicLoading && (
                 <button
                   onClick={() => setSearchQuery("")}
                   className="p-1 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
@@ -1977,7 +1961,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </button>
           )}
 
-          {searchQuery.trim() && !searchLoading && searchResults && (
+          {searchQuery.trim() && !publicLoading && publicData.length > 0 && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">
               &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>
             </p>
@@ -2000,7 +1984,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           )}
 
-          {filteredMatches.length === 0 && !searchLoading && !publicLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (
+          {filteredMatches.length === 0 && !publicLoading && !(usePublicData && publicData.length === 0 && !searchQuery.trim()) ? (
             <div className="flex flex-col items-center justify-center py-12 md:py-20 px-6 text-center bg-white/40 backdrop-blur-xl rounded-2xl border border-white/60 shadow-lg animate-in zoom-in duration-500 w-full">
               {/* 봇 캐릭터 — 컴퓨터 치는 장면 */}
               {!searchQuery.trim() && matches.length === 0 ? (

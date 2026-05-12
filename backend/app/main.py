@@ -2889,7 +2889,10 @@ def api_announcements_public(
         _tab_params: list = []
         if target_type:
             if target_type == "individual":
-                _tab_where += " AND target_type = 'individual'"
+                if search:
+                    _tab_where += " AND (target_type = 'individual' OR target_type = 'both' OR target_type IS NULL)"
+                else:
+                    _tab_where += " AND target_type = 'individual'"
             else:
                 _tab_where += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
         if category:
@@ -2920,6 +2923,12 @@ def api_announcements_public(
                 _tab_params.extend([f"%{_user_city}%", f"%[{_user_city}]%"])
             else:
                 _tab_where += " AND FALSE"  # 지역 정보 없으면 빈 결과
+        # 내지역+검색어 = AND: tab=local 경로에서도 search 적용
+        if search:
+            _sf = "(title || ' ' || COALESCE(summary_text,'') || ' ' || COALESCE(department,'') || ' ' || COALESCE(category,''))"
+            for _sw in search.strip().split():
+                _tab_where += f" AND {_sf} ILIKE %s"
+                _tab_params.append(f"%{_sw}%")
         _tab_cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_tab_where}", _tab_params)
         _tab_total = (_tab_cur.fetchone() or {}).get("cnt", 0)
         _tab_cur.execute(
@@ -2978,7 +2987,8 @@ def api_announcements_public(
             where_clauses.append("(region = %s OR region = %s)")
             params.extend([region, _nr])
     # 회원 + 프로필 완성 + 지역 미지정 → 전국 + 내 지역 자동 필터 (타지역 공고 제외)
-    if _is_logged_in and _auth_bn and not region and not tab:
+    # 검색어가 있을 때는 적용 안 함 — 내지역 필터는 "내지역" 칩(tab=local)으로만 제어
+    if _is_logged_in and _auth_bn and not region and not tab and not search:
         try:
             from app.services.rule_engine import _normalize_region as _nrm_std
             cursor.execute("SELECT address_city FROM users WHERE business_number = %s", (_auth_bn,))
@@ -3085,7 +3095,11 @@ def api_announcements_public(
         s = f"%{search}%"  # 관련성 정렬용 원본 검색어
     if target_type:
         if target_type == "individual":
-            where_clauses.append("target_type = 'individual'")
+            if search:
+                # 검색 시: 미분류(NULL) + both 포함 — 복지로·보조금24 수집 공고가 NULL 상태일 수 있음
+                where_clauses.append("(target_type = 'individual' OR target_type = 'both' OR target_type IS NULL)")
+            else:
+                where_clauses.append("target_type = 'individual'")
         else:
             where_clauses.append("(target_type = 'business' OR target_type = 'both' OR target_type IS NULL)")
 

@@ -837,7 +837,7 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         if dl and (dl.date() if hasattr(dl, "date") else dl) < _today:
             ineligible_ids.append(ann_id); continue
 
-        if is_individual and ann_target == "business":
+        if is_individual and ann_target != "individual":
             ineligible_ids.append(ann_id); continue
         if not is_individual and ann_target == "individual":
             ineligible_ids.append(ann_id); continue
@@ -2589,9 +2589,12 @@ def api_announcements_public(
 
                     valid_where = valid_announcement_where()
                     if target_type:
-                        # NULL은 AI 분류 대기 중 → 양쪽 탭에 노출되지 않도록 제외
-                        type_filter = "AND (target_type = %s OR target_type = 'both')"
-                        type_params = [target_type]
+                        # 개인탭: individual만 / 기업탭: business + both
+                        if target_type == "individual":
+                            type_filter = "AND target_type = 'individual'"
+                        else:
+                            type_filter = "AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
+                        type_params = []
                     else:
                         type_filter = ""
                         type_params = []
@@ -13742,7 +13745,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                 if tt == "business":
                     fb_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
                 elif tt == "individual":
-                    fb_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+                    fb_tt_sql = " AND target_type = 'individual'"
                 cur.execute(f"""
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
@@ -13788,7 +13791,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                 if tt == "business":
                     _reg_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
                 elif tt == "individual":
-                    _reg_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+                    _reg_tt_sql = " AND target_type = 'individual'"
                 cur.execute(f"""
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
@@ -13828,7 +13831,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
             if tt == "business":
                 _outer_tt_sql = " AND COALESCE(target_type, 'business') IN ('business', 'both')"
             elif tt == "individual":
-                _outer_tt_sql = " AND COALESCE(target_type, 'business') IN ('individual', 'both')"
+                _outer_tt_sql = " AND target_type = 'individual'"
             cur2.execute(f"""
                 SELECT announcement_id, title, department, category,
                        support_amount, deadline_date, region, origin_url

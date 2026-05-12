@@ -8760,6 +8760,8 @@ def api_embeddings_batch(req: AdminAuthRequest):
           AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
         ORDER BY
+            CASE WHEN a.origin_source IN ('smes24-api','kised-api','bizinfo-api','bizinfo-portal-api','bizinfo','kosme','smba') THEN 0
+                 ELSE 1 END,
             CASE WHEN a.support_amount ILIKE '%%억%%' THEN 0
                  WHEN a.support_amount ILIKE '%%천만%%' THEN 1
                  WHEN a.support_amount ILIKE '%%백만%%' THEN 2

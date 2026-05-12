@@ -1125,41 +1125,45 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
             try: db_conn.rollback()
             except: pass
 
-        # 2) 임베딩 없거나 결과 없으면 키워드 LIKE 폴백
-        if not results:
-            try:
-                cur = db_conn.cursor()
-                tt_filter = "business" if target_type == "business" else "individual"
-                like_kw = f"%{keywords[:50]}%"
-                region_filter2 = ""
-                params2 = [tt_filter, like_kw, like_kw]
-                if user_region:
-                    region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
-                    params2.append(f"%{user_region[:10]}%")
-                # [Level 1] 프로필 제외 조건 (alias 없는 버전)
-                fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
-                params2.extend(fallback_profile_params)
-                params2.append(limit)
-                cur.execute(f"""
-                    SELECT announcement_id, title, department, support_amount,
-                           deadline_date, region, summary_text, category
-                    FROM announcements
-                    WHERE COALESCE(target_type, 'business') IN (%s, 'both')
-                      AND (deadline_date >= CURRENT_DATE OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '6 months'))
-                      AND (title ILIKE %s OR summary_text ILIKE %s)
-                      AND (
-                          title ~* '정책자금|융자|대출|보증|자금|금리|한도'
-                          OR category ~* '금융|보증|자금'
-                      )
-                      {region_filter2}
-                      {fallback_profile_where}
-                    ORDER BY deadline_date ASC NULLS LAST
-                    LIMIT %s
-                """, params2)
-                for r in cur.fetchall():
-                    d = dict(r)
+        # 2) 키워드 LIKE 검색 — 벡터 결과 유무와 무관하게 항상 실행 (보완적 OR 합산)
+        try:
+            cur = db_conn.cursor()
+            tt_filter = "business" if target_type == "business" else "individual"
+            like_kw = f"%{keywords[:50]}%"
+            region_filter2 = ""
+            params2 = [tt_filter, like_kw, like_kw]
+            if user_region:
+                region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
+                params2.append(f"%{user_region[:10]}%")
+            fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
+            params2.extend(fallback_profile_params)
+            params2.append(limit)
+            cur.execute(f"""
+                SELECT announcement_id, title, department, support_amount,
+                       deadline_date, region, summary_text, category
+                FROM announcements
+                WHERE COALESCE(target_type, 'business') IN (%s, 'both')
+                  AND (deadline_date >= CURRENT_DATE OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '6 months'))
+                  AND (title ILIKE %s OR summary_text ILIKE %s)
+                  AND (
+                      title ~* '정책자금|융자|대출|보증|자금|금리|한도'
+                      OR category ~* '금융|보증|자금'
+                  )
+                  {region_filter2}
+                  {fallback_profile_where}
+                ORDER BY
+                    CASE WHEN origin_source IN ('smes24-api','kised-api','bizinfo-api','bizinfo-portal-api','kosme','smba') THEN 0
+                         ELSE 1 END,
+                    deadline_date ASC NULLS LAST
+                LIMIT %s
+            """, params2)
+            existing_ids = {r.get("id") for r in results}
+            for r in cur.fetchall():
+                d = dict(r)
+                aid = d.get("announcement_id")
+                if aid not in existing_ids:
                     results.append({
-                        "id": d.get("announcement_id"),
+                        "id": aid,
                         "title": (d.get("title") or "")[:150],
                         "department": (d.get("department") or "")[:60],
                         "support_amount": (d.get("support_amount") or "")[:60],
@@ -1168,10 +1172,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                         "summary": (d.get("summary_text") or "")[:300],
                         "category": d.get("category"),
                     })
-            except Exception as e:
-                logger.warning(f"[tool fund like] {e}")
-                try: db_conn.rollback()
-                except: pass
+        except Exception as e:
+            logger.warning(f"[tool fund like] {e}")
+            try: db_conn.rollback()
+            except: pass
     except Exception as e:
         logger.warning(f"[tool fund] {e}")
     # [Level 2] 결과 검증 — 프로필 부적합 항목 제거 (플래그 후 필터)

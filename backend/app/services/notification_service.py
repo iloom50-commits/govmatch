@@ -81,25 +81,59 @@ class NotificationService:
         else:
             target_type_clause = "AND target_type IN ('business', 'both')"
 
-        # 지역 조건: 전국/All/온라인이거나 사용자 지역 포함
-        params = [f"%{user_loc}%", user_years]
+        # 지역 조건: 전국/All/온라인이거나 사용자 지역 포함 (타지역 제외)
+        # user_loc이 '전국'이면 전국 공고만, 특정 지역이면 전국+내지역
+        user_city = user_loc if user_loc != '전국' else ''
+
+        params: list = []
+
+        # 지역 절
+        if user_city:
+            region_clause = "(region IN ('전국', 'All', '온라인', '해외', '기타', '') OR region LIKE %s)"
+            params.append(f"%{user_city}%")
+        else:
+            region_clause = "region IN ('전국', 'All', '온라인', '해외', '기타', '')"
+
+        # 관심사 키워드 절 (설정 시 해당 공고만 필터)
+        interests_str = user_dict.get('interests') or ''
+        interests_kw = [i.strip() for i in interests_str.split(',') if i.strip()]
+        if interests_kw:
+            kw_parts = " OR ".join(
+                ["(title ILIKE %s OR category ILIKE %s)" for _ in interests_kw]
+            )
+            interest_clause = f"AND ({kw_parts})"
+            for kw in interests_kw:
+                params.extend([f"%{kw}%", f"%{kw}%"])
+            # 관심사 매칭 점수 (정렬용)
+            score_parts = " + ".join(
+                [f"(CASE WHEN title ILIKE %s OR category ILIKE %s THEN 1 ELSE 0 END)" for _ in interests_kw]
+            )
+            score_params = []
+            for kw in interests_kw:
+                score_params.extend([f"%{kw}%", f"%{kw}%"])
+        else:
+            interest_clause = ""
+            score_parts = "0"
+            score_params = []
+
+        params_for_years = [user_years]
 
         query = f"""
-            SELECT * FROM announcements
-            WHERE (
-                region IN ('전국', 'All', '온라인', '해외', '기타', '')
-                OR region LIKE %s
-            )
+            SELECT *, ({score_parts}) AS interest_score
+            FROM announcements
+            WHERE {region_clause}
             {target_type_clause}
+            {interest_clause}
             AND (established_years_limit IS NULL OR established_years_limit >= %s)
             AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
             ORDER BY
+                interest_score DESC,
                 CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
-                CASE WHEN deadline_date IS NOT NULL THEN 0 ELSE 1 END,
                 deadline_date ASC NULLS LAST,
                 created_at DESC
             LIMIT 100
         """
+        params = score_params + params + params_for_years
 
         try:
             cursor.execute(query, params)

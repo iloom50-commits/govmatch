@@ -2757,6 +2757,111 @@ def api_announcements_public(
             if not any(s in str(_pe) for s in _silent):
                 print(f"[personalized] fallback to standard SQL: {_pe}")
 
+    # tab=matched: 관심사 키워드 + 지역(전국+내지역) + 마감 미초과 필터
+    if tab == "matched":
+        from app.services.rule_engine import _normalize_region as _nrm_matched
+        _m_conn = get_db_connection()
+        _m_cur = _m_conn.cursor()
+
+        # 사용자 interests·지역 조회
+        _m_interests: list[str] = []
+        _m_city = ""
+        if _is_logged_in and _auth_bn:
+            try:
+                _m_cur.execute(
+                    "SELECT interests, address_city FROM users WHERE business_number = %s",
+                    (_auth_bn,),
+                )
+                _m_urow = _m_cur.fetchone()
+                if _m_urow:
+                    raw_interests = str(_m_urow.get("interests") or "")
+                    _m_interests = [i.strip() for i in raw_interests.split(",") if i.strip()]
+                    raw_city = str(_m_urow.get("address_city") or "")
+                    _m_cities = [c.strip() for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
+                    _m_city = _nrm_matched(_m_cities[0]) if _m_cities else ""
+            except Exception:
+                pass
+
+        _m_where = valid_announcement_where()
+        _m_params: list = []
+
+        # target_type 필터
+        if target_type:
+            if target_type == "individual":
+                _m_where += " AND target_type = 'individual'"
+            else:
+                _m_where += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
+
+        # 지역 필터: 전국 공고 + 내지역 공고 (타지역 제외)
+        if _m_city:
+            _m_where += (
+                " AND (region IS NULL OR region IN ('전국','All','온라인','해외','기타','')"
+                " OR region ILIKE %s OR title ILIKE %s)"
+            )
+            _m_params.extend([f"%{_m_city}%", f"%[{_m_city}]%"])
+        else:
+            # 지역 미설정 시 전국 공고만
+            _m_where += " AND (region IS NULL OR region IN ('전국','All','온라인','해외','기타',''))"
+
+        # 관심사 키워드 필터 (설정된 경우만, OR 매칭)
+        if _m_interests:
+            kw_parts = " OR ".join(
+                ["(title ILIKE %s OR category ILIKE %s OR summary_text ILIKE %s)" for _ in _m_interests]
+            )
+            _m_where += f" AND ({kw_parts})"
+            for kw in _m_interests:
+                _m_params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%"])
+
+        # 매칭 키워드 수 계산 (정렬용)
+        if _m_interests:
+            score_expr = " + ".join(
+                [f"(CASE WHEN title ILIKE %s OR category ILIKE %s THEN 1 ELSE 0 END)" for _ in _m_interests]
+            )
+            score_params = []
+            for kw in _m_interests:
+                score_params.extend([f"%{kw}%", f"%{kw}%"])
+        else:
+            score_expr = "0"
+            score_params = []
+
+        _m_cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {_m_where}", _m_params)
+        _m_total = (_m_cur.fetchone() or {}).get("cnt", 0)
+
+        _m_cur.execute(
+            f"""SELECT announcement_id, title, region, category, department,
+                       support_amount, support_amount_max, support_amount_min, support_amount_type,
+                       deadline_date, origin_source, created_at,
+                       COALESCE(target_type, 'business') AS target_type,
+                       origin_url, summary_text, eligibility_logic,
+                       established_years_limit, revenue_limit, employee_limit,
+                       ({score_expr}) AS match_score
+                FROM announcements
+                WHERE {_m_where}
+                ORDER BY match_score DESC, deadline_date ASC NULLS LAST, support_amount_max DESC NULLS LAST
+                LIMIT %s OFFSET %s""",
+            score_params + _m_params + [size, offset],
+        )
+        _m_rows = [dict(r) for r in _m_cur.fetchall()]
+        # match_score는 내부용이므로 응답에서 제거
+        for row in _m_rows:
+            row.pop("match_score", None)
+        _m_conn.close()
+        return {
+            "status": "SUCCESS",
+            "data": _m_rows,
+            "total": _m_total,
+            "page": page,
+            "size": size,
+            "regions": [],
+            "categories": [],
+            "category_counts": {},
+            "personalized": True,
+            "source": "matched_tab",
+            "tab": "matched",
+            "matched_keywords": _m_interests,
+            "user_city": _m_city,
+        }
+
     # tab=local/national 일반 경로: 지역 필터 SQL로 처리 (캐시 미사용)
     if tab in ("local", "national") and not region:
         from app.services.rule_engine import _normalize_region as _nrm_tab

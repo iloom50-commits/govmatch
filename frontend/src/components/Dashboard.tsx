@@ -1007,7 +1007,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (!token) return;
     setMatchedLoading(true);
     try {
-      let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=local`;
+      let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}&tab=matched`;
       if (catFilter) url += `&category=${encodeURIComponent(catFilter)}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();

@@ -207,7 +207,7 @@ class NotificationService:
         summary = (program.get('summary_text') or '').lower()
         text = title + ' ' + summary
 
-        score = 50  # 기본 점수 — 단독으로는 임계값 미달 (최소 1개 신호 필요)
+        score = 60  # 기본 점수 — interests 없어도 금액+마감일 있으면 임계값 달성 가능
 
         # 관심사 키워드 일치 보너스
         interests_str = user_data.get('interests') or ''
@@ -215,10 +215,12 @@ class NotificationService:
         kw_hits = sum(1 for kw in interests if kw and kw in text)
         score += min(kw_hits * 10, 30)
 
-        # 지역 일치 보너스
+        # 지역 일치 보너스 — 전국 공고는 모든 사람 대상이므로 가산
         user_city = (user_data.get('address_city') or '').strip()
         ad_region = (program.get('region') or '').strip()
-        if user_city and user_city in ad_region:
+        if not ad_region or ad_region in ('전국', 'All', '온라인', '해외', '기타'):
+            score += 10
+        elif user_city and user_city in ad_region:
             score += 10
 
         # 금액·마감일 있으면 보너스 (상위 노출 유도)
@@ -630,6 +632,9 @@ class NotificationService:
                             "category": program.get('category') or '',
                             "department": program.get('department') or '',
                         })
+
+                # 점수 높은 순 상위 10개만 발송
+                matches = sorted(matches, key=lambda x: x['score'], reverse=True)[:10]
 
                 if matches:
                     user_dict = dict(user)

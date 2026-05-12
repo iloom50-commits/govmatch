@@ -1262,8 +1262,12 @@ def _prewarm_response_cache(startup: bool = False):
                 type_clause = ""
                 type_params: list = []
                 if tt:
-                    type_clause = "AND (target_type = %s OR target_type = 'both')"
-                    type_params = [tt]
+                    if tt == "individual":
+                        type_clause = "AND target_type = 'individual'"
+                        type_params = []
+                    else:
+                        type_clause = "AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
+                        type_params = []
                 full_where = f"{valid_where} {type_clause}"
 
                 cur.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {full_where}", type_params)
@@ -2477,8 +2481,10 @@ def api_announcements_public(
                             _cat_where = valid_announcement_where()
                             _cat_params: list = []
                             if target_type:
-                                _cat_where += " AND (target_type = %s OR target_type = 'both')"
-                                _cat_params.append(target_type)
+                                if target_type == "individual":
+                                    _cat_where += " AND target_type = 'individual'"
+                                else:
+                                    _cat_where += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
                             _pcur.execute(
                                 f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
                                     FROM announcements WHERE {_cat_where}
@@ -2696,8 +2702,10 @@ def api_announcements_public(
                             _cat_where2 = valid_announcement_where()
                             _cat_params2: list = []
                             if target_type:
-                                _cat_where2 += " AND (target_type = %s OR target_type = 'both')"
-                                _cat_params2.append(target_type)
+                                if target_type == "individual":
+                                    _cat_where2 += " AND target_type = 'individual'"
+                                else:
+                                    _cat_where2 += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
                             _pcur.execute(
                                 f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt
                                     FROM announcements WHERE {_cat_where2}
@@ -2757,8 +2765,10 @@ def api_announcements_public(
         _tab_where = valid_announcement_where()
         _tab_params: list = []
         if target_type:
-            _tab_where += " AND (target_type = %s OR target_type = 'both')"
-            _tab_params.append(target_type)
+            if target_type == "individual":
+                _tab_where += " AND target_type = 'individual'"
+            else:
+                _tab_where += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
         if category:
             _tab_cats = [c.strip() for c in category.split(",") if c.strip()]
             if len(_tab_cats) == 1:
@@ -2951,8 +2961,10 @@ def api_announcements_public(
             search_terms.extend(wt)
         s = f"%{search}%"  # 관련성 정렬용 원본 검색어
     if target_type:
-        where_clauses.append("(target_type = %s OR target_type = 'both')")
-        params.append(target_type)
+        if target_type == "individual":
+            where_clauses.append("target_type = 'individual'")
+        else:
+            where_clauses.append("(target_type = 'business' OR target_type = 'both' OR target_type IS NULL)")
 
     where_sql = " AND ".join(where_clauses)
 
@@ -3048,8 +3060,10 @@ def api_announcements_public(
         ]
         cat_params: list = []
         if target_type:
-            cat_where.append("(target_type = %s OR target_type = 'both')")
-            cat_params.append(target_type)
+            if target_type == "individual":
+                cat_where.append("target_type = 'individual'")
+            else:
+                cat_where.append("(target_type = 'business' OR target_type = 'both' OR target_type IS NULL)")
         cat_where_sql = " AND ".join(cat_where)
         cursor.execute(
             f"""SELECT COALESCE(category, '기타') AS cat, COUNT(*) AS cnt

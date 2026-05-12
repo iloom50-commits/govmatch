@@ -24,7 +24,7 @@ _CENTRAL_URL = (
     "https://apis.data.go.kr/B554287/NationalWelfareInformationsV001/NationalWelfarelistV001"
 )
 _LOCAL_URL = (
-    "https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LocalWelfarelist"
+    "https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LcgvWelfarelist"
 )
 _NUM_ROWS = 100  # 복지로는 100이 안정적 (500은 타임아웃 위험)
 _MAX_PAGES = 20  # 최대 2,000건
@@ -121,7 +121,17 @@ def _parse_items(root: ET.Element, dept_fallback: str) -> List[Dict[str, Any]]:
             continue
 
         summary = _t(item, "servDgst") or None
-        dept = _t(item, "jurMnofNm") or _t(item, "jurOrgNm") or dept_fallback
+        # 지자체 응답: sggNm(시군구) + ctpvNm(시도) / 중앙부처: 전국
+        sgg = _t(item, "sggNm")   # 예: 사천시, 남구
+        ctpv = _t(item, "ctpvNm")  # 예: 경상남도
+        if sgg:
+            region = sgg
+        elif ctpv:
+            region = ctpv
+        else:
+            region = "전국"
+
+        dept = _t(item, "bizChrDeptNm") or _t(item, "jurMnofNm") or _t(item, "jurOrgNm") or dept_fallback
 
         content_txt = title + " " + (summary or "")
         category = _guess_category(content_txt)
@@ -133,7 +143,7 @@ def _parse_items(root: ET.Element, dept_fallback: str) -> List[Dict[str, Any]]:
                 "deadline_date": None,
                 "support_amount": None,
                 "summary_text": summary,
-                "region": "전국",  # 복지로 중앙은 전국 단위
+                "region": region,
                 "category": category,
                 "target_type": None,
                 "department": dept,

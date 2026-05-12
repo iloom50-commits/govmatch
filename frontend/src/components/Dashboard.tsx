@@ -753,6 +753,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [infiniteItems, setInfiniteItems] = useState<any[]>([]);
   const lastLoadedPageRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const publicLoadingRef = useRef(false); // 옵저버 클로저에서 최신 loading 상태 참조용
   const [smartMatches, setSmartMatches] = useState<any[]>([]);
   const [smartLoading, setSmartLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1077,6 +1078,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
     setPublicData([]);
     setPublicLoading(true);
+    publicLoadingRef.current = true;
 
     let url = `${API}/api/announcements/public?page=${page}&size=${ITEMS_PER_PAGE}&target_type=${targetType}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -1118,7 +1120,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         }
       })
       .catch(() => {})
-      .finally(() => setPublicLoading(false));
+      .finally(() => { setPublicLoading(false); publicLoadingRef.current = false; });
   }, [isPublic, majorTab, chipKey, currentPage, searchQuery]);
 
   // 모바일: publicData 누적
@@ -1133,16 +1135,19 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   }, [publicData]); // eslint-disable-line
 
   // 모바일: IntersectionObserver sentinel → 자동 다음 페이지
+  // publicLoading을 deps에서 제거하고 ref로 참조 → 로딩 완료 시 옵저버 재생성 방지
   useEffect(() => {
     if (!isMobile || !sentinelRef.current) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || publicLoading) return;
-      const totalPages = Math.ceil(publicServerTotal / ITEMS_PER_PAGE);
-      if (currentPage < totalPages) setCurrentPage(p => p + 1);
-    }, { rootMargin: "300px" });
+      if (!entry.isIntersecting || publicLoadingRef.current) return;
+      setCurrentPage(p => {
+        const totalPages = Math.ceil(publicServerTotal / ITEMS_PER_PAGE);
+        return p < totalPages ? p + 1 : p;
+      });
+    }, { rootMargin: "200px" });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [isMobile, publicLoading, currentPage, publicServerTotal]);
+  }, [isMobile, publicServerTotal]); // currentPage·publicLoading 제거 — ref·함수형 업데이트로 대체
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {
@@ -2094,7 +2099,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-6 overflow-hidden">
-              {publicLoading ? (
+              {publicLoading && currentPage === 1 ? (
+                // 1페이지 초기 로딩만 스켈레톤 표시 (2페이지 이상은 기존 아이템 유지)
                 Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3 animate-pulse">
                     <div className="flex gap-2">
@@ -2147,7 +2153,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               // 모바일: 무한 스크롤 sentinel
               <>
                 <div ref={sentinelRef} className="h-2" />
-                {publicLoading && (
+                {publicLoading && currentPage > 1 && (
+                  // 추가 페이지 로딩 중: 하단 스피너만 표시 (기존 아이템 유지)
                   <div className="flex justify-center py-4">
                     <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
                   </div>

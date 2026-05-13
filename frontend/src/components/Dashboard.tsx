@@ -890,14 +890,23 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     setDeferredPrompt(null);
   };
 
-  // searchQuery → committedSearch 300ms 디바운스
-  // fetch deps는 committedSearch를 사용하므로, 타이핑 중간 글자에서 fetch 안 일어남
+  // searchQuery → committedSearch: 공백(단어 완성) 즉시 / 그 외 800ms fallback
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
+    // 검색어 비면 즉시 초기화
+    if (!searchQuery.trim()) {
+      setCommittedSearch("");
+      return;
+    }
+    // 마지막 글자가 공백 → 단어 완성으로 판단, 즉시 검색
+    if (searchQuery.endsWith(" ")) {
+      setCommittedSearch(searchQuery.trim());
+      return;
+    }
+    // 공백 없이 타이핑 중: 800ms 멈추면 검색 (fallback)
     searchTimer.current = setTimeout(() => {
-      setCommittedSearch(searchQuery);
-      setCurrentPage(1);
-    }, 300);
+      setCommittedSearch(searchQuery.trim());
+    }, 800);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchQuery]);
 
@@ -1873,6 +1882,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (searchTimer.current) clearTimeout(searchTimer.current);
+                    setCommittedSearch(searchQuery.trim());
+                  }
+                }}
                 placeholder={majorTab === "business" ? "공고명, 키워드 검색 (예: 창업, R&D, 수출)" : "공고명, 키워드 검색 (예: 복지, 육아, 주거, 취업)"}
                 className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
               />

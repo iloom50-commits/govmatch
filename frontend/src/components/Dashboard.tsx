@@ -584,12 +584,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const initialMajor: MajorTab = defaultMajorTab || (userType === "individual" ? "individual" : "business");
   const [majorTab, setMajorTab] = useState<MajorTab>(initialMajor);
   // 카테고리 필터 칩 — 복수 선택 Set (빈 Set = 전체)
-  const [activeChips, setActiveChips] = useState<Set<string>>(() => {
-    if (!profile?.interests) return new Set();
-    const interests = String(profile.interests).split(",").map((s: string) => s.trim()).filter(Boolean);
-    const chips = mapInterestsToChips(interests);
-    return chips.length > 0 ? new Set(chips) : new Set();
-  });
+  const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
   const [chipsFromProfile, setChipsFromProfile] = useState(false);
   // useEffect dependency용 — Set은 참조 비교라 문자열로 변환
   const chipKey = Array.from(activeChips).sort().join(",");
@@ -974,16 +969,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { setActiveChips(new Set()); }, [majorTab]);
 
   // 탭/검색 변경 시 페이지 리셋
-  // 프로필 interests → 칩 자동 선택 (최초 1회, 사용자 수동 변경 이후엔 덮어쓰지 않음)
-  useEffect(() => {
-    if (chipsFromProfile || !profile?.interests) return;
-    const interests = String(profile.interests).split(",").map((s: string) => s.trim()).filter(Boolean);
-    const chips = mapInterestsToChips(interests);
-    if (chips.length > 0) {
-      setActiveChips(new Set(chips));
-      setChipsFromProfile(true);
-    }
-  }, [profile, chipsFromProfile]);
 
   useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, committedSearch]);
 

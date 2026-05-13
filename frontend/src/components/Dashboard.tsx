@@ -773,6 +773,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const urlAid = typeof window !== "undefined" ? Number(new URLSearchParams(window.location.search).get("aid")) || 0 : 0;
   const [highlightAid, setHighlightAid] = useState(urlAid);
   const [searchQuery, setSearchQuery] = useState(urlQ);
+  // fetch에 실제 사용되는 지연 검색어 — 300ms 디바운스 후 반영
+  const [committedSearch, setCommittedSearch] = useState(urlQ);
   const [searchLoading] = useState(false); // deprecated — publicLoading으로 대체됨, 타입 호환 유지
   const [showProDashboard, setShowProDashboard] = useState(false);
   const [showMyMenu, setShowMyMenu] = useState(false);
@@ -888,17 +890,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     setDeferredPrompt(null);
   };
 
-  // 검색어 변경 시 publicData fetch에 500ms 디바운스 적용
-  // (칩·페이지 변경은 즉시 실행, 검색 타이핑은 디바운스)
+  // searchQuery → committedSearch 300ms 디바운스
+  // fetch deps는 committedSearch를 사용하므로, 타이핑 중간 글자에서 fetch 안 일어남
   useEffect(() => {
-    if (!searchQuery.trim()) return;
-    // 검색어 입력 중: 이전 타이머 취소 후 500ms 대기
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    // 실제 fetch는 publicData 서버 데이터 로드 effect에서 처리됨
-    // 여기서는 페이지를 1로 리셋해 재fetch 트리거만 함
     searchTimer.current = setTimeout(() => {
+      setCommittedSearch(searchQuery);
       setCurrentPage(1);
-    }, 100); // currentPage가 이미 1이면 effect 미실행 → 즉시 fetch
+    }, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchQuery]);
 
@@ -977,7 +976,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     }
   }, [profile, chipsFromProfile]);
 
-  useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, searchQuery]);
+  useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, committedSearch]);
 
   const newMatchCount = 0;
 
@@ -1031,7 +1030,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { setIsMobile(window.innerWidth < 768); }, []);
 
   // 필터 변경 시 무한스크롤 누적 초기화
-  useEffect(() => { setInfiniteItems([]); lastLoadedPageRef.current = 0; }, [majorTab, chipKey, searchQuery, showMatchedMode]);
+  useEffect(() => { setInfiniteItems([]); lastLoadedPageRef.current = 0; }, [majorTab, chipKey, committedSearch, showMatchedMode]);
 
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
@@ -1042,10 +1041,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const usePublicData = true;  // 전체 공고 항상 API 데이터 사용 (일별 로테이션 맞춤 정렬)
 
-  // 서버 데이터 로드
+  // 서버 데이터 로드 — committedSearch 사용 (300ms 디바운스 적용된 검색어)
   useEffect(() => {
     const targetType = majorTab === "business" ? "business" : "individual";
-    const search = searchQuery.trim();
+    const search = committedSearch.trim();
     const page = currentPage;
 
     // 칩 기반 파라미터 계산
@@ -1056,11 +1055,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (publicCache.current[cacheKey]) {
       setPublicData(publicCache.current[cacheKey].data);
       setPublicServerTotal(publicCache.current[cacheKey].total);
-      if (activeChips.size === 0) setPublicAllTotal(publicCache.current[cacheKey].total);
+      if (activeChips.size === 0 && !search) setPublicAllTotal(publicCache.current[cacheKey].total);
       return;
     }
 
-    setPublicData([]);
+    // 이전 데이터 유지 (비우지 않음) — 빈 화면 플래시 방지
+    // setPublicData([]) 제거: 로딩 중에도 이전 결과 표시
     setPublicLoading(true);
     publicLoadingRef.current = true;
 
@@ -1105,7 +1105,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       })
       .catch(() => {})
       .finally(() => { setPublicLoading(false); publicLoadingRef.current = false; });
-  }, [isPublic, majorTab, chipKey, currentPage, searchQuery]);
+  }, [isPublic, majorTab, chipKey, currentPage, committedSearch]);
 
   // 모바일: publicData 누적
   useEffect(() => {

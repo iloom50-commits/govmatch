@@ -181,7 +181,7 @@ class BaseScraper:
                 (item.get("department") or self.display_name),
                 item.get("region") or None,
                 item.get("category") or None,
-                None,  # 항상 NULL 저장 → AI 분류 에이전트가 처리 (스크래퍼 하드코딩 무시)
+                item.get("target_type") or None,  # 스크래퍼 지정값 반영, 없으면 NULL → AI 분류
                 (item.get("support_amount") or None),
                 item.get("deadline_date") or None,
                 (item.get("summary_text") or "")[:4000] or None,

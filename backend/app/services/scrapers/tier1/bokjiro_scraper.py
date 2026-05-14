@@ -145,7 +145,7 @@ def _parse_items(root: ET.Element, dept_fallback: str) -> List[Dict[str, Any]]:
                 "summary_text": summary,
                 "region": region,
                 "category": category,
-                "target_type": None,
+                "target_type": "individual",
                 "department": dept,
             }
         )

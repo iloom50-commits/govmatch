@@ -598,6 +598,17 @@ def _seed_keyword_synonyms(conn):
     conn.commit()
     print("  [Seed] keyword_synonyms 초기 데이터 삽입 완료")
 
+    _safe_exec("""
+        CREATE TABLE IF NOT EXISTS blog_context_cache (
+            id SERIAL PRIMARY KEY,
+            announcement_id INTEGER NOT NULL,
+            questions_hash VARCHAR(64) NOT NULL,
+            answers JSONB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (announcement_id, questions_hash)
+        )
+    """, "blog_context_cache")
+
 
 import threading as _threading
 _db_init_thread = _threading.Thread(target=init_database, daemon=True)

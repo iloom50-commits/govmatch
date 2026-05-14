@@ -973,8 +973,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, committedSearch]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [currentPage]);
+    if (!isMobile) window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentPage]); // eslint-disable-line
 
   const newMatchCount = 0;
 

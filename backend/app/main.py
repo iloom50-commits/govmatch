@@ -1697,6 +1697,169 @@ async def run_admin_scrape_endpoint(request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+class BlogContextRequest(BaseModel):
+    questions: List[str]
+
+
+@app.post("/api/internal/blog-context/{announcement_id}")
+async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, request: Request):
+    """블로그 자동화팀 전용 — 공고 기반 질문 배치 처리.
+
+    인증: X-Cron-Secret 헤더.
+    질문 최대 5개를 Gemini 1회 호출로 처리.
+    동일 공고+질문 조합은 48시간 캐시 반환.
+    실시간 크롤링 없음 — DB 데이터(공고+분석)만 사용.
+    """
+    import hashlib, json as _json
+    import google.generativeai as genai
+
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    questions = (req.questions or [])[:5]
+    if not questions:
+        return JSONResponse(status_code=400, content={"error": "questions 필드가 비어있습니다."})
+
+    # 캐시 키: announcement_id + 질문 목록 해시
+    questions_hash = hashlib.sha256(_json.dumps(questions, ensure_ascii=False, sort_keys=False).encode()).hexdigest()[:16]
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 48시간 캐시 확인
+    try:
+        cur.execute(
+            """SELECT answers FROM blog_context_cache
+               WHERE announcement_id = %s AND questions_hash = %s
+                 AND created_at > NOW() - INTERVAL '48 hours'""",
+            (announcement_id, questions_hash),
+        )
+        cached = cur.fetchone()
+        if cached:
+            conn.close()
+            return JSONResponse(content={
+                "announcement_id": announcement_id,
+                "cached": True,
+                "answers": cached["answers"],
+            })
+    except Exception as e:
+        print(f"[BlogContext] cache check error: {e}")
+
+    # 공고 기본 정보 조회
+    cur.execute(
+        """SELECT a.title, a.department, a.category, a.support_amount,
+                  a.deadline_date, a.summary_text, a.region, a.target_type,
+                  aa.full_text, aa.parsed_sections
+           FROM announcements a
+           LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+           WHERE a.announcement_id = %s""",
+        (announcement_id,),
+    )
+    ann = cur.fetchone()
+    if not ann:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "공고를 찾을 수 없습니다."})
+
+    a = dict(ann)
+    ps = a.get("parsed_sections") or {}
+
+    # 공고 컨텍스트 구성 (크롤링 없이 DB 데이터만)
+    context_parts = [f"[공고 제목] {a.get('title', '')}"]
+    if a.get("department"):
+        context_parts.append(f"[주관기관] {a['department']}")
+    if a.get("category"):
+        context_parts.append(f"[분야] {a['category']}")
+    if a.get("support_amount"):
+        context_parts.append(f"[지원금액] {a['support_amount']}")
+    if a.get("deadline_date"):
+        context_parts.append(f"[신청기한] {a['deadline_date']}")
+    if a.get("region"):
+        context_parts.append(f"[지역] {a['region']}")
+
+    # parsed_sections 우선, 없으면 full_text, 없으면 summary_text
+    if ps and any(ps.values()):
+        for sec_name, sec_val in ps.items():
+            if sec_val:
+                context_parts.append(f"[{sec_name}] {str(sec_val)[:500]}")
+    elif a.get("full_text"):
+        context_parts.append(f"[공고 원문]\n{a['full_text'][:3000]}")
+    elif a.get("summary_text"):
+        context_parts.append(f"[공고 요약] {a['summary_text']}")
+
+    context = "\n".join(context_parts)
+
+    # 질문 목록을 번호로 나열
+    numbered_questions = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
+
+    prompt = f"""다음 정부 지원사업 공고 정보를 바탕으로 아래 질문들에 답변해주세요.
+공고에 없는 내용은 "공고에 명시되지 않음"이라고 답변하세요. 추측하지 마세요.
+
+{context}
+
+---
+질문 목록:
+{numbered_questions}
+
+---
+반드시 아래 JSON 형식으로만 답변하세요. 다른 텍스트 없이 JSON만 출력하세요:
+{{
+  "1": "질문1에 대한 답변",
+  "2": "질문2에 대한 답변"
+}}"""
+
+    try:
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            conn.close()
+            return JSONResponse(status_code=500, content={"error": "GEMINI_API_KEY 미설정"})
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        raw = response.text.strip()
+
+        # JSON 파싱
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        numbered_answers = _json.loads(raw.strip())
+
+        # 번호 → 질문 텍스트로 매핑
+        answers = {}
+        for i, q in enumerate(questions):
+            answers[q] = numbered_answers.get(str(i + 1), "답변을 생성하지 못했습니다.")
+
+    except Exception as e:
+        conn.close()
+        print(f"[BlogContext] Gemini error: {e}")
+        return JSONResponse(status_code=500, content={"error": f"AI 답변 생성 실패: {type(e).__name__}"})
+
+    # 캐시 저장
+    try:
+        cur.execute(
+            """INSERT INTO blog_context_cache (announcement_id, questions_hash, answers)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (announcement_id, questions_hash) DO UPDATE
+               SET answers = EXCLUDED.answers, created_at = CURRENT_TIMESTAMP""",
+            (announcement_id, questions_hash, _json.dumps(answers, ensure_ascii=False)),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[BlogContext] cache save error: {e}")
+        try: conn.rollback()
+        except: pass
+    finally:
+        conn.close()
+
+    return JSONResponse(content={
+        "announcement_id": announcement_id,
+        "cached": False,
+        "answers": answers,
+    })
+
+
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 # www 서브도메인 자동 포함
@@ -8323,6 +8486,14 @@ def api_run_migrations(req: AdminAuthRequest):
                 owner_memo TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 reviewed_at TIMESTAMP
+            )"""),
+        ("blog_context_cache", """CREATE TABLE IF NOT EXISTS blog_context_cache (
+                id SERIAL PRIMARY KEY,
+                announcement_id INTEGER NOT NULL,
+                questions_hash VARCHAR(64) NOT NULL,
+                answers JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (announcement_id, questions_hash)
             )"""),
     ]
 

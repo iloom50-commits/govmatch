@@ -57,3 +57,6 @@ from . import agency_scrapers10  # noqa: F401
 
 # 공공기관 배치 11 (KITA/INNOPOLIS/KCCI/KICOX)
 from . import agency_scrapers11  # noqa: F401
+
+# 공공기관 배치 12 (HRD Korea/KWBIZ/KOSA)
+from . import agency_scrapers12  # noqa: F401

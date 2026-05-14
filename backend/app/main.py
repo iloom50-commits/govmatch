@@ -3261,15 +3261,7 @@ def api_announcements_public(
                 and_parts.append("(" + " OR ".join(word_or) + ")")
             and_cond = " AND ".join(and_parts)
 
-            # 3) 단어 중 하나라도 포함 (OR) — 넓은 범위
-            or_parts = []
-            for word_terms in all_search_terms:
-                for term in word_terms:
-                    or_parts.append(f"{search_fields} ILIKE %s")
-                    params.append(f"%{term}%")
-            or_cond = " OR ".join(or_parts)
-
-            where_clauses.append(f"({phrase_cond} OR {and_cond} OR {or_cond})")
+            where_clauses.append(f"({phrase_cond} OR {and_cond})")
 
         search_terms = []
         for wt in all_search_terms:

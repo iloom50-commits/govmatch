@@ -307,31 +307,56 @@ class NotificationService:
                 return ""
 
         def _fmt_amount(raw: str) -> str:
-            """'400000000 KRW', '4억원' 등 다양한 형식을 '4억원' 형태로 통일"""
+            """'총 500000000원 이내 (지원비율 50%)', '15,000,000 KRW' 등 → '5억원 이내' 형태로 통일"""
+            import re as _re
             if not raw:
                 return ""
-            # 이미 한글 단위 포함 → 그대로 (단, 'KRW' 접미어 제거 후)
-            cleaned = raw.replace("KRW", "").replace("krw", "").strip(" ,")
-            if any(u in cleaned for u in ["억", "만", "천", "백"]):
-                return cleaned[:35]
-            # 콤마·공백 제거 후 순수 숫자 시도
-            num_str = cleaned.replace(",", "").replace(" ", "").split(".")[0]
-            try:
-                n = int(num_str)
-            except ValueError:
-                # 파싱 불가 → 원본 앞부분만 반환
-                return raw[:35]
-            if n <= 0:
-                return raw[:35]
-            uk  = n // 100_000_000          # 억
-            man = (n % 100_000_000) // 10_000  # 만
-            prefix = "최대 " if "최대" in raw else ""
+            # KRW 제거
+            cleaned = raw.replace("KRW", "").replace("krw", "").strip()
+            # 이미 한글 단위 포함이면 그대로 반환 (원 단위 정리만)
+            if any(u in cleaned for u in ["억", "만원", "천만"]):
+                return cleaned[:50]
+            # prefix: 총/최대
+            prefix = ""
+            if "최대" in raw:
+                prefix = "최대 "
+            elif "총" in raw:
+                prefix = "총 "
+            # suffix: 이내/이상
+            suffix = ""
+            if "이내" in raw:
+                suffix = " 이내"
+            elif "이상" in raw:
+                suffix = " 이상"
+            # 괄호 안 부가 설명 추출
+            paren_m = _re.search(r'\(([^)]{2,40})\)', raw)
+            extra = f" ({paren_m.group(1)})" if paren_m else ""
+            # 문자열에서 가장 큰 숫자 추출
+            candidates = _re.findall(r'[\d,]+', cleaned)
+            best_n = 0
+            for c in candidates:
+                try:
+                    n = int(c.replace(",", ""))
+                    if n > best_n:
+                        best_n = n
+                except ValueError:
+                    pass
+            if best_n <= 0:
+                return raw[:50]
+            uk  = best_n // 100_000_000
+            man = (best_n % 100_000_000) // 10_000
+            chun = (best_n % 10_000) // 1_000
             if uk > 0 and man > 0:
-                return f"{prefix}{uk}억 {man:,}만원"
+                amount_str = f"{uk}억 {man:,}만원"
             elif uk > 0:
-                return f"{prefix}{uk}억원"
+                amount_str = f"{uk}억원"
+            elif man > 0:
+                amount_str = f"{man:,}만원"
+            elif chun > 0:
+                amount_str = f"{chun:,}천원"
             else:
-                return f"{prefix}{man:,}만원"
+                amount_str = f"{best_n:,}원"
+            return f"{prefix}{amount_str}{suffix}{extra}"[:60]
 
         def _card_html(m: dict) -> str:
             title      = m.get("program_title") or ""

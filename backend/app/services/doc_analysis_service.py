@@ -1210,12 +1210,7 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
     if any(p in search_text for p in ongoing_patterns):
         return ("ongoing", None)
 
-    # 2) timeline에서 날짜 추출 시도 (YYYY-MM-DD, YYYY년 MM월 DD일, YYYY.MM.DD)
-    date_patterns = [
-        r"(20\d{2})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})",  # 2026-04-20, 2026.04.20
-        r"(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일",       # 2026년 4월 20일
-    ]
-    # 마감 관련 우선 영역
+    # candidate_text 결정
     candidate_text = ""
     if isinstance(parsed_sections, dict):
         tl = parsed_sections.get("timeline")
@@ -1226,19 +1221,52 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
     if not candidate_text:
         candidate_text = (full_text or "")[:3000]
 
-    # "마감" 키워드 주변 우선 탐색
     today = _dt.date.today()
+
+    # 2) 범위 패턴 우선 탐색: "YYYY년 MM월 DD일 ~ MM월 DD일" (연도 없는 마감일 상속)
+    # "신청접수" 키워드 포함 범위를 최우선으로, 그 다음 일반 범위
+    range_pats = [
+        # 한글: 2026년 5월 18일(월) ~ 6월 2일(화)
+        r"(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일[^\n~]{0,10}~\s*(\d{1,2})월\s*(\d{1,2})일",
+        # 숫자구분: 2026.5.18 ~ 6.2 또는 2026-05-18 ~ 06-02
+        r"(20\d{2})[./](\d{1,2})[./](\d{1,2})[^\n~]{0,10}~\s*(\d{1,2})[./](\d{1,2})",
+    ]
+    range_candidates = []
+    for pat in range_pats:
+        for m in _re.finditer(pat, candidate_text):
+            try:
+                year = int(m.group(1))
+                start_mo = int(m.group(2))
+                end_mo = int(m.group(4))
+                end_d = int(m.group(5))
+                # 마감월이 시작월보다 작으면 다음 해 (12월→1월 걸치는 경우)
+                if end_mo < start_mo:
+                    year += 1
+                cand = _dt.date(year, end_mo, end_d)
+                ctx = candidate_text[max(0, m.start() - 50):m.end() + 50]
+                priority = 2 if any(kw in ctx for kw in ("신청접수", "접수기간", "신청기간")) else 1
+                range_candidates.append((cand, priority))
+            except Exception:
+                continue
+
+    future_ranges = [(c, p) for c, p in range_candidates if c >= today]
+    if future_ranges:
+        best = max(future_ranges, key=lambda x: (x[1], x[0]))
+        return ("fixed", best[0].isoformat())
+
+    # 3) 단일 날짜 패턴 (연도 포함된 날짜만, 기존 로직)
+    date_patterns = [
+        r"(20\d{2})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})",
+        r"(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일",
+    ]
     best_future = None
     best_past = None
-    # 마감일은 "가장 늦은 미래 날짜"를 선택 (접수기간 범위의 끝이 마감)
     for pat in date_patterns:
         for m in _re.finditer(pat, candidate_text):
             try:
                 y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
                 cand = _dt.date(y, mo, d)
-                start = max(0, m.start() - 30)
-                end = min(len(candidate_text), m.end() + 30)
-                ctx = candidate_text[start:end]
+                ctx = candidate_text[max(0, m.start() - 30):m.end() + 30]
                 if any(kw in ctx for kw in ("마감", "접수", "신청", "까지", "~")):
                     if cand >= today and (best_future is None or cand > best_future):
                         best_future = cand

@@ -1756,18 +1756,26 @@ async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, r
             })
     except Exception as e:
         print(f"[BlogContext] cache check error: {e}")
+        try: conn.rollback()  # 오류 후 rollback 필수
+        except: pass
 
     # 공고 기본 정보 조회
-    cur.execute(
-        """SELECT a.title, a.department, a.category, a.support_amount,
-                  a.deadline_date, a.summary_text, a.region, a.target_type,
-                  aa.full_text, aa.parsed_sections
-           FROM announcements a
-           LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-           WHERE a.announcement_id = %s""",
-        (announcement_id,),
-    )
-    ann = cur.fetchone()
+    try:
+        cur.execute(
+            """SELECT a.title, a.department, a.category, a.support_amount,
+                      a.deadline_date, a.summary_text, a.region, a.target_type,
+                      aa.full_text, aa.parsed_sections
+               FROM announcements a
+               LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+               WHERE a.announcement_id = %s""",
+            (announcement_id,),
+        )
+        ann = cur.fetchone()
+    except Exception as e:
+        conn.close()
+        print(f"[BlogContext] DB query error: {e}")
+        return JSONResponse(status_code=500, content={"error": f"DB 조회 실패: {type(e).__name__}: {str(e)[:100]}"})
+
     if not ann:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "공고를 찾을 수 없습니다."})

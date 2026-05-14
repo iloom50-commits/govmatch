@@ -75,3 +75,6 @@ from . import agri_fish_scrapers  # noqa: F401
 
 # KOCCA 공식 API (한국콘텐츠진흥원 지원사업)
 from . import kocca_api_scraper  # noqa: F401
+
+# 식품의약품안전처 연구관리 사업공고 API (MFDS/NIFDS)
+from . import mfds_scraper  # noqa: F401

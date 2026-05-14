@@ -65,8 +65,8 @@ _GWANGJU_SEQ_RE = re.compile(r"seq=(\d+)")
 class GwangjuScraper(BaseScraper):
     """광주광역시청 — 경제정책 게시판"""
 
-    name = "gwangju_sido"
-    display_name = "광주광역시청"
+    name = "gwangju_econ"
+    display_name = "광주광역시청(경제정책)"
     origin_url_prefix = f"{_GWANGJU_BASE}/economy/boardView.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
@@ -77,7 +77,7 @@ class GwangjuScraper(BaseScraper):
             try:
                 soup = _get(_GWANGJU_LIST.format(page=page))
             except Exception as e:
-                logger.warning(f"[gwangju_sido] page {page} 실패: {e}")
+                logger.warning(f"[gwangju_econ] page {page} 실패: {e}")
                 break
 
             rows = soup.select("table tbody tr")
@@ -132,7 +132,7 @@ class GwangjuScraper(BaseScraper):
                 break
             time.sleep(0.5)
 
-        logger.info(f"[gwangju_sido] 수집: {len(items)}건")
+        logger.info(f"[gwangju_econ] 수집: {len(items)}건")
         return items
 
 
@@ -346,8 +346,8 @@ _BUSAN_LIST = f"{_BUSAN_BASE}/biz/index"
 class BusanScraper(BaseScraper):
     """부산광역시청 — 기업지원/공고 (정적 HTML 파싱 시도)"""
 
-    name = "busan_sido"
-    display_name = "부산광역시청"
+    name = "busan_city"
+    display_name = "부산광역시청(직접)"
     origin_url_prefix = _BUSAN_BASE
 
     def fetch_items(self) -> List[Dict[str, Any]]:
@@ -410,11 +410,11 @@ class BusanScraper(BaseScraper):
 
         if not items:
             logger.info(
-                "[busan_sido] 정적 HTML 수집 0건 "
+                "[busan_city] 정적 HTML 수집 0건 "
                 "(JS 렌더링 가능성 — Playwright 전환 후 재구현 예정)"
             )
         else:
-            logger.info(f"[busan_sido] 수집: {len(items)}건")
+            logger.info(f"[busan_city] 수집: {len(items)}건")
         return items
 
 

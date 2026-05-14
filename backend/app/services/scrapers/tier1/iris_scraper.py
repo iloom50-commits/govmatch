@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _KEY = os.getenv("PUBLIC_DATA_PORTAL_KEY", "")
 
 _MSIT_URL = (
-    "http://apis.data.go.kr/1721000/msitannouncementinfo/businessAnnouncMentList"
+    "https://apis.data.go.kr/1721000/msitannouncementinfo/businessAnnouncMentList"
 )
 
 _EXCLUDE_KW = re.compile(

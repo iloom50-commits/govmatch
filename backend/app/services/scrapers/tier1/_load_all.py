@@ -48,3 +48,6 @@ from . import bokjiro_scraper  # noqa: F401
 
 # 시군구 기업지원 전담기관 (11개)
 from . import local_biz_scrapers  # noqa: F401
+
+# 공공기관 배치 9 (KEITI/TIPA/KIDP/IITP/KOTRA)
+from . import agency_scrapers9  # noqa: F401

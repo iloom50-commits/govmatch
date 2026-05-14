@@ -972,6 +972,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   useEffect(() => { setCurrentPage(1); }, [majorTab, chipKey, committedSearch]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentPage]);
+
   const newMatchCount = 0;
 
   // 맞춤공고 모드
@@ -2156,7 +2160,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 let endPage = startPage + maxVisible - 1;
                 if (endPage > totalPages) { endPage = totalPages; startPage = Math.max(1, endPage - maxVisible + 1); }
                 const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
-                const goTo = (p: number) => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
+                const goTo = (p: number) => { setCurrentPage(p); };
                 return (
                   <div className="flex items-center justify-center gap-1.5 py-6 pb-20">
                     <button onClick={() => goTo(currentPage - 1)} disabled={currentPage === 1}

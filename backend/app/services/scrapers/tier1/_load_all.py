@@ -69,3 +69,6 @@ from . import sido_scrapers2  # noqa: F401
 
 # 중앙부처 R&D 사업공고 API (과기부 MSIT — 공공데이터포털)
 from . import iris_scraper  # noqa: F401
+
+# 농·수산 기관 (RDA/KRC/FIRA/MOF)
+from . import agri_fish_scrapers  # noqa: F401

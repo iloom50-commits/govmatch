@@ -72,3 +72,6 @@ from . import iris_scraper  # noqa: F401
 
 # 농·수산 기관 (RDA/KRC/FIRA/MOF)
 from . import agri_fish_scrapers  # noqa: F401
+
+# KOCCA 공식 API (한국콘텐츠진흥원 지원사업)
+from . import kocca_api_scraper  # noqa: F401

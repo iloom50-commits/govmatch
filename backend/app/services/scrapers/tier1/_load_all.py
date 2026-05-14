@@ -54,3 +54,6 @@ from . import agency_scrapers9  # noqa: F401
 
 # 광역시도청·R&D기관 배치 10 (광주/제주/KISTEP/부산/NRF)
 from . import agency_scrapers10  # noqa: F401
+
+# 공공기관 배치 11 (KITA/INNOPOLIS/KCCI/KICOX)
+from . import agency_scrapers11  # noqa: F401

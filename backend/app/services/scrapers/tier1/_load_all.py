@@ -63,3 +63,6 @@ from . import agency_scrapers12  # noqa: F401
 
 # 공공기관 배치 13 (KOEF/KEA EEP/KoreaBio)
 from . import agency_scrapers13  # noqa: F401
+
+# 광역시도청 배치 2 (대구/경기도/경상북도)
+from . import sido_scrapers2  # noqa: F401

@@ -1244,8 +1244,10 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
                     year += 1
                 cand = _dt.date(year, end_mo, end_d)
                 ctx = candidate_text[max(0, m.start() - 50):m.end() + 50]
-                priority = 2 if any(kw in ctx for kw in ("신청접수", "접수기간", "신청기간")) else 1
-                range_candidates.append((cand, priority))
+                # 신청/접수 키워드 있는 범위만 마감일로 인정 (박람회·행사 기간 오인 방지)
+                is_apply_range = any(kw in ctx for kw in ("신청접수", "접수기간", "신청기간", "접수기한", "신청기한", "접수 기간", "신청 기간"))
+                if is_apply_range:
+                    range_candidates.append((cand, 2))
             except Exception:
                 continue
 

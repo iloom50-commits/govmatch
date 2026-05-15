@@ -1537,8 +1537,33 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            # ── 일일 공고 수집 파이프라인 — 매일 03:00 KST (UTC 18:00) ──
+            def _daily_pipeline_job():
+                try:
+                    from app.services.patrol.daily_pipeline import run_daily_pipeline
+                    conn = get_db_connection()
+                    try:
+                        print("[Pipeline] 일일 공고 수집 시작 (03:00 KST)...")
+                        result = run_daily_pipeline(conn)
+                        print(f"[Pipeline] 완료: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
+                        _log_system("pipeline_run", "system", f"일일 파이프라인 완료: {result.get('total_elapsed')}s", "success")
+                    finally:
+                        try: conn.close()
+                        except: pass
+                except Exception as e:
+                    print(f"[Pipeline] 오류: {e}")
+                    _log_system("pipeline_run", "system", f"일일 파이프라인 오류: {e}", "error")
+
+            pipeline_scheduler.add_job(
+                _daily_pipeline_job,
+                CronTrigger(hour=18, minute=0),  # UTC 18:00 = KST 03:00
+                id="daily_pipeline",
+                name="일일 공고 수집 파이프라인 (03:00 KST)",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - daily 03:00 KST + digest 09:00 KST(평일) + AI COO 09:30 KST + keepalive 2min + cache prewarm 10min + bulk_analyze_report 1h + lite_chat_cleanup 11:00 KST")
+            print("[Pipeline] APScheduler started - 공고수집 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache 10min + bulk_report 1h + lite_cleanup 11:00 KST")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:

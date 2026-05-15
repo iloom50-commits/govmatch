@@ -377,7 +377,7 @@ def archive_stale_announcements(db_conn) -> Dict[str, Any]:
     """[Phase 4] 공고 데이터 품질 자동 정리 — 마감·기한초과·분석실패 공고 아카이브.
 
     규칙:
-    1) deadline_type='fixed' + deadline_date < (오늘 - 30일) → is_archived=TRUE + deadline_type='expired'
+    1) deadline_type='fixed' + deadline_date < KST 오늘 → is_archived=TRUE + deadline_type='expired'
     2) deadline_type='expired' AND NOT is_archived → is_archived=TRUE
     3) analysis_status='failed' + created_at < (오늘 - 3개월) → is_archived=TRUE
     4) deadline_type='unknown' AND created_at < (오늘 - 6개월) AND analysis_status != 'ongoing'
@@ -389,7 +389,7 @@ def archive_stale_announcements(db_conn) -> Dict[str, Any]:
     cur = db_conn.cursor()
     stats = {"past_deadline": 0, "expired_type": 0, "failed_old": 0, "unknown_old": 0, "past_year_title": 0}
 
-    # 1) 마감 후 30일 경과
+    # 1) 마감일 경과 (KST 자정 기준 — 당일 마감 공고는 당일까지 노출)
     try:
         cur.execute("""
             UPDATE announcements
@@ -398,7 +398,7 @@ def archive_stale_announcements(db_conn) -> Dict[str, Any]:
             WHERE is_archived = FALSE
               AND deadline_type = 'fixed'
               AND deadline_date IS NOT NULL
-              AND deadline_date < CURRENT_DATE - INTERVAL '30 days'
+              AND deadline_date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::DATE
         """)
         stats["past_deadline"] = cur.rowcount or 0
         db_conn.commit()

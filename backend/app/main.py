@@ -2439,12 +2439,13 @@ def valid_announcement_where(alias: str = "") -> str:
         괄호로 감싼 WHERE 조건 문자열
     """
     p = f"{alias}." if alias else ""
+    kst_today = "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::DATE"
     return (
         f"({p}is_archived = FALSE AND ("
         f"  {p}deadline_type = 'ongoing'"
-        f"  OR ({p}deadline_type = 'fixed' AND {p}deadline_date >= CURRENT_DATE)"
-        f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= CURRENT_DATE - INTERVAL '3 months'"
-        f"      AND ({p}deadline_date IS NULL OR {p}deadline_date >= CURRENT_DATE))"
+        f"  OR ({p}deadline_type = 'fixed' AND {p}deadline_date >= {kst_today})"
+        f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= {kst_today} - INTERVAL '3 months'"
+        f"      AND ({p}deadline_date IS NULL OR {p}deadline_date >= {kst_today}))"
         f"))"
     )
 

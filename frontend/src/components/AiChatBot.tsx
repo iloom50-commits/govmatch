@@ -315,17 +315,28 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
     return null;
   };
 
-  // 프로필 요약 텍스트 생성
-  const buildProfileSummary = (user: Record<string, any>) => {
+  // 프로필 요약 텍스트 생성 — 개인/기업 모드에 따라 다른 필드 사용
+  const buildProfileSummary = (user: Record<string, any>, forIndividual = false) => {
     const parts: string[] = [];
-    if (user.company_name) parts.push(`기업명: ${user.company_name}`);
-    if (user.industry_name || user.industry_code) parts.push(`업종: ${user.industry_name || `KSIC ${user.industry_code}`}`);
-    if (user.address_city) parts.push(`관심지역: ${user.address_city}`);
-    if (user.revenue_bracket) parts.push(`매출: ${user.revenue_bracket}`);
-    if (user.employee_count_bracket) parts.push(`직원수: ${user.employee_count_bracket}`);
-    if (user.establishment_date) {
-      const years = Math.floor((Date.now() - new Date(user.establishment_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-      parts.push(`설립: ${user.establishment_date} (${years}년차)`);
+    if (forIndividual) {
+      // 개인 탭: 개인 정보만 표시
+      if (user.age_range) parts.push(`연령대: ${user.age_range}`);
+      if (user.address_city) parts.push(`지역: ${user.address_city}`);
+      if (user.income_level) parts.push(`소득: ${user.income_level}`);
+      if (user.employment_status) parts.push(`고용: ${user.employment_status}`);
+      if (user.housing_status) parts.push(`주거: ${user.housing_status}`);
+      if (user.interests) parts.push(`관심: ${user.interests}`);
+    } else {
+      // 기업 탭: 기업 정보만 표시
+      if (user.company_name) parts.push(`기업명: ${user.company_name}`);
+      if (user.industry_name || user.industry_code) parts.push(`업종: ${user.industry_name || `KSIC ${user.industry_code}`}`);
+      if (user.address_city) parts.push(`관심지역: ${user.address_city}`);
+      if (user.revenue_bracket) parts.push(`매출: ${user.revenue_bracket}`);
+      if (user.employee_count_bracket) parts.push(`직원수: ${user.employee_count_bracket}`);
+      if (user.establishment_date) {
+        const years = Math.floor((Date.now() - new Date(user.establishment_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        parts.push(`설립: ${user.establishment_date} (${years}년차)`);
+      }
     }
     return parts.join(" | ");
   };
@@ -340,7 +351,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
 
     if (selectedMode === "free") {
       const userProfile = await fetchUserProfile();
-      const profileSummary = userProfile ? buildProfileSummary(userProfile) : null;
+      const profileSummary = userProfile ? buildProfileSummary(userProfile, activeFundMode === "individual_fund") : null;
 
       const baseText = activeFundMode === "individual_fund"
         ? "안녕하세요! 개인 자금·대출 전문 상담사입니다.\n\n주거 대출(버팀목·디딤돌), 서민금융(햇살론·새희망홀씨), 학자금, 긴급 생계비 등 자금/대출 관련 질문을 해주세요."

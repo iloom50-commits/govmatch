@@ -1596,6 +1596,9 @@ def chat_lite_fund_expert(
                 _profile_warnings.append(f"⚠ 사용자 {age} — 만 34세 이하 '청년' 지원사업은 해당 안 됨. 절대 추천 금지.")
             if parts:
                 profile_ctx += "[사용자 프로필]\n- " + "\n- ".join(parts) + "\n"
+            else:
+                # 개인 프로필 미입력 — 기업 정보를 참조하지 말고 질문으로 수집
+                profile_ctx += "[사용자 프로필] 미입력 상태\n- 개인 정보(연령대·소득·가구형태 등)를 질문을 통해 하나씩 수집하세요.\n- 기업 관련 정보(회사명·업종·매출·직원수 등)는 절대 참조하거나 언급하지 마세요.\n"
         else:
             parts = []
             for label, k in [("회사명", "company_name"), ("업종코드", "industry_code"), ("지역", "address_city"),

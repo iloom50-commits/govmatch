@@ -265,6 +265,7 @@ def init_database():
             "income_level VARCHAR(30) DEFAULT ''",
             "family_type VARCHAR(30) DEFAULT ''",
             "employment_status VARCHAR(30) DEFAULT ''",
+            "housing_status VARCHAR(30) DEFAULT ''",
             "founded_date VARCHAR(20) DEFAULT ''",
             "is_pre_founder BOOLEAN DEFAULT FALSE",
             "certifications TEXT DEFAULT ''",
@@ -4751,7 +4752,12 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     elif req.mode == "business_fund":
         filtered_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS | {"age_range"}) and v}
     else:
-        filtered_profile = u
+        # mode 미지정 시 user_type 기반으로 필터링 (기업정보가 개인 상담에 유입되지 않도록)
+        _ut = (u.get("user_type") or "both").lower()
+        if _ut == "individual":
+            filtered_profile = {k: v for k, v in u.items() if k in (_INDIV_FIELDS | _COMMON_FIELDS) and v}
+        else:
+            filtered_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS | {"age_range"}) and v}
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=filtered_profile, mode=req.mode)
 
     # ── 대화 저장 (P0.1+B): UPSERT by session_id ──

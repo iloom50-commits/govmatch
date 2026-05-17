@@ -82,17 +82,25 @@ class NotificationService:
             target_type_clause = "AND target_type IN ('business', 'both')"
 
         # 지역 조건: 전국/All/온라인이거나 사용자 지역 포함 (타지역 제외)
-        # user_loc이 '전국'이면 전국 공고만, 특정 지역이면 전국+내지역
-        user_city = user_loc if user_loc != '전국' else ''
+        # address_city는 쉼표로 여러 지역이 저장될 수 있음 (예: '서울,부산')
+        # '전국'이 포함되거나 비어 있으면 전국 공고만, 아니면 각 도시별 OR 조건
+        _NATIONWIDE = {'전국', 'All', '온라인', '해외', '기타', ''}
+        _NATIONWIDE_SQL = "('전국', 'All', '온라인', '해외', '기타')"
+
+        user_cities = [
+            c.strip() for c in user_loc.split(',')
+            if c.strip() and c.strip() not in _NATIONWIDE
+        ]
 
         params: list = []
 
         # 지역 절
-        if user_city:
-            region_clause = "(region IN ('전국', 'All', '온라인', '해외', '기타', '') OR region LIKE %s)"
-            params.append(f"%{user_city}%")
+        if user_cities:
+            like_parts = " OR ".join(["region LIKE %s" for _ in user_cities])
+            region_clause = f"(region IN {_NATIONWIDE_SQL} OR {like_parts})"
+            params.extend([f"%{c}%" for c in user_cities])
         else:
-            region_clause = "region IN ('전국', 'All', '온라인', '해외', '기타', '')"
+            region_clause = f"region IN {_NATIONWIDE_SQL}"
 
         # 기업/개인 탭 기준 유효 관심사 카테고리 (혼입 방지)
         _BIZ_CATS = {
@@ -267,11 +275,15 @@ class NotificationService:
         score += min(kw_hits * 10, 30)
 
         # 지역 일치 보너스 — 전국 공고는 모든 사람 대상이므로 가산
-        user_city = (user_data.get('address_city') or '').strip()
+        # address_city는 쉼표 구분 다중값 가능 (예: '서울,부산')
+        _user_cities = [
+            c.strip() for c in (user_data.get('address_city') or '').split(',')
+            if c.strip() and c.strip() not in ('전국', 'All', '온라인', '해외', '기타', '')
+        ]
         ad_region = (program.get('region') or '').strip()
         if not ad_region or ad_region in ('전국', 'All', '온라인', '해외', '기타'):
             score += 10
-        elif user_city and user_city in ad_region:
+        elif any(city and city in ad_region for city in _user_cities):
             score += 10
 
         # 금액·마감일 있으면 보너스 (상위 노출 유도)

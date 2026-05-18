@@ -11749,10 +11749,15 @@ def api_get_notification_settings(bn: str, current_user: dict = Depends(_get_cur
             }
         }
 
+_digest_running = False
+
 @app.post("/api/admin/send-digest", dependencies=[Depends(_verify_admin)])
 async def api_send_digest():
     """데일리 다이제스트를 즉시 생성하고 이메일 발송 (관리자용)"""
-    # 진단 단계: import + 호출을 분리해서 어디서 죽는지 추적
+    global _digest_running
+    if _digest_running:
+        return {"status": "SKIPPED", "message": "이미 다이제스트 발송이 진행 중입니다. 잠시 후 다시 시도하세요."}
+    _digest_running = True
     stage = "init"
     try:
         stage = "import_module"
@@ -11781,6 +11786,8 @@ async def api_send_digest():
             "error": str(e)[:500],
             "traceback": tb[-2000:],
         }
+    finally:
+        _digest_running = False
 
 
 @app.get("/api/admin/digest-probe")

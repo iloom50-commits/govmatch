@@ -22,8 +22,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const ann = await getAnnouncement(id);
   if (!ann) {
-    return { title: "공고를 찾을 수 없습니다" };
+    return { title: "공고를 찾을 수 없습니다", robots: { index: false } };
   }
+
+  const isThinContent = !ann.summary_text || ann.summary_text.length < 100;
 
   const title = `${ann.title} | 지원금AI`;
   const description = ann.summary_text
@@ -33,6 +35,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return {
     title,
     description,
+    robots: isThinContent ? { index: false } : { index: true, follow: true },
     openGraph: {
       title: ann.title,
       description,

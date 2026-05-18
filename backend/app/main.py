@@ -14382,6 +14382,26 @@ def api_announcements_search(keyword: str = "", q: str = "", limit: int = 20):
         conn.close()
 
 
+@app.get("/api/sitemap/announcements")
+def api_sitemap_announcements():
+    """sitemap.xml 전용 — 유효 공고 ID 목록 반환 (인증·rate limit 없음)"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT announcement_id, created_at
+            FROM announcements
+            WHERE (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+              AND summary_text IS NOT NULL AND LENGTH(summary_text) >= 100
+            ORDER BY created_at DESC
+            LIMIT 500
+        """)
+        rows = cur.fetchall()
+        return {"data": [{"id": r["announcement_id"], "updated_at": str(r["created_at"] or "")} for r in rows]}
+    finally:
+        conn.close()
+
+
 @app.get("/api/announcements/{announcement_id}")
 def api_announcement_by_id(announcement_id: int):
     """공고 상세 — SEO 페이지용 (인증 불필요)"""

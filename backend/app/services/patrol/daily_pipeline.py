@@ -220,25 +220,8 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
 
     _run_step("⑦ 오케스트레이터", step_7_orchestrator)
 
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # ⑧ 일일 다이제스트 발송
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def step_8_digest():
-        # 평일만 발송
-        now = datetime.datetime.now()
-        if now.weekday() >= 5:  # 토,일
-            return {"skipped": "weekend"}
-        from app.services.notification_service import notification_service
-        import asyncio
-        loop = asyncio.new_event_loop()
-        try:
-            digest_results = loop.run_until_complete(notification_service.generate_daily_digest())
-        finally:
-            loop.close()
-        sent = sum(1 for r in digest_results if r.get("email_sent"))
-        return {"users": len(digest_results), "emails_sent": sent}
-
-    _run_step("⑧ 다이제스트 발송", step_8_digest)
+    # ⑧ 다이제스트 발송은 run_digest_cron.py (UTC 00:00 평일)가 단독 담당
+    # — 이 파이프라인에서 호출하면 KST 03:00 + 09:00 이중 발송 발생하므로 제거
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑨ 구독/결제 관리

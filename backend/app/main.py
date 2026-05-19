@@ -1646,6 +1646,24 @@ async def run_digest_endpoint(request: Request):
     if not _CRON_SECRET or secret != _CRON_SECRET:
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
+    # 6시간 내 이미 발송됐으면 중복 실행 방지
+    try:
+        _chk = get_db_connection()
+        _cur = _chk.cursor()
+        _cur.execute("""
+            SELECT MAX(sent_at) FROM notification_logs
+            WHERE channel = 'email' AND sent_at >= NOW() - INTERVAL '6 hours'
+        """)
+        _last = _chk.cursor().fetchone() if False else _cur.fetchone()
+        _chk.close()
+        if _last and _last[0]:
+            import datetime as _dt
+            _ago = (datetime.datetime.utcnow().replace(tzinfo=_dt.timezone.utc) - _last[0]).total_seconds() / 3600
+            print(f"[run-digest] 마지막 발송 {_ago:.1f}시간 전 — 6시간 내 중복 실행 차단")
+            return JSONResponse({"status": "SKIPPED", "reason": f"already sent {_ago:.1f}h ago"})
+    except Exception as _e:
+        print(f"[run-digest] cooldown check error (무시): {_e}")
+
     import threading
     def _run():
         try:

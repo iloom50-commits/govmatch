@@ -77,6 +77,16 @@ def _ensure_table(cur):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # 기존 테이블에 누락된 컬럼 추가 (2026-05-21 스키마 불일치 수정)
+    for col_def in [
+        "agent_label VARCHAR(50)",
+        "role_fit NUMERIC(4,1)",
+        "helpfulness NUMERIC(4,1)",
+    ]:
+        cur.execute(f"""
+            ALTER TABLE orchestrator_reviews
+            ADD COLUMN IF NOT EXISTS {col_def}
+        """)
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_orch_rev_date_agent
         ON orchestrator_reviews (review_date, agent)

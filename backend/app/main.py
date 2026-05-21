@@ -1646,6 +1646,12 @@ async def run_digest_endpoint(request: Request):
     if not _CRON_SECRET or secret != _CRON_SECRET:
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
+    # admin/send-digest와 동일한 플래그 공유 — 동시 실행 방지
+    global _digest_running
+    if _digest_running:
+        print("[run-digest] 이미 발송 진행 중 — 중복 실행 차단")
+        return JSONResponse({"status": "SKIPPED", "message": "이미 다이제스트 발송이 진행 중입니다."})
+
     # 6시간 내 이미 발송됐으면 중복 실행 방지
     try:
         _chk = get_db_connection()
@@ -1664,8 +1670,10 @@ async def run_digest_endpoint(request: Request):
     except Exception as _e:
         print(f"[run-digest] cooldown check error (무시): {_e}")
 
+    _digest_running = True
     import threading
     def _run():
+        global _digest_running
         try:
             import asyncio
             from app.services.notification_service import notification_service
@@ -1699,6 +1707,8 @@ async def run_digest_endpoint(request: Request):
             print(f"[Digest] 완료: users={result['users']}, email={result['email_sent']}, push={result['push_sent']}, prematch={result['prematch']}, errors={result['errors']}")
         except Exception as e:
             print(f"[Digest] Error: {e}")
+        finally:
+            _digest_running = False
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

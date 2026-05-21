@@ -7,7 +7,32 @@ from datetime import datetime, timedelta
 
 
 # ── 텍스트 보고서 ──────────────────────────────────────────────
-def _build_report_text(metrics: dict, learning: dict, quality: dict) -> str:
+def _build_seo_text(seo: dict) -> str:
+    if not seo or seo.get("skipped") or seo.get("error"):
+        return "  데이터 없음\n"
+    t = seo.get("total", {})
+    lines = (
+        f"  클릭: {t.get('clicks',0)}회  |  노출: {t.get('impressions',0)}회\n"
+        f"  CTR: {t.get('ctr',0)}%  |  평균순위: {t.get('position',0)}위\n"
+    )
+    queries = seo.get("top_queries", [])[:3]
+    if queries:
+        lines += "  상위 검색어:\n"
+        for q in queries:
+            lines += f"    · {q['query']} ({q['clicks']}클릭, {q['position']}위)\n"
+    opps = seo.get("opportunities", [])
+    if opps:
+        lines += f"  CTR 개선 기회: {len(opps)}개 페이지\n"
+    suggestions = seo.get("ai_suggestions", "")
+    if suggestions:
+        lines += "  AI 개선 제안:\n"
+        for line in suggestions.split("\n")[:4]:
+            if line.strip():
+                lines += f"    {line.strip()}\n"
+    return lines
+
+
+def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -63,9 +88,13 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict) -> str:
     else:
         quality_lines = "  데이터 없음\n"
 
+    seo_lines = _build_seo_text(seo or {})
+
     return f"""[GovMatch 일일 현황] {today}
 {'─' * 38}
 
+▌ 구글 검색 유입
+{seo_lines}
 ▌ 회원 현황
   누적: {u_total}명 (lite {u_lite} / pro {u_pro})
   유료 전환율: {conv_rt}%
@@ -91,7 +120,7 @@ GovMatch | govmatch.kr"""
 
 
 # ── HTML 보고서 ───────────────────────────────────────────────
-def _build_report_html(metrics: dict, learning: dict, quality: dict) -> str:
+def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -160,6 +189,34 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict) -> str:
     def stat_row(label, value):
         return f'<tr><td style="padding:5px 0;color:#6b7280;font-size:13px">{label}</td><td style="font-weight:bold;font-size:13px">{value}</td></tr>'
 
+    # SEO HTML 섹션
+    seo = seo or {}
+    seo_t = seo.get("total", {})
+    seo_html = ""
+    if seo and not seo.get("skipped") and not seo.get("error"):
+        queries_html = "".join(
+            f'<tr><td style="padding:4px 0;font-size:13px">{q["query"]}</td>'
+            f'<td style="font-size:13px">{q["clicks"]}클릭</td>'
+            f'<td style="font-size:13px;color:#6b7280">{q["position"]}위</td></tr>'
+            for q in seo.get("top_queries", [])[:3]
+        )
+        suggestions_html = ""
+        for line in (seo.get("ai_suggestions") or "").split("\n")[:4]:
+            if line.strip():
+                suggestions_html += f'<li style="font-size:12px;margin-bottom:4px">{line.strip()}</li>'
+
+        seo_html = f"""
+  <h3 style="color:#111;font-size:15px;margin-top:20px">&#128269; 구글 검색 유입</h3>
+  <table style="width:100%;border-collapse:collapse">
+    {stat_row("클릭수", f"{seo_t.get('clicks',0)}회")}
+    {stat_row("노출수", f"{seo_t.get('impressions',0)}회")}
+    {stat_row("CTR", f'<span style="color:#6d28d9">{seo_t.get("ctr",0)}%</span>')}
+    {stat_row("평균순위", f"{seo_t.get('position',0)}위")}
+  </table>
+  <p style="font-size:13px;font-weight:bold;margin:12px 0 4px">상위 검색어</p>
+  <table style="width:100%;border-collapse:collapse">{queries_html}</table>
+  {"<p style='font-size:13px;font-weight:bold;margin:12px 0 4px'>AI 개선 제안</p><ul style='margin:0;padding-left:16px'>" + suggestions_html + "</ul>" if suggestions_html else ""}"""
+
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px;color:#111">
@@ -167,6 +224,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict) -> str:
   <h2 style="color:#6d28d9;margin-bottom:4px">GovMatch 일일 현황</h2>
   <p style="color:#6b7280;font-size:13px;margin-top:0">{today} 보고</p>
   <hr style="border-color:#e5e7eb">
+  {seo_html}
 
   <h3 style="color:#111;font-size:15px">&#128101; 회원</h3>
   <table style="width:100%;border-collapse:collapse">
@@ -315,11 +373,13 @@ def _send_kakao(metrics: dict) -> bool:
 
 
 # ── 발송 ──────────────────────────────────────────────────────
-def send_report(metrics: dict, learning: dict, quality: dict = None) -> dict:
+def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None) -> dict:
     if quality is None:
         quality = {}
-    report_text = _build_report_text(metrics, learning, quality)
-    report_html = _build_report_html(metrics, learning, quality)
+    if seo is None:
+        seo = {}
+    report_text = _build_report_text(metrics, learning, quality, seo)
+    report_html = _build_report_html(metrics, learning, quality, seo)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──

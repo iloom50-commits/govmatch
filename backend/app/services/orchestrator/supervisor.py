@@ -86,14 +86,34 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 학습 감시 오류: {e}")
             traceback.print_exc()
 
-        # ── 4. 보고서 발송 ──
-        print("[AI COO] Step 4/4: 보고서 생성 + 발송 중...")
+        # ── 4. SEO 현황 감시 ──
+        print("[AI COO] Step 4/5: SEO 현황 수집 + AI 분석 중...")
+        try:
+            from .seo_monitor import check_seo
+            seo = check_seo()
+            results["seo"] = seo
+            if seo.get("skipped"):
+                print(f"  → SEO 스킵: {seo.get('reason')}")
+            elif seo.get("error"):
+                print(f"  → SEO 오류: {seo['error']}")
+            else:
+                t = seo.get("total", {})
+                print(f"  → 클릭 {t.get('clicks')}회, 노출 {t.get('impressions')}회, CTR {t.get('ctr')}%, 순위 {t.get('position')}위")
+        except Exception as e:
+            results["seo"] = {"error": str(e)}
+            seo = {}
+            print(f"  → SEO 감시 오류: {e}")
+            traceback.print_exc()
+
+        # ── 5. 보고서 발송 ──
+        print("[AI COO] Step 5/5: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
             report_result = send_report(
                 metrics=results.get("metrics", {}),
                 learning=results.get("learning", {}),
                 quality=results.get("quality", {}),
+                seo=results.get("seo", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

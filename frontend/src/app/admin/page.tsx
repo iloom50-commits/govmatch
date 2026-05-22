@@ -818,7 +818,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <div className="flex gap-3 flex-wrap">
               <a
-                href="https://bot.govmatch.kr/"
+                href="https://blog-dashboard-production-6c96.up.railway.app"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
@@ -827,7 +827,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 🤖 <span className="hidden md:inline">블로그 봇</span>
               </a>
               <a
-                href="https://bot.govmatch.kr/posts"
+                href="https://blog-dashboard-production-6c96.up.railway.app/posts"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"

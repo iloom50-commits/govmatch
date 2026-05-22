@@ -240,6 +240,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [manualMemo, setManualMemo] = useState('');
   const [manualSaving, setManualSaving] = useState(false);
 
+  // 상담 검수
+  const [consultItems, setConsultItems] = useState<any[]>([]);
+  const [consultFilter, setConsultFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [consultLoading, setConsultLoading] = useState(false);
+  const [consultPendingCount, setConsultPendingCount] = useState(0);
+  const [consultExpandId, setConsultExpandId] = useState<number | null>(null);
+  const [consultNote, setConsultNote] = useState<Record<number, string>>({});
+
   const authHeaders = useCallback((): Record<string, string> => {
     const token = sessionStorage.getItem('admin_token') || '';
     return { 'Authorization': `Bearer ${token}` };
@@ -345,6 +353,40 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   useEffect(() => { if (activeTab === 'qa_training') loadQaItems(qaFilter); }, [activeTab, qaFilter]);
+
+  const loadConsultItems = async (status: string) => {
+    setConsultLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/consult-review?status=${status}&limit=50`);
+      const data = await res.json();
+      setConsultItems(data.items || []);
+      setConsultPendingCount(data.pending_count || 0);
+    } catch {
+      toast('검수 목록 로드 실패', 'error');
+    } finally {
+      setConsultLoading(false);
+    }
+  };
+
+  useEffect(() => { if (activeTab === 'qa_training') loadConsultItems(consultFilter); }, [activeTab, consultFilter]);
+
+  const handleConsultReview = async (logId: number, approved: boolean | null) => {
+    try {
+      const res = await authFetch(`${API_URL}/api/admin/consult-review/${logId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, note: consultNote[logId] || null }),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        toast(approved === true ? '✅ 승인됨' : approved === false ? '❌ 폐기됨' : '초기화됨', 'success');
+        loadConsultItems(consultFilter);
+        setConsultExpandId(null);
+      }
+    } catch {
+      toast('처리 실패', 'error');
+    }
+  };
 
   const handleQaReview = async (id: number, action: 'approve' | 'correct' | 'reject', correctedAnswer = '', memo = '') => {
     try {
@@ -874,6 +916,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               }`}
             >
               <FiCpu size={15} /> AI 사전학습
+              {consultPendingCount > 0 && (
+                <span className="bg-rose-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{consultPendingCount}</span>
+              )}
             </button>
             <button
               onClick={() => setActiveTab('hot_issues')}
@@ -1258,6 +1303,117 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       <div className="mt-2 text-[10px] text-slate-400">
                         {item.owner_memo && <span className="mr-3">메모: {item.owner_memo}</span>}
                         {item.reviewed_at && <span>검토: {new Date(item.reviewed_at).toLocaleDateString('ko-KR')}</span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ 상담 검수 섹션 (qa_training 탭 내) ═══════════ */}
+        {activeTab === 'qa_training' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">실제 상담 검수</h2>
+                <p className="text-xs text-slate-400 mt-0.5">오케스트레이터가 저품질로 평가한 상담을 검토·승인하면 파인튜닝 데이터로 활용됩니다.</p>
+              </div>
+              <div className="flex gap-2">
+                {(['pending', 'approved', 'rejected'] as const).map(f => (
+                  <button key={f} onClick={() => setConsultFilter(f)}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${consultFilter === f ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {f === 'pending' ? `미검토 ${consultPendingCount > 0 ? `(${consultPendingCount})` : ''}` : f === 'approved' ? '승인됨' : '폐기됨'}
+                  </button>
+                ))}
+                <button onClick={() => loadConsultItems(consultFilter)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200">
+                  <FiRefreshCw size={12} />
+                </button>
+              </div>
+            </div>
+
+            {consultLoading ? (
+              <div className="text-center py-8 text-slate-400 text-sm">불러오는 중...</div>
+            ) : consultItems.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 text-sm">
+                {consultFilter === 'pending' ? '검수할 상담이 없습니다. 오케스트레이터가 저품질 상담을 발견하면 여기에 표시됩니다.' : '해당 항목이 없습니다.'}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {consultItems.map(item => (
+                  <div key={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50"
+                      onClick={() => setConsultExpandId(consultExpandId === item.id ? null : item.id)}>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${item.training_approved === true ? 'bg-emerald-500' : item.training_approved === false ? 'bg-red-400' : 'bg-amber-400'}`} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-800 truncate">
+                            {item.agent || item.conclusion || '상담'} · #{item.id}
+                          </p>
+                          <p className="text-xs text-slate-400">{item.created_at} · {item.business_number?.slice(0, 6)}***</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {item.avg_score != null && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${item.avg_score < 5 ? 'bg-red-50 text-red-600' : item.avg_score < 7 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                            {item.avg_score}점
+                          </span>
+                        )}
+                        {item.issue && <span className="text-xs text-red-500 max-w-[120px] truncate">{item.issue}</span>}
+                        <FiRefreshCw size={14} className={`text-slate-300 transition-transform ${consultExpandId === item.id ? 'rotate-90' : ''}`} />
+                      </div>
+                    </div>
+
+                    {/* 상세 (펼쳐짐) */}
+                    {consultExpandId === item.id && (
+                      <div className="border-t border-slate-100 p-4 space-y-4">
+                        {/* 대화 내용 */}
+                        <div className="bg-slate-50 rounded-xl p-3 max-h-64 overflow-y-auto space-y-2">
+                          {(item.messages || []).slice(-10).map((msg: any, i: number) => (
+                            <div key={i} className={`text-xs p-2 rounded-lg ${msg.role === 'user' ? 'bg-indigo-50 text-indigo-800' : 'bg-white border border-slate-100 text-slate-700'}`}>
+                              <span className="font-bold mr-1">{msg.role === 'user' ? '사용자' : 'AI'}:</span>
+                              {(msg.text || msg.content || '').slice(0, 300)}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* AI 평가 */}
+                        {(item.accuracy || item.role_fit || item.helpfulness) && (
+                          <div className="flex gap-4 text-xs text-slate-500">
+                            <span>정확성 <b>{item.accuracy}</b></span>
+                            <span>역할적합 <b>{item.role_fit}</b></span>
+                            <span>유용성 <b>{item.helpfulness}</b></span>
+                          </div>
+                        )}
+
+                        {/* 메모 입력 */}
+                        <textarea
+                          placeholder="검수 메모 (선택) — 틀린 내용, 수정 방향 등"
+                          value={consultNote[item.id] || ''}
+                          onChange={e => setConsultNote(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          rows={2}
+                          className="w-full text-xs border border-slate-200 rounded-xl p-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+
+                        {/* 액션 버튼 */}
+                        <div className="flex gap-2">
+                          <button onClick={() => handleConsultReview(item.id, true)}
+                            className="flex-1 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700">
+                            ✅ 학습 데이터로 승인
+                          </button>
+                          <button onClick={() => handleConsultReview(item.id, false)}
+                            className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-bold hover:bg-red-600">
+                            ❌ 폐기
+                          </button>
+                          {item.training_approved !== null && (
+                            <button onClick={() => handleConsultReview(item.id, null)}
+                              className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200">
+                              초기화
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

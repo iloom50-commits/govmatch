@@ -7837,6 +7837,90 @@ def api_coo_run(req: AdminAuthRequest):
     return {"status": "SUCCESS", **result}
 
 
+@app.get("/api/admin/consult-review", dependencies=[Depends(_verify_admin)])
+def api_consult_review_list(status: str = "pending", limit: int = 30):
+    """상담 검수 목록 — orchestrator_reviews.needs_review=true 또는 전체."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if status == "pending":
+            where = "AND cl.training_approved IS NULL AND (r.needs_review = TRUE OR r.avg_score < 6)"
+        elif status == "approved":
+            where = "AND cl.training_approved = TRUE"
+        elif status == "rejected":
+            where = "AND cl.training_approved = FALSE"
+        else:
+            where = ""
+        cur.execute(f"""
+            SELECT cl.id, cl.business_number, cl.conclusion, cl.feedback,
+                   cl.training_approved, cl.training_note,
+                   cl.messages, cl.created_at,
+                   r.agent, r.avg_score, r.accuracy,
+                   r.role_fit, r.helpfulness, r.issue, r.needs_review
+            FROM ai_consult_logs cl
+            LEFT JOIN orchestrator_reviews r ON r.consult_log_id = cl.id
+            WHERE cl.messages IS NOT NULL {where}
+            ORDER BY r.avg_score ASC NULLS LAST, cl.created_at DESC
+            LIMIT %s
+        """, (min(limit, 100),))
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            msgs = d.get("messages") or []
+            if isinstance(msgs, str):
+                import json as _j
+                try: msgs = _j.loads(msgs)
+                except: msgs = []
+            d["messages"] = msgs
+            d["created_at"] = str(d["created_at"])[:19] if d.get("created_at") else None
+            rows.append(d)
+        # 미검토 개수
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM ai_consult_logs cl
+            LEFT JOIN orchestrator_reviews r ON r.consult_log_id = cl.id
+            WHERE cl.messages IS NOT NULL AND cl.training_approved IS NULL
+              AND (r.needs_review = TRUE OR r.avg_score < 6)
+        """)
+        pending_count = cur.fetchone()["cnt"]
+        return {"status": "SUCCESS", "items": rows, "count": len(rows), "pending_count": pending_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:200])
+    finally:
+        conn.close()
+
+
+class ConsultReviewRequest(BaseModel):
+    approved: Optional[bool] = None  # True=승인, False=폐기, None=초기화
+    note: Optional[str] = None
+
+
+@app.post("/api/admin/consult-review/{log_id}", dependencies=[Depends(_verify_admin)])
+def api_consult_review_update(log_id: int, req: ConsultReviewRequest):
+    """상담 검수 결과 저장 — 승인/폐기/초기화."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE ai_consult_logs
+            SET training_approved = %s, training_note = %s
+            WHERE id = %s
+            RETURNING id
+        """, (req.approved, req.note, log_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="상담 로그를 찾을 수 없습니다.")
+        conn.commit()
+        label = "승인" if req.approved is True else ("폐기" if req.approved is False else "초기화")
+        return {"status": "SUCCESS", "id": log_id, "action": label}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e)[:200])
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/coo/reviews")
 def api_coo_reviews(password: str, limit: int = 30):
     """관리자: 최근 저품질 상담 리뷰 목록 조회 (orchestrator_reviews)."""
@@ -8441,6 +8525,10 @@ def api_run_migrations(req: AdminAuthRequest):
          "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)"),
         ("ai_consult_logs.updated_at",
          "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ("ai_consult_logs.training_approved",
+         "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS training_approved BOOLEAN DEFAULT NULL"),
+        ("ai_consult_logs.training_note",
+         "ALTER TABLE ai_consult_logs ADD COLUMN IF NOT EXISTS training_note TEXT DEFAULT NULL"),
         ("idx_ai_consult_logs_session_id",
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_consult_logs_session_id ON ai_consult_logs(session_id) WHERE session_id IS NOT NULL"),
         ("ksic_classification cleanup bad codes",

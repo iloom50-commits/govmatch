@@ -1,7 +1,7 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, date
 
-# 지역명 정규화: AI가 다양한 형태로 추출하는 지역명을 표준화
+# 광역시/도 장문명 → 표준 단문명
 REGION_NORMALIZE = {
     "경상남도": "경남", "경상북도": "경북",
     "전라남도": "전남", "전라북도": "전북",
@@ -16,7 +16,58 @@ REGION_NORMALIZE = {
     "경기도": "경기",
 }
 
+# 도 prefix 없이 단독으로 오는 시/군 → 광역시도
+_CITY_TO_SIDO = {
+    "구미시": "경북", "구미": "경북",
+    "포항시": "경북", "포항": "경북",
+    "경주시": "경북", "경주": "경북",
+    "안동시": "경북", "안동": "경북",
+    "창원시": "경남", "창원": "경남",
+    "진주시": "경남", "진주": "경남",
+    "통영시": "경남", "통영": "경남",
+    "아산시": "충남", "아산": "충남",
+    "천안시": "충남", "천안": "충남",
+    "공주시": "충남", "공주": "충남",
+    "청주시": "충북", "청주": "충북",
+    "충주시": "충북", "충주": "충북",
+    "전주시": "전북", "전주": "전북",
+    "군산시": "전북", "군산": "전북",
+    "익산시": "전북", "익산": "전북",
+    "목포시": "전남", "목포": "전남",
+    "여수시": "전남", "여수": "전남",
+    "순천시": "전남", "순천": "전남",
+    "평창군": "강원", "평창": "강원",
+    "춘천시": "강원", "춘천": "강원",
+    "원주시": "강원", "원주": "강원",
+    "강릉시": "강원", "강릉": "강원",
+    "과천시": "경기", "과천": "경기",
+    "수원시": "경기", "수원": "경기",
+    "성남시": "경기", "성남": "경기",
+    "고양시": "경기", "고양": "경기",
+    "용인시": "경기", "용인": "경기",
+    "부천시": "경기", "부천": "경기",
+    "안산시": "경기", "안산": "경기",
+    "안양시": "경기", "안양": "경기",
+    "화성시": "경기", "화성": "경기",
+    "평택시": "경기", "평택": "경기",
+    # 창조경제혁신센터 형태 (primary city 기준)
+    "광주전라제주센터": "광주",
+    "대구경북센터": "대구",
+    "서울인천센터": "서울",
+    "세종대전충청센터": "세종",
+    "서울ㆍ경기ㆍ인천": "수도권",
+    "서울·경기·인천": "수도권",
+}
+
+_STANDARD_REGIONS = {
+    "전국", "서울", "경기", "인천", "부산", "대구", "광주", "대전", "울산", "세종",
+    "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+    "수도권", "All", "온라인", "해외", "기타",
+}
+
+
 def _normalize_region(region) -> str:
+    """rule_engine 내부 사용 — 매칭 로직에서 호출."""
     if not region:
         return ""
     if isinstance(region, list):
@@ -24,22 +75,116 @@ def _normalize_region(region) -> str:
     if not region:
         return ""
     r = str(region).strip()
-    # 1. 정확히 매칭
     if r in REGION_NORMALIZE:
         return REGION_NORMALIZE[r]
-    # 2. 시/도 + 시/군/구 형태 (예: "경기 시흥", "부산 해운대")
-    #    → 시/도만 추출
     parts = r.replace("  ", " ").split()
     if len(parts) >= 2:
         sido = REGION_NORMALIZE.get(parts[0], parts[0])
-        # "경기도 시흥시" → "경기"
         if sido in ("서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"):
             return sido
-    # 3. 접두사 매칭 (예: "경기도" → "경기")
     for full, short in REGION_NORMALIZE.items():
         if r.startswith(full) or r.startswith(short):
             return short
     return r
+
+
+def normalize_region_for_save(region) -> Optional[str]:
+    """스크래퍼 저장 시 region 정규화. 비표준 시/군명도 광역시도로 변환."""
+    if not region:
+        return None
+    r = str(region).strip()
+    if not r:
+        return None
+    # 1. 이미 표준값
+    if r in _STANDARD_REGIONS:
+        return r
+    # 2. 광역시/도 장문명
+    if r in REGION_NORMALIZE:
+        return REGION_NORMALIZE[r]
+    # 3. 시/군 단독 매핑
+    if r in _CITY_TO_SIDO:
+        return _CITY_TO_SIDO[r]
+    # 4. "경기도 시흥시" 형태 → 첫 번째 부분이 광역시도이면 추출
+    parts = r.replace("  ", " ").split()
+    if len(parts) >= 2:
+        sido = REGION_NORMALIZE.get(parts[0], _CITY_TO_SIDO.get(parts[0], parts[0]))
+        if sido in _STANDARD_REGIONS:
+            return sido
+    # 5. 접두사 매핑
+    for full, short in REGION_NORMALIZE.items():
+        if r.startswith(full):
+            return short
+    for city, sido in _CITY_TO_SIDO.items():
+        if r.startswith(city):
+            return sido
+    return r  # 알 수 없는 값은 원본 유지
+
+
+# ─── category 정규화 ────────────────────────────────────────────
+
+VALID_CATEGORIES = {
+    "복지", "자금·지원", "교육", "의료", "출산", "인력·교육", "기술·개발",
+    "기타", "주거", "창업·스케일업", "정보", "금융", "수출·판로", "경영·법률",
+    "창업지원", "직업훈련", "장애", "R&D",
+}
+
+_CATEGORY_NORMALIZE = {
+    "Entrepreneurship": "창업지원",
+    "entrepreneurship": "창업지원",
+    "고용·창업": "창업지원",
+    "사회적기업": "창업지원",
+    "저소득": "복지",
+    "취업": "인력·교육",
+    "환경": "기술·개발",
+    "에너지": "기술·개발",
+    "농업": "기타",
+    "콘텐츠기업지원센터": "기타",
+    "문화콘텐츠센터": "기타",
+}
+
+# (키워드 리스트, 카테고리) — 앞쪽일수록 우선순위 높음
+_CATEGORY_KEYWORDS = [
+    (["R&D", "연구개발", "기술개발", "연구·개발"], "R&D"),
+    (["수출", "해외진출", "글로벌진출", "수출바우처", "무역", "판로"], "수출·판로"),
+    (["훈련", "직업훈련", "직업교육", "국가기술자격", "기능장", "기능사", "명장"], "직업훈련"),
+    (["창업", "스타트업", "예비창업"], "창업지원"),
+    (["기술", "디지털전환", "스마트공장", "ICT", "AI", "SW개발", "소프트웨어"], "기술·개발"),
+    # 출산이 의료보다 앞: "임산부 의료비" → 임산부(출산) 우선
+    (["출산", "임신", "임산부", "산모", "육아", "보육", "어린이집"], "출산"),
+    (["의료비", "진료비", "건강검진", "의약품"], "의료"),
+    (["주거급여", "전세대출", "임대주택", "월세지원", "주거지원"], "주거"),
+    (["장애수당", "장애급여", "활동지원", "장애인"], "장애"),
+    (["복지", "생계급여", "기초생활", "차상위", "한부모", "긴급복지"], "복지"),
+    (["자금지원", "보조금", "보조사업", "지원금", "융자"], "자금·지원"),
+    (["보증", "투자유치", "펀드", "금융지원"], "금융"),
+    (["인력채용", "고용지원", "일자리창출", "취업연계"], "인력·교육"),
+    (["경영지원", "법률자문", "특허", "지식재산"], "경영·법률"),
+    (["교육", "역량강화", "컨설팅", "멘토링"], "교육"),
+]
+
+
+def normalize_category(category) -> Optional[str]:
+    """비표준 category 값을 표준 VALID_CATEGORIES 중 하나로 변환."""
+    if not category:
+        return None
+    c = str(category).strip()
+    if not c:
+        return None
+    if c in VALID_CATEGORIES:
+        return c
+    if c in _CATEGORY_NORMALIZE:
+        return _CATEGORY_NORMALIZE[c]
+    return c  # 알 수 없는 값은 원본 유지 (AI가 추후 보강)
+
+
+def infer_category_from_title(title: str) -> Optional[str]:
+    """공고 제목 키워드 기반 category 추론. 매칭 없으면 None."""
+    if not title:
+        return None
+    for keywords, cat in _CATEGORY_KEYWORDS:
+        if any(kw in title for kw in keywords):
+            return cat
+    return None
 
 
 class RuleEngine:

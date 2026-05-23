@@ -17,6 +17,11 @@ import json
 from typing import List, Dict, Any, Optional
 import psycopg2
 import psycopg2.extras
+from app.services.rule_engine import (
+    normalize_region_for_save,
+    normalize_category,
+    infer_category_from_title,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +160,16 @@ class BaseScraper:
             logger.info(f"[{self.name}] 블랙리스트 도메인 스킵: {origin_url[:60]}")
             return False
 
+        # 정규화
+        raw_region = item.get("region") or None
+        raw_category = item.get("category") or None
+        region = normalize_region_for_save(raw_region)
+        category = normalize_category(raw_category)
+        # category가 NULL이면 제목 기반으로 추론 (스크래퍼가 분류 못한 경우)
+        if not category:
+            category = infer_category_from_title(title)
+        target_type = item.get("target_type") or None
+
         cur = db_conn.cursor()
         # 중복 체크
         cur.execute(
@@ -179,9 +194,9 @@ class BaseScraper:
                 title[:500],
                 origin_url,
                 (item.get("department") or self.display_name),
-                item.get("region") or None,
-                item.get("category") or None,
-                item.get("target_type") or None,  # 스크래퍼 지정값 반영, 없으면 NULL → AI 분류
+                region,
+                category,
+                target_type,  # NULL이면 AI 분류(ai_classify_pending)가 처리
                 (item.get("support_amount") or None),
                 item.get("deadline_date") or None,
                 (item.get("summary_text") or "")[:4000] or None,

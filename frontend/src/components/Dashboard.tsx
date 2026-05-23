@@ -1004,13 +1004,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const toggleMatchedMode = useCallback(() => {
     if (!profile) { handleLoginRequired(); return; }
     setShowMatchedMode(prev => {
-      if (!prev) {
+      // 로그인됐지만 프로필 미완성(isPublic=true)이면 패널만 표시, fetch 안 함
+      if (!prev && !isPublic) {
         const targetType = majorTab === "business" ? "business" : "individual";
         fetchMatchedAnnouncements(targetType);
       }
       return !prev;
     });
-  }, [profile, majorTab, fetchMatchedAnnouncements]);
+  }, [profile, isPublic, majorTab, fetchMatchedAnnouncements]);
 
   // 탭 전환 시 맞춤모드 해제
   useEffect(() => { setShowMatchedMode(false); }, [majorTab]);
@@ -1971,19 +1972,34 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </p>
           )}
 
+          {/* [⭐맞춤] 로그인O + 프로필 미완성 → 설정 유도 패널 */}
+          {showMatchedMode && isPublic && profile && (
+            <div className="flex flex-col items-center gap-3 py-10 px-6 text-center bg-amber-50/60 rounded-2xl border border-amber-100">
+              <span className="text-3xl">🎯</span>
+              <p className="text-sm font-bold text-slate-700">관심분야를 설정하면 맞춤 공고를 볼 수 있어요</p>
+              <p className="text-xs text-slate-400">관심분야·지역·나이 등을 입력하면 AI가 딱 맞는 공고만 골라드립니다</p>
+              <button
+                onClick={() => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
+                className="mt-1 px-5 py-2 bg-amber-500 text-white text-xs font-bold rounded-full hover:bg-amber-600 transition-all active:scale-95"
+              >
+                맞춤 설정하기
+              </button>
+            </div>
+          )}
+
           {/* [내 지역] 칩 선택 + 비로그인 or 지역 미설정 → 안내 */}
-          {activeChips.has("내 지역") && (isPublic || !profileCity) && (
+          {activeChips.has("내 지역") && ((isPublic && !profile) || !profileCity) && (
             <div className="flex flex-col items-center gap-3 py-10 px-6 text-center bg-blue-50/60 rounded-2xl border border-blue-100">
               <span className="text-3xl">📍</span>
               <p className="text-sm font-bold text-slate-700">
-                {isPublic ? "로그인하면 내 지역 공고를 볼 수 있어요" : "프로필에서 지역을 설정하면 내 지역 공고가 표시됩니다"}
+                {isPublic && !profile ? "로그인하면 내 지역 공고를 볼 수 있어요" : "프로필에서 지역을 설정하면 내 지역 공고가 표시됩니다"}
               </p>
               <p className="text-xs text-slate-400">지역 설정 후 해당 지역 지원사업만 모아서 보여드립니다</p>
               <button
-                onClick={isPublic ? handleLoginRequired : () => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
+                onClick={isPublic && !profile ? handleLoginRequired : () => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
                 className="mt-1 px-5 py-2 bg-blue-600 text-white text-xs font-bold rounded-full hover:bg-blue-700 transition-all active:scale-95"
               >
-                {isPublic ? "로그인하기" : "지역 설정하기"}
+                {isPublic && !profile ? "로그인하기" : "지역 설정하기"}
               </button>
             </div>
           )}

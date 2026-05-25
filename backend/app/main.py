@@ -11907,8 +11907,11 @@ async def api_send_digest():
 
 
 @app.get("/api/admin/digest-probe")
-async def api_digest_probe():
-    """진단용: 인증 없이 단계별 stub 응답으로 무엇이 깨지는지 추적"""
+async def api_digest_probe(x_bot_token: Optional[str] = Header(None)):
+    """진단용: 내부 봇 토큰 인증 후 단계별 stub 응답으로 무엇이 깨지는지 추적"""
+    _expected = os.getenv("BOT_TOKEN", "GOVMATCH_BLOG_BOT_2026")
+    if not x_bot_token or not hmac.compare_digest(x_bot_token, _expected):
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
     import traceback
     out = {"steps": []}
     try:

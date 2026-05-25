@@ -984,7 +984,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [matchedTotal, setMatchedTotal] = useState(0);
   const [matchedLoading, setMatchedLoading] = useState(false);
 
-  const fetchMatchedAnnouncements = useCallback(async (targetType: string, page = 1, catFilter = "") => {
+  const fetchMatchedAnnouncements = useCallback(async (targetType: string, page = 1, catFilter = "", append = false) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (!token) return;
     setMatchedLoading(true);
@@ -994,7 +994,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.status === "SUCCESS") {
-        setMatchedData(d.data || []);
+        if (append) {
+          setMatchedData(prev => [...prev, ...(d.data || [])]);
+        } else {
+          setMatchedData(d.data || []);
+        }
         setMatchedTotal(d.total || 0);
       }
     } catch { /* silent */ }
@@ -1022,14 +1026,20 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     const targetType = majorTab === "business" ? "business" : "individual";
     // "내 지역"은 맞춤모드가 이미 tab=local이므로 제외, 나머지 카테고리만 AND 필터
     const catFilter = chipKey.split(",").filter(c => c && c !== "내 지역").join(",");
-    fetchMatchedAnnouncements(targetType, currentPage, catFilter);
-  }, [showMatchedMode, currentPage, majorTab, chipKey, fetchMatchedAnnouncements]);
+    // 모바일 + 2페이지 이상: 누적 (append), 그 외: 교체
+    const append = isMobile && currentPage > 1;
+    fetchMatchedAnnouncements(targetType, currentPage, catFilter, append);
+  }, [showMatchedMode, currentPage, majorTab, chipKey, fetchMatchedAnnouncements, isMobile]);
 
   // 모바일 감지
   useEffect(() => { setIsMobile(window.innerWidth < 768); }, []);
 
   // 필터 변경 시 무한스크롤 누적 초기화
-  useEffect(() => { setInfiniteItems([]); lastLoadedPageRef.current = 0; }, [majorTab, chipKey, committedSearch, showMatchedMode]);
+  useEffect(() => {
+    setInfiniteItems([]);
+    setMatchedData([]);
+    lastLoadedPageRef.current = 0;
+  }, [majorTab, chipKey, committedSearch, showMatchedMode]);
 
   // 비로그인: Dashboard에서 직접 API 호출
   const [publicData, setPublicData] = useState<any[]>([]);
@@ -1123,14 +1133,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     if (!isMobile || !sentinelRef.current) return;
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting || publicLoadingRef.current) return;
+      // 맞춤 모드는 matchedTotal, 일반 탭은 publicServerTotal 기준
+      const total = showMatchedMode ? matchedTotal : publicServerTotal;
       setCurrentPage(p => {
-        const totalPages = Math.ceil(publicServerTotal / ITEMS_PER_PAGE);
+        const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
         return p < totalPages ? p + 1 : p;
       });
     }, { rootMargin: "200px" });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [isMobile, publicServerTotal]); // currentPage·publicLoading 제거 — ref·함수형 업데이트로 대체
+  }, [isMobile, publicServerTotal, showMatchedMode, matchedTotal]); // 맞춤 모드 total 반영
 
   // 사이드바 열릴 때 body 스크롤 잠금
   useEffect(() => {

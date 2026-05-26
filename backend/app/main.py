@@ -1764,6 +1764,7 @@ async def run_admin_scrape_endpoint(request: Request):
 
 class BlogContextRequest(BaseModel):
     questions: List[str]
+    force_refresh: bool = False  # True이면 캐시 무시하고 재생성
 
 
 @app.post("/api/internal/blog-context/{announcement_id}")
@@ -1792,26 +1793,30 @@ async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, r
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # 48시간 캐시 확인
-    try:
-        cur.execute(
-            """SELECT answers FROM blog_context_cache
-               WHERE announcement_id = %s AND questions_hash = %s
-                 AND created_at > NOW() - INTERVAL '48 hours'""",
-            (announcement_id, questions_hash),
-        )
-        cached = cur.fetchone()
-        if cached:
-            conn.close()
-            return JSONResponse(content={
-                "announcement_id": announcement_id,
-                "cached": True,
-                "answers": cached["answers"],
-            })
-    except Exception as e:
-        print(f"[BlogContext] cache check error: {e}")
-        try: conn.rollback()  # 오류 후 rollback 필수
-        except: pass
+    # 48시간 캐시 확인 (force_refresh=True이면 스킵)
+    if not req.force_refresh:
+        try:
+            cur.execute(
+                """SELECT answers, created_at FROM blog_context_cache
+                   WHERE announcement_id = %s AND questions_hash = %s
+                     AND created_at > NOW() - INTERVAL '48 hours'""",
+                (announcement_id, questions_hash),
+            )
+            cached = cur.fetchone()
+            if cached:
+                print(f"[BlogContext] cache hit: id={announcement_id} hash={questions_hash} cached_at={cached['created_at']}")
+                conn.close()
+                return JSONResponse(content={
+                    "announcement_id": announcement_id,
+                    "cached": True,
+                    "answers": cached["answers"],
+                })
+        except Exception as e:
+            print(f"[BlogContext] cache check error: {e}")
+            try: conn.rollback()
+            except: pass
+    else:
+        print(f"[BlogContext] force_refresh=True: id={announcement_id}, 캐시 무시")
 
     # 공고 기본 정보 조회
     try:
@@ -1835,6 +1840,8 @@ async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, r
         return JSONResponse(status_code=404, content={"error": "공고를 찾을 수 없습니다."})
 
     a = dict(ann)
+    print(f"[BlogContext] DB 조회 결과: id={announcement_id} title='{(a.get('title') or '')[:50]}' "
+          f"has_full_text={bool(a.get('full_text'))} has_parsed={bool(a.get('parsed_sections'))}")
     ps = a.get("parsed_sections") or {}
 
     # 공고 컨텍스트 구성 (크롤링 없이 DB 데이터만)
@@ -1931,6 +1938,99 @@ async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, r
         "cached": False,
         "answers": answers,
     })
+
+
+@app.get("/api/internal/blog-context/debug/{announcement_id}")
+async def blog_context_debug(announcement_id: int, request: Request):
+    """블로그봇 전용 진단 엔드포인트 — 캐시 내용 + DB 원본 데이터 확인."""
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    import json as _json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    result: dict = {"announcement_id": announcement_id}
+
+    # 1. 캐시 내 해당 공고 전체 항목 조회
+    try:
+        cur.execute(
+            """SELECT questions_hash, answers, created_at
+               FROM blog_context_cache
+               WHERE announcement_id = %s
+               ORDER BY created_at DESC""",
+            (announcement_id,),
+        )
+        cache_rows = cur.fetchall()
+        result["cache_entries"] = [
+            {
+                "questions_hash": r["questions_hash"],
+                "created_at": str(r["created_at"]),
+                "answers_preview": str(r["answers"])[:200],
+            }
+            for r in cache_rows
+        ]
+    except Exception as e:
+        result["cache_error"] = str(e)
+        try: conn.rollback()
+        except: pass
+
+    # 2. 공고 원본 데이터 조회
+    try:
+        cur.execute(
+            """SELECT a.title, a.department, a.category, a.region, a.target_type,
+                      a.summary_text,
+                      aa.full_text,
+                      aa.parsed_sections
+               FROM announcements a
+               LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
+               WHERE a.announcement_id = %s""",
+            (announcement_id,),
+        )
+        ann = cur.fetchone()
+        if ann:
+            a = dict(ann)
+            result["db"] = {
+                "title": a.get("title"),
+                "department": a.get("department"),
+                "category": a.get("category"),
+                "region": a.get("region"),
+                "target_type": a.get("target_type"),
+                "summary_text_preview": (a.get("summary_text") or "")[:200],
+                "full_text_preview": (a.get("full_text") or "")[:300],
+                "parsed_sections_keys": list((a.get("parsed_sections") or {}).keys()),
+            }
+        else:
+            result["db"] = None
+    except Exception as e:
+        result["db_error"] = str(e)
+
+    conn.close()
+    return JSONResponse(content=result)
+
+
+@app.delete("/api/internal/blog-context/cache/{announcement_id}")
+async def blog_context_cache_clear(announcement_id: int, request: Request):
+    """블로그봇 전용 — 특정 공고의 캐시 삭제. 0이면 전체 삭제."""
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not _CRON_SECRET or secret != _CRON_SECRET:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if announcement_id == 0:
+            cur.execute("DELETE FROM blog_context_cache")
+        else:
+            cur.execute("DELETE FROM blog_context_cache WHERE announcement_id = %s", (announcement_id,))
+        deleted = cur.rowcount
+        conn.commit()
+        return JSONResponse(content={"deleted": deleted, "announcement_id": announcement_id})
+    except Exception as e:
+        conn.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        conn.close()
 
 
 _cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://localhost:3003,http://localhost:3005,http://127.0.0.1:3005,http://localhost:5181,http://localhost:8010")

@@ -602,13 +602,31 @@ def _seed_keyword_synonyms(conn):
     _safe_exec("""
         CREATE TABLE IF NOT EXISTS blog_context_cache (
             id SERIAL PRIMARY KEY,
-            announcement_id INTEGER NOT NULL,
+            announcement_id INTEGER NOT NULL
+                REFERENCES announcements(announcement_id) ON DELETE CASCADE,
             questions_hash VARCHAR(64) NOT NULL,
             answers JSONB NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (announcement_id, questions_hash)
         )
     """, "blog_context_cache")
+    # 기존 테이블에 FK가 없는 경우 마이그레이션으로 추가
+    _safe_exec("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'blog_context_cache_announcement_id_fkey'
+                  AND table_name = 'blog_context_cache'
+            ) THEN
+                ALTER TABLE blog_context_cache
+                    ADD CONSTRAINT blog_context_cache_announcement_id_fkey
+                    FOREIGN KEY (announcement_id)
+                    REFERENCES announcements(announcement_id)
+                    ON DELETE CASCADE;
+            END IF;
+        END$$
+    """, "blog_context_cache FK migration")
 
 
 import threading as _threading
@@ -1804,6 +1822,22 @@ async def blog_context_endpoint(announcement_id: int, req: BlogContextRequest, r
             )
             cached = cur.fetchone()
             if cached:
+                # 캐시 히트 시 공고가 DB에 여전히 존재하는지 검증
+                cur.execute(
+                    "SELECT 1 FROM announcements WHERE announcement_id = %s",
+                    (announcement_id,),
+                )
+                still_exists = cur.fetchone()
+                if not still_exists:
+                    # 삭제된 공고의 스테일 캐시 — 삭제 후 404 반환
+                    print(f"[BlogContext] stale cache detected: id={announcement_id} (공고 삭제됨) → 캐시 삭제")
+                    cur.execute(
+                        "DELETE FROM blog_context_cache WHERE announcement_id = %s",
+                        (announcement_id,),
+                    )
+                    conn.commit()
+                    conn.close()
+                    return JSONResponse(status_code=404, content={"error": "공고를 찾을 수 없습니다. (캐시 무효화됨)"})
                 print(f"[BlogContext] cache hit: id={announcement_id} hash={questions_hash} cached_at={cached['created_at']}")
                 conn.close()
                 return JSONResponse(content={

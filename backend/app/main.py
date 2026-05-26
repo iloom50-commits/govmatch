@@ -3201,6 +3201,13 @@ def api_announcements_public(
             for kw in _m_interests:
                 _m_params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%"])
 
+        # 검색어 AND 필터 (맞춤 결과 내 추가 좁히기)
+        if search:
+            _m_sf = "(title || ' ' || COALESCE(summary_text,'') || ' ' || COALESCE(department,'') || ' ' || COALESCE(category,''))"
+            for _m_sw in search.strip().split():
+                _m_where += f" AND {_m_sf} ILIKE %s"
+                _m_params.append(f"%{_m_sw}%")
+
         # 매칭 키워드 수 계산 (정렬용)
         if _m_interests:
             score_expr = " + ".join(

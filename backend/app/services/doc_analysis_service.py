@@ -608,18 +608,21 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
         _api_key = os.environ.get("GOV24_API_KEY", "")
         if _api_key:
             try:
+                # ★ 올바른 필터 파라미터: cond[서비스ID::EQ] (serviceId= 는 필터링 안 됨)
                 _resp = requests.get(
                     "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
-                    params={"serviceKey": _api_key, "serviceId": serv_id, "returnType": "JSON"},
+                    params={"serviceKey": _api_key, "returnType": "JSON", "cond[서비스ID::EQ]": serv_id},
                     timeout=15,
                 )
                 if _resp.status_code == 200:
                     _data = _resp.json()
+                    _match_count = int(_data.get("matchCount") or 0)
 
-                    # ★ 필터링 검증: matchCount가 크면 serviceId 필터가 작동하지 않은 것
-                    _match_count = int(_data.get("matchCount") or _data.get("totalCount") or 0)
+                    # 안전망: 1건이어야 정상 (cond 필터가 작동하지 않으면 10000+ 반환)
                     if _match_count > 5:
-                        print(f"[DocAnalysis] gov24 API returned {_match_count} results for {serv_id} — serviceId filter not working, skip")
+                        print(f"[DocAnalysis] gov24 API returned {_match_count} results for {serv_id} — filter broken, skip")
+                    elif _match_count == 0:
+                        print(f"[DocAnalysis] gov24 API: no match for 서비스ID={serv_id}")
                     else:
                         _detail = _data.get("data", [{}])
                         if isinstance(_detail, list) and _detail:
@@ -627,52 +630,31 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
                         elif not isinstance(_detail, dict):
                             _detail = {}
 
+                        # API 실제 응답은 한글 필드명
                         _parts = []
                         _field_map = [
-                            ("지원대상", ["지원대상", "tgtrDtlCn", "srvcClsfNm"]),
-                            ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
-                            ("신청방법", ["신청방법", "aplyMtdCn"]),
-                            ("선정기준", ["선정기준", "slctCritCn"]),
-                            ("구비서류", ["구비서류", "psblDocCn"]),
-                            ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
-                            ("지원형태", ["지원형태", "sprtTypeNm"]),
-                            ("서비스분야", ["서비스분야", "lifeNmList", "intrsThemaNmList"]),
+                            ("지원대상", ["지원대상"]),
+                            ("지원내용", ["지원내용"]),
+                            ("신청방법", ["신청방법"]),
+                            ("선정기준", ["선정기준"]),
+                            ("구비서류", ["구비서류"]),
+                            ("문의처",   ["문의처"]),
+                            ("지원유형", ["지원유형"]),
+                            ("서비스목적", ["서비스목적"]),
                         ]
                         for label, keys in _field_map:
-                            val = ""
                             for k in keys:
                                 val = str(_detail.get(k, "") or "").strip()
                                 if val and val not in ("null", "[]", "{}"):
+                                    _parts.append(f"[{label}]\n{val}")
                                     break
-                            if val:
-                                _parts.append(f"[{label}]\n{val}")
 
                         if _parts:
                             gov24_text = "\n\n".join(_parts)
-                            # ★ 교차검증 1: API 서비스명이 공고 제목과 다르면 차단
-                            # ★ 교차검증 2: 제목 의미단어(3자+) 중 gov24 텍스트에 없으면 차단
-                            _use_gov24 = True
-                            if title:
-                                # 검증 1: API 응답의 서비스명으로 직접 비교 (가장 신뢰성 높음)
-                                _serv_nm = str(_detail.get("servNm") or _detail.get("servDgst") or "").strip()
-                                if _serv_nm:
-                                    _serv_title_words = {w for w in _serv_nm.split() if len(w) >= 2}
-                                    _ann_title_words  = {w for w in title.split()    if len(w) >= 2}
-                                    _name_overlap = _serv_title_words & _ann_title_words
-                                    if not _name_overlap:
-                                        print(f"[DocAnalysis] gov24 servNm='{_serv_nm[:30]}' vs title='{title[:30]}' — no match, skip")
-                                        _use_gov24 = False
-                                # 검증 2: 제목의 의미 단어(3자 이상)가 본문에 1개도 없으면 차단
-                                if _use_gov24:
-                                    _title_words = {w for w in title.split() if len(w) >= 3}
-                                    _gov24_lower = gov24_text.lower()
-                                    _overlap = sum(1 for w in _title_words if w.lower() in _gov24_lower)
-                                    if _title_words and _overlap == 0:
-                                        print(f"[DocAnalysis] gov24 API result has no 3-char+ word overlap with title '{title[:40]}' — skip")
-                                        _use_gov24 = False
-                            if _use_gov24:
-                                print(f"[DocAnalysis] gov24 API success for {serv_id}: {len(gov24_text)}chars, {len(_parts)} sections")
-                                return gov24_text, "gov24-api", []
+                            # 서비스명으로 최종 확인
+                            _serv_nm = str(_detail.get("서비스명") or "").strip()
+                            print(f"[DocAnalysis] gov24 API success: 서비스ID={serv_id} 서비스명='{_serv_nm[:30]}' {len(gov24_text)}chars")
+                            return gov24_text, "gov24-api", []
                         else:
                             print(f"[DocAnalysis] gov24 API returned empty fields for {serv_id}")
                 else:

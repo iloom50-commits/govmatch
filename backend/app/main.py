@@ -10865,18 +10865,20 @@ def _run_reanalyze_in_thread(limit: int):
         if not api_key:
             return ""
         try:
+            # ★ 올바른 필터 파라미터: cond[서비스ID::EQ]
             resp = requests.get(
                 "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
-                params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"},
+                params={"serviceKey": api_key, "returnType": "JSON", "cond[서비스ID::EQ]": serv_id},
                 timeout=15,
             )
             if resp.status_code != 200:
                 return ""
             data = resp.json()
-            # ★ matchCount 검증: serviceId 필터가 작동하지 않으면 많은 결과 반환 → 차단
-            match_count = int(data.get("matchCount") or data.get("totalCount") or 0)
+            match_count = int(data.get("matchCount") or 0)
             if match_count > 5:
-                print(f"[Reanalyze] gov24 API returned {match_count} results for {serv_id} — filter not working, skip")
+                print(f"[Reanalyze] gov24 filter broken ({match_count} results) for {serv_id} — skip")
+                return ""
+            if match_count == 0:
                 return ""
             detail = data.get("data", [{}])
             if isinstance(detail, list) and detail:
@@ -10884,13 +10886,14 @@ def _run_reanalyze_in_thread(limit: int):
             elif not isinstance(detail, dict):
                 return ""
             field_map = [
-                ("지원대상", ["지원대상", "tgtrDtlCn"]),
-                ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
-                ("신청방법", ["신청방법", "aplyMtdCn"]),
-                ("선정기준", ["선정기준", "slctCritCn"]),
-                ("구비서류", ["구비서류", "psblDocCn"]),
-                ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
-                ("지원형태", ["지원형태", "sprtTypeNm"]),
+                ("지원대상", ["지원대상"]),
+                ("지원내용", ["지원내용"]),
+                ("신청방법", ["신청방법"]),
+                ("선정기준", ["선정기준"]),
+                ("구비서류", ["구비서류"]),
+                ("문의처",   ["문의처"]),
+                ("지원유형", ["지원유형"]),
+                ("서비스목적", ["서비스목적"]),
             ]
             parts = []
             for label, keys in field_map:
@@ -10899,21 +10902,10 @@ def _run_reanalyze_in_thread(limit: int):
                     if val and val not in ("null", "[]", "{}"):
                         parts.append(f"[{label}]\n{val}")
                         break
+            serv_nm = str(detail.get("서비스명") or "").strip()
             result = "\n\n".join(parts)
-            if result and title:
-                # 교차검증 1: API 서비스명 vs 공고 제목 직접 비교
-                serv_nm = str(detail.get("servNm") or detail.get("servDgst") or "").strip()
-                if serv_nm:
-                    serv_words = {w for w in serv_nm.split() if len(w) >= 2}
-                    ann_words  = {w for w in title.split()   if len(w) >= 2}
-                    if not (serv_words & ann_words):
-                        print(f"[Reanalyze] gov24 servNm='{serv_nm[:30]}' vs title='{title[:30]}' — no match, skip")
-                        return ""
-                # 교차검증 2: 제목의 3자+ 단어가 본문에 1개도 없으면 차단
-                title_words3 = {w for w in title.split() if len(w) >= 3}
-                if title_words3 and not any(w.lower() in result.lower() for w in title_words3):
-                    print(f"[Reanalyze] gov24 result has no 3-char+ overlap with title '{title[:40]}' — skip")
-                    return ""
+            if result:
+                print(f"[Reanalyze] gov24 success: 서비스ID={serv_id} 서비스명='{serv_nm[:30]}'")
             return result
         except Exception:
             return ""

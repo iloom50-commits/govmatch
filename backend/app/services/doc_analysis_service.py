@@ -649,15 +649,27 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
 
                         if _parts:
                             gov24_text = "\n\n".join(_parts)
-                            # ★ 제목 키워드 교차검증: API 결과가 공고 제목과 무관하면 오염 데이터
+                            # ★ 교차검증 1: API 서비스명이 공고 제목과 다르면 차단
+                            # ★ 교차검증 2: 제목 의미단어(3자+) 중 gov24 텍스트에 없으면 차단
                             _use_gov24 = True
                             if title:
-                                _title_words = {w for w in title.split() if len(w) >= 2}
-                                _gov24_lower = gov24_text.lower()
-                                _overlap = sum(1 for w in _title_words if w.lower() in _gov24_lower)
-                                if _title_words and _overlap == 0:
-                                    print(f"[DocAnalysis] gov24 API result has no overlap with title '{title[:40]}' (serv_id={serv_id}) — skip")
-                                    _use_gov24 = False
+                                # 검증 1: API 응답의 서비스명으로 직접 비교 (가장 신뢰성 높음)
+                                _serv_nm = str(_detail.get("servNm") or _detail.get("servDgst") or "").strip()
+                                if _serv_nm:
+                                    _serv_title_words = {w for w in _serv_nm.split() if len(w) >= 2}
+                                    _ann_title_words  = {w for w in title.split()    if len(w) >= 2}
+                                    _name_overlap = _serv_title_words & _ann_title_words
+                                    if not _name_overlap:
+                                        print(f"[DocAnalysis] gov24 servNm='{_serv_nm[:30]}' vs title='{title[:30]}' — no match, skip")
+                                        _use_gov24 = False
+                                # 검증 2: 제목의 의미 단어(3자 이상)가 본문에 1개도 없으면 차단
+                                if _use_gov24:
+                                    _title_words = {w for w in title.split() if len(w) >= 3}
+                                    _gov24_lower = gov24_text.lower()
+                                    _overlap = sum(1 for w in _title_words if w.lower() in _gov24_lower)
+                                    if _title_words and _overlap == 0:
+                                        print(f"[DocAnalysis] gov24 API result has no 3-char+ word overlap with title '{title[:40]}' — skip")
+                                        _use_gov24 = False
                             if _use_gov24:
                                 print(f"[DocAnalysis] gov24 API success for {serv_id}: {len(gov24_text)}chars, {len(_parts)} sections")
                                 return gov24_text, "gov24-api", []

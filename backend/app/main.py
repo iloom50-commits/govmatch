@@ -10900,11 +10900,19 @@ def _run_reanalyze_in_thread(limit: int):
                         parts.append(f"[{label}]\n{val}")
                         break
             result = "\n\n".join(parts)
-            # ★ 제목 키워드 교차검증: API 결과가 공고 제목과 무관하면 차단
             if result and title:
-                title_words = {w for w in title.split() if len(w) >= 2}
-                if title_words and not any(w.lower() in result.lower() for w in title_words):
-                    print(f"[Reanalyze] gov24 API result has no overlap with title '{title[:40]}' (serv_id={serv_id}) — skip")
+                # 교차검증 1: API 서비스명 vs 공고 제목 직접 비교
+                serv_nm = str(detail.get("servNm") or detail.get("servDgst") or "").strip()
+                if serv_nm:
+                    serv_words = {w for w in serv_nm.split() if len(w) >= 2}
+                    ann_words  = {w for w in title.split()   if len(w) >= 2}
+                    if not (serv_words & ann_words):
+                        print(f"[Reanalyze] gov24 servNm='{serv_nm[:30]}' vs title='{title[:30]}' — no match, skip")
+                        return ""
+                # 교차검증 2: 제목의 3자+ 단어가 본문에 1개도 없으면 차단
+                title_words3 = {w for w in title.split() if len(w) >= 3}
+                if title_words3 and not any(w.lower() in result.lower() for w in title_words3):
+                    print(f"[Reanalyze] gov24 result has no 3-char+ overlap with title '{title[:40]}' — skip")
                     return ""
             return result
         except Exception:

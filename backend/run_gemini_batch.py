@@ -30,15 +30,20 @@ from app.services.doc_analysis_service import analyze_and_store
 
 
 def fetch_batch(conn, mode: str, limit: int):
-    """우선순위 기준으로 미분석 공고 선택."""
+    """우선순위 기준으로 미분석 공고 선택.
+    aa.id IS NULL (분석 행 없음) 또는
+    full_text/parsed_sections/deep_analysis 모두 NULL (정리된 오염 행 포함)을 재처리.
+    """
     cur = conn.cursor()
+    # 미분석 조건: aa 행 없거나, 있어도 본문/분석 모두 NULL인 경우
+    _needs_analysis = "(aa.id IS NULL OR (aa.full_text IS NULL AND aa.parsed_sections IS NULL AND aa.deep_analysis IS NULL))"
     if mode == "priority":
         # 금액 있고 summary 200자 이상 + 유효 공고
-        cur.execute("""
+        cur.execute(f"""
             SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
             FROM announcements a
             LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-            WHERE aa.id IS NULL
+            WHERE {_needs_analysis}
               AND a.is_archived = FALSE
               AND a.analysis_status IN ('pending', 'failed')
               AND a.support_amount IS NOT NULL AND a.support_amount != ''
@@ -57,11 +62,11 @@ def fetch_batch(conn, mode: str, limit: int):
         """, (limit,))
     else:  # 'all'
         # summary 100자 이상 전체 미분석 유효 공고
-        cur.execute("""
+        cur.execute(f"""
             SELECT a.announcement_id, a.title, a.origin_url, a.summary_text
             FROM announcements a
             LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-            WHERE aa.id IS NULL
+            WHERE {_needs_analysis}
               AND a.is_archived = FALSE
               AND a.analysis_status IN ('pending', 'failed')
               AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 100
@@ -74,23 +79,24 @@ def fetch_batch(conn, mode: str, limit: int):
 
 def count_remaining(conn, mode: str) -> int:
     cur = conn.cursor()
+    _needs_analysis = "(aa.id IS NULL OR (aa.full_text IS NULL AND aa.parsed_sections IS NULL AND aa.deep_analysis IS NULL))"
     if mode == "priority":
-        cur.execute("""
+        cur.execute(f"""
             SELECT COUNT(*) AS c
             FROM announcements a
             LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-            WHERE aa.id IS NULL AND a.is_archived = FALSE
+            WHERE {_needs_analysis} AND a.is_archived = FALSE
               AND a.analysis_status IN ('pending', 'failed')
               AND a.support_amount IS NOT NULL AND a.support_amount != ''
               AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
               AND a.analysis_attempts < 3
         """)
     else:
-        cur.execute("""
+        cur.execute(f"""
             SELECT COUNT(*) AS c
             FROM announcements a
             LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
-            WHERE aa.id IS NULL AND a.is_archived = FALSE
+            WHERE {_needs_analysis} AND a.is_archived = FALSE
               AND a.analysis_status IN ('pending', 'failed')
               AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 100
               AND a.analysis_attempts < 3

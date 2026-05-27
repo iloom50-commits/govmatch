@@ -584,7 +584,7 @@ def extract_text_from_url(url: str, max_chars: int = 50000) -> Tuple[str, str]:
         return "", "html"
 
 
-def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50000) -> Tuple[str, str, List[str]]:
+def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50000, title: str = "") -> Tuple[str, str, List[str]]:
     """
     공고 원문을 최대한 수집하는 통합 함수.
 
@@ -615,38 +615,54 @@ def extract_full_text(page_url: str, summary_text: str = "", max_chars: int = 50
                 )
                 if _resp.status_code == 200:
                     _data = _resp.json()
-                    _detail = _data.get("data", [{}])
-                    if isinstance(_detail, list) and _detail:
-                        _detail = _detail[0]
-                    elif not isinstance(_detail, dict):
-                        _detail = {}
 
-                    _parts = []
-                    _field_map = [
-                        ("지원대상", ["지원대상", "tgtrDtlCn", "srvcClsfNm"]),
-                        ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
-                        ("신청방법", ["신청방법", "aplyMtdCn"]),
-                        ("선정기준", ["선정기준", "slctCritCn"]),
-                        ("구비서류", ["구비서류", "psblDocCn"]),
-                        ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
-                        ("지원형태", ["지원형태", "sprtTypeNm"]),
-                        ("서비스분야", ["서비스분야", "lifeNmList", "intrsThemaNmList"]),
-                    ]
-                    for label, keys in _field_map:
-                        val = ""
-                        for k in keys:
-                            val = str(_detail.get(k, "") or "").strip()
-                            if val and val not in ("null", "[]", "{}"):
-                                break
-                        if val:
-                            _parts.append(f"[{label}]\n{val}")
-
-                    if _parts:
-                        gov24_text = "\n\n".join(_parts)
-                        print(f"[DocAnalysis] gov24 API success for {serv_id}: {len(gov24_text)}chars, {len(_parts)} sections")
-                        return gov24_text, "gov24-api", []
+                    # ★ 필터링 검증: matchCount가 크면 serviceId 필터가 작동하지 않은 것
+                    _match_count = int(_data.get("matchCount") or _data.get("totalCount") or 0)
+                    if _match_count > 5:
+                        print(f"[DocAnalysis] gov24 API returned {_match_count} results for {serv_id} — serviceId filter not working, skip")
                     else:
-                        print(f"[DocAnalysis] gov24 API returned empty fields for {serv_id}")
+                        _detail = _data.get("data", [{}])
+                        if isinstance(_detail, list) and _detail:
+                            _detail = _detail[0]
+                        elif not isinstance(_detail, dict):
+                            _detail = {}
+
+                        _parts = []
+                        _field_map = [
+                            ("지원대상", ["지원대상", "tgtrDtlCn", "srvcClsfNm"]),
+                            ("지원내용", ["지원내용", "sprtCn", "servDgst"]),
+                            ("신청방법", ["신청방법", "aplyMtdCn"]),
+                            ("선정기준", ["선정기준", "slctCritCn"]),
+                            ("구비서류", ["구비서류", "psblDocCn"]),
+                            ("문의처",   ["문의처", "inqPlCtadrList", "rprsCtadr"]),
+                            ("지원형태", ["지원형태", "sprtTypeNm"]),
+                            ("서비스분야", ["서비스분야", "lifeNmList", "intrsThemaNmList"]),
+                        ]
+                        for label, keys in _field_map:
+                            val = ""
+                            for k in keys:
+                                val = str(_detail.get(k, "") or "").strip()
+                                if val and val not in ("null", "[]", "{}"):
+                                    break
+                            if val:
+                                _parts.append(f"[{label}]\n{val}")
+
+                        if _parts:
+                            gov24_text = "\n\n".join(_parts)
+                            # ★ 제목 키워드 교차검증: API 결과가 공고 제목과 무관하면 오염 데이터
+                            _use_gov24 = True
+                            if title:
+                                _title_words = {w for w in title.split() if len(w) >= 2}
+                                _gov24_lower = gov24_text.lower()
+                                _overlap = sum(1 for w in _title_words if w.lower() in _gov24_lower)
+                                if _title_words and _overlap == 0:
+                                    print(f"[DocAnalysis] gov24 API result has no overlap with title '{title[:40]}' (serv_id={serv_id}) — skip")
+                                    _use_gov24 = False
+                            if _use_gov24:
+                                print(f"[DocAnalysis] gov24 API success for {serv_id}: {len(gov24_text)}chars, {len(_parts)} sections")
+                                return gov24_text, "gov24-api", []
+                        else:
+                            print(f"[DocAnalysis] gov24 API returned empty fields for {serv_id}")
                 else:
                     print(f"[DocAnalysis] gov24 API HTTP {_resp.status_code} for {serv_id}")
             except Exception as _e:
@@ -1321,7 +1337,7 @@ def analyze_and_store(
         except Exception: pass
 
     # 1) 통합 텍스트 수집 (첨부파일 우선 → HTML → summary fallback)
-    full_text, source_type, att_names = extract_full_text(origin_url, summary_text)
+    full_text, source_type, att_names = extract_full_text(origin_url, summary_text, title=title)
     result_info["source_type"] = source_type
     result_info["text_length"] = len(full_text)
     result_info["attachments"] = att_names

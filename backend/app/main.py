@@ -10859,7 +10859,7 @@ def _run_reanalyze_in_thread(limit: int):
 
     _GOV24_URL_PAT = _re.compile(r"gov\.kr/portal/rcv[a-zA-Z]*Svc/dtlEx/([A-Z0-9]+)", _re.IGNORECASE)
 
-    def _fetch_gov24_api(serv_id: str) -> str:
+    def _fetch_gov24_api(serv_id: str, title: str = "") -> str:
         """gov24 /v3/serviceDetail API로 탭 내용 전체 수집 (지원대상/지원내용/신청방법 등)"""
         api_key = os.environ.get("GOV24_API_KEY", "")
         if not api_key:
@@ -10872,7 +10872,13 @@ def _run_reanalyze_in_thread(limit: int):
             )
             if resp.status_code != 200:
                 return ""
-            detail = resp.json().get("data", [{}])
+            data = resp.json()
+            # ★ matchCount 검증: serviceId 필터가 작동하지 않으면 많은 결과 반환 → 차단
+            match_count = int(data.get("matchCount") or data.get("totalCount") or 0)
+            if match_count > 5:
+                print(f"[Reanalyze] gov24 API returned {match_count} results for {serv_id} — filter not working, skip")
+                return ""
+            detail = data.get("data", [{}])
             if isinstance(detail, list) and detail:
                 detail = detail[0]
             elif not isinstance(detail, dict):
@@ -10893,16 +10899,23 @@ def _run_reanalyze_in_thread(limit: int):
                     if val and val not in ("null", "[]", "{}"):
                         parts.append(f"[{label}]\n{val}")
                         break
-            return "\n\n".join(parts)
+            result = "\n\n".join(parts)
+            # ★ 제목 키워드 교차검증: API 결과가 공고 제목과 무관하면 차단
+            if result and title:
+                title_words = {w for w in title.split() if len(w) >= 2}
+                if title_words and not any(w.lower() in result.lower() for w in title_words):
+                    print(f"[Reanalyze] gov24 API result has no overlap with title '{title[:40]}' (serv_id={serv_id}) — skip")
+                    return ""
+            return result
         except Exception:
             return ""
 
-    def _fetch_detail(url, max_chars=8000):
+    def _fetch_detail(url, max_chars=8000, title: str = ""):
         """상세 페이지 크롤링 — gov.kr 탭 페이지는 gov24 API 우선 호출"""
         # gov.kr 개인지원사업: HTML 크롤링 대신 API로 탭 전체 수집
         m = _GOV24_URL_PAT.search(url or "")
         if m:
-            api_text = _fetch_gov24_api(m.group(1))
+            api_text = _fetch_gov24_api(m.group(1), title=title)
             if api_text and len(api_text) > 100:
                 return api_text[:max_chars]
         # 일반 HTML 크롤링 fallback
@@ -10952,7 +10965,7 @@ def _run_reanalyze_in_thread(limit: int):
             detail_text = ""
             origin_url = row.get("origin_url", "")
             if origin_url and origin_url.startswith("http"):
-                detail_text = _fetch_detail(origin_url)
+                detail_text = _fetch_detail(origin_url, title=row.get("title", ""))
 
             # 2. 분석용 텍스트 구성 (상세 페이지 + 기존 요약)
             clean_summary = _strip(row.get("summary_text", ""))

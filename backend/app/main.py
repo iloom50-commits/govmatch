@@ -11051,13 +11051,18 @@ def get_reanalyze_status():
     return {"status": "SUCCESS", "data": reanalyze_status}
 
 
-@app.post("/api/admin/enrich-gov24-individual", dependencies=[Depends(_verify_admin)])
-async def trigger_enrich_gov24_individual(batch_size: int = 500):
+class _EnrichGov24Req(BaseModel):
+    password: str
+    batch_size: int = 500
+
+@app.post("/api/admin/enrich-gov24-individual")
+async def trigger_enrich_gov24_individual(req: _EnrichGov24Req):
     """gov24 개인지원사업 summary 상세 보강 — cond[서비스ID::EQ] 올바른 파라미터로 호출."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
     try:
         from app.services.public_api_service import gov_api_service
-        import asyncio
-        result = await gov_api_service.enrich_gov24_individual_details(batch_size=batch_size)
+        result = await gov_api_service.enrich_gov24_individual_details(batch_size=req.batch_size)
         return {"status": "SUCCESS", "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

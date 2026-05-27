@@ -11051,6 +11051,18 @@ def get_reanalyze_status():
     return {"status": "SUCCESS", "data": reanalyze_status}
 
 
+@app.post("/api/admin/enrich-gov24-individual", dependencies=[Depends(_verify_admin)])
+async def trigger_enrich_gov24_individual(batch_size: int = 500):
+    """gov24 개인지원사업 summary 상세 보강 — cond[서비스ID::EQ] 올바른 파라미터로 호출."""
+    try:
+        from app.services.public_api_service import gov_api_service
+        import asyncio
+        result = await gov_api_service.enrich_gov24_individual_details(batch_size=batch_size)
+        return {"status": "SUCCESS", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/admin/reset-gov24-individual", dependencies=[Depends(_verify_admin)])
 def reset_gov24_individual_analysis():
     """gov.kr 개인지원사업 공고 중 잘못 분석된 것 초기화 — ai_analyzed_at 리셋 + announcement_analysis 삭제"""

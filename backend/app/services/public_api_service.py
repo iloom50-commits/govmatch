@@ -1364,10 +1364,10 @@ class GovernmentAPIService:
                     continue
                 serv_id = m.group(1)
 
-                # gov24 상세 API 호출
+                # gov24 상세 API 호출 (cond[서비스ID::EQ] 필터 — serviceId= 는 무시됨)
                 resp = requests.get(
                     "https://api.odcloud.kr/api/gov24/v3/serviceDetail",
-                    params={"serviceKey": api_key, "serviceId": serv_id, "returnType": "JSON"},
+                    params={"serviceKey": api_key, "cond[서비스ID::EQ]": serv_id, "returnType": "JSON"},
                     timeout=15,
                 )
                 if resp.status_code == 429:

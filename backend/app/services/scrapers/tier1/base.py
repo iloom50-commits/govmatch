@@ -46,6 +46,7 @@ class BaseScraper:
     name: str = "unknown"                 # 식별자 (소문자, 언더스코어)
     display_name: str = "Unknown"         # 한글 표시명 (department로 저장)
     origin_url_prefix: str = ""           # 사이트 도메인
+    skip_consecutive_break: bool = False  # True: 비최신순 API — 연속 기존건 조기 종료 비활성화
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         """공고 리스트 추출. 각 item dict는 다음 키를 포함:
@@ -108,8 +109,9 @@ class BaseScraper:
                     else:
                         items_existing += 1
                         consecutive_existing += 1
-                        # 연속 5건 이미 DB에 있으면 나머지 스킵 (오래된 공고 재수집 방지)
-                        if consecutive_existing >= 5:
+                        # 연속 5건 이미 DB에 있으면 나머지 스킵 (최신순 정렬 API 전용)
+                        # skip_consecutive_break=True인 스크래퍼는 비활성화 (비최신순 API)
+                        if not self.skip_consecutive_break and consecutive_existing >= 5:
                             break
                 except Exception as e:
                     logger.warning(f"[{self.name}] save error on {it.get('title','')[:30]}: {e}")

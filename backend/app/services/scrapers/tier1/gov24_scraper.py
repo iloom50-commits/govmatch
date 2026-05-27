@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _KEY = os.getenv("PUBLIC_DATA_PORTAL_KEY", "")
 _BASE = "https://api.odcloud.kr/api/gov24/v3/serviceList"
 _PER_PAGE = 100
-_MAX_PAGES = 20  # 최대 2,000건
+_MAX_PAGES = 300  # 안전 상한 (30,000건) — 실제론 totalCount 기준 조기 종료
 
 _EXCLUDE_KW = re.compile(
     r"채용|입찰|구매|계약|임원|인재|면접|합격자|공사|용역|물품|청소|경비|보안|퇴직|고용공고"
@@ -60,6 +60,7 @@ class Gov24Scraper(BaseScraper):
     name = "gov24"
     display_name = "보조금24(정부24)"
     origin_url_prefix = "https://www.gov.kr"
+    skip_consecutive_break = True  # serviceList는 최신순 정렬 아님 — 전체 순회 필요
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         if not _KEY:

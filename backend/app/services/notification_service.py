@@ -528,10 +528,12 @@ class NotificationService:
 
         APP_URL = os.getenv("FRONTEND_URL", "https://govmatch.kr")
         top = matches[0] if matches else {}
+        ann_id = top.get("announcement_id")
+        target_url = f"{APP_URL}?aid={ann_id}" if ann_id else APP_URL
         payload = json.dumps({
             "title": f"맞춤 공고 {len(matches)}건 도착",
             "body": top.get("program_title", "새로운 지원사업이 매칭되었습니다."),
-            "url": APP_URL,
+            "url": target_url,
             "icon": "https://www.govmatch.kr/icon-192.png",
         }, ensure_ascii=False)
 

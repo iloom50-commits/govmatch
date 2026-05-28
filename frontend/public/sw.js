@@ -9,8 +9,8 @@ self.addEventListener('activate', (event) => {
 
 // PWA 설치 조건: fetch 핸들러가 반드시 있어야 함
 self.addEventListener('fetch', (event) => {
-  // 네트워크 우선 전략 (캐싱 없이 pass-through)
-  event.respondWith(fetch(event.request));
+  // 네트워크 우선 전략 (캐싱 없이 pass-through) — 실패 시 Response.error()로 정상 처리
+  event.respondWith(fetch(event.request).catch(() => Response.error()));
 });
 
 self.addEventListener('push', (event) => {

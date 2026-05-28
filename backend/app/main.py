@@ -1733,6 +1733,15 @@ async def run_digest_endpoint(request: Request):
     return JSONResponse(content={"status": "started", "message": "다이제스트 백그라운드 실행 시작"})
 
 
+_pipeline_status: dict = {"running": False, "last_run": None}
+
+
+@app.get("/api/pipeline-status")
+async def get_pipeline_status():
+    """파이프라인 실행 상태 조회."""
+    return JSONResponse(content=_pipeline_status)
+
+
 @app.post("/api/internal/run-pipeline")
 async def run_pipeline_endpoint(request: Request):
     """Railway Cron 전용 — 일일 통합 파이프라인 (매일 KST 03:00 = UTC 18:00).
@@ -1744,7 +1753,11 @@ async def run_pipeline_endpoint(request: Request):
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
 
     import threading
+    from datetime import datetime as _dt
+
     def _run():
+        global _pipeline_status
+        _pipeline_status = {"running": True, "started_at": _dt.now().isoformat(), "last_run": _pipeline_status.get("last_run")}
         try:
             from app.services.patrol.daily_pipeline import run_daily_pipeline
             conn = get_db_connection()
@@ -1752,11 +1765,13 @@ async def run_pipeline_endpoint(request: Request):
                 print("[Pipeline] Railway Cron triggered — starting daily pipeline...")
                 result = run_daily_pipeline(conn)
                 print(f"[Pipeline] Done: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
+                _pipeline_status = {"running": False, "last_run": {**result, "finished_at": _dt.now().isoformat()}}
             finally:
                 try: conn.close()
                 except: pass
         except Exception as e:
             print(f"[Pipeline] Error: {e}")
+            _pipeline_status = {"running": False, "last_run": {"error": str(e), "finished_at": _dt.now().isoformat()}}
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

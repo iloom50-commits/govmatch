@@ -2073,7 +2073,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       setBlogSelectedId(null);
                       setBlogResult(null);
                       try {
-                        const pw = sessionStorage.getItem('adminPassword') || localStorage.getItem('adminPassword') || '';
+                        const pw = sessionStorage.getItem('admin_password') || localStorage.getItem('admin_pw_saved') || '';
                         const res = await fetch(`${API_URL}/api/admin/blog-recommend`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -2153,7 +2153,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     setBlogGenerating(true);
                     setBlogResult(null);
                     try {
-                      const pw = sessionStorage.getItem('adminPassword') || localStorage.getItem('adminPassword') || '';
+                      const pw = sessionStorage.getItem('admin_password') || localStorage.getItem('admin_pw_saved') || '';
                       const res = await fetch(`${API_URL}/api/admin/blog-generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

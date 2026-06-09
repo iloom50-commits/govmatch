@@ -15349,6 +15349,84 @@ def admin_qa_generate(req: QAGenerateRequest):
     return {"status": "STARTED", "message": f"Q&A 생성 시작 (batch_size={req.batch_size})"}
 
 
+class BlogGenerateRequest(BaseModel):
+    password: str
+    announcement_id: int
+
+
+@app.post("/api/admin/blog-generate")
+async def api_blog_generate(req: BlogGenerateRequest):
+    """관리자: 공고 기반 네이버 블로그 글 자동 생성 (Gemini)"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT title, summary_text, eligibility_logic, support_amount,
+                       deadline_date, deadline_type, region, category, department, target_type
+                FROM announcements
+                WHERE announcement_id = %s
+            """, (req.announcement_id,))
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
+
+    ann = dict(row)
+    deadline_str = "상시" if ann.get("deadline_type") == "ongoing" else str(ann.get("deadline_date") or "미정")
+    target_label = {"individual": "개인", "business": "기업/사업자"}.get(ann.get("target_type", ""), "개인/기업")
+
+    prompt = f"""당신은 SEO 최적화된 정책자금/지원사업 블로그 글을 작성하는 전문 에디터입니다.
+아래 공고 정보를 바탕으로 네이버 블로그에 발행할 정보성 블로그 글을 작성해주세요.
+
+[공고 정보]
+- 사업명: {ann.get('title', '')}
+- 지원내용: {(ann.get('summary_text') or '')[:600]}
+- 지원대상: {(ann.get('eligibility_logic') or '')[:400]}
+- 지원금액: {ann.get('support_amount') or '미정'}
+- 신청기한: {deadline_str}
+- 지역: {ann.get('region') or '전국'}
+- 부처/기관: {ann.get('department') or ''}
+- 대상유형: {target_label}
+
+[작성 조건]
+- 분량: 1,500~2,000자
+- 톤: 정보성, 친근하고 이해하기 쉽게
+- 구조: 도입(흥미유발) → 사업 개요 → 지원 대상 → 지원 내용/금액 → 신청 방법 → 마무리(행동 유도)
+- SEO: 핵심 키워드를 제목과 본문에 자연스럽게 포함
+- 소제목은 [소제목] 형태로 표시 (네이버 블로그 스타일)
+
+아래 JSON 형식으로만 응답하세요:
+{{
+  "title": "블로그 제목 (클릭을 유도하는 SEO 제목, 40자 이내)",
+  "content": "블로그 본문 (마크다운 없이 순수 텍스트, 줄바꿈은 \\n 사용)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
+  "meta_description": "검색 결과에 표시될 요약 (80자 이내)"
+}}"""
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0.7,
+                "max_output_tokens": 4096,
+            },
+        )
+        response = model.generate_content(prompt)
+        blog = json.loads(response.text.strip())
+        return {"status": "SUCCESS", "blog": blog, "announcement_id": req.announcement_id}
+    except Exception as e:
+        print(f"[blog-generate] 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"블로그 생성 실패: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

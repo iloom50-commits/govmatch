@@ -2044,82 +2044,108 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {/* ═══════════ 블로그 생성 탭 ═══════════ */}
         {activeTab === 'blog' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-black text-slate-900">블로그 글 자동 생성</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-slate-900">네이버 블로그 자동 생성</h2>
+              <p className="text-xs text-slate-400">AI가 블로그 소재 공고를 추천 → 선택 → SEO 글 생성</p>
+            </div>
 
-            {/* 공고 검색 */}
+            {/* 1단계: AI 추천 */}
             <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-              <h3 className="text-sm font-bold text-slate-700">1단계: 공고 검색 및 선택</h3>
-              <div className="flex gap-3 flex-wrap">
-                <select
-                  value={blogTargetType}
-                  onChange={e => setBlogTargetType(e.target.value as 'individual' | 'business' | 'both')}
-                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700"
-                >
-                  <option value="individual">개인</option>
-                  <option value="business">기업</option>
-                  <option value="both">전체</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="공고 키워드 검색..."
-                  value={blogKeyword}
-                  onChange={e => setBlogKeyword(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') {
-                    setBlogSearchLoading(true);
-                    setBlogSearchResults([]);
-                    const params = new URLSearchParams({ page: '1', size: '20', keyword: blogKeyword });
-                    if (blogTargetType !== 'both') params.set('target_type', blogTargetType);
-                    fetch(`/api/announcements/public?${params}`)
-                      .then(r => r.json())
-                      .then(d => setBlogSearchResults(d.items || []))
-                      .finally(() => setBlogSearchLoading(false));
-                  }}}
-                  className="flex-1 min-w-[200px] px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                />
-                <button
-                  onClick={() => {
-                    setBlogSearchLoading(true);
-                    setBlogSearchResults([]);
-                    const params = new URLSearchParams({ page: '1', size: '20', keyword: blogKeyword });
-                    if (blogTargetType !== 'both') params.set('target_type', blogTargetType);
-                    fetch(`/api/announcements/public?${params}`)
-                      .then(r => r.json())
-                      .then(d => setBlogSearchResults(d.items || []))
-                      .finally(() => setBlogSearchLoading(false));
-                  }}
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700"
-                >
-                  {blogSearchLoading ? '검색 중...' : '검색'}
-                </button>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">1단계 — AI 소재 추천</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">마감 여유 있고 검색 수요 높은 공고 5개를 AI가 자동 선별합니다</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={blogTargetType}
+                    onChange={e => { setBlogTargetType(e.target.value as 'individual' | 'business' | 'both'); setBlogSearchResults([]); setBlogSelectedId(null); setBlogResult(null); }}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700"
+                  >
+                    <option value="individual">개인 공고</option>
+                    <option value="business">기업 공고</option>
+                    <option value="both">전체</option>
+                  </select>
+                  <button
+                    onClick={async () => {
+                      setBlogSearchLoading(true);
+                      setBlogSearchResults([]);
+                      setBlogSelectedId(null);
+                      setBlogResult(null);
+                      try {
+                        const pw = sessionStorage.getItem('adminPassword') || localStorage.getItem('adminPassword') || '';
+                        const res = await fetch('/api/admin/blog-recommend', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ password: pw, target_type: blogTargetType === 'both' ? 'all' : blogTargetType }),
+                        });
+                        const data = await res.json();
+                        if (data.status === 'SUCCESS') setBlogSearchResults(data.recommendations || []);
+                        else alert(data.detail || '추천 실패');
+                      } catch { alert('서버 오류'); }
+                      finally { setBlogSearchLoading(false); }
+                    }}
+                    disabled={blogSearchLoading}
+                    className="px-5 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {blogSearchLoading ? (
+                      <><FiRefreshCw size={13} className="animate-spin" /> AI 분석 중...</>
+                    ) : (
+                      <><FiCpu size={13} /> AI 소재 추천 받기</>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {blogSearchResults.length > 0 && (
-                <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-50">
-                  {blogSearchResults.map(ann => (
+                <div className="space-y-3 mt-2">
+                  {(blogSearchResults as any[]).map((rec, idx) => (
                     <div
-                      key={ann.announcement_id}
-                      onClick={() => { setBlogSelectedId(ann.announcement_id); setBlogSelectedTitle(ann.title); setBlogResult(null); }}
-                      className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-indigo-50 transition-all ${blogSelectedId === ann.announcement_id ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''}`}
+                      key={rec.announcement_id}
+                      onClick={() => { setBlogSelectedId(rec.announcement_id); setBlogSelectedTitle(rec.title); setBlogResult(null); }}
+                      className={`relative p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        blogSelectedId === rec.announcement_id
+                          ? 'border-indigo-500 bg-indigo-50'
+                          : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
+                      }`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{ann.title}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{ann.support_amount || '금액 미정'} · {ann.deadline_date || '상시'}</p>
+                      <div className="flex items-start gap-3">
+                        <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${
+                          blogSelectedId === rec.announcement_id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                        }`}>{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-900">{rec.title}</p>
+                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{rec.reason}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {(rec.target_keywords || []).map((kw: string, ki: number) => (
+                              <span key={ki} className="px-2 py-0.5 bg-green-100 text-green-700 text-[11px] font-medium rounded-full">{kw}</span>
+                            ))}
+                          </div>
+                          {rec.expected_readers && (
+                            <p className="text-[11px] text-slate-400 mt-1.5">예상 독자: {rec.expected_readers}</p>
+                          )}
+                        </div>
+                        {blogSelectedId === rec.announcement_id && (
+                          <span className="shrink-0 text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded-lg">선택됨</span>
+                        )}
                       </div>
-                      {blogSelectedId === ann.announcement_id && (
-                        <span className="ml-3 text-xs font-bold text-indigo-600 shrink-0">선택됨</span>
-                      )}
                     </div>
                   ))}
                 </div>
               )}
             </section>
 
-            {/* 생성 */}
+            {/* 2단계: 블로그 글 생성 */}
             {blogSelectedId && (
               <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-                <h3 className="text-sm font-bold text-slate-700">2단계: 블로그 글 생성</h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">2단계 — 네이버 SEO 블로그 글 생성</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">선택한 공고를 바탕으로 2,000자 이상의 네이버 최적화 블로그 글을 생성합니다</p>
+                </div>
                 <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl">
-                  <span className="text-xs text-indigo-700 font-medium truncate flex-1">선택된 공고: {blogSelectedTitle}</span>
+                  <FiDatabase size={14} className="text-indigo-500 shrink-0" />
+                  <span className="text-sm text-indigo-800 font-medium flex-1 truncate">{blogSelectedTitle}</span>
+                  <button onClick={() => { setBlogSelectedId(null); setBlogSelectedTitle(''); setBlogResult(null); }} className="text-xs text-slate-400 hover:text-slate-600">변경</button>
                 </div>
                 <button
                   onClick={async () => {
@@ -2136,67 +2162,94 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       const data = await res.json();
                       if (data.status === 'SUCCESS') setBlogResult(data.blog);
                       else alert(data.detail || '생성 실패');
-                    } catch {
-                      alert('서버 오류');
-                    } finally {
-                      setBlogGenerating(false);
-                    }
+                    } catch { alert('서버 오류'); }
+                    finally { setBlogGenerating(false); }
                   }}
                   disabled={blogGenerating}
-                  className="px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 w-fit"
                 >
-                  {blogGenerating ? 'AI 생성 중...' : 'AI 블로그 글 생성'}
+                  {blogGenerating ? (
+                    <><FiRefreshCw size={14} className="animate-spin" /> AI 블로그 글 생성 중 (20~30초)...</>
+                  ) : (
+                    <><FiGlobe size={14} /> 네이버 블로그 글 생성</>
+                  )}
                 </button>
               </section>
             )}
 
-            {/* 결과 미리보기 */}
+            {/* 3단계: 결과 미리보기 + 발행 */}
             {blogResult && (
-              <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-700">3단계: 미리보기 및 네이버 발행</h3>
+              <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">3단계 — 미리보기 및 네이버 발행</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">본문을 복사한 뒤 네이버 블로그 글쓰기에 붙여넣으세요</p>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        const text = `${blogResult.title}\n\n${blogResult.content}\n\n태그: ${blogResult.tags.join(' ')}`;
+                        const text = `제목: ${blogResult.title}\n\n${blogResult.content}\n\n태그: ${blogResult.tags.join(' ')}`;
                         navigator.clipboard.writeText(text).then(() => {
                           setBlogCopied(true);
-                          setTimeout(() => setBlogCopied(false), 2000);
+                          setTimeout(() => setBlogCopied(false), 2500);
                         });
                       }}
+                      className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${blogCopied ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                    >
+                      {blogCopied ? '복사 완료!' : '전체 복사'}
+                    </button>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(blogResult.content)}
                       className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-200"
                     >
-                      {blogCopied ? '복사됨!' : '클립보드 복사'}
+                      본문만 복사
                     </button>
                     <button
                       onClick={() => window.open('https://blog.naver.com/post/write', '_blank')}
-                      className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-lg hover:bg-green-600 flex items-center gap-1"
+                      className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-lg hover:bg-green-600 flex items-center gap-1.5"
                     >
                       <FiExternalLink size={12} /> 네이버 블로그 열기
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 mb-1">제목</p>
-                    <p className="text-base font-bold text-slate-900 p-3 bg-slate-50 rounded-lg">{blogResult.title}</p>
+                {/* SEO 키워드 */}
+                {(blogResult as any).seo_keywords?.length > 0 && (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                    <span className="text-xs font-bold text-amber-700 shrink-0">SEO 메인 키워드</span>
+                    {(blogResult as any).seo_keywords.map((kw: string, i: number) => (
+                      <span key={i} className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">{kw}</span>
+                    ))}
                   </div>
+                )}
+
+                <div className="space-y-4">
+                  {/* 제목 */}
                   <div>
-                    <p className="text-xs font-bold text-slate-500 mb-1">메타 설명</p>
-                    <p className="text-xs text-slate-600 p-3 bg-slate-50 rounded-lg">{blogResult.meta_description}</p>
+                    <p className="text-xs font-bold text-slate-500 mb-1.5">제목 ({blogResult.title.length}자)</p>
+                    <p className="text-base font-bold text-slate-900 p-3 bg-slate-50 rounded-xl leading-snug">{blogResult.title}</p>
                   </div>
+
+                  {/* 메타 설명 */}
                   <div>
-                    <p className="text-xs font-bold text-slate-500 mb-1">태그</p>
-                    <div className="flex flex-wrap gap-2">
-                      {blogResult.tags.map((t, i) => (
-                        <span key={i} className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">{t}</span>
+                    <p className="text-xs font-bold text-slate-500 mb-1.5">메타 설명 (검색 스니펫)</p>
+                    <p className="text-xs text-slate-600 p-3 bg-slate-50 rounded-xl leading-relaxed">{blogResult.meta_description}</p>
+                  </div>
+
+                  {/* 태그 */}
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1.5">태그 ({blogResult.tags.length}개)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {blogResult.tags.map((t: string, i: number) => (
+                        <span key={i} className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">{t}</span>
                       ))}
                     </div>
                   </div>
+
+                  {/* 본문 */}
                   <div>
-                    <p className="text-xs font-bold text-slate-500 mb-1">본문 ({blogResult.content.length.toLocaleString()}자)</p>
-                    <pre className="text-sm text-slate-700 whitespace-pre-wrap p-4 bg-slate-50 rounded-xl max-h-[500px] overflow-y-auto leading-relaxed font-sans">{blogResult.content}</pre>
+                    <p className="text-xs font-bold text-slate-500 mb-1.5">본문 ({blogResult.content.length.toLocaleString()}자)</p>
+                    <pre className="text-sm text-slate-700 whitespace-pre-wrap p-5 bg-slate-50 rounded-xl max-h-[600px] overflow-y-auto leading-relaxed font-sans border border-slate-100">{blogResult.content}</pre>
                   </div>
                 </div>
               </section>

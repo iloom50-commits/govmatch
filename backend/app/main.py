@@ -15349,14 +15349,117 @@ def admin_qa_generate(req: QAGenerateRequest):
     return {"status": "STARTED", "message": f"Q&A 생성 시작 (batch_size={req.batch_size})"}
 
 
+class BlogRecommendRequest(BaseModel):
+    password: str
+    target_type: str = "all"  # individual | business | all
+
+
 class BlogGenerateRequest(BaseModel):
     password: str
     announcement_id: int
 
 
+def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) -> dict:
+    """Gemini JSON 응답 헬퍼"""
+    import google.generativeai as genai
+    genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+    model = genai.GenerativeModel(
+        "models/gemini-2.5-flash",
+        generation_config={
+            "response_mime_type": "application/json",
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        },
+    )
+    response = model.generate_content(prompt)
+    return json.loads(response.text.strip())
+
+
+@app.post("/api/admin/blog-recommend")
+async def api_blog_recommend(req: BlogRecommendRequest):
+    """관리자: 블로그 소재로 적합한 공고 5개 AI 자동 추천"""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            type_filter = ""
+            if req.target_type == "individual":
+                type_filter = "AND target_type IN ('individual', 'both')"
+            elif req.target_type == "business":
+                type_filter = "AND target_type IN ('business', 'both')"
+
+            cur.execute(f"""
+                SELECT announcement_id, title, summary_text, eligibility_logic,
+                       support_amount, deadline_date, deadline_type, region,
+                       department, target_type, category
+                FROM announcements
+                WHERE summary_text IS NOT NULL AND LENGTH(summary_text) > 100
+                  AND (
+                    deadline_type = 'ongoing'
+                    OR deadline_date >= CURRENT_DATE + INTERVAL '20 days'
+                  )
+                  {type_filter}
+                ORDER BY RANDOM()
+                LIMIT 60
+            """)
+            rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="추천할 공고가 없습니다.")
+
+    # AI에게 넘길 공고 목록 요약
+    ann_list = []
+    for r in rows:
+        deadline = "상시" if r.get("deadline_type") == "ongoing" else str(r.get("deadline_date") or "미정")
+        ann_list.append(
+            f"ID:{r['announcement_id']} | {r['title']} | 지원금:{r.get('support_amount') or '미정'} "
+            f"| 마감:{deadline} | 대상:{r.get('target_type','')} | "
+            f"내용요약:{(r.get('summary_text') or '')[:150]}"
+        )
+
+    prompt = f"""당신은 네이버 블로그 SEO 전문가입니다.
+아래는 정부지원사업 공고 목록입니다. 이 중에서 네이버 블로그 글 소재로 가장 적합한 공고 5개를 선정해주세요.
+
+[선정 기준]
+1. 검색 수요 높음: '청년', '창업', '소상공인', '중소기업', '취업', '육아', '주거' 등 대중 관심 키워드 포함
+2. 지원금액 구체적: 금액이 명시된 공고가 클릭률 높음
+3. 많은 사람이 해당될수록 좋음: 대상 범위가 넓을수록 검색 유입 유리
+4. 정보성 가치: 잘 알려지지 않은 혜택이거나 신청 방법이 복잡한 공고일수록 블로그가 도움됨
+5. 마감 여유: 독자가 실제 신청할 수 있도록 마감이 충분히 남아야 함
+
+[공고 목록]
+{chr(10).join(ann_list)}
+
+상위 5개를 선정하고, 각각에 대해 왜 블로그 소재로 좋은지, 어떤 검색 키워드를 노릴 수 있는지 설명해주세요.
+
+아래 JSON 형식으로만 응답하세요:
+{{
+  "recommendations": [
+    {{
+      "announcement_id": 숫자,
+      "title": "공고명",
+      "reason": "블로그 소재로 좋은 이유 (2~3문장)",
+      "target_keywords": ["키워드1", "키워드2", "키워드3"],
+      "expected_readers": "예상 독자층 (한 줄)"
+    }}
+  ]
+}}"""
+
+    try:
+        result = _gemini_json(prompt, temperature=0.3)
+        return {"status": "SUCCESS", "recommendations": result.get("recommendations", [])}
+    except Exception as e:
+        print(f"[blog-recommend] 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"추천 실패: {str(e)}")
+
+
 @app.post("/api/admin/blog-generate")
 async def api_blog_generate(req: BlogGenerateRequest):
-    """관리자: 공고 기반 네이버 블로그 글 자동 생성 (Gemini)"""
+    """관리자: 공고 기반 네이버 SEO 블로그 글 자동 생성 (Gemini)"""
     if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
         raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
 
@@ -15378,49 +15481,52 @@ async def api_blog_generate(req: BlogGenerateRequest):
 
     ann = dict(row)
     deadline_str = "상시" if ann.get("deadline_type") == "ongoing" else str(ann.get("deadline_date") or "미정")
-    target_label = {"individual": "개인", "business": "기업/사업자"}.get(ann.get("target_type", ""), "개인/기업")
+    target_label = {"individual": "개인/일반인", "business": "기업/사업자/소상공인"}.get(ann.get("target_type", ""), "개인 및 기업")
 
-    prompt = f"""당신은 SEO 최적화된 정책자금/지원사업 블로그 글을 작성하는 전문 에디터입니다.
-아래 공고 정보를 바탕으로 네이버 블로그에 발행할 정보성 블로그 글을 작성해주세요.
+    prompt = f"""당신은 네이버 블로그 SEO 전문가이자 정책자금 콘텐츠 에디터입니다.
+아래 공고 정보를 바탕으로 네이버 검색 상위 노출을 목표로 한 정보성 블로그 글을 작성해주세요.
 
 [공고 정보]
 - 사업명: {ann.get('title', '')}
-- 지원내용: {(ann.get('summary_text') or '')[:600]}
-- 지원대상: {(ann.get('eligibility_logic') or '')[:400]}
+- 지원내용: {(ann.get('summary_text') or '')[:800]}
+- 지원대상 조건: {(ann.get('eligibility_logic') or '')[:500]}
 - 지원금액: {ann.get('support_amount') or '미정'}
 - 신청기한: {deadline_str}
 - 지역: {ann.get('region') or '전국'}
-- 부처/기관: {ann.get('department') or ''}
+- 주관기관: {ann.get('department') or ''}
 - 대상유형: {target_label}
 
-[작성 조건]
-- 분량: 1,500~2,000자
-- 톤: 정보성, 친근하고 이해하기 쉽게
-- 구조: 도입(흥미유발) → 사업 개요 → 지원 대상 → 지원 내용/금액 → 신청 방법 → 마무리(행동 유도)
-- SEO: 핵심 키워드를 제목과 본문에 자연스럽게 포함
-- 소제목은 [소제목] 형태로 표시 (네이버 블로그 스타일)
+[네이버 SEO 작성 원칙]
+1. 제목: 검색자가 실제로 입력할 법한 키워드 포함. "2026년", "신청방법", "조건", "얼마" 등 정보형 키워드 활용
+2. 도입부: 첫 2~3문장에 핵심 키워드 자연스럽게 포함 (검색 스니펫 최적화)
+3. 소제목: 검색자 질문 형태로 작성 (예: "누가 신청할 수 있나요?", "얼마나 받을 수 있나요?")
+4. 본문: 핵심 키워드를 3~5회 반복. 동의어/관련어도 혼용
+5. 분량: 2,000~2,500자 (네이버 블로그 SEO 적정 분량)
+6. 마무리: 독자 행동 유도 (신청 촉구) + 관련 키워드 언급
+7. 태그: 실제 네이버 검색량 높을 법한 단어로 10개 (공고명 변형, 대상, 혜택 키워드)
+8. 소제목은 ▶ 기호로 시작 (네이버 블로그 스타일)
+9. 중요 금액/날짜는 앞뒤 줄바꿈으로 강조
+
+[글 구조]
+도입 (검색 유입 최적화, 100자) →
+▶ [사업명] 이란? (개요, 200자) →
+▶ 지원 대상 (누구에게 해당되나, 300자) →
+▶ 지원 내용과 금액 (핵심 혜택 강조, 400자) →
+▶ 신청 방법과 일정 (마감 강조, 300자) →
+▶ 놓치지 말아야 할 포인트 (차별화 팁, 200자) →
+마무리 + CTA (행동 유도, 150자)
 
 아래 JSON 형식으로만 응답하세요:
 {{
-  "title": "블로그 제목 (클릭을 유도하는 SEO 제목, 40자 이내)",
-  "content": "블로그 본문 (마크다운 없이 순수 텍스트, 줄바꿈은 \\n 사용)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
-  "meta_description": "검색 결과에 표시될 요약 (80자 이내)"
+  "title": "네이버 검색 최적화 제목 (50자 이내, 연도+키워드+혜택 포함)",
+  "content": "블로그 본문 전체 (순수 텍스트, 줄바꿈은 \\n\\n 사용, 소제목은 ▶로 시작)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8", "태그9", "태그10"],
+  "meta_description": "검색 결과 스니펫용 요약 (공고명+대상+혜택 포함, 100자 이내)",
+  "seo_keywords": ["메인키워드", "서브키워드1", "서브키워드2"]
 }}"""
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
-        model = genai.GenerativeModel(
-            "models/gemini-2.5-flash",
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.7,
-                "max_output_tokens": 4096,
-            },
-        )
-        response = model.generate_content(prompt)
-        blog = json.loads(response.text.strip())
+        blog = _gemini_json(prompt, temperature=0.65, max_tokens=6000)
         return {"status": "SUCCESS", "blog": blog, "announcement_id": req.announcement_id}
     except Exception as e:
         print(f"[blog-generate] 오류: {e}")

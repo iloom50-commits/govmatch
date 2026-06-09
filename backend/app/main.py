@@ -15414,7 +15414,7 @@ async def api_blog_recommend(req: BlogRecommendRequest):
                   )
                   {type_filter}
                 ORDER BY RANDOM()
-                LIMIT 60
+                LIMIT 20
             """)
             rows = [dict(r) for r in cur.fetchall()]
     finally:
@@ -15430,7 +15430,7 @@ async def api_blog_recommend(req: BlogRecommendRequest):
         ann_list.append(
             f"ID:{r['announcement_id']} | {_sanitize(r['title'], 60)} | 지원금:{_sanitize(r.get('support_amount') or '미정', 30)} "
             f"| 마감:{deadline} | 대상:{r.get('target_type','')} | "
-            f"내용요약:{_sanitize(r.get('summary_text') or '', 150)}"
+            f"내용요약:{_sanitize(r.get('summary_text') or '', 60)}"
         )
 
     prompt = f"""당신은 네이버 블로그 SEO 전문가입니다.

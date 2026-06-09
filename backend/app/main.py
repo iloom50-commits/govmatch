@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import asyncio
 
 from contextlib import asynccontextmanager
@@ -15359,6 +15360,28 @@ class BlogGenerateRequest(BaseModel):
     announcement_id: int
 
 
+def _fix_json_strings(raw: str) -> str:
+    """JSON 문자열 값 안의 리터럴 개행/탭을 공백으로 치환 (Gemini 출력 보정용)"""
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in raw:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+        elif ch == '\\' and in_string:
+            result.append(ch)
+            escape_next = True
+        elif ch == '"':
+            in_string = not in_string
+            result.append(ch)
+        elif ch in ('\n', '\r', '\t') and in_string:
+            result.append(' ')
+        else:
+            result.append(ch)
+    return ''.join(result)
+
+
 def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) -> dict:
     """Gemini JSON 응답 헬퍼"""
     import google.generativeai as genai
@@ -15373,11 +15396,21 @@ def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) 
     )
     response = model.generate_content(prompt)
     raw = response.text.strip()
+    # 마크다운 코드블록 제거 (Gemini가 간혹 감쌀 때 대비)
+    if raw.startswith("```"):
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw).strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"[_gemini_json] JSON 파싱 실패: {e}\n응답 앞부분: {raw[:300]}")
-        raise
+        # Fallback: JSON 문자열 값 안의 리터럴 개행을 공백으로 치환 후 재시도
+        # (Gemini가 reason 등의 값에 \n을 이스케이프 없이 넣을 때 발생)
+        fixed = _fix_json_strings(raw)
+        try:
+            return json.loads(fixed)
+        except json.JSONDecodeError as e2:
+            print(f"[_gemini_json] JSON 파싱 실패: {e2}\n응답 앞부분: {raw[:500]}")
+            raise e2
 
 
 def _sanitize(text: str, max_len: int = 200) -> str:

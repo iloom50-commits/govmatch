@@ -15382,20 +15382,23 @@ def _fix_json_strings(raw: str) -> str:
     return ''.join(result)
 
 
-def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) -> dict:
-    """Gemini JSON 응답 헬퍼"""
+def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096, schema: dict = None) -> dict:
+    """Gemini JSON 응답 헬퍼. schema 전달 시 response_schema로 구조화 강제"""
     import google.generativeai as genai
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+    gen_cfg = {
+        "response_mime_type": "application/json",
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+    if schema:
+        gen_cfg["response_schema"] = schema
     model = genai.GenerativeModel(
         "models/gemini-2.5-flash",
-        generation_config={
-            "response_mime_type": "application/json",
-            "temperature": temperature,
-            "max_output_tokens": max_tokens,
-        },
+        generation_config=gen_cfg,
     )
     response = model.generate_content(prompt)
-    raw = response.text.strip()
+    raw = (response.text or "").strip()
     # 마크다운 코드블록 제거 (Gemini가 간혹 감쌀 때 대비)
     if raw.startswith("```"):
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
@@ -15403,13 +15406,12 @@ def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) 
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        # Fallback: JSON 문자열 값 안의 리터럴 개행을 공백으로 치환 후 재시도
-        # (Gemini가 reason 등의 값에 \n을 이스케이프 없이 넣을 때 발생)
+        # Fallback: 문자열 값 안의 리터럴 개행/탭 공백 치환 후 재시도
         fixed = _fix_json_strings(raw)
         try:
             return json.loads(fixed)
         except json.JSONDecodeError as e2:
-            print(f"[_gemini_json] JSON 파싱 실패: {e2}\n응답 앞부분: {raw[:500]}")
+            print(f"[_gemini_json] JSON 파싱 실패: {e2}\n--- RAW RESPONSE ---\n{raw}\n--- END ---")
             raise e2
 
 
@@ -15494,8 +15496,29 @@ async def api_blog_recommend(req: BlogRecommendRequest):
   ]
 }}"""
 
+    # response_schema로 Gemini 출력 구조 강제 → Unterminated string 방지
+    recommend_schema = {
+        "type": "object",
+        "properties": {
+            "recommendations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "announcement_id": {"type": "integer"},
+                        "title": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "target_keywords": {"type": "array", "items": {"type": "string"}},
+                        "expected_readers": {"type": "string"},
+                    },
+                    "required": ["announcement_id", "title", "reason", "target_keywords", "expected_readers"],
+                },
+            }
+        },
+        "required": ["recommendations"],
+    }
     try:
-        result = _gemini_json(prompt, temperature=0.3)
+        result = _gemini_json(prompt, temperature=0.3, schema=recommend_schema)
         return {"status": "SUCCESS", "recommendations": result.get("recommendations", [])}
     except Exception as e:
         print(f"[blog-recommend] 오류: {e}")

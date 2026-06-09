@@ -30,23 +30,38 @@ function formatSupportAmount(raw: string | number | undefined | null): string {
 }
 
 // FAB 버튼 + 라벨 (PRO 도구 항상 명시)
-function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
+function FabWithBubble({ label, onClick, botPhase, isPro }: { label: string; onClick: () => void; botPhase: string; isPro?: boolean }) {
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
-      {/* 라벨 — 버튼 위에 배치 */}
-      <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
-        <span className="text-[11px] font-bold text-violet-700">AI 지원사업 상담</span>
+    <div className="fixed bottom-6 right-6 z-40 flex items-end gap-3">
+      {/* PRO: 말풍선 — 버튼 왼쪽에 꼬리 달린 형태 */}
+      {isPro && (
+        <div className="relative hidden sm:block bg-white border border-violet-200 rounded-xl shadow-lg px-3 py-2">
+          <span className="text-[11px] font-bold text-violet-700 whitespace-nowrap">정책자금상담</span>
+          {/* 오른쪽 꼬리 */}
+          <div
+            className="absolute right-[-6px] top-1/2 w-3 h-3 bg-white border-r border-t border-violet-200"
+            style={{ transform: "translateY(-50%) rotate(45deg)" }}
+          />
+        </div>
+      )}
+      <div className="flex flex-col items-end gap-2">
+        {/* 일반: 기존 pill 라벨 위에 배치 */}
+        {!isPro && (
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
+            <span className="text-[11px] font-bold text-violet-700">AI 지원사업 상담</span>
+          </div>
+        )}
+        {/* 버튼 */}
+        <button
+          onClick={onClick}
+          className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
+          style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
+          title={label}
+          aria-label="AI 지원사업 상담"
+        >
+          <span className="text-2xl animate-ai-pulse">✨</span>
+        </button>
       </div>
-      {/* 버튼 — 하단 */}
-      <button
-        onClick={onClick}
-        className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
-        style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-        title={label}
-        aria-label="AI 지원사업 상담"
-      >
-        <span className="text-2xl animate-ai-pulse">✨</span>
-      </button>
     </div>
   );
 }
@@ -1171,6 +1186,7 @@ ${convHtml}
           label="AI 지원사업 상담"
           onClick={() => window.dispatchEvent(new CustomEvent("request-fund-chat"))}
           botPhase={botPhase}
+          isPro={!!isPro}
         />
       </>
     );

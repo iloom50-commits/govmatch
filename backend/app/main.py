@@ -15496,30 +15496,29 @@ async def api_blog_recommend(req: BlogRecommendRequest):
   ]
 }}"""
 
-    # response_schema로 Gemini 출력 구조 강제 → Unterminated string 방지
-    recommend_schema = {
-        "type": "object",
-        "properties": {
-            "recommendations": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "announcement_id": {"type": "integer"},
-                        "title": {"type": "string"},
-                        "reason": {"type": "string"},
-                        "target_keywords": {"type": "array", "items": {"type": "string"}},
-                        "expected_readers": {"type": "string"},
-                    },
-                    "required": ["announcement_id", "title", "reason", "target_keywords", "expected_readers"],
-                },
-            }
-        },
-        "required": ["recommendations"],
-    }
+    # Pydantic 모델로 response_schema 강제 → 가장 안정적인 구조화 출력 방식
+    class _BlogRec(BaseModel):
+        announcement_id: int
+        title: str
+        reason: str
+        target_keywords: list[str]
+        expected_readers: str
+
     try:
-        result = _gemini_json(prompt, temperature=0.3, schema=recommend_schema)
-        return {"status": "SUCCESS", "recommendations": result.get("recommendations", [])}
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+        rec_model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=list[_BlogRec],
+                temperature=0.3,
+                max_output_tokens=2048,
+            ),
+        )
+        response = rec_model.generate_content(prompt)
+        items = json.loads(response.text)
+        return {"status": "SUCCESS", "recommendations": items if isinstance(items, list) else []}
     except Exception as e:
         print(f"[blog-recommend] 오류: {e}")
         raise HTTPException(status_code=500, detail=f"추천 실패: {str(e)}")

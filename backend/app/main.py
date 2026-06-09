@@ -15447,6 +15447,7 @@ async def api_blog_recommend(req: BlogRecommendRequest):
                     deadline_type = 'ongoing'
                     OR deadline_date >= CURRENT_DATE + INTERVAL '20 days'
                   )
+                  AND (region IS NULL OR region = '' OR region ILIKE '%전국%')
                   {type_filter}
                 ORDER BY RANDOM()
                 LIMIT 20
@@ -15482,16 +15483,17 @@ async def api_blog_recommend(req: BlogRecommendRequest):
 [공고 목록]
 {chr(10).join(ann_list)}
 
-아래 형식을 정확히 지켜서 5개를 작성하세요. 다른 설명은 쓰지 마세요.
+반드시 아래 형식으로 정확히 5개를 작성하세요. 형식 외 다른 텍스트는 쓰지 마세요.
+각 항목은 빈 줄로 구분합니다.
 
-##ITEM##
-ID: [공고 ID 숫자]
+ID: [숫자]
 TITLE: [공고명]
-REASON: [블로그 소재로 좋은 이유, 한 문장]
+REASON: [이유 한 문장]
 KEYWORDS: [키워드1],[키워드2],[키워드3]
-READERS: [예상 독자층, 한 문장]
-##ITEM##
-ID: ...
+READERS: [독자층 한 문장]
+
+ID: [숫자]
+TITLE: ...
 """
 
     try:
@@ -15499,29 +15501,32 @@ ID: ...
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
         rec_model = genai.GenerativeModel(
             "models/gemini-2.5-flash",
-            generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=1024),
+            generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=1500),
         )
         response = rec_model.generate_content(prompt)
         raw_text = response.text or ""
+        print(f"[blog-recommend] raw_text:\n{raw_text[:1000]}")
 
-        # regex로 각 블록 파싱 (JSON 불필요)
+        # 각 ID: 숫자 블록을 직접 findall로 추출 (separator 불필요)
+        pattern = re.compile(
+            r'ID:\s*(\d+)\s*\n'
+            r'TITLE:\s*(.+?)\s*\n'
+            r'REASON:\s*(.+?)\s*\n'
+            r'KEYWORDS:\s*(.+?)\s*\n'
+            r'READERS:\s*(.+?)(?:\s*\n|$)',
+            re.MULTILINE,
+        )
         items = []
-        for block in re.split(r'##ITEM##', raw_text):
-            id_m = re.search(r'ID:\s*(\d+)', block)
-            title_m = re.search(r'TITLE:\s*(.+)', block)
-            reason_m = re.search(r'REASON:\s*(.+)', block)
-            kw_m = re.search(r'KEYWORDS:\s*(.+)', block)
-            readers_m = re.search(r'READERS:\s*(.+)', block)
-            if id_m and title_m:
-                items.append({
-                    "announcement_id": int(id_m.group(1)),
-                    "title": title_m.group(1).strip(),
-                    "reason": reason_m.group(1).strip() if reason_m else "",
-                    "target_keywords": [k.strip() for k in kw_m.group(1).split(',')] if kw_m else [],
-                    "expected_readers": readers_m.group(1).strip() if readers_m else "",
-                })
+        for m in pattern.finditer(raw_text):
+            items.append({
+                "announcement_id": int(m.group(1)),
+                "title": m.group(2).strip(),
+                "reason": m.group(3).strip(),
+                "target_keywords": [k.strip() for k in m.group(4).split(',')],
+                "expected_readers": m.group(5).strip(),
+            })
         if not items:
-            raise ValueError(f"응답에서 공고를 파싱하지 못했습니다. 응답: {raw_text[:300]}")
+            raise ValueError(f"응답 파싱 실패. 응답: {raw_text[:300]}")
         return {"status": "SUCCESS", "recommendations": items[:5]}
     except Exception as e:
         print(f"[blog-recommend] 오류: {e}")

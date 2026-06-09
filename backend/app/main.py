@@ -15595,17 +15595,51 @@ async def api_blog_generate(req: BlogGenerateRequest):
 ▶ 놓치지 말아야 할 포인트 (차별화 팁, 200자) →
 마무리 + CTA (행동 유도, 150자)
 
-아래 JSON 형식으로만 응답하세요:
-{{
-  "title": "네이버 검색 최적화 제목 (50자 이내, 연도+키워드+혜택 포함)",
-  "content": "블로그 본문 전체 (순수 텍스트, 줄바꿈은 \\n\\n 사용, 소제목은 ▶로 시작)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8", "태그9", "태그10"],
-  "meta_description": "검색 결과 스니펫용 요약 (공고명+대상+혜택 포함, 100자 이내)",
-  "seo_keywords": ["메인키워드", "서브키워드1", "서브키워드2"]
-}}"""
+반드시 아래 형식으로만 응답하세요. JSON 금지. 각 섹션은 ===SECTION=== 구분자로 시작합니다.
+
+===TITLE===
+네이버 검색 최적화 제목 (50자 이내, 연도+키워드+혜택 포함)
+===CONTENT===
+블로그 본문 전체 (소제목은 ▶로 시작, 줄바꿈 자유롭게 사용)
+===TAGS===
+태그1,태그2,태그3,태그4,태그5,태그6,태그7,태그8,태그9,태그10
+===META===
+검색 결과 스니펫용 요약 (공고명+대상+혜택 포함, 100자 이내)
+===SEO===
+메인키워드,서브키워드1,서브키워드2"""
 
     try:
-        blog = _gemini_json(prompt, temperature=0.65, max_tokens=6000)
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+        gen_model = genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config=genai.GenerationConfig(temperature=0.65, max_output_tokens=6000),
+        )
+        response = gen_model.generate_content(prompt)
+        raw = (response.text or "").replace('\r\n', '\n').replace('\r', '\n')
+        print(f"[blog-generate] raw_text:\n{raw[:500]}")
+
+        # ===SECTION=== 구분자 기반 파싱 — JSON 완전 우회
+        def _extract(text: str, key: str) -> str:
+            m = re.search(rf'==={key}===\n(.*?)(?:===\w+===|$)', text, re.DOTALL)
+            return m.group(1).strip() if m else ""
+
+        title = _extract(raw, "TITLE")
+        content = _extract(raw, "CONTENT")
+        tags_raw = _extract(raw, "TAGS")
+        meta = _extract(raw, "META")
+        seo_raw = _extract(raw, "SEO")
+
+        if not title or not content:
+            raise ValueError(f"블로그 파싱 실패. 응답: {raw[:400]}")
+
+        blog = {
+            "title": title,
+            "content": content,
+            "tags": [t.strip() for t in tags_raw.split(',') if t.strip()],
+            "meta_description": meta,
+            "seo_keywords": [k.strip() for k in seo_raw.split(',') if k.strip()],
+        }
         return {"status": "SUCCESS", "blog": blog, "announcement_id": req.announcement_id}
     except Exception as e:
         print(f"[blog-generate] 오류: {e}")

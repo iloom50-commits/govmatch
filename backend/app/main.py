@@ -15468,57 +15468,61 @@ async def api_blog_recommend(req: BlogRecommendRequest):
             f"내용요약:{_sanitize(r.get('summary_text') or '', 60)}"
         )
 
+    # JSON 없이 구조화 텍스트로 받아 regex 파싱 → Gemini JSON 버그 완전 우회
     prompt = f"""당신은 네이버 블로그 SEO 전문가입니다.
-아래는 정부지원사업 공고 목록입니다. 이 중에서 네이버 블로그 글 소재로 가장 적합한 공고 5개를 선정해주세요.
+아래 정부지원사업 공고 목록에서 블로그 소재로 가장 적합한 공고 5개를 선정하세요.
 
 [선정 기준]
-1. 검색 수요 높음: '청년', '창업', '소상공인', '중소기업', '취업', '육아', '주거' 등 대중 관심 키워드 포함
+1. 검색 수요 높음: 청년/창업/소상공인/중소기업/취업/육아/주거 등 대중 관심 키워드
 2. 지원금액 구체적: 금액이 명시된 공고가 클릭률 높음
-3. 많은 사람이 해당될수록 좋음: 대상 범위가 넓을수록 검색 유입 유리
-4. 정보성 가치: 잘 알려지지 않은 혜택이거나 신청 방법이 복잡한 공고일수록 블로그가 도움됨
-5. 마감 여유: 독자가 실제 신청할 수 있도록 마감이 충분히 남아야 함
+3. 대상 범위 넓을수록 유리
+4. 잘 알려지지 않은 혜택이거나 신청 방법이 복잡할수록 블로그가 도움됨
+5. 마감 여유 충분
 
 [공고 목록]
 {chr(10).join(ann_list)}
 
-상위 5개를 선정하고, 각각에 대해 왜 블로그 소재로 좋은지, 어떤 검색 키워드를 노릴 수 있는지 설명해주세요.
+아래 형식을 정확히 지켜서 5개를 작성하세요. 다른 설명은 쓰지 마세요.
 
-아래 JSON 형식으로만 응답하세요:
-{{
-  "recommendations": [
-    {{
-      "announcement_id": 숫자,
-      "title": "공고명",
-      "reason": "블로그 소재로 좋은 이유 (2~3문장)",
-      "target_keywords": ["키워드1", "키워드2", "키워드3"],
-      "expected_readers": "예상 독자층 (한 줄)"
-    }}
-  ]
-}}"""
-
-    # Pydantic 모델로 response_schema 강제 → 가장 안정적인 구조화 출력 방식
-    class _BlogRec(BaseModel):
-        announcement_id: int
-        title: str
-        reason: str
-        target_keywords: list[str]
-        expected_readers: str
+##ITEM##
+ID: [공고 ID 숫자]
+TITLE: [공고명]
+REASON: [블로그 소재로 좋은 이유, 한 문장]
+KEYWORDS: [키워드1],[키워드2],[키워드3]
+READERS: [예상 독자층, 한 문장]
+##ITEM##
+ID: ...
+"""
 
     try:
         import google.generativeai as genai
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
         rec_model = genai.GenerativeModel(
             "models/gemini-2.5-flash",
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=list[_BlogRec],
-                temperature=0.3,
-                max_output_tokens=2048,
-            ),
+            generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=1024),
         )
         response = rec_model.generate_content(prompt)
-        items = json.loads(response.text)
-        return {"status": "SUCCESS", "recommendations": items if isinstance(items, list) else []}
+        raw_text = response.text or ""
+
+        # regex로 각 블록 파싱 (JSON 불필요)
+        items = []
+        for block in re.split(r'##ITEM##', raw_text):
+            id_m = re.search(r'ID:\s*(\d+)', block)
+            title_m = re.search(r'TITLE:\s*(.+)', block)
+            reason_m = re.search(r'REASON:\s*(.+)', block)
+            kw_m = re.search(r'KEYWORDS:\s*(.+)', block)
+            readers_m = re.search(r'READERS:\s*(.+)', block)
+            if id_m and title_m:
+                items.append({
+                    "announcement_id": int(id_m.group(1)),
+                    "title": title_m.group(1).strip(),
+                    "reason": reason_m.group(1).strip() if reason_m else "",
+                    "target_keywords": [k.strip() for k in kw_m.group(1).split(',')] if kw_m else [],
+                    "expected_readers": readers_m.group(1).strip() if readers_m else "",
+                })
+        if not items:
+            raise ValueError(f"응답에서 공고를 파싱하지 못했습니다. 응답: {raw_text[:300]}")
+        return {"status": "SUCCESS", "recommendations": items[:5]}
     except Exception as e:
         print(f"[blog-recommend] 오류: {e}")
         raise HTTPException(status_code=500, detail=f"추천 실패: {str(e)}")

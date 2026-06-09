@@ -15504,29 +15504,32 @@ TITLE: ...
             generation_config=genai.GenerationConfig(temperature=0.3, max_output_tokens=1500),
         )
         response = rec_model.generate_content(prompt)
-        raw_text = response.text or ""
+        raw_text = (response.text or "").replace('\r\n', '\n').replace('\r', '\n')
         print(f"[blog-recommend] raw_text:\n{raw_text[:1000]}")
 
-        # 각 ID: 숫자 블록을 직접 findall로 추출 (separator 불필요)
-        pattern = re.compile(
-            r'ID:\s*(\d+)\s*\n'
-            r'TITLE:\s*(.+?)\s*\n'
-            r'REASON:\s*(.+?)\s*\n'
-            r'KEYWORDS:\s*(.+?)\s*\n'
-            r'READERS:\s*(.+?)(?:\s*\n|$)',
-            re.MULTILINE,
-        )
+        # ID: 숫자 위치를 기준으로 블록 분할 → 각 필드 독립 추출 (REASON 줄바꿈·빈줄 무관)
+        id_positions = [m.start() for m in re.finditer(r'(?:^|\n)ID:\s*\d+', raw_text)]
         items = []
-        for m in pattern.finditer(raw_text):
-            items.append({
-                "announcement_id": int(m.group(1)),
-                "title": m.group(2).strip(),
-                "reason": m.group(3).strip(),
-                "target_keywords": [k.strip() for k in m.group(4).split(',')],
-                "expected_readers": m.group(5).strip(),
-            })
+        for i, pos in enumerate(id_positions):
+            end = id_positions[i + 1] if i + 1 < len(id_positions) else len(raw_text)
+            block = raw_text[pos:end].strip()
+
+            id_m = re.search(r'ID:\s*(\d+)', block)
+            title_m = re.search(r'TITLE:\s*([^\n]+)', block)
+            reason_m = re.search(r'REASON:\s*([^\n]+)', block)
+            kw_m = re.search(r'KEYWORDS:\s*([^\n]+)', block)
+            readers_m = re.search(r'READERS:\s*([^\n]+)', block)
+
+            if id_m and title_m:
+                items.append({
+                    "announcement_id": int(id_m.group(1)),
+                    "title": title_m.group(1).strip(),
+                    "reason": reason_m.group(1).strip() if reason_m else "",
+                    "target_keywords": [k.strip() for k in kw_m.group(1).split(',')] if kw_m else [],
+                    "expected_readers": readers_m.group(1).strip() if readers_m else "",
+                })
         if not items:
-            raise ValueError(f"응답 파싱 실패. 응답: {raw_text[:300]}")
+            raise ValueError(f"응답 파싱 실패. 응답: {raw_text[:500]}")
         return {"status": "SUCCESS", "recommendations": items[:5]}
     except Exception as e:
         print(f"[blog-recommend] 오류: {e}")

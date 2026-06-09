@@ -15372,7 +15372,19 @@ def _gemini_json(prompt: str, temperature: float = 0.4, max_tokens: int = 4096) 
         },
     )
     response = model.generate_content(prompt)
-    return json.loads(response.text.strip())
+    raw = response.text.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"[_gemini_json] JSON 파싱 실패: {e}\n응답 앞부분: {raw[:300]}")
+        raise
+
+
+def _sanitize(text: str, max_len: int = 200) -> str:
+    """프롬프트 삽입용 텍스트 정제 — 줄바꿈·따옴표 제거"""
+    if not text:
+        return ""
+    return text.replace("\n", " ").replace("\r", " ").replace('"', "'").replace("\\", " ")[:max_len]
 
 
 @app.post("/api/admin/blog-recommend")
@@ -15411,14 +15423,14 @@ async def api_blog_recommend(req: BlogRecommendRequest):
     if not rows:
         raise HTTPException(status_code=404, detail="추천할 공고가 없습니다.")
 
-    # AI에게 넘길 공고 목록 요약
+    # AI에게 넘길 공고 목록 요약 (특수문자 정제)
     ann_list = []
     for r in rows:
         deadline = "상시" if r.get("deadline_type") == "ongoing" else str(r.get("deadline_date") or "미정")
         ann_list.append(
-            f"ID:{r['announcement_id']} | {r['title']} | 지원금:{r.get('support_amount') or '미정'} "
+            f"ID:{r['announcement_id']} | {_sanitize(r['title'], 60)} | 지원금:{_sanitize(r.get('support_amount') or '미정', 30)} "
             f"| 마감:{deadline} | 대상:{r.get('target_type','')} | "
-            f"내용요약:{(r.get('summary_text') or '')[:150]}"
+            f"내용요약:{_sanitize(r.get('summary_text') or '', 150)}"
         )
 
     prompt = f"""당신은 네이버 블로그 SEO 전문가입니다.
@@ -15487,13 +15499,13 @@ async def api_blog_generate(req: BlogGenerateRequest):
 아래 공고 정보를 바탕으로 네이버 검색 상위 노출을 목표로 한 정보성 블로그 글을 작성해주세요.
 
 [공고 정보]
-- 사업명: {ann.get('title', '')}
-- 지원내용: {(ann.get('summary_text') or '')[:800]}
-- 지원대상 조건: {(ann.get('eligibility_logic') or '')[:500]}
-- 지원금액: {ann.get('support_amount') or '미정'}
+- 사업명: {_sanitize(ann.get('title', ''), 80)}
+- 지원내용: {_sanitize(ann.get('summary_text') or '', 800)}
+- 지원대상 조건: {_sanitize(ann.get('eligibility_logic') or '', 500)}
+- 지원금액: {_sanitize(ann.get('support_amount') or '미정', 50)}
 - 신청기한: {deadline_str}
-- 지역: {ann.get('region') or '전국'}
-- 주관기관: {ann.get('department') or ''}
+- 지역: {_sanitize(ann.get('region') or '전국', 30)}
+- 주관기관: {_sanitize(ann.get('department') or '', 50)}
 - 대상유형: {target_label}
 
 [네이버 SEO 작성 원칙]

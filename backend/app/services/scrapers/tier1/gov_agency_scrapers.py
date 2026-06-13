@@ -258,7 +258,7 @@ class SemasScraper(BaseScraper):
                     "title": title[:400],
                     "origin_url": f"{_SEMAS_DETAIL}?bltwtrSeq={seq}",
                     "region": "전국",
-                    "target_type": "individual",
+                    "target_type": "business",
                     "category": category_nm or "소상공인",
                     "summary_text": None,
                     "deadline_date": None,

@@ -1,10 +1,12 @@
-"""공공기관 스크래퍼 — 기업마당 + KOCCA.
+"""공공기관 스크래퍼 — 기업마당 + KOCCA + SEMAS.
 
 bizinfo.go.kr : 중소벤처기업부 지원사업 공고 포털 (1,200건+, 86페이지)
 kocca.kr      : 한국콘텐츠진흥원 지원공고 (콘텐츠·미디어 분야)
+semas.or.kr   : 소상공인시장진흥공단 사업공고 (로그인 불필요, 97페이지)
 """
 from __future__ import annotations
 import re
+import datetime
 import requests
 from typing import List, Dict, Any
 
@@ -340,3 +342,106 @@ class SbaScraper(BaseScraper):
 
 
 SCRAPER_REGISTRY.append(SbaScraper())
+
+
+# ── 소상공인시장진흥공단 사업공고 (semas.or.kr) ──────────────────────────────
+_SEMAS_BIZ_BASE = "https://www.semas.or.kr"
+_SEMAS_BIZ_LIST = (
+    f"{_SEMAS_BIZ_BASE}/web/board/webBoardList.kmdc"
+    "?bCd=2001&pNm=BOA0121&page={page}"
+)
+_SEMAS_BIZ_BLOCK_RE = re.compile(
+    r'<a class="aconbox"[^>]+href="([^"]+)">(.*?)</a>',
+    re.DOTALL,
+)
+_SEMAS_BIZ_TITLE_RE = re.compile(r'class="cut_text1"[^>]*>(.*?)</div>', re.DOTALL)
+_SEMAS_BIZ_DATE_RE = re.compile(r'class="date"[^>]*>(.*?)</div>', re.DOTALL)
+_SEMAS_BIZ_DESC_RE = re.compile(r'class="cut_text2"[^>]*>(.*?)<li', re.DOTALL)
+_SEMAS_BIZ_PERIOD_RE = re.compile(r'(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})')
+
+
+def _parse_semas_deadline(date_text: str) -> str | None:
+    m = _SEMAS_BIZ_PERIOD_RE.search(date_text)
+    return m.group(2) if m else None
+
+
+class SemasBizScraper(BaseScraper):
+    """소상공인시장진흥공단 사업공고 — semas.or.kr (로그인 불필요, GET 방식)."""
+
+    name = "semas_biz"
+    display_name = "소상공인시장진흥공단 사업공고"
+    origin_url_prefix = "https://www.sbiz24.kr/#/pbanc/"
+
+    def fetch_items(self) -> List[Dict[str, Any]]:
+        today = datetime.date.today()
+        items: List[Dict[str, Any]] = []
+        seen: set = set()
+
+        for page in range(1, 100):
+            try:
+                resp = requests.get(
+                    _SEMAS_BIZ_LIST.format(page=page),
+                    headers=_HEADERS,
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                text = resp.content.decode("utf-8", errors="replace")
+            except Exception:
+                break
+
+            blocks = _SEMAS_BIZ_BLOCK_RE.findall(text)
+            if not blocks:
+                break
+
+            all_expired = True
+            for href, inner in blocks:
+                if href in seen:
+                    continue
+                seen.add(href)
+
+                title_m = _SEMAS_BIZ_TITLE_RE.search(inner)
+                date_m = _SEMAS_BIZ_DATE_RE.search(inner)
+                desc_m = _SEMAS_BIZ_DESC_RE.search(inner)
+
+                title = re.sub(r"<[^>]+>", "", title_m.group(1)).strip() if title_m else ""
+                date_text = re.sub(r"<[^>]+>", "", date_m.group(1)).strip() if date_m else ""
+                desc = re.sub(r"<[^>]+>", " ", desc_m.group(1)).strip() if desc_m else ""
+                desc = re.sub(r"\s+", " ", desc)[:500]
+
+                if not title or len(title) < 5:
+                    continue
+                if _EXCLUDE_KW.search(title):
+                    continue
+
+                deadline = _parse_semas_deadline(date_text)
+
+                # 마감일이 오늘보다 이전이면 건너뜀
+                if deadline:
+                    try:
+                        if datetime.date.fromisoformat(deadline) < today:
+                            continue
+                    except ValueError:
+                        pass
+                    all_expired = False
+                else:
+                    all_expired = False
+
+                items.append({
+                    "title": title[:400],
+                    "origin_url": href,
+                    "region": "전국",
+                    "target_type": "individual",
+                    "category": "소상공인",
+                    "summary_text": desc or None,
+                    "deadline_date": deadline,
+                    "support_amount": None,
+                })
+
+            # 페이지 전체가 마감된 공고면 이후 페이지도 마감이므로 중단
+            if all_expired:
+                break
+
+        return items
+
+
+SCRAPER_REGISTRY.append(SemasBizScraper())

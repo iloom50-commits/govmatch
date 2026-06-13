@@ -430,7 +430,7 @@ class SemasBizScraper(BaseScraper):
                     "title": title[:400],
                     "origin_url": href,
                     "region": "전국",
-                    "target_type": "individual",
+                    "target_type": "business",
                     "category": "소상공인",
                     "summary_text": desc or None,
                     "deadline_date": deadline,

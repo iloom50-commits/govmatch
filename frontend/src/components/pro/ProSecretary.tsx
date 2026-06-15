@@ -575,6 +575,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     try { localStorage.removeItem("pro_session_id"); } catch {}
   };
 
+  // client_type 문자열 → ClientCategory 변환 (3분류)
+  const toClientCategory = (clientType?: string): ClientCategory => {
+    if (clientType === "individual") return "individual";
+    if (clientType === "individual_biz") return "individual_biz";
+    return "corporate";
+  };
+
   // ─── 고객 선택 후 상담 시작 (신규: 폼으로 / 기존: 상담목적 화면으로) ───
   const startNewChat = (category: ClientCategory, client?: ClientProfile) => {
     setActiveView("chat");
@@ -888,7 +895,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   {existingClients.slice(0, 5).map(c => (
                     <button
                       key={c.id}
-                      onClick={() => startNewChat(c.client_type === "individual" ? "individual" : "corporate", c)}
+                      onClick={() => startNewChat(toClientCategory(c.client_type), c)}
                       className={`w-full px-2.5 py-1.5 flex items-center gap-2 rounded-lg text-left text-[12px] transition-all ${t.menuInactive}`}
                     >
                       <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-600"}`}>
@@ -991,7 +998,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                         <div className="space-y-1.5">
                           {existingClients.map(c => (
                             <button key={c.id}
-                              onClick={() => startNewChat(c.client_type === "individual" ? "individual" : "corporate", c)}
+                              onClick={() => startNewChat(toClientCategory(c.client_type), c)}
                               className={`w-full px-4 py-3 flex items-center gap-3 rounded-xl border transition-all text-left active:scale-[0.99] hover:shadow-sm ${dark ? `${t.card} border-white/[0.08] hover:border-violet-500/40` : "bg-white border-slate-200 hover:border-violet-400 hover:bg-violet-50"}`}>
                               <span className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${dark ? "bg-violet-500/20 text-violet-300" : "bg-violet-100 text-violet-700"}`}>
                                 {c.client_type === "individual" ? "개" : "사"}
@@ -1515,7 +1522,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     contact_email: client.contact_email || "",
                     status: client.status || "consulting",
                   };
-                  const cat: ClientCategory = client.client_type === "individual" ? "individual" : "corporate";
+                  const cat: ClientCategory = toClientCategory(client.client_type);
                   startNewChat(cat, profile);
                 }} />}
               {activeView === "history" && <HistoryTabWrapper headers={headers} toast={toast} />}

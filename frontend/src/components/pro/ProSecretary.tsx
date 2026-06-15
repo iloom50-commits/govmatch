@@ -1311,29 +1311,38 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                     if (loading || typing) return;
                                     setLoading(true);
                                     try {
-                                      // 임시 client_profile 생성 후 reports/generate 호출
                                       const isIndiv = clientCategory === "individual";
-                                      const tempName = `상담${new Date().toLocaleString("ko-KR", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}`;
-                                      const cf = await fetch(`${API}/api/pro/clients`, {
-                                        method: "POST",
-                                        headers: headers(),
-                                        body: JSON.stringify({
-                                          client_name: profileForm.company_name || tempName,
-                                          client_type: isIndiv ? "individual" : "business",
-                                          establishment_date: profileForm.establishment_date || (profileForm.establishment_year ? `${profileForm.establishment_year}-01-01` : null),
-                                          address_city: profileForm.address_city || collectedProfile.address_city || "",
-                                          industry_code: profileForm.industry_code || collectedProfile.industry_code || "",
-                                          revenue_bracket: profileForm.revenue_bracket || (isIndiv ? "1억 미만" : ""),
-                                          employee_count_bracket: profileForm.employee_bracket || (isIndiv ? "5인 미만" : ""),
-                                          interests: (profileForm.interests && profileForm.interests.length > 0)
-                                            ? profileForm.interests.join(",")
-                                            : (collectedProfile.interests || ""),
-                                          memo: "ProSecretary 매칭에서 자동 생성",
-                                        }),
-                                      });
-                                      if (!cf.ok) throw new Error("client_profile 생성 실패");
-                                      const cfData = await cf.json();
-                                      const cid = cfData.id;
+                                      let cid: number;
+                                      if (selectedClient?.id) {
+                                        // 기존 고객: 신규 생성 없이 기존 ID 재사용
+                                        cid = selectedClient.id;
+                                      } else {
+                                        // 신규 고객: client_profile 생성
+                                        const clientName =
+                                          collectedProfile.company_name ||
+                                          profileForm.company_name ||
+                                          `상담${new Date().toLocaleString("ko-KR", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}`;
+                                        const cf = await fetch(`${API}/api/pro/clients`, {
+                                          method: "POST",
+                                          headers: headers(),
+                                          body: JSON.stringify({
+                                            client_name: clientName,
+                                            client_type: isIndiv ? "individual" : "business",
+                                            establishment_date: profileForm.establishment_date || (profileForm.establishment_year ? `${profileForm.establishment_year}-01-01` : null),
+                                            address_city: profileForm.address_city || collectedProfile.address_city || "",
+                                            industry_code: profileForm.industry_code || collectedProfile.industry_code || "",
+                                            revenue_bracket: profileForm.revenue_bracket || (isIndiv ? "1억 미만" : ""),
+                                            employee_count_bracket: profileForm.employee_bracket || (isIndiv ? "5인 미만" : ""),
+                                            interests: (profileForm.interests && profileForm.interests.length > 0)
+                                              ? profileForm.interests.join(",")
+                                              : (collectedProfile.interests || ""),
+                                            memo: "ProSecretary 매칭에서 자동 생성",
+                                          }),
+                                        });
+                                        if (!cf.ok) throw new Error("client_profile 생성 실패");
+                                        const cfData = await cf.json();
+                                        cid = cfData.id;
+                                      }
                                       // 보고서 생성
                                       const rg = await fetch(`${API}/api/pro/reports/generate`, {
                                         method: "POST",

@@ -1582,8 +1582,82 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
+            # ── 상시모집 만료 아카이브 — 매주 일요일 03:30 KST (UTC 일요일 18:30) ──
+            def _archive_expired_ongoing_job():
+                try:
+                    conn = get_db_connection()
+                    try:
+                        expiry_keywords = [
+                            '마감', '종료', '완료', '신청불가', '접수마감',
+                            '접수종료', '선정완료', '모집완료', '소진', '예산소진',
+                            '조기마감', '예산 소진', '사업종료',
+                        ]
+                        keyword_conditions = " OR ".join(
+                            [f"summary_text ILIKE %s" for _ in expiry_keywords]
+                        )
+                        keyword_params = [f"%{kw}%" for kw in expiry_keywords]
+
+                        with conn.cursor() as cur:
+                            # 아카이브 대상 조회 (롤백용 로그에 저장)
+                            cur.execute(f"""
+                                SELECT announcement_id, title, created_at
+                                FROM announcements
+                                WHERE deadline_type = 'ongoing'
+                                  AND is_active = true
+                                  AND created_at < NOW() - INTERVAL '6 months'
+                                  AND ({keyword_conditions})
+                            """, keyword_params)
+                            targets = cur.fetchall()
+
+                            if not targets:
+                                print("[Archive] 상시모집 만료 대상 없음")
+                                return
+
+                            target_ids = [row['announcement_id'] for row in targets]
+                            id_list = ', '.join(str(i) for i in target_ids)
+                            print(f"[Archive] 상시모집 만료 아카이브 대상: {len(target_ids)}건 → IDs: {id_list[:200]}")
+
+                            # 롤백 정보를 system_logs에 기록
+                            _log_system(
+                                "ongoing_archive",
+                                "archive",
+                                f"archived_ids={id_list}",
+                                "success",
+                                count=len(target_ids)
+                            )
+
+                            # is_active = false 처리
+                            cur.execute("""
+                                UPDATE announcements
+                                SET is_active = false
+                                WHERE announcement_id = ANY(%s)
+                            """, (target_ids,))
+                            conn.commit()
+                            print(f"[Archive] 완료: {len(target_ids)}건 비활성화")
+                            _log_system(
+                                "ongoing_archive_done",
+                                "archive",
+                                f"비활성화 완료: {len(target_ids)}건",
+                                "success",
+                                count=len(target_ids)
+                            )
+                    finally:
+                        try: conn.close()
+                        except: pass
+                except Exception as e:
+                    print(f"[Archive] 오류: {e}")
+                    _log_system("ongoing_archive_error", "archive", f"오류: {e}", "error")
+
+            pipeline_scheduler.add_job(
+                _archive_expired_ongoing_job,
+                CronTrigger(day_of_week='sun', hour=18, minute=30),  # UTC 일 18:30 = KST 월 03:30
+                id="archive_expired_ongoing",
+                name="상시모집 만료 공고 아카이브 (매주 일 03:30 KST)",
+                replace_existing=True,
+            )
+
             pipeline_scheduler.start()
-            print("[Pipeline] APScheduler started - 공고수집 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache 10min + bulk_report 1h + lite_cleanup 11:00 KST")
+            print("[Pipeline] APScheduler started - 공고수집 03:00 KST + AI COO 09:30 KST + keepalive 2min + cache 10min + bulk_report 1h + lite_cleanup 11:00 KST + 상시모집아카이브 일03:30 KST")
         except ImportError as e:
             print(f"[Pipeline] APScheduler not installed: {e}")
         except Exception as e:
@@ -15625,6 +15699,86 @@ async def api_blog_generate(req: BlogGenerateRequest):
     except Exception as e:
         print(f"[blog-generate] 오류: {e}")
         raise HTTPException(status_code=500, detail=f"블로그 생성 실패: {str(e)}")
+
+
+@app.get("/api/admin/ongoing-archive/log", dependencies=[Depends(_verify_admin)])
+async def api_ongoing_archive_log():
+    """가장 최근 상시모집 아카이브 실행 기록 조회 (롤백용 ID 목록 포함)"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, action, detail, result, count, created_at
+                FROM system_logs
+                WHERE action IN ('ongoing_archive', 'ongoing_archive_done', 'ongoing_archive_rollback')
+                ORDER BY created_at DESC
+                LIMIT 20
+            """)
+            rows = cur.fetchall()
+        return {"logs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/ongoing-archive/rollback", dependencies=[Depends(_verify_admin)])
+async def api_ongoing_archive_rollback(request: Request):
+    """상시모집 아카이브 롤백 — system_logs의 archived_ids를 읽어 is_active=true로 복원"""
+    body = await request.json()
+    log_id = body.get("log_id")  # system_logs.id (ongoing_archive 항목)
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            if log_id:
+                cur.execute(
+                    "SELECT detail FROM system_logs WHERE id = %s AND action = 'ongoing_archive'",
+                    (log_id,)
+                )
+                row = cur.fetchone()
+            else:
+                cur.execute(
+                    "SELECT detail FROM system_logs WHERE action = 'ongoing_archive' ORDER BY created_at DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+
+            if not row:
+                raise HTTPException(status_code=404, detail="아카이브 로그를 찾을 수 없습니다.")
+
+            detail = row['detail']
+            # detail 형식: "archived_ids=1,2,3,4"
+            if not detail.startswith("archived_ids="):
+                raise HTTPException(status_code=400, detail=f"예상치 못한 로그 형식: {detail}")
+
+            id_str = detail[len("archived_ids="):]
+            if not id_str.strip():
+                return {"restored": 0, "message": "복원할 ID가 없습니다."}
+
+            try:
+                target_ids = [int(x.strip()) for x in id_str.split(',') if x.strip().isdigit()]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="ID 파싱 오류")
+
+            if not target_ids:
+                return {"restored": 0, "message": "복원할 ID가 없습니다."}
+
+            cur.execute(
+                "UPDATE announcements SET is_active = true WHERE announcement_id = ANY(%s)",
+                (target_ids,)
+            )
+            restored = cur.rowcount
+            conn.commit()
+
+            _log_system(
+                "ongoing_archive_rollback",
+                "archive",
+                f"rollback 완료: {restored}건 (log_id={log_id})",
+                "success",
+                count=restored
+            )
+
+        return {"restored": restored, "ids": target_ids[:50], "message": f"{restored}건 복원 완료"}
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

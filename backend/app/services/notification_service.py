@@ -644,7 +644,7 @@ class NotificationService:
             print(f"  Kakao message error: {e}")
             return False
 
-    def _log_notification(self, recipient: str, company_name: str, channel: str, status: str):
+    def _log_notification(self, recipient: str, company_name: str, channel: str, status: str, announcement_id=None):
         """알림 발송 이력 저장 (DB의 기존 컬럼 + 추가된 컬럼 모두 사용)"""
         try:
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
@@ -655,6 +655,7 @@ class NotificationService:
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS recipient TEXT",
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS company_name TEXT",
                 "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS channel TEXT",
+                "ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS announcement_id INTEGER",
                 # 기존 스키마의 business_number/status 컬럼이 너무 짧아 저장 실패 → 확장
                 "ALTER TABLE notification_logs ALTER COLUMN business_number TYPE VARCHAR(50)",
                 "ALTER TABLE notification_logs ALTER COLUMN notification_type TYPE VARCHAR(30)",
@@ -664,13 +665,52 @@ class NotificationService:
                 except Exception: pass
             cursor.execute(
                 """INSERT INTO notification_logs
-                   (business_number, notification_type, recipient, company_name, channel, status)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (recipient[:50] if recipient else "", channel, recipient, company_name, channel, status[:200])
+                   (business_number, notification_type, recipient, company_name, channel, status, announcement_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (recipient[:50] if recipient else "", channel, recipient, company_name, channel, status[:200], announcement_id)
             )
             conn.close()
         except Exception as e:
             print(f"  Log error: {e}")
+
+    def _get_sent_info(self, business_number: str) -> dict:
+        """최근 90일 발송 이력 반환: {announcement_id: last_sent_date}"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT announcement_id, MAX(sent_at)::date AS last_sent
+                FROM notification_logs
+                WHERE business_number = %s
+                  AND announcement_id IS NOT NULL
+                  AND status = 'sent'
+                  AND sent_at >= NOW() - INTERVAL '90 days'
+                GROUP BY announcement_id
+            """, (business_number,))
+            rows = cur.fetchall()
+            conn.close()
+            return {r['announcement_id']: r['last_sent'] for r in rows}
+        except Exception as e:
+            print(f"  [sent_info] error: {e}")
+            return {}
+
+    def _log_sent_announcements(self, business_number: str, matches: list, channel: str):
+        """발송 성공한 공고별 이력 기록 (중복 방지용)"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = True
+            cur = conn.cursor()
+            for m in matches:
+                aid = m.get('announcement_id')
+                if aid:
+                    cur.execute("""
+                        INSERT INTO notification_logs
+                        (business_number, notification_type, recipient, channel, status, announcement_id)
+                        VALUES (%s, %s, %s, %s, 'sent', %s)
+                    """, (business_number[:50], channel, business_number[:50], channel, aid))
+            conn.close()
+        except Exception as e:
+            print(f"  [log_sent] error: {e}")
 
     async def generate_daily_digest(self):
         """데일리 다이제스트 생성 + 이메일 발송 — 모든 단계 격리"""
@@ -726,6 +766,32 @@ class NotificationService:
                 # 점수 높은 순 상위 10개만 발송
                 matches = sorted(matches, key=lambda x: x['score'], reverse=True)[:10]
 
+                # ── 중복 발송 방지: 이미 보낸 공고는 D-7 임박이 아니면 제외 ──
+                _bn_check = (user.get('business_number') or '') if isinstance(user, dict) else ''
+                if _bn_check:
+                    try:
+                        _sent_info = self._get_sent_info(_bn_check)
+                        if _sent_info:
+                            _today = datetime.date.today()
+                            _filtered = []
+                            for _m in matches:
+                                _aid = _m.get('announcement_id')
+                                if not _aid or _aid not in _sent_info:
+                                    _filtered.append(_m)  # 처음 발송
+                                else:
+                                    _ddl = _m.get('deadline_date', '')
+                                    try:
+                                        _ddl_date = datetime.date.fromisoformat(_ddl) if _ddl else None
+                                        _days_left = (_ddl_date - _today).days if _ddl_date else 999
+                                        _days_since = (_today - _sent_info[_aid]).days
+                                        if _days_left <= 7 and _days_since >= 7:
+                                            _filtered.append(_m)  # D-7 임박 재발송
+                                    except Exception:
+                                        _filtered.append(_m)  # 날짜 파싱 실패 → 안전하게 포함
+                            matches = _filtered
+                    except Exception as _de:
+                        print(f"  [digest] dedup check error: {_de}")
+
                 if matches:
                     user_dict = dict(user)
                     company_name = user_dict.get('company_name') or '회원'
@@ -745,6 +811,8 @@ class NotificationService:
                         try:
                             u_type = user_dict.get('user_type') or 'business'
                             entry["email_sent"] = self.send_email(email, company_name, matches, user_type=u_type)
+                            if entry["email_sent"] and bn:
+                                self._log_sent_announcements(bn, matches, "email")
                         except Exception as e:
                             print(f"  [digest] email send error: {e}")
 

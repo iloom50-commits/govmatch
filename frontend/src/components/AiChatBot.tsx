@@ -31,12 +31,13 @@ function formatSupportAmount(raw: string | number | undefined | null): string {
 
 // FAB 버튼 + 라벨 (PRO 도구 항상 명시)
 function FabWithBubble({ label, onClick, botPhase, isPro }: { label: string; onClick: () => void; botPhase: string; isPro?: boolean }) {
+  const fabLabel = isPro ? "전문상담툴" : "정책자금 상담";
   return (
     <div className="fixed bottom-6 right-6 z-40 flex items-end gap-3">
       {/* PRO: 말풍선 — 버튼 왼쪽에 꼬리 달린 형태 */}
       {isPro && (
         <div className="relative hidden sm:block bg-white border border-violet-200 rounded-xl shadow-lg px-3 py-2">
-          <span className="text-[11px] font-bold text-violet-700 whitespace-nowrap">정책자금상담</span>
+          <span className="text-[11px] font-bold text-violet-700 whitespace-nowrap">{fabLabel}</span>
           {/* 오른쪽 꼬리 */}
           <div
             className="absolute right-[-6px] top-1/2 w-3 h-3 bg-white border-r border-t border-violet-200"
@@ -45,10 +46,10 @@ function FabWithBubble({ label, onClick, botPhase, isPro }: { label: string; onC
         </div>
       )}
       <div className="flex flex-col items-end gap-2">
-        {/* 일반: 기존 pill 라벨 위에 배치 */}
+        {/* 일반: pill 라벨 위에 배치 */}
         {!isPro && (
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
-            <span className="text-[11px] font-bold text-violet-700">AI 지원사업 상담</span>
+            <span className="text-[11px] font-bold text-violet-700">{fabLabel}</span>
           </div>
         )}
         {/* 버튼 */}
@@ -56,8 +57,8 @@ function FabWithBubble({ label, onClick, botPhase, isPro }: { label: string; onC
           onClick={onClick}
           className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
           style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-          title={label}
-          aria-label="AI 지원사업 상담"
+          title={fabLabel}
+          aria-label={fabLabel}
         >
           <span className="text-2xl animate-ai-pulse">✨</span>
         </button>
@@ -1183,7 +1184,7 @@ ${convHtml}
 
         {/* 플로팅 AI 상담 버튼 */}
         <FabWithBubble
-          label="AI 지원사업 상담"
+          label="정책자금 상담"
           onClick={() => window.dispatchEvent(new CustomEvent("request-fund-chat"))}
           botPhase={botPhase}
           isPro={!!isPro}
@@ -1213,7 +1214,7 @@ ${convHtml}
       // 비회원: 로그인 유도 — 중앙 모달 (로그인 모달과 동일 위치)
       return (
         <>
-          <FabWithBubble label="AI 지원사업 상담" onClick={() => {}} botPhase={botPhase} />
+          <FabWithBubble label="정책자금 상담" onClick={() => {}} botPhase={botPhase} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={handleClose} />
             <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">

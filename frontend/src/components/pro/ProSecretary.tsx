@@ -496,12 +496,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
           });
           setTyping(false);
           setTypingText("");
+          if (done) setFlowState("done");
         }
       }, speed);
-
-      if (done && data.profile) {
-        setFlowState("matching");
-      }
     } catch {
       toast("서버 연결에 실패했습니다.", "error");
       setLoading(false);

@@ -1523,7 +1523,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               {activeView === "announce_search" && <AnnounceSearchPanel headers={headers} toast={toast} dark={dark} t={t} onStartConsult={(ann) => {
                 // 공고 선택 → 상담 시작
                 setActiveView("chat");
-                setClientCategory("corporate");
+                setClientCategory(prev => prev || "corporate");
                 setFlowState("analysis");
                 setActiveAnnouncementId(ann.id);
                 setSystemContext(`[전문가 상담 모드] 특정 공고 상담\n공고명: ${ann.title}\n공고ID: ${ann.id}\n\n이 공고의 분석 데이터를 바탕으로 고객 자격요건을 검토합니다.`);

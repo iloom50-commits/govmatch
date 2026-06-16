@@ -223,6 +223,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   // 모바일
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [isLg, setIsLg] = useState(false);
+  useEffect(() => {
+    const check = () => setIsLg(window.innerWidth >= 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // 최소화 상태
   const [minimized, setMinimized] = useState(false);
@@ -870,7 +877,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
       {/* ─── 3패널 그리드 ─── */}
       <div className="grid overflow-hidden"
-           style={{ flex: '1 1 0%', minHeight: 0, gridTemplateRows: '1fr', gridTemplateColumns: showRightPanel ? '220px 1fr 280px' : '220px 1fr' }}>
+           style={{ flex: '1 1 0%', minHeight: 0, gridTemplateRows: '1fr', gridTemplateColumns: isLg ? (showRightPanel ? '220px 1fr 280px' : '220px 1fr') : '1fr' }}>
 
         {/* ═══ 좌측 네비 ═══ */}
         <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/40 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${t.leftNav}`}>

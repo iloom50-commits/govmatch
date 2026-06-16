@@ -820,9 +820,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
   }
 
   return (
-    <div className={`fixed inset-0 z-[60] flex flex-col transition-colors duration-300 ${t.root}`}>
+    <div className={`fixed inset-0 z-[60] transition-colors duration-300 ${t.root}`}
+         style={{ display: 'flex', flexDirection: 'column' }}>
       {/* ─── 헤더 ─── */}
-      <header className={`flex items-center justify-between px-4 h-12 flex-shrink-0 ${t.header} ${dark ? "text-slate-200" : "text-white"}`}>
+      <header className={`flex items-center justify-between px-4 ${t.header} ${dark ? "text-slate-200" : "text-white"}`}
+              style={{ height: '3rem', flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <button onClick={() => setLeftOpen(!leftOpen)} className="lg:hidden p-1.5 hover:bg-white/10 rounded-lg transition-colors">
             {Icons.menu}
@@ -865,7 +867,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
       </header>
 
       {/* ─── 3패널 그리드 ─── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[220px_1fr_280px] overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_280px] overflow-hidden"
+           style={{ flex: '1 1 0%', minHeight: 0, gridTemplateRows: '1fr' }}>
 
         {/* ═══ 좌측 네비 ═══ */}
         <nav className={`${leftOpen ? "fixed inset-0 z-50 bg-black/40 lg:relative lg:bg-transparent" : "hidden lg:flex"} lg:flex flex-col overflow-y-auto ${t.leftNav}`}>
@@ -1625,6 +1628,19 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* 아이들 상태 안내 — 고객 미선택 시 */}
+          {!clientCategory && messages.length === 0 && (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+              <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${dark ? "bg-violet-500/10" : "bg-violet-50"}`}>
+                <svg className={`w-5 h-5 ${dark ? "text-violet-400" : "text-violet-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.98 14.98 0 01-5.96-5.96m0 0a14.98 14.98 0 00-7.38 6.16" />
+                </svg>
+              </div>
+              <p className={`text-[12px] font-semibold mb-1.5 ${dark ? "text-slate-300" : "text-slate-600"}`}>상담 시작하기</p>
+              <p className={`text-[11px] leading-relaxed ${t.muted}`}>좌측에서 고객을 선택하거나<br />새 고객 상담을 시작하세요</p>
             </div>
           )}
 

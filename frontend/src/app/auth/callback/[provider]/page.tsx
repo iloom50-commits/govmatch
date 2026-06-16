@@ -79,8 +79,10 @@ function SocialCallbackInner() {
             localStorage.setItem("needs_onboarding", "true");
           }
 
-          // 메인 페이지로 리다이렉트
-          window.location.href = "/";
+          // 출발지 페이지로 리다이렉트 (없으면 메인)
+          const redirectTo = sessionStorage.getItem("social_redirect") || "/";
+          sessionStorage.removeItem("social_redirect");
+          window.location.href = redirectTo;
         } else {
           setStatus("error");
           setErrorMsg(data.detail || "로그인에 실패했습니다.");

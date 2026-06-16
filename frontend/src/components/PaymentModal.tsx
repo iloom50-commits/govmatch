@@ -15,9 +15,11 @@ interface PaymentModalProps {
   userType?: string | null;
   onSuccess: (token: string, plan: any) => void;
   onClose: () => void;
+  /** "lite": FREE+LITE만 표시 (govmatch.kr 일반사용자용) | "pro": PRO만 표시 (/pro 전문가용) */
+  mode?: "lite" | "pro";
 }
 
-export default function PaymentModal({ planStatus, userType, onSuccess, onClose }: PaymentModalProps) {
+export default function PaymentModal({ planStatus, userType, onSuccess, onClose, mode }: PaymentModalProps) {
   const { toast } = useToast();
   useModalBack(true, onClose);
   useEffect(() => {
@@ -260,39 +262,45 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
 
           {/* Header */}
           <div className="text-center mb-5">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">플랜 선택</h2>
-            <p className="text-slate-400 text-[12px] mt-1">내게 맞는 플랜을 선택하세요</p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              {mode === "pro" ? "PRO 플랜" : "플랜 선택"}
+            </h2>
+            <p className="text-slate-400 text-[12px] mt-1">
+              {mode === "pro" ? "전문상담툴 전용 플랜입니다" : "내게 맞는 플랜을 선택하세요"}
+            </p>
           </div>
 
-          {/* 개인/사업자 탭 */}
-          <div className="flex justify-center gap-1 mb-5">
-            <button
-              onClick={() => setTab("individual")}
-              className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
-                tab === "individual"
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-              }`}
-            >
-              개인
-            </button>
-            <button
-              onClick={() => setTab("business")}
-              className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
-                tab === "business"
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-              }`}
-            >
-              사업자
-            </button>
-          </div>
+          {/* 개인/사업자 탭 — pro 모드에서는 숨김 (PRO는 단일 가격) */}
+          {mode !== "pro" && (
+            <div className="flex justify-center gap-1 mb-5">
+              <button
+                onClick={() => setTab("individual")}
+                className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
+                  tab === "individual"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                개인
+              </button>
+              <button
+                onClick={() => setTab("business")}
+                className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
+                  tab === "business"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                사업자
+              </button>
+            </div>
+          )}
 
-          {/* 3열 카드 — 수평/수직 정렬 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 items-stretch">
+          {/* 플랜 카드 */}
+          <div className={`grid grid-cols-1 gap-3 mb-5 items-stretch ${mode === "pro" ? "max-w-sm mx-auto" : "sm:grid-cols-2"}`}>
 
-            {/* FREE */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col ${currentPlan === "free" ? "border-slate-300 bg-slate-50" : "border-slate-200"}`}>
+            {/* FREE — lite 모드에서만 표시 */}
+            {mode !== "pro" && <div className={`rounded-xl border-2 p-4 flex flex-col ${currentPlan === "free" ? "border-slate-300 bg-slate-50" : "border-slate-200"}`}>
               {/* 헤더 — 고정 높이 */}
               <div className="h-[90px] mb-4">
                 <h3 className="text-[15px] font-bold text-slate-700">Free</h3>
@@ -328,10 +336,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               </ul>
 
               <div className="h-[24px]" />
-            </div>
+            </div>}
 
-            {/* LITE */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isLite ? "border-indigo-400 bg-indigo-50/30" : "border-indigo-300 bg-white"}`}>
+            {/* LITE — lite 모드에서만 표시 */}
+            {mode !== "pro" && <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isLite ? "border-indigo-400 bg-indigo-50/30" : "border-indigo-300 bg-white"}`}>
               {!isPro && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full">추천</div>
               )}
@@ -378,10 +386,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               {!isLite && !isPro ? (
                 <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
-            </div>
+            </div>}
 
-            {/* PRO */}
-            <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-200 bg-white"}`}>
+            {/* PRO — pro 모드에서만 표시 */}
+            {mode !== "lite" && <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-200 bg-white"}`}>
               {isPro && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-violet-600 text-white text-[10px] font-bold rounded-full">현재 플랜</div>
               )}
@@ -433,7 +441,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose 
               {!isPro ? (
                 <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
               ) : <div className="h-[24px]" />}
-            </div>
+            </div>}
           </div>
 
           {/* 친구 추천 */}

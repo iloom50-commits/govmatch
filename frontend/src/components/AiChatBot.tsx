@@ -29,36 +29,21 @@ function formatSupportAmount(raw: string | number | undefined | null): string {
   return `${만.toLocaleString()}만원`;
 }
 
-// FAB 버튼 + 라벨 (PRO 도구 항상 명시)
-function FabWithBubble({ label, onClick, botPhase, isPro }: { label: string; onClick: () => void; botPhase: string; isPro?: boolean }) {
-  const fabLabel = isPro ? "전문상담툴" : "정책자금 상담";
+// FAB 버튼 + 라벨
+function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: () => void; botPhase: string }) {
   return (
     <div className="fixed bottom-6 right-6 z-40 flex items-end gap-3">
-      {/* PRO: 말풍선 — 버튼 왼쪽에 꼬리 달린 형태 */}
-      {isPro && (
-        <div className="relative hidden sm:block bg-white border border-violet-200 rounded-xl shadow-lg px-3 py-2">
-          <span className="text-[11px] font-bold text-violet-700 whitespace-nowrap">{fabLabel}</span>
-          {/* 오른쪽 꼬리 */}
-          <div
-            className="absolute right-[-6px] top-1/2 w-3 h-3 bg-white border-r border-t border-violet-200"
-            style={{ transform: "translateY(-50%) rotate(45deg)" }}
-          />
-        </div>
-      )}
       <div className="flex flex-col items-end gap-2">
-        {/* 일반: pill 라벨 위에 배치 */}
-        {!isPro && (
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
-            <span className="text-[11px] font-bold text-violet-700">{fabLabel}</span>
-          </div>
-        )}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
+          <span className="text-[11px] font-bold text-violet-700">{label}</span>
+        </div>
         {/* 버튼 */}
         <button
           onClick={onClick}
           className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
           style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
-          title={fabLabel}
-          aria-label={fabLabel}
+          title={label}
+          aria-label={label}
         >
           <span className="text-2xl animate-ai-pulse">✨</span>
         </button>
@@ -179,8 +164,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
     }
   }, [messages.length, isDone]);
 
-  // PRO 모드는 ProSecretary가 자체 popstate 핸들러를 가짐 — 중복 방지
-  useModalBack(open && !isPro, handleBackPress);
+  useModalBack(open, handleBackPress);
   const [mode, setMode] = useState<ChatMode>("select");
   // LITE 자금 전문 모드 (기업/개인) — currentTab 우선, 없으면 user_type 기반
   const [fundMode, setFundMode] = useState<"business_fund" | "individual_fund">(
@@ -455,7 +439,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         const errData = await res.json().catch(() => ({}));
         const detail = errData.detail || "";
         if (detail.startsWith("SESSION_MSG_LIMIT:")) {
-          toast(`이 상담의 메시지 한도(${CONSULT_MSG_LIMIT}개)에 도달했습니다. 새 상담을 시작하거나 PRO로 업그레이드하세요.`, "info");
+          toast(`이 상담의 메시지 한도(${CONSULT_MSG_LIMIT}개)에 도달했습니다. 새 상담을 시작해주세요.`, "info");
         } else {
           toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
         }
@@ -463,7 +447,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         return;
       }
       if (res.status === 403) {
-        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
+        toast("현재 플랜에서는 이용할 수 없습니다.", "info");
         setOpen(false);
         setLoading(false);
         return;
@@ -528,7 +512,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         return;
       }
       if (res.status === 403) {
-        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
+        toast("현재 플랜에서는 이용할 수 없습니다.", "info");
         setLoading(false);
         return;
       }
@@ -1187,7 +1171,6 @@ ${convHtml}
           label="정책자금 상담"
           onClick={() => window.dispatchEvent(new CustomEvent("request-fund-chat"))}
           botPhase={botPhase}
-          isPro={!!isPro}
         />
       </>
     );
@@ -1201,13 +1184,7 @@ ${convHtml}
   const headerTitle = mode === "consultant" ? "고객사별 상담/관리 AI에이전트" : mode === "free" ? "자금 상담 AI" : "AI 서비스";
   const headerSub = mode === "consultant" ? "고객사 조건 입력 → 맞춤 매칭" : mode === "free" ? (fundMode === "individual_fund" ? "👤 개인 자금 (주거·서민금융·학자금)" : "🏢 기업 자금 (정책자금·보증·대출)") : "모드를 선택하세요";
 
-  // PRO → ProSecretary 직행
-  if (open && isPro) {
-    const ProSecretary = require("@/components/pro/ProSecretary").default;
-    return <ProSecretary onClose={handleClose} planStatus={planStatus} onUpgrade={onUpgrade} userType={userType} />;
-  }
-
-  // 비PRO가 열면 자금 상담 모드로 자동 진입
+  // 자금 상담 모드로 자동 진입
   if (open && mode === "select") {
     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
     if (!hasToken) {
@@ -1334,7 +1311,7 @@ ${convHtml}
                   onClick={() => {
                     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
                     if ((item as any).needsLogin && !hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
-                    if (item.needsPro && !isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
+                    if (item.needsPro) { window.location.href = "/pro"; return; }
                     if (item.id === "free") startMode("free");
                     else if (item.id === "consultant") { setMode("consultant"); return; }
                     else if (item.id === "crm") {
@@ -1350,7 +1327,7 @@ ${convHtml}
                     <p className="text-[13px] font-bold text-slate-700 group-hover:text-violet-700 transition-colors">{item.label}</p>
                     <p className="text-[10px] text-slate-400">{item.desc}</p>
                   </div>
-                  {item.needsPro && !isPro && (
+                  {item.needsPro && (
                     <span className="ml-auto px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[8px] font-bold rounded flex-shrink-0 mt-1">PRO</span>
                   )}
                 </button>
@@ -1377,27 +1354,12 @@ ${convHtml}
                     <p className="text-[12px] font-bold text-indigo-700">💬 자금 상담 AI</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">정책자금·보증·대출 Q&A</p>
                   </button>
-                  <button onClick={() => {
-                    if (!isPro) { toast("PRO 플랜에서 이용 가능합니다.", "info"); onUpgrade?.(); return; }
-                    setMode("consultant");
-                  }}
-                    className="p-3 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-all">
+                  <a href="/pro"
+                    className="p-3 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-all block">
                     <p className="text-[12px] font-bold text-violet-700">📋 전문가 상담 <span className="text-[9px] bg-violet-600 text-white px-1 py-0.5 rounded">PRO</span></p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">고객사 맞춤 상담·분석</p>
-                  </button>
+                    <p className="text-[10px] text-slate-400 mt-0.5">govmatch.kr/pro</p>
+                  </a>
                 </div>
-
-                {!isPro && (
-                  <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <p className="text-[11px] text-slate-500">
-                      전문가 상담·공고분석·CRM은 <span className="font-bold text-violet-600">PRO</span> 플랜에서 이용 가능합니다.
-                    </p>
-                    <button onClick={() => { setOpen(false); onUpgrade?.(); }}
-                      className="mt-2 px-4 py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-bold hover:bg-violet-700 transition-all">
-                      PRO 플랜 알아보기
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -2039,7 +2001,7 @@ ${convHtml}
                   {isAtMsgLimit && mode !== "free" ? (
                     <div className="text-center py-2 px-3 bg-rose-50 border border-rose-200 rounded-xl">
                       <p className="text-rose-600 text-[11px] font-bold">메시지 한도({CONSULT_MSG_LIMIT}회)에 도달했습니다.</p>
-                      <p className="text-rose-500 text-[10px] mt-0.5">새 상담을 시작하거나 PRO로 업그레이드하세요.</p>
+                      <p className="text-rose-500 text-[10px] mt-0.5">새 상담을 시작해주세요.</p>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">

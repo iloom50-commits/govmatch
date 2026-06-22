@@ -1048,7 +1048,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 />
               ) : !consultType && clientCategory && messages.length === 0 ? (
                 /* ③ 상담 목적 선택 화면 — 고객 확인 후 */
-                <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
+                <div className="flex-1 flex flex-col items-center px-6 overflow-y-auto pt-12">
                   <div className="max-w-2xl w-full">
                     {/* 고객 정보 카드 */}
                     <div className={`flex items-center justify-between p-4 rounded-2xl border mb-7 ${dark ? `${t.card} border-white/[0.08]` : "bg-slate-50 border-slate-200"}`}>
@@ -1570,9 +1570,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               <div className={`absolute left-[11px] top-3 bottom-3 w-[2px] ${dark ? "bg-white/[0.06]" : "bg-slate-200"}`} />
               <div className="space-y-0.5 relative">
                 {flowSteps.map((step, i) => {
-                  const currentIdx = flowSteps.findIndex(s => s.key === flowState);
+                  const effectiveFlowState = (showProfileForm && flowState === "idle") ? "info_collect" : flowState;
+                  const currentIdx = flowSteps.findIndex(s => s.key === effectiveFlowState);
                   const isDone = currentIdx > i;
-                  const isActive = flowState === step.key;
+                  const isActive = effectiveFlowState === step.key;
                   return (
                     <div key={step.key} className={`flex items-center gap-3 py-2 px-2 rounded-lg text-[12px] transition-all ${
                       isActive ? t.flowActive : ""
@@ -1613,7 +1614,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
               <div className={`space-y-1 text-[11px]`}>
                 {Object.entries({
                   company_name: "고객명",
-                  industry_code: "업종",
+                  industry_name: "업종",
+                  establishment_date: "설립",
                   address_city: "지역",
                   revenue_bracket: "매출",
                   employee_count_bracket: "직원",
@@ -1627,10 +1629,11 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 }).map(([k, label]) => {
                   const v = collectedProfile[k];
                   if (!v) return null;
+                  const display = k === "establishment_date" ? String(v).slice(0, 4) : String(v);
                   return (
                     <div key={k} className="flex gap-1.5">
                       <span className={`flex-shrink-0 ${t.muted}`}>{label}</span>
-                      <span className={`truncate ${dark ? "text-slate-300" : "text-slate-700"}`}>{String(v)}</span>
+                      <span className={`truncate ${dark ? "text-slate-300" : "text-slate-700"}`}>{display}</span>
                     </div>
                   );
                 })}
@@ -2389,7 +2392,9 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
                 </div>
               )}
               {!result && (
-                <p className={`text-[11px] ${t.muted}`}>위 매출 규모와 직원수를 선택하면 자동 판별됩니다.</p>
+                <p className={`text-[11px] ${t.muted}`}>
+                  {!selCat ? "업종 구분을 선택하면 자동 판별됩니다." : "위 매출 규모와 직원수를 선택하면 자동 판별됩니다."}
+                </p>
               )}
             </div>
           );

@@ -159,6 +159,17 @@ _BUSINESS_ONLY_SOURCES = {
     "창조경제혁신센터",   # admin-manual:창조경제혁신센터 형태 대응
 }
 
+# 출처 기반 강제 규칙 — 개인(복지) 전용 출처. 출처 자체가 대상 확정 → AI 판단 불필요.
+_INDIVIDUAL_ONLY_SOURCES = {
+    "gov24-individual-api",   # 정부24 개인 복지서비스
+    "local-welfare-api",      # 지자체 복지서비스
+    "national-welfare-api",   # 중앙부처 복지서비스
+    "bokjiro",                # 복지로 (scraper:bokjiro_central / _local)
+}
+
+# 출처로 대상이 확정되는 모든 권위 출처 — 재분류 대상에서 제외 (Gemini가 뒤집지 못하게)
+_AUTHORITATIVE_SOURCES = _BUSINESS_ONLY_SOURCES | _INDIVIDUAL_ONLY_SOURCES
+
 
 def _apply_source_override(items: list[dict]) -> tuple[dict[int, str], list[dict]]:
     """출처 기반 강제 분류. 나머지는 Gemini로 넘김.
@@ -168,49 +179,67 @@ def _apply_source_override(items: list[dict]) -> tuple[dict[int, str], list[dict
     remaining = []
     for it in items:
         src = (it.get("origin_source") or "").lower()
-        if any(s in src for s in _BUSINESS_ONLY_SOURCES):
+        # 개인 출처 우선 — 복지 출처가 business로 뒤집히는 것을 영구 차단
+        if any(s in src for s in _INDIVIDUAL_ONLY_SOURCES):
+            forced[it["id"]] = "individual"
+        elif any(s in src for s in _BUSINESS_ONLY_SOURCES):
             forced[it["id"]] = "business"
         else:
             remaining.append(it)
     return forced, remaining
 
 
-def _call_gemini_classify(items: list[dict]) -> dict[int, str]:
-    """Gemini에 배치 분류 요청. {id: type} dict 반환."""
+# Gemini 1회 호출당 항목 수 — gemini-2.5-flash는 thinking 토큰이 출력 한도를 소모하므로
+# 청크를 작게 + 토큰 한도를 넉넉히 둬야 응답 본문이 비지 않음
+_GEMINI_CHUNK = 10
+
+
+def _call_gemini_classify(items: list[dict]) -> dict[int, dict]:
+    """Gemini에 분류 요청. {id: {"type","confidence"}} dict 반환.
+
+    items를 _GEMINI_CHUNK 단위로 나눠 호출 — 대량 배치 시 응답이 잘려 JSON이
+    깨지는 것을 방지. 일부 청크 실패는 건너뛰고, 전체 실패 시에만 예외 전파
+    (상위 _classify_and_update의 키워드 폴백이 처리).
+    """
     import google.generativeai as genai
     import os
+    import re
 
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY 없음")
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
-    items_json = json.dumps(
-        [{"id": it["id"], "title": it["title"], "category": it["category"] or "", "summary": (it["summary"] or "")[:200]}
-         for it in items],
-        ensure_ascii=False,
-    )
+    out: dict[int, dict] = {}
+    for start in range(0, len(items), _GEMINI_CHUNK):
+        chunk = items[start:start + _GEMINI_CHUNK]
+        items_json = json.dumps(
+            [{"id": it["id"], "title": it["title"], "category": it["category"] or "", "summary": (it["summary"] or "")[:200]}
+             for it in chunk],
+            ensure_ascii=False,
+        )
+        prompt = _CLASSIFY_PROMPT.replace("{items_json}", items_json)
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.1, "max_output_tokens": 8192},
+            )
+            raw = (response.text or "").strip()
+            if "```" in raw:
+                m = re.search(r"```(?:json)?\s*([\s\S]+?)```", raw)
+                raw = m.group(1).strip() if m else raw
+            for item in json.loads(raw):
+                out[item["id"]] = {"type": item["type"], "confidence": item.get("confidence", 80)}
+        except Exception as e:
+            logger.warning(f"[classifier] 청크 분류 실패(start={start}, n={len(chunk)}): {e}")
+            continue
 
-    prompt = _CLASSIFY_PROMPT.replace("{items_json}", items_json)
-
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.1, "max_output_tokens": 2048},
-    )
-
-    raw = response.text.strip()
-    # JSON 블록 추출 (마크다운 코드블록 감싸진 경우 대응)
-    if "```" in raw:
-        import re
-        m = re.search(r"```(?:json)?\s*([\s\S]+?)```", raw)
-        raw = m.group(1).strip() if m else raw
-
-    result_list = json.loads(raw)
-    # {id: {"type": ..., "confidence": ...}} 형태로 반환
-    return {item["id"]: {"type": item["type"], "confidence": item.get("confidence", 80)}
-            for item in result_list}
+    if not out and items:
+        # 전체 실패 → 상위 키워드 폴백이 처리하도록 예외 전파
+        raise RuntimeError("Gemini 분류 전체 실패 (모든 청크 파싱 불가)")
+    return out
 
 
 def ai_classify_pending(conn, batch_size: int = 20) -> dict:
@@ -222,9 +251,11 @@ def ai_classify_pending(conn, batch_size: int = 20) -> dict:
     """
     cur = conn.cursor()
 
-    # 비화이트리스트 출처 패턴 (이 출처는 Gemini로 재분류)
+    # 비화이트리스트 출처 패턴 (출처로 대상 확정되는 권위 출처는 재분류 제외)
+    # 주의: cur.execute에 params를 넘기므로 ILIKE 리터럴 '%'는 '%%'로 이스케이프 필수
+    #       (그렇지 않으면 psycopg2가 '%s' 등을 파라미터로 오인 → IndexError)
     non_whitelist_condition = " AND ".join(
-        f"origin_source NOT ILIKE '%{s}%'" for s in _BUSINESS_ONLY_SOURCES
+        f"origin_source NOT ILIKE '%%{s}%%'" for s in _AUTHORITATIVE_SOURCES
     )
 
     cur.execute(f"""
@@ -335,7 +366,7 @@ def _classify_and_update(conn, cur, items: list[dict], label: Optional[str]) -> 
             new_type = forced_map[aid]
         elif aid in gemini_map:
             result = gemini_map[aid]
-            raw_type = result.get("type", "business")
+            raw_type = result.get("type", "both")
             confidence = result.get("confidence", 80)
             # 신뢰도 70 미만 → 양쪽 탭에 노출되는 "both"로 안전 처리
             if confidence < 70:
@@ -344,10 +375,11 @@ def _classify_and_update(conn, cur, items: list[dict], label: Optional[str]) -> 
             else:
                 new_type = raw_type
         else:
-            new_type = "business"
+            # Gemini 응답에 없는 항목 — 기업으로 추락시키지 않고 both(양쪽 노출)로 안전 처리
+            new_type = "both"
 
         if new_type not in valid_types:
-            new_type = "business"
+            new_type = "both"
 
         try:
             cur.execute(

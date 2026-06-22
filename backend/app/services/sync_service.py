@@ -304,7 +304,8 @@ class SyncService:
                 if isinstance(industry_codes, list):
                     industry_codes = ",".join(str(c) for c in industry_codes)
 
-                target_type = item.get('target_type', 'business')
+                # 미지정 시 'business'로 날조하지 않음 — NULL로 두고 분류기가 처리
+                target_type = item.get('target_type')
 
                 # 제목 정규화 기반 중복 방지
                 norm_title = _normalize_title(item['title'])

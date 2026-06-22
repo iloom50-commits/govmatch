@@ -34,16 +34,32 @@ _PRO_ANNOUNCE_SCHEMA = {
             "type": "object",
             "properties": {
                 "selection_rate_estimate": {"type": "string"},
-                "key_evaluation_points": {"type": "array", "items": {"type": "string"}},
+                # 프론트(ProSecretary)가 읽는 형태와 일치: {criterion, weight, focus}
+                "evaluation_weights": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "criterion": {"type": "string"},
+                            "weight": {"type": "number"},
+                            "focus": {"type": "string"},
+                        },
+                        "required": ["criterion", "weight"],
+                    },
+                },
                 "common_pitfalls": {"type": "array", "items": {"type": "string"}},
                 "application_tips": {"type": "array", "items": {"type": "string"}},
                 "similar_programs": {"type": "array", "items": {"type": "integer"}},
                 "document_checklist": {"type": "array", "items": {"type": "string"}},
             },
+            # required 없으면 모델이 필드를 통째로 누락 → 전문가 패널이 비어버림
+            "required": ["selection_rate_estimate", "evaluation_weights", "common_pitfalls", "application_tips"],
         },
         "citations": {"type": "array", "items": {"type": "string"}},
         "choices": {"type": "array", "items": {"type": "string"}},
     },
+    # 최상위 required — 없으면 모델이 message/expert_insights를 생략하고 verdict만 반환
+    "required": ["message", "verdict_for_client", "expert_insights"],
 }
 
 # 1차 턴(공고 클릭 직후) 전용 Schema — 구조화된 공고 분석 + 간결 verdict

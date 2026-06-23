@@ -1168,7 +1168,7 @@ ${convHtml}
 
         {/* 플로팅 AI 상담 버튼 */}
         <FabWithBubble
-          label="자금 상담 AI"
+          label="자금상담AI"
           onClick={() => window.dispatchEvent(new CustomEvent("request-fund-chat"))}
           botPhase={botPhase}
         />
@@ -1191,7 +1191,7 @@ ${convHtml}
       // 비회원: 로그인 유도 — 중앙 모달 (로그인 모달과 동일 위치)
       return (
         <>
-          <FabWithBubble label="자금 상담 AI" onClick={() => {}} botPhase={botPhase} />
+          <FabWithBubble label="자금상담AI" onClick={() => {}} botPhase={botPhase} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={handleClose} />
             <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import HideOnPro from "@/components/HideOnPro";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -276,7 +277,9 @@ export default function RootLayout({
 
         {/* ── SEO 정적 콘텐츠 (SSR) — 검색엔진 노출용
              비로그인: 서비스 소개 랜딩 섹션으로 노출
-             로그인: 아래 is-logged-in CSS로 완전 숨김 (크롤러는 항상 비로그인이라 SEO 영향 0) ── */}
+             로그인: 아래 is-logged-in CSS로 완전 숨김 (크롤러는 항상 비로그인이라 SEO 영향 0)
+             /pro(전문가 페이지)에서는 HideOnPro로 숨김 — 소비자 마케팅 미노출 ── */}
+        <HideOnPro>
         <section className="seo-intro w-full border-t border-slate-200/60 bg-white" aria-label="서비스 소개">
           <div className="max-w-4xl mx-auto px-4 py-10 text-slate-700">
 
@@ -369,6 +372,7 @@ export default function RootLayout({
 
           </div>
         </section>
+        </HideOnPro>
 
         <footer className="w-full border-t border-slate-200/60 bg-slate-50/80">
           <div className="max-w-5xl mx-auto px-4 py-5 text-[11px] text-slate-400 leading-relaxed">

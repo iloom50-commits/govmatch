@@ -120,6 +120,38 @@ def normalize_region_for_save(region) -> Optional[str]:
     return r  # 알 수 없는 값은 원본 유지
 
 
+# 장문명 우선 순서 — 부분 매칭 오류 방지 (긴 것 먼저)
+_REGION_EXTRACT_PATTERNS: list[tuple[str, str]] = [
+    *((k, v) for k, v in REGION_NORMALIZE.items()),  # 경상남도→경남, 전북특별자치도→전북 등
+    # 약칭 (단독 등장) — 모호한 "광주"는 제외
+    ("경남", "경남"), ("경북", "경북"),
+    ("전북", "전북"), ("전남", "전남"),
+    ("충북", "충북"), ("충남", "충남"),
+    ("강원", "강원"), ("제주", "제주"),
+    ("경기", "경기"), ("세종", "세종"),
+    ("서울", "서울"), ("인천", "인천"),
+    ("부산", "부산"), ("대구", "대구"),
+    ("대전", "대전"), ("울산", "울산"),
+    # 시/군명 (익산→전북, 창원→경남 등 _CITY_TO_SIDO 전체)
+    *((k, v) for k, v in _CITY_TO_SIDO.items() if len(k) >= 3),
+]
+
+
+def extract_region_from_text(text: str) -> Optional[str]:
+    """텍스트(제목·기관명)에서 지역명을 추출해 표준 단문명 반환.
+
+    긴 공식 명칭 우선 매핑 → 약칭 순서로 탐색.
+    "광주"는 경기 광주/광주광역시 구분 불가능하므로 단독 약칭 제외.
+    반환값이 없으면 None.
+    """
+    if not text:
+        return None
+    for keyword, normalized in _REGION_EXTRACT_PATTERNS:
+        if keyword in text:
+            return normalized
+    return None
+
+
 # ─── category 정규화 ────────────────────────────────────────────
 
 VALID_CATEGORIES = {

@@ -5,6 +5,7 @@ region = '전국' / NULL / '' 인 공고 중
 department 또는 title 에 특정 지역명이 포함된 경우 해당 지역으로 업데이트.
 """
 import os, sys
+sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(__file__))
 
 import psycopg2

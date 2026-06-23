@@ -21,6 +21,7 @@ from app.services.rule_engine import (
     normalize_region_for_save,
     normalize_category,
     infer_category_from_title,
+    extract_region_from_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,10 @@ class BaseScraper:
         raw_region = item.get("region") or None
         raw_category = item.get("category") or None
         region = normalize_region_for_save(raw_region)
+        # region이 전국/None이면 department→title 순으로 지역 추출 시도
+        if not region or region == "전국":
+            dept_text = item.get("department") or self.display_name or ""
+            region = extract_region_from_text(dept_text) or extract_region_from_text(title) or region
         category = normalize_category(raw_category)
         # category가 NULL이면 제목 기반으로 추론 (스크래퍼가 분류 못한 경우)
         if not category:

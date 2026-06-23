@@ -13,7 +13,7 @@ from app.services.public_api_service import gov_api_service, GovernmentAPIServic
 from app.services.admin_scraper import admin_scraper
 from app.services.ai_service import ai_service
 from app.config import DATABASE_URL
-from app.services.rule_engine import _normalize_region as _norm_reg
+from app.services.rule_engine import _normalize_region as _norm_reg, extract_region_from_text
 
 import re as _re
 
@@ -314,6 +314,13 @@ class SyncService:
                     region_val = '전국'
                 else:
                     region_val = _norm_reg(_raw_region) or '전국'
+                # 전국이면 기관명·제목에서 지역 추출 시도 (bizinfo '[경북]…' 등 공공API 케이스)
+                # — base.py(Tier1)와 동일 로직: 타지역 공고가 '전국'으로 전원 노출되는 누수 방지
+                if region_val == '전국':
+                    _dept = item.get('department') or ''
+                    region_val = (extract_region_from_text(_dept)
+                                  or extract_region_from_text(item.get('title') or '')
+                                  or '전국')
                 is_individual = target_type in ('individual', 'both') or item.get('origin_source', '') in ('gov24-individual-api', 'local-welfare-api', 'gov24-api')
 
                 if is_individual:

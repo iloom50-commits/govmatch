@@ -321,7 +321,7 @@ export default function RootLayout({
                 <ul className="text-[12px] text-slate-600 space-y-1.5">
                   <li>✓ 15,000건+ 공고 실시간 분석</li>
                   <li>✓ 조건 입력 후 30초 내 맞춤 매칭</li>
-                  <li>✓ AI 전문가 상담 (LITE·PRO)</li>
+                  <li>✓ AI 자금 상담 (LITE)</li>
                   <li>✓ 마감 임박 공고 자동 알림</li>
                   <li>✓ 무료로 시작 가능</li>
                 </ul>

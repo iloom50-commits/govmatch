@@ -227,9 +227,6 @@ export default function ProPageClient() {
             </form>
           )}
 
-          <p className="text-center text-xs text-gray-400">
-            <a href="/" className="hover:text-gray-600 transition-colors">govmatch.kr 일반 서비스 →</a>
-          </p>
         </div>
       </div>
     );

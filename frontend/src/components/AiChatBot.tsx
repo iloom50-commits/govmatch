@@ -1295,29 +1295,18 @@ ${convHtml}
             {/* 좌측 네비게이션 */}
             <nav className="w-[200px] lg:w-[220px] border-r border-slate-100 bg-gradient-to-b from-slate-50 to-white flex flex-col flex-shrink-0 overflow-y-auto overscroll-contain">
               <div className="p-4 pb-2">
-                <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">전문가 도구</p>
+                <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">AI 도구</p>
               </div>
               {[
-                { id: "free", icon: "💬", label: "자금 상담 AI", desc: "정책자금·보증·대출 Q&A", needsPro: false, needsLogin: true },
-                { id: "consultant", icon: "📋", label: "전문가 상담", desc: "고객사 맞춤 상담·분석", needsPro: true },
-                { id: "search", icon: "🔍", label: "공고 매칭/검색", desc: "조건별 공고 검색", needsPro: false },
-                { id: "analysis", icon: "📄", label: "공고 상세 분석", desc: "원문 AI 정밀 분석", needsPro: true },
-                { id: "crm", icon: "👥", label: "고객 관리", desc: "CRM·자료·이력", needsPro: true },
-                { id: "reports", icon: "📊", label: "보고서", desc: "컨설팅 보고서·PDF", needsPro: true },
-                { id: "email", icon: "📧", label: "이메일 발송", desc: "고객 일괄 발송", needsPro: true },
+                { id: "free", icon: "💬", label: "자금 상담 AI", desc: "정책자금·보증·대출 Q&A", needsLogin: true },
+                { id: "search", icon: "🔍", label: "공고 매칭/검색", desc: "조건별 공고 검색" },
               ].map(item => (
                 <button
                   key={item.id}
                   onClick={() => {
                     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
                     if ((item as any).needsLogin && !hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
-                    if (item.needsPro) { window.location.href = "/pro"; return; }
                     if (item.id === "free") startMode("free");
-                    else if (item.id === "consultant") { setMode("consultant"); return; }
-                    else if (item.id === "crm") {
-                      setOpen(false);
-                      window.dispatchEvent(new CustomEvent("open-pro-dashboard"));
-                    }
                     else toast(`${item.label} — 준비 중입니다.`, "info");
                   }}
                   className="w-full px-4 py-3 flex items-start gap-3 hover:bg-violet-50 transition-all text-left group"
@@ -1327,9 +1316,6 @@ ${convHtml}
                     <p className="text-[13px] font-bold text-slate-700 group-hover:text-violet-700 transition-colors">{item.label}</p>
                     <p className="text-[10px] text-slate-400">{item.desc}</p>
                   </div>
-                  {item.needsPro && (
-                    <span className="ml-auto px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[8px] font-bold rounded flex-shrink-0 mt-1">PRO</span>
-                  )}
                 </button>
               ))}
             </nav>
@@ -1344,21 +1330,16 @@ ${convHtml}
                 <p className="text-[13px] text-slate-500 leading-relaxed mb-6">
                   좌측 메뉴에서 원하시는 서비스를 선택하세요.
                 </p>
-                <div className="grid grid-cols-2 gap-3 text-left">
+                <div className="text-left">
                   <button onClick={() => {
                     const hasToken = typeof window !== "undefined" && !!localStorage.getItem("auth_token");
                     if (!hasToken) { toast("로그인이 필요합니다.", "info"); setOpen(false); return; }
                     startMode("free");
                   }}
-                    className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">
+                    className="w-full p-3 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">
                     <p className="text-[12px] font-bold text-indigo-700">💬 자금 상담 AI</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">정책자금·보증·대출 Q&A</p>
                   </button>
-                  <a href="/pro"
-                    className="p-3 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-all block">
-                    <p className="text-[12px] font-bold text-violet-700">📋 전문가 상담 <span className="text-[9px] bg-violet-600 text-white px-1 py-0.5 rounded">PRO</span></p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">govmatch.kr/pro</p>
-                  </a>
                 </div>
               </div>
             </div>

@@ -1614,24 +1614,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {isFree ? "LITE부터" : "사용 가능"}
               </span>
             </div>
-            {/* 자유AI + 컨설턴트 */}
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">지원사업 상담 AI</span>
-              <span className={`font-bold ${
-                (planStatus.ai_limit || 0) >= 999999 ? "text-violet-600" : "text-slate-400"
-              }`}>
-                {(planStatus.ai_limit || 0) >= 999999 ? "무제한" : "PRO 전용"}
-              </span>
-            </div>
-            {/* 고객사 관리 AI */}
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-medium">고객사 관리 AI</span>
-              <span className={`font-bold ${
-                ["pro", "biz"].includes(planStatus.plan) ? "text-violet-600" : "text-slate-400"
-              }`}>
-                {["pro", "biz"].includes(planStatus.plan) ? "사용 가능" : "PRO 전용"}
-              </span>
-            </div>
           </div>
           {!["pro", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button

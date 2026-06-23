@@ -696,37 +696,14 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                   <span className="text-2xl">💬</span>
                 </div>
                 <p className="text-[14px] font-bold text-slate-800">이 상담의 메시지 한도에 도달했어요</p>
-                <p className="text-[12px] text-slate-500">새 상담을 시작하거나, PRO로 업그레이드하면 한 상담에서 더 깊이 질문할 수 있어요.</p>
-                <div className="space-y-2 text-[12px]">
-                  <div className="p-3 bg-white rounded-xl border border-violet-100 text-left space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-violet-700">PRO</span>
-                      <span className="font-bold text-violet-600 text-[11px]">₩29,000/월</span>
-                    </div>
-                    <div className="space-y-0.5 text-[11px] text-slate-600">
-                      <p>· 메시지 수 <strong>무제한</strong></p>
-                      <p>· 전문가 1:1 매칭 상담</p>
-                      <p>· AI 신청서 자동작성 (준비 중)</p>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    setSessionMsgLimitReached(false);
-                    onUpgrade?.();
-                  }}
-                  className="w-full py-2.5 bg-violet-600 text-white rounded-xl font-bold text-[13px] hover:bg-violet-700 transition-all active:scale-[0.98]"
-                >
-                  PRO 보기
-                </button>
+                <p className="text-[12px] text-slate-500">새 상담을 시작하면 이어서 질문할 수 있어요.</p>
                 <button
                   onClick={() => {
                     setSessionMsgLimitReached(false);
                     setMessages([]);
                     setOpen(false);
                   }}
-                  className="text-[11px] text-slate-400 hover:text-slate-600 font-medium transition-all"
+                  className="w-full py-2.5 bg-amber-500 text-white rounded-xl font-bold text-[13px] hover:bg-amber-600 transition-all active:scale-[0.98]"
                 >
                   새 상담 시작하기
                 </button>
@@ -752,18 +729,6 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
                       <p>· AI 상담 <strong>무제한</strong></p>
                       <p>· 맞춤 공고 알림 무제한</p>
                       <p>· 카카오톡/이메일 알림</p>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white rounded-xl border border-violet-100 text-left space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-violet-700">PRO</span>
-                      <span className="font-bold text-violet-600 text-[11px]">₩29,000/월</span>
-                    </div>
-                    <div className="space-y-0.5 text-[11px] text-slate-600">
-                      <p>· AI 상담 <strong>무제한</strong></p>
-                      <p>· AI 신청서 자동작성 (준비 중)</p>
-                      <p>· 전문가 1:1 매칭 상담</p>
-                      <p>· 맞춤 공고 알림 무제한</p>
                     </div>
                   </div>
                 </div>

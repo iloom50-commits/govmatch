@@ -365,7 +365,21 @@ def chat_pro_announce(
 
     # 3) 시스템 프롬프트 구축 (1차 vs 2차+ 분기)
     today = datetime.date.today().isoformat()
-    client_ctx = _build_client_context(selected_client)
+    # 저장 고객이 없으면 매칭 때 수집한 프로필(collected)을 고객 컨텍스트로 사용
+    # — 매칭→상담 흐름에서 "고객 정보 없음"으로 분석이 약해지던 문제 보완
+    _client_src = selected_client
+    if not _client_src and collected:
+        _client_src = {
+            "client_name": collected.get("company_name") or collected.get("client_name"),
+            "industry_code": collected.get("industry_code"),
+            "industry_name": collected.get("industry_name"),
+            "address_city": collected.get("address_city"),
+            "revenue_bracket": collected.get("revenue_bracket"),
+            "employee_count_bracket": collected.get("employee_count_bracket"),
+            "establishment_date": collected.get("establishment_date"),
+            "interests": collected.get("interests"),
+        }
+    client_ctx = _build_client_context(_client_src)
     announcement_ctx = _build_announcement_context(ann, deep, parsed)
 
     if is_first_turn:

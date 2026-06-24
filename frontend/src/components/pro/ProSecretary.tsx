@@ -1285,9 +1285,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                         <span className="text-violet-500 font-semibold">✓ 후보</span>
                                       )}
                                     </div>
-                                    {m.ai_reason && (
+                                    {(m.ai_reason || m.match_reason) && (
                                       <p className={`mt-1 text-[11px] ${dark ? "text-slate-400" : "text-slate-500"}`}>
-                                        {m.ai_reason}
+                                        <span className="text-violet-500 font-semibold">왜? </span>{m.ai_reason || m.match_reason}
                                       </p>
                                     )}
                                   </div>

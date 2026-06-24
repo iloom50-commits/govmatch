@@ -5993,6 +5993,11 @@ def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):
 
         def _simplify(a, idx):
             d = a if isinstance(a, dict) else dict(a)
+            # 매칭 적합 사유 1줄 — 매처의 recommendation_reason 우선, 없으면 관심분야/버킷 폴백
+            _mr = (d.get("recommendation_reason") or "").strip()
+            if not _mr:
+                _mi = d.get("matched_interests") or []
+                _mr = (f"{'·'.join(_mi[:2])} 관심분야 부합" if _mi else (d.get("bucket_label") or "조건 적격 공고"))
             return {
                 "announcement_id": d.get("announcement_id"),
                 "title": d.get("title", ""),
@@ -6006,6 +6011,7 @@ def _handle_pro_match(req: AiConsultantChatRequest, current_user: dict):
                 "bucket_label": d.get("bucket_label", ""),
                 "reasons": d.get("reasons", []),
                 "matched_interests": d.get("matched_interests", []),
+                "match_reason": _mr,
             }
 
         matched_announcements = [_simplify(a, i) for i, a in enumerate(_display_list)]

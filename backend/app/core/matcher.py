@@ -897,6 +897,14 @@ def get_matches_for_user(user_profile):
                 "74": ["디자인", "광고", "마케팅"],
             }
             ind_keywords = INDUSTRY_KEYWORDS.get(user_ind_major, [])
+            # 제조업 전용 공고(스마트공장·뿌리산업 등)는 비제조 업종 사용자에게 업종 보너스 미적용
+            # — AI/디지털 키워드 우연 매칭으로 제조 공고가 IT 등 비제조 업종에 오인 매칭되던 문제 방지
+            _MFG_CORE = ("스마트공장", "스마트 공장", "뿌리산업", "제조혁신", "스마트제조", "공정개선")
+            _MFG_MAJORS = {"10", "11", "13", "14", "15", "16", "17", "18", "19", "20",
+                           "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+                           "31", "32", "33", "34"}
+            if any(kw in title for kw in _MFG_CORE) and user_ind_major not in _MFG_MAJORS:
+                ind_keywords = []
             if ind_keywords:
                 ind_match_count = sum(1 for kw in ind_keywords if kw.lower() in search_text)
                 if ind_match_count >= 2:

@@ -146,7 +146,7 @@ export default function ProPageClient() {
       <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
         <div className="w-full max-w-2xl space-y-10">
 
-          {/* ── PRO 가치 제안 (비로그인 방문자 설득 · 실제 기능/가격만) ── */}
+          {/* ── PRO 가치 제안 (비로그인 방문자 설득 · 가치+무료 체험만 / 가격·결제는 로그인 후) ── */}
           <div className="space-y-6">
             <div>
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold mb-3">전문가 전용 · PRO</span>
@@ -169,16 +169,12 @@ export default function ProPageClient() {
             </div>
             <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 flex items-center justify-between gap-3">
               <div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-black text-gray-900">₩29,000</span>
-                  <span className="text-xs text-gray-400">/ 월</span>
-                  <span className="text-xs text-gray-400 line-through">₩49,000</span>
-                </div>
-                <p className="text-[11px] text-violet-700 font-medium mt-0.5">7일 무료체험 · 언제든 취소 가능</p>
+                <p className="text-base font-black text-violet-700">카드 없이 월 3회 무료</p>
+                <p className="text-[11px] text-gray-500 font-medium mt-0.5">회원가입만 하면 맞춤 매칭·공고 상담을 매달 3회 무료로 체험</p>
               </div>
               <button onClick={() => { setAuthTab("signup"); setError(""); }}
                 className="flex-shrink-0 px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]">
-                7일 무료로 시작 →
+                무료로 시작 →
               </button>
             </div>
           </div>

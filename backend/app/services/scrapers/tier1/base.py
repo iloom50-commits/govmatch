@@ -33,6 +33,25 @@ BLOCKED_ORIGIN_DOMAINS = {
     "gensparkspace.com",  # Genspark AI 생성 페이지
 }
 
+# 지원사업이 아닌 행정·공지·명단·결과 공고 — 저장 차단 (보도현황·위원회명단·이용중지 등)
+_NON_SUPPORT_TITLE_KW = (
+    "보도 현황", "보도자료", "해명자료",
+    "위원회 명단", "위원 명단", "심의위원 명단", "도시계획위원회", "건축위원회",
+    "이용 중지", "이용중지", "휴관", "휴무", "운영 중지", "운영중지",
+    "공청회", "간담회 개최", "회의 개최",
+    "낙찰", "입찰 결과", "계약 체결",
+    "인사발령", "위촉식", "당첨자", "합격자 발표",
+    "의견 수렴", "현황 알림",
+)
+
+
+def _is_non_support_title(title: str) -> bool:
+    """지원사업이 아닌 행정/공지/명단 공고 판별. 단, 지원사업 신호가 있으면 차단 안 함(오탐 방지)."""
+    t = title or ""
+    if any(s in t for s in ("모집", "지원사업", "지원금", "바우처", "공모", "지원 사업")):
+        return False
+    return any(kw in t for kw in _NON_SUPPORT_TITLE_KW)
+
 
 def register(cls):
     """데코레이터: 서브클래스를 전역 레지스트리에 등록."""
@@ -161,6 +180,9 @@ class BaseScraper:
             return False
         if any(d in origin_url for d in BLOCKED_ORIGIN_DOMAINS):
             logger.info(f"[{self.name}] 블랙리스트 도메인 스킵: {origin_url[:60]}")
+            return False
+        if _is_non_support_title(title):
+            logger.info(f"[{self.name}] 비-지원사업(행정/명단/공지) 스킵: {title[:40]}")
             return False
 
         # 정규화

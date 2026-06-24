@@ -119,12 +119,24 @@ export default function ProPageClient() {
   if (authState === "pro") {
     const ProSecretary = require("@/components/pro/ProSecretary").default;
     return (
-      <ProSecretary
-        onClose={handleLogout}
-        planStatus={planStatus}
-        onUpgrade={() => setShowPayment(true)}
-        userType={userData?.user_type || "business"}
-      />
+      <>
+        <ProSecretary
+          onClose={handleLogout}
+          planStatus={planStatus}
+          onUpgrade={() => setShowPayment(true)}
+          userType={userData?.user_type || "business"}
+        />
+        {/* 무료 체험 소진 등으로 onUpgrade 호출 시 결제 모달이 떠야 함 (pro 분기에도 렌더 필수) */}
+        {showPayment && (
+          <PaymentModal
+            mode="pro"
+            planStatus={planStatus}
+            userType={userData?.user_type || "business"}
+            onSuccess={handlePaymentSuccess}
+            onClose={() => setShowPayment(false)}
+          />
+        )}
+      </>
     );
   }
 

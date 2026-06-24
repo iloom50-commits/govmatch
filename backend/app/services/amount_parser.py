@@ -28,6 +28,18 @@ _NOT_SPECIFIED_PATTERNS = (
 # 콤마 + 숫자 (예: "1,000,000")
 _NUMBER_COMMA = re.compile(r"([\d,]+(?:\.\d+)?)")
 
+# 신청자별 지원금이 아닌 맥락 — 이 키워드가 숫자 근처면 제외
+# (직접투자·후속투자, 대출/융자 한도, 펀드 운용규모, 사업 총예산, 미확정 '예정' 등)
+_AMOUNT_EXCLUDE_CTX = (
+    "투자", "대출", "융자", "출자", "펀드", "예정", "연계",
+    "운용", "사업비", "예산", "매출", "보증", "기금", "총사업", "출연금 규모",
+)
+# 신청자 1건(기업/과제/팀/개인) 단위 지원 신호 — 있으면 우선 채택
+_PER_APPLICANT_CTX = (
+    "기업당", "사업자당", "1개사", "개사", "과제당", "과제별", "1과제",
+    "1인당", "인당", "팀별", "팀당", "1건당", "건당", "1개 기업",
+)
+
 
 def _parse_numeric_with_unit(text: str) -> Optional[int]:
     """단일 숫자 + 한글 단위를 원 단위로 변환.
@@ -123,6 +135,12 @@ def parse_support_amount(raw: Optional[str]) -> Tuple[str, Optional[int], Option
     if not re.search(r"\d", text):
         return ("text_only", None, None)
 
+    # 대출/융자 전용 공고 — 금액은 '대출 한도'이지 지원금이 아니므로 미산정 (오표시 방지)
+    if any(k in text for k in ("대출", "융자")) and not any(
+        k in text for k in ("지원금", "보조금", "지급", "장려금", "출연", "보조")
+    ):
+        return ("text_only", None, None)
+
     # 범위 표기 감지: "A~B", "A-B", "A부터 B까지" (주의: 2026-01 같은 날짜 패턴 제외)
     # 단위가 포함된 숫자 + ~ + 단위가 포함된 숫자
     range_patterns = [
@@ -138,25 +156,37 @@ def parse_support_amount(raw: Optional[str]) -> Tuple[str, Optional[int], Option
                 if mx > 0:
                     return ("numeric", mx, mn)
 
-    # 단일 금액 — 가장 큰 숫자+단위 조합 찾기
-    # "최대 3억원", "3억원", "최대 100만원/1인" 등
-    candidates = []
+    # 단일 금액 — 신청자별 지원금 후보만 수집 (투자/대출/총예산 맥락은 제외)
+    def _ctx(m):
+        return text[max(0, m.start() - 16): m.end() + 8]
+
+    candidates = []  # (value, is_per_applicant)
 
     # 한글 단위 포함 숫자 (복합 허용)
     for m in re.finditer(r"([\d,]+(?:\.\d+)?(?:\s*(?:조|억|천만|백만|만|천))+)\s*원?", text):
         val = _parse_numeric_with_unit(m.group(1).replace(" ", ""))
-        if val and val > 0:
-            candidates.append(val)
+        if not (val and val > 0):
+            continue
+        c = _ctx(m)
+        if any(k in c for k in _AMOUNT_EXCLUDE_CTX):
+            continue  # 투자·대출·총예산 등 — 신청자 지원금 아님
+        candidates.append((val, any(k in c for k in _PER_APPLICANT_CTX)))
 
-    # 원 단위 단순 숫자 (예: "1,000,000원", "500만 원" 같은 거 제외하고 숫자+원만)
+    # 원 단위 단순 숫자 (만원 이상만)
     for m in re.finditer(r"([\d,]+)\s*원(?![가-힣])", text):
         val = _parse_numeric_with_unit(m.group(1))
-        if val and val > 10000:  # 만원 이상만 의미 있음
-            candidates.append(val)
+        if not (val and val > 10000):
+            continue
+        c = _ctx(m)
+        if any(k in c for k in _AMOUNT_EXCLUDE_CTX):
+            continue
+        candidates.append((val, any(k in c for k in _PER_APPLICANT_CTX)))
 
     if candidates:
-        max_val = max(candidates)
-        return ("numeric", max_val, None)
+        # 신청자별(기업당·과제당 등) 신호가 있으면 그 중 최대, 없으면 전체 최대
+        per_vals = [v for v, p in candidates if p]
+        chosen = max(per_vals) if per_vals else max(v for v, _ in candidates)
+        return ("numeric", chosen, None)
 
-    # 숫자는 있는데 단위 해석 실패 → text_only 로 분류
+    # 숫자는 있으나 모두 제외(투자/대출 등)되거나 단위 해석 실패 → text_only
     return ("text_only", None, None)

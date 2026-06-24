@@ -130,8 +130,48 @@ export default function ProPageClient() {
   // ── 로그인 / 회원가입 ──
   if (authState === "auth") {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-        <div className="w-full max-w-sm space-y-8">
+      <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
+        <div className="w-full max-w-2xl space-y-10">
+
+          {/* ── PRO 가치 제안 (비로그인 방문자 설득 · 실제 기능/가격만) ── */}
+          <div className="space-y-6">
+            <div>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold mb-3">전문가 전용 · PRO</span>
+              <h2 className="text-2xl lg:text-[26px] font-bold text-gray-900 leading-snug">고객사 정부지원사업 상담,<br />전문가처럼 빠르게.</h2>
+              <p className="mt-3 text-sm text-gray-500 leading-relaxed">컨설턴트·세무·노무 전문가를 위한 상담 도구. 고객 조건만 입력하면 맞춤 공고 매칭부터 자격 판정·전문가 인사이트·보고서까지 한 번에.</p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                { i: "🎯", t: "고객사별 맞춤 매칭", d: "업종·지역·매출 조건으로 적합 공고 자동 선별" },
+                { i: "📋", t: "자격 판정 + 전문가 인사이트", d: "선정률 추정·평가 배점·흔한 실수·신청 팁" },
+                { i: "👥", t: "고객 관리 · 보고서", d: "고객별 상담 이력 관리, 컨설팅 보고서 PDF" },
+                { i: "💰", t: "자금 상담 AI", d: "정책자금·보증·대출 전문 Q&A" },
+              ].map(f => (
+                <div key={f.t} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5">
+                  <div className="text-lg mb-1">{f.i}</div>
+                  <p className="text-[13px] font-bold text-gray-800">{f.t}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{f.d}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-black text-gray-900">₩29,000</span>
+                  <span className="text-xs text-gray-400">/ 월</span>
+                  <span className="text-xs text-gray-400 line-through">₩49,000</span>
+                </div>
+                <p className="text-[11px] text-violet-700 font-medium mt-0.5">7일 무료체험 · 언제든 취소 가능</p>
+              </div>
+              <button onClick={() => { setAuthTab("signup"); setError(""); }}
+                className="flex-shrink-0 px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]">
+                7일 무료로 시작 →
+              </button>
+            </div>
+          </div>
+
+          {/* ── 오른쪽: 로그인/회원가입 ── */}
+          <div className="w-full max-w-sm mx-auto lg:mx-0 space-y-8">
 
           <div className="text-center space-y-1">
             <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
@@ -227,6 +267,7 @@ export default function ProPageClient() {
             </form>
           )}
 
+          </div>
         </div>
       </div>
     );

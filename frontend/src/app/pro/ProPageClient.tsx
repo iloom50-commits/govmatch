@@ -101,6 +101,7 @@ export default function ProPageClient() {
   };
 
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
+  const trialRemaining = planStatus?.pro_trial_remaining ?? 3;
 
   const inputCls = "w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-shadow";
   const btnPrimary = { backgroundColor: "#111827", color: "#ffffff" };
@@ -307,11 +308,28 @@ export default function ProPageClient() {
               className="w-full py-3 rounded-lg text-sm font-semibold transition-colors">
               전문상담툴 시작하기 →
             </button>
+          ) : trialRemaining > 0 ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-violet-100 bg-violet-50/50 px-5 py-4 text-center">
+                <p className="text-sm text-gray-700">
+                  무료 체험 <span className="font-bold text-violet-700">{trialRemaining}회</span> 남았어요 <span className="text-gray-400 text-xs">(이번 달)</span>
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">매칭·공고상담을 카드 없이 직접 체험해 보세요</p>
+              </div>
+              <button onClick={() => setAuthState("pro")} style={btnPrimary}
+                className="w-full py-3 rounded-lg text-sm font-semibold transition-colors">
+                무료로 체험 시작하기 →
+              </button>
+              <button onClick={() => setShowPayment(true)}
+                className="w-full py-2.5 rounded-lg text-sm font-medium text-violet-700 border border-violet-200 hover:bg-violet-50 transition-colors">
+                PRO 플랜 결제하기
+              </button>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-center">
                 <p className="text-sm text-gray-600 leading-relaxed">
-                  전문상담툴은 <span className="font-semibold text-gray-900">PRO 플랜</span> 전용입니다.
+                  이번 달 무료 체험을 모두 사용하셨어요.<br /><span className="font-semibold text-gray-900">PRO 플랜</span>으로 계속 이용하세요.
                 </p>
               </div>
               <button onClick={() => setShowPayment(true)} style={btnPrimary}

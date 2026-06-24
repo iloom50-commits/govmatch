@@ -121,6 +121,13 @@ def init_database():
         except Exception:
             pass
 
+        # PRO 무료 체험 카운터 (회원가입 후 핵심 기능 월 3회 무료)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS pro_trial_month INTEGER DEFAULT 0")
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS pro_trial_reset_at TIMESTAMP")
+        except Exception:
+            pass
+
         # 상담 세션 테이블 (세션 기반 차감)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS consult_sessions (
@@ -4033,6 +4040,8 @@ def api_login(req: LoginRequest, request: Request):
     finally:
         conn.close()
 
+    plan_status["pro_trial_remaining"] = _pro_trial_remaining(u)
+    plan_status["pro_trial_limit"] = PRO_TRIAL_LIMIT
     token = _create_jwt(u["user_id"], u["business_number"], u["email"], plan, plan_expires)
     return {
         "status": "SUCCESS",
@@ -4371,6 +4380,8 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
     if plan_expires is not None:
         plan_expires = str(plan_expires)
     plan_status = _get_plan_status(u.get("plan") or "free", plan_expires, u.get("ai_usage_month") or 0)
+    plan_status["pro_trial_remaining"] = _pro_trial_remaining(u)
+    plan_status["pro_trial_limit"] = PRO_TRIAL_LIMIT
     result = {
         "status": "SUCCESS",
         "user": {
@@ -5433,8 +5444,13 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
-    """PRO 전문가 전용: 고객사 상담 채팅 (세션 기반 상태 관리)"""
-    _require_pro(current_user)
+    """PRO 전문가: 고객사 상담 채팅. PRO/biz 무제한, free는 핵심 액션 월 3회 무료 체험."""
+    # 핵심 분석 액션(매칭/공고상담/자금상담/상세분석)만 무료 체험 1회 차감. 후속 chat은 무차감.
+    _act = (req.action or "").strip().lower()
+    if not _act:
+        _act = "consult" if req.announcement_id else ("match" if req.explicit_match else "")
+    _counts = _act in ("match", "consult", "fund_consult", "detail_analysis")
+    _require_pro_or_trial(current_user, counting=_counts)
     try:
         return _api_pro_consultant_chat_impl(req, current_user)
     except Exception as outer_err:
@@ -12295,6 +12311,78 @@ def _require_pro(current_user: dict):
         except ValueError:
             pass
     return current_user
+
+
+# ── PRO 무료 체험 (회원가입 후 핵심 기능 월 3회 무료, 무카드) ──
+PRO_TRIAL_LIMIT = 3
+
+
+def _pro_trial_remaining(u: dict) -> int:
+    """이번 달 남은 PRO 무료 체험 횟수 (표시용)."""
+    used = u.get("pro_trial_month") or 0
+    rst = u.get("pro_trial_reset_at")
+    now = datetime.datetime.utcnow()
+    if not rst:
+        used = 0
+    else:
+        try:
+            r = datetime.datetime.fromisoformat(str(rst))
+            if (r.year, r.month) != (now.year, now.month):
+                used = 0
+        except (ValueError, TypeError):
+            used = 0
+    return max(0, PRO_TRIAL_LIMIT - used)
+
+
+def _require_pro_or_trial(current_user: dict, counting: bool) -> str:
+    """PRO/biz는 무제한. 그 외(free/lite/만료)는 이번 달 무료 체험 3회까지 허용.
+    counting=True면 체험 사용자에 한해 1회 차감. 초과 시 402(결제 유도).
+    반환: 'pro' | 'trial'
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT plan, plan_expires_at, pro_trial_month, pro_trial_reset_at FROM users WHERE business_number = %s",
+        (current_user["bn"],),
+    )
+    u = cur.fetchone()
+    if not u:
+        conn.close()
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    plan = u["plan"] or "free"
+    expired = False
+    if u.get("plan_expires_at"):
+        try:
+            expired = datetime.datetime.fromisoformat(str(u["plan_expires_at"])) < datetime.datetime.utcnow()
+        except (ValueError, TypeError):
+            pass
+    if plan in ("pro", "biz") and not expired:
+        conn.close()
+        return "pro"
+    # ── 무료 체험 경로 ──
+    now = datetime.datetime.utcnow()
+    used = u.get("pro_trial_month") or 0
+    rst = u.get("pro_trial_reset_at")
+    new_month = True
+    if rst:
+        try:
+            r = datetime.datetime.fromisoformat(str(rst))
+            new_month = (r.year, r.month) != (now.year, now.month)
+        except (ValueError, TypeError):
+            new_month = True
+    if new_month:
+        used = 0
+    if used >= PRO_TRIAL_LIMIT:
+        conn.close()
+        raise HTTPException(status_code=402, detail=f"무료 체험 {PRO_TRIAL_LIMIT}회를 모두 사용하셨습니다. PRO 플랜으로 계속 이용하세요.")
+    if counting:
+        cur.execute(
+            "UPDATE users SET pro_trial_month = %s, pro_trial_reset_at = %s WHERE business_number = %s",
+            (used + 1, now.isoformat(), current_user["bn"]),
+        )
+        conn.commit()
+    conn.close()
+    return "trial"
 
 
 # ── 1) 고객사 프로필 CRUD ──

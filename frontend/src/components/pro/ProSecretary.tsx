@@ -429,7 +429,13 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast(err.detail || "AI 응답 오류", "error");
+        if (res.status === 402) {
+          // 무료 체험 소진 → 결제 유도
+          toast(err.detail || "이번 달 무료 체험을 모두 사용했어요.", "info");
+          onUpgrade?.();
+        } else {
+          toast(err.detail || "AI 응답 오류", "error");
+        }
         setLoading(false);
         return;
       }

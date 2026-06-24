@@ -485,7 +485,7 @@ def get_matches_for_user(user_profile):
     # target_type 필터: business 매칭은 business/both만, individual은 individual/both만
     query = """
     SELECT announcement_id, title, region, category, department,
-           support_amount, deadline_date, origin_source, created_at,
+           support_amount, deadline_date, deadline_type, origin_source, created_at,
            COALESCE(target_type, 'business') AS target_type,
            origin_url, summary_text, eligibility_logic,
            established_years_limit, revenue_limit, employee_limit
@@ -1089,7 +1089,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
     # SQL: 개인 대상 서비스만 조회 (individual + both), 마감 전 또는 상시모집
     query = """
     SELECT announcement_id, title, region, category, department,
-           support_amount, deadline_date, origin_source, created_at,
+           support_amount, deadline_date, deadline_type, origin_source, created_at,
            COALESCE(target_type, 'individual') AS target_type,
            origin_url, summary_text, eligibility_logic,
            established_years_limit, revenue_limit, employee_limit
@@ -1395,7 +1395,7 @@ def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_fi
         params.append(top_k)
         sql = f"""
             SELECT a.announcement_id, a.title, a.department, a.category,
-                   a.support_amount, a.deadline_date, a.region, a.origin_url,
+                   a.support_amount, a.deadline_date, a.deadline_type, a.region, a.origin_url,
                    a.summary_text, a.eligibility_logic, a.target_type,
                    1 - (e.embedding <=> %s::vector) AS similarity
             FROM announcement_embeddings e

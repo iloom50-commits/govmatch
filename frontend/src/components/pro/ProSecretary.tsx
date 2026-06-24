@@ -1274,8 +1274,12 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                       {(m.support_amount || m.support_amount_max) && (
                                         <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
                                       )}
-                                      {m.deadline_date && m.deadline_date !== "None" && (
+                                      {m.deadline_date && m.deadline_date !== "None" ? (
                                         <span className={t.muted}>📅 {String(m.deadline_date).slice(0, 10)}</span>
+                                      ) : m.deadline_type === "ongoing" ? (
+                                        <span className={t.muted}>🔄 상시 접수</span>
+                                      ) : (
+                                        <span className={t.muted}>📅 마감 미정</span>
                                       )}
                                       {m.ai_verdict ? (
                                         <span className={`font-bold ${m.ai_verdict === "eligible" ? "text-emerald-600" : m.ai_verdict === "ineligible" ? "text-red-400" : "text-amber-500"}`}>

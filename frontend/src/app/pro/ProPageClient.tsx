@@ -13,6 +13,7 @@ export default function ProPageClient() {
   const [planStatus, setPlanStatus] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);  // '상담 시작하기' 클릭 전엔 로그인 폼 숨김
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -167,20 +168,21 @@ export default function ProPageClient() {
                 </div>
               ))}
             </div>
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-base font-black text-violet-700">카드 없이 월 3회 무료</p>
-                <p className="text-[11px] text-gray-500 font-medium mt-0.5">회원가입만 하면 맞춤 매칭·공고 상담을 매달 3회 무료로 체험</p>
-              </div>
-              <button onClick={() => { setAuthTab("signup"); setError(""); }}
-                className="flex-shrink-0 px-4 py-2.5 bg-violet-600 text-white rounded-lg text-[13px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98]">
-                무료로 시작 →
-              </button>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+              <p className="text-base font-black text-violet-700">카드 없이 월 3회 무료</p>
+              <p className="text-[12px] text-gray-600 font-medium mt-1 leading-relaxed">고객 조건만 입력하면 맞춤 공고 매칭·자격 판정·전문가 인사이트까지. 회원가입만 하면 매달 3회 무료로 체험하세요.</p>
+              {!showLogin && (
+                <button onClick={() => { setShowLogin(true); setError(""); setTimeout(() => document.getElementById("pro-login")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); }}
+                  className="mt-3 w-full px-4 py-3 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">
+                  상담 시작하기 →
+                </button>
+              )}
             </div>
           </div>
 
-          {/* ── 오른쪽: 로그인/회원가입 ── */}
-          <div className="w-full max-w-sm mx-auto lg:mx-0 space-y-8">
+          {/* ── 로그인/회원가입 (‘상담 시작하기’ 클릭 시 노출) ── */}
+          {showLogin && (
+          <div id="pro-login" className="w-full max-w-sm mx-auto lg:mx-0 space-y-8 scroll-mt-6">
 
           <div className="text-center space-y-1">
             <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
@@ -277,6 +279,7 @@ export default function ProPageClient() {
           )}
 
           </div>
+          )}
         </div>
       </div>
     );

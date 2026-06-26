@@ -1816,7 +1816,14 @@ def chat_lite_fund_expert(
 
             def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
                 """자금/대출/보증 관련 공고를 DB에서 검색합니다."""
-                rows = _tool_search_fund_announcements(db_conn, keywords, target_type, limit=5)
+                # OpenAI 경로와 동일하게: 프로필·지역 제외필터 적용 + 참조공고 수집
+                rows = _tool_search_fund_announcements(
+                    db_conn, keywords, target_type, limit=5,
+                    user_region=_user_region, profile=user_profile,
+                )
+                for r in rows:
+                    if r not in _referenced_announcements:
+                        _referenced_announcements.append(r)
                 return {"count": len(rows), "results": rows}
             def get_announcement_detail(announcement_id: int) -> dict:
                 """특정 공고의 상세 정보를 조회합니다."""

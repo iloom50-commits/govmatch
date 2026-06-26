@@ -13379,8 +13379,71 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 <p style="font-size:13px;color:#64748b;margin:8px 0 16px 0;padding:12px;background:#f8fafc;border-left:3px solid #c4b5fd;">아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다.</p>
 '''
 
-    # summary 조립: brief + 기업요약 + 상담요약 + 간트 + AI 분석
-    full_summary = f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n\n{ai_summary}" if ai_summary else f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}"
+    # ── 맞춤 정책자금 섹션 (기존 정책자금 엔진 1회 호출, 대화 없이 한 방) ──
+    # 고객사 프로필로 chat_lite_fund_expert 호출 → 업력·매출·연령 제약 자동 필터된 정책자금 추천.
+    # 실패해도 리포트는 정상 생성(섹션만 생략). 전용 커넥션 사용(리포트 트랜잭션과 격리).
+    fund_section_html = ""
+    try:
+        from app.services.ai_consultant import chat_lite_fund_expert
+        from app.services.report_sections import build_fund_section_html
+        if is_individual_client:
+            fund_profile = {
+                "age_range": client.get("age_range") or "",
+                "address_city": client.get("address_city") or "",
+                "income_level": client.get("income_level") or "",
+                "family_type": client.get("family_type") or "",
+                "employment_status": client.get("employment_status") or "",
+                "housing_status": client.get("housing_status") or "",
+                "interests": client.get("interests") or "",
+                "user_type": "individual",
+            }
+            fund_mode = "individual_fund"
+        else:
+            fund_profile = {
+                "company_name": client.get("client_name") or "",
+                "industry_code": client.get("industry_code") or "",
+                "address_city": client.get("address_city") or "",
+                "establishment_date": str(client.get("establishment_date") or ""),
+                "revenue_bracket": client.get("revenue_bracket") or "",
+                "employee_count_bracket": client.get("employee_count_bracket") or "",
+                "interests": client.get("interests") or "",
+                "certifications": client.get("certifications") or "",
+                "user_type": "business",
+            }
+            fund_mode = "business_fund"
+
+        fund_seed = (
+            "추가 질문 없이, 위 고객사 정보만으로 지금 신청 가능한 정책자금"
+            "(정책자금·융자·보증)을 추천해 주세요. 각 자금별 지원한도·대상요건·신청처를 "
+            "간결히 정리하고, 이 고객사 조건에 부합하는 이유를 1~2문장으로 설명해 주세요."
+        )
+        fund_conn = get_db_connection()
+        try:
+            fund_result = chat_lite_fund_expert(
+                messages=[{"role": "user", "text": fund_seed}],
+                db_conn=fund_conn,
+                user_profile=fund_profile,
+                mode=fund_mode,
+                pro_consult_context=("individual" if is_individual_client else "business"),
+            )
+            fund_section_html = build_fund_section_html(
+                fund_result.get("reply", ""),
+                fund_result.get("announcements", []),
+            )
+            print(f"[report] fund section: {len(fund_section_html)} chars, {len(fund_result.get('announcements', []))} anns")
+        finally:
+            try: fund_conn.close()
+            except Exception: pass
+    except Exception as fund_err:
+        print(f"[report] fund section error: {fund_err}")
+        fund_section_html = ""
+
+    # summary 조립: brief + 기업요약 + 상담요약 + 간트 + 정책자금 + AI 분석
+    full_summary = (
+        f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n{fund_section_html}\n\n{ai_summary}"
+        if ai_summary else
+        f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n{fund_section_html}"
+    )
 
     # 6. DB 저장
     cur.execute(
@@ -13645,6 +13708,15 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
 </div>
 </body></html>"""
 
+    # Content-Disposition: 한글 상호 대응 (RFC 5987). latin-1 헤더 인코딩 오류 방지.
+    from urllib.parse import quote as _urlquote
+    _cli = r.get("client_name") or "report"
+
+    def _disp(ext: str) -> str:
+        full = f"{_cli}_report.{ext}"
+        ascii_fallback = (_cli.encode("ascii", "ignore").decode("ascii").strip() or "report") + f"_report.{ext}"
+        return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{_urlquote(full)}"
+
     # HTML → PDF (weasyprint 사용 시도, 없으면 HTML 반환)
     try:
         from weasyprint import HTML as WeasyprintHTML
@@ -13653,7 +13725,7 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{r["client_name"]}_report.pdf"'}
+            headers={"Content-Disposition": _disp("pdf")}
         )
     except ImportError:
         # weasyprint 미설치 → HTML 파일로 반환
@@ -13661,7 +13733,7 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         return Response(
             content=html.encode("utf-8"),
             media_type="text/html; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{r["client_name"]}_report.html"'}
+            headers={"Content-Disposition": _disp("html")}
         )
 
 

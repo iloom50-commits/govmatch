@@ -13158,11 +13158,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             actionable = [r for r in sorted_results if r["conclusion"] != "대상 아님"]
             top10 = actionable[:10]
 
+            # 상담 이력은 고객별 스코프 불가(컨설턴트의 타 고객 상담 혼입) → 고객 리포트엔 미주입
             consult_text = ""
-            if consult_summaries:
-                consult_text = "\n\n[공고별 상담 이력]\n"
-                for cs in consult_summaries[:10]:
-                    consult_text += f"- {cs['title']}: {cs['conclusion'] or '미판정'} — {cs['summary'][:100]}\n"
 
             # 로드맵: 마감일 순으로 그룹화
             today_str = datetime.date.today().isoformat()
@@ -13430,42 +13427,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 <p style="font-size:12px;color:#64748b;margin:4px 0 16px 0;">📊 매칭 결과: 신청 가능 <b style="color:#16a34a;">{eligible_count}건</b> · 확인 필요 <b style="color:#ea580c;">{conditional_count}건</b> · 대상 아님 <b style="color:#94a3b8;">{ineligible_count}건</b></p>
 '''
 
-    # ── 상담 요약 카드 (DB consult_summaries 직접 렌더) ──
-    if consult_summaries:
-        _rows = ""
-
-        def _clean_cell(s):
-            # 마크다운 마커(**, `, #, >) 제거 + HTML 이스케이프 — 고객 문서에 별표 누출 방지
-            s = re.sub(r"\*\*|\*|`|#{1,3}\s*|^>\s*", "", str(s or ""))
-            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").strip()
-
-        for cs in consult_summaries[:10]:
-            _ct = _clean_cell((cs.get('title') or '')[:60])
-            _cc = _clean_cell(cs.get('conclusion') or '미판정')
-            _cs_text = _clean_cell((cs.get('summary') or '')[:120])
-            _rows += f'''
-<tr>
-<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:12px;width:45%;">{_ct}</td>
-<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:12px;width:15%;color:#7c3aed;font-weight:bold;">{_cc}</td>
-<td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:11px;width:40%;color:#475569;">{_cs_text}</td>
-</tr>'''
-        consult_summary_html = f'''
-<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">💬 상담 이력 요약</h2>
-<p style="font-size:12px;color:#64748b;margin:4px 0;">최근 공고별 AI 상담 판정 결과 (최대 10건)</p>
-<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
-<thead><tr>
-<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">공고명</th>
-<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">판정</th>
-<th style="background:#f5f3ff;color:#5b21b6;padding:8px;border:1px solid #e5e7eb;text-align:left;">요약</th>
-</tr></thead>
-<tbody>{_rows}</tbody>
-</table>
-'''
-    else:
-        consult_summary_html = '''
-<h2 style="color:#5b21b6;border-bottom:2px solid #c4b5fd;padding-bottom:6px;margin-top:24px;">💬 상담 이력 요약</h2>
-<p style="font-size:13px;color:#64748b;margin:8px 0 16px 0;padding:12px;background:#f8fafc;border-left:3px solid #c4b5fd;">아직 개별 공고 상담 이력이 없습니다. 추천 공고별 상세 상담을 진행하시면 더 정확한 판단이 가능합니다.</p>
-'''
+    # 상담 이력 요약 섹션은 고객별 스코프 불가(컨설턴트의 타 고객 상담 혼입)로 고객 리포트에서 제외
 
     # ── 맞춤 정책자금 섹션 (기존 정책자금 엔진 1회 호출, 대화 없이 한 방) ──
     # 고객사 프로필로 chat_lite_fund_expert 호출 → 업력·매출·연령 제약 자동 필터된 정책자금 추천.
@@ -13528,9 +13490,9 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 
     # summary 조립: brief + 기업요약 + 상담요약 + 간트 + 정책자금 + AI 분석
     full_summary = (
-        f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n{fund_section_html}\n\n{ai_summary}"
+        f"{brief}\n\n{company_summary_html}\n{gantt_html}\n{fund_section_html}\n\n{ai_summary}"
         if ai_summary else
-        f"{brief}\n\n{company_summary_html}\n{consult_summary_html}\n{gantt_html}\n{fund_section_html}"
+        f"{brief}\n\n{company_summary_html}\n{gantt_html}\n{fund_section_html}"
     )
 
     # 6. DB 저장

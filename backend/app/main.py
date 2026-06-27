@@ -12999,8 +12999,13 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     conditional_count = 0
     ineligible_count = 0
 
+    # 공지/주의/결과발표 등 '지원사업이 아닌' 항목은 고객 리포트에서 제외 (사기주의·정정공고 등)
+    _NONSUPPORT = re.compile(r"사기|사칭|보이스피싱|스미싱|피해\s*예방|결과\s*발표|선정\s*결과|합격자\s*발표|정정\s*공고|만족도\s*조사|설문\s*조사|채용\s*공고|주의\s*안내|주의$")
+
     for ann in matched:
         a = ann if isinstance(ann, dict) else dict(ann)
+        if _NONSUPPORT.search(a.get("title", "") or ""):
+            continue
         status = a.get("eligibility_status", "eligible")
         score = a.get("match_score", 0)
         if status == "ineligible":
@@ -13220,6 +13225,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 ''' if attached_docs_text else ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 [리포트 작성 규칙] — 아래 섹션만 작성 (기업 요약·상담 이력은 보고서 상단에 이미 포함되어 있으므로 **절대 중복 작성 금지**)
+⚠️ 맨 위에 보고서 제목(<h1>, 예: 'OO 종합/컨설팅 리포트')을 만들지 말 것 — 상단 헤더에 이미 있음. 곧바로 '## 1.'부터 시작.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## 1. 맞춤 공고 분석 (추천 TOP 10)
@@ -13289,6 +13295,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 ai_summary = "\n".join(lines).strip()
+            # AI가 본문 맨 위에 자체 제목(<h1>)을 만들면 상단 헤더 제목과 중복 → 제거
+            ai_summary = re.sub(r"^\s*<h1\b[^>]*>.*?</h1>\s*", "", ai_summary, count=1, flags=re.IGNORECASE | re.DOTALL)
             print(f"[report] AI summary generated: {len(ai_summary)} chars")
     except Exception as e:
         ai_summary = f"AI 요약 생성 실패: {str(e)[:200]}"
@@ -13533,7 +13541,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id""",
         (req.client_profile_id, current_user["bn"],
-         f"{client['client_name']} 종합 리포트",
+         f"{client['client_name']} 정부지원사업 전문 컨설팅 리포트",
          full_summary, _json.dumps(results, ensure_ascii=False),
          eligible_count, conditional_count, ineligible_count)
     )
@@ -13793,7 +13801,8 @@ body {{ font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 au
 h1 {{ color: #5b21b6; font-size: 22px; border-bottom: 3px solid #c4b5fd; padding-bottom: 10px; }}
 h2 {{ color: #5b21b6; font-size: 16px; border-bottom: 2px solid #c4b5fd; padding-bottom: 6px; margin-top: 28px; }}
 table {{ width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }}
-th {{ background: #f5f3ff; color: #5b21b6; padding: 8px 10px; border: 1px solid #e5e7eb; text-align: left; font-weight: bold; }}
+th {{ background: #f5f3ff; color: #5b21b6; padding: 8px 10px; border: 1px solid #e5e7eb; text-align: left; font-weight: bold; white-space: nowrap; }}
+td {{ word-break: keep-all; }}
 td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
 .header {{ text-align: center; margin-bottom: 30px; }}
 .header p {{ color: #64748b; font-size: 12px; }}

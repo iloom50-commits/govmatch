@@ -155,6 +155,15 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④-1 원문 URL 추적", step_4b_resolve_urls)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-2. 마감일 보강 (full_text → 마감일/상시 분류)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4c_deadlines():
+        from app.services.deadline_enricher import enrich_pending_deadlines
+        return enrich_pending_deadlines(db_conn, limit=1000)
+
+    _run_step("④-2 마감일 보강", step_4c_deadlines)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ④-2. 외부 검색 학습 (Google Search → knowledge_base)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4c_search_learn():

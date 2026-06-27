@@ -73,3 +73,46 @@ def enrich_deadline(full_text: Optional[str]) -> Tuple[str, Optional[str]]:
     if _GOV24_TEMPLATE.search(t):
         return ("ongoing", None)
     return ("unknown", None)
+
+
+def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
+    """NULL 마감일 공고를 full_text로 보강 (파이프라인 단계용).
+
+    - deadline_date: NULL인 것만 채움(추가). deadline_type: 'unknown'/NULL만 교정.
+    - 매처 필터에 deadline_type을 안 쓰므로 교정은 무해.
+    Returns: {"scanned","fixed","ongoing","unknown"}
+    """
+    cur = db_conn.cursor()
+    cur.execute(
+        """SELECT a.announcement_id AS id, aa.full_text AS ft
+           FROM announcements a
+           JOIN announcement_analysis aa ON aa.announcement_id = a.announcement_id
+           WHERE a.is_archived = FALSE AND a.deadline_date IS NULL
+             AND LENGTH(aa.full_text) > 120
+             AND (a.deadline_type IS NULL OR a.deadline_type = 'unknown')
+           ORDER BY a.created_at DESC
+           LIMIT %s""",
+        (limit,),
+    )
+    rows = cur.fetchall()
+    fixed = ongoing = unknown = 0
+    for r in rows:
+        aid = r["id"] if isinstance(r, dict) else r[0]
+        ft = r["ft"] if isinstance(r, dict) else r[1]
+        typ, dval = enrich_deadline(ft)
+        if typ == "fixed" and dval:
+            cur.execute(
+                "UPDATE announcements SET deadline_date=%s, deadline_type='fixed' WHERE announcement_id=%s AND deadline_date IS NULL",
+                (dval, aid),
+            )
+            fixed += 1
+        elif typ == "ongoing":
+            cur.execute(
+                "UPDATE announcements SET deadline_type='ongoing' WHERE announcement_id=%s AND deadline_type IS DISTINCT FROM 'ongoing'",
+                (aid,),
+            )
+            ongoing += 1
+        else:
+            unknown += 1
+    db_conn.commit()
+    return {"scanned": len(rows), "fixed": fixed, "ongoing": ongoing, "unknown": unknown}

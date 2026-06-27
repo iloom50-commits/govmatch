@@ -1087,9 +1087,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {[
-                        { type: "matching" as const, icon: "🏢", label: "지원사업 매칭", desc: "고객 조건에 맞는 공고 찾기", color: "hover:border-violet-500/60 hover:bg-violet-500/10" },
-                        { type: "fund" as const, icon: "💰", label: "자금 상담", desc: "정책자금·보증·대출 전문", color: "hover:border-emerald-500/60 hover:bg-emerald-500/10" },
-                        { type: "announcement" as const, icon: "📋", label: "특정 공고 상담", desc: "공고 분석·자격 판정", color: "hover:border-indigo-500/60 hover:bg-indigo-500/10" },
+                        { type: "matching" as const, icon: "🏢", label: "정부 지원사업 매칭", desc: "업종·매출·지역으로 맞춤 지원사업 자동 매칭", color: "hover:border-violet-500/60 hover:bg-violet-500/10" },
+                        { type: "fund" as const, icon: "💰", label: "정책자금·융자 상담", desc: "중진공·기보·신보 정책자금·보증·대출 진단", color: "hover:border-emerald-500/60 hover:bg-emerald-500/10" },
+                        { type: "announcement" as const, icon: "📋", label: "특정 공고 자격 분석", desc: "공고 1건 정밀 분석 — 자격요건·제출서류 판정", color: "hover:border-indigo-500/60 hover:bg-indigo-500/10" },
                       ].map(opt => (
                         <button key={opt.type} onClick={() => startConsultType(opt.type)}
                           className={`p-6 rounded-2xl border-2 transition-all text-left active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} ${opt.color}` : `border-slate-200 bg-white ${opt.color}`}`}>

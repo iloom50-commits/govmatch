@@ -396,11 +396,10 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
               <div className="h-[90px] mb-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
-                  <span className="px-2 py-0.5 bg-violet-100 text-violet-600 text-[10px] font-bold rounded-full">이벤트가</span>
                 </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-black text-slate-900">₩29,000</span>
-                  <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-slate-900">₩49,000</span>
+                  <span className="text-[11px] text-slate-400">/ 월</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">전문가용 무제한 AI 상담</p>
               </div>
@@ -439,33 +438,11 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
               </ul>
 
               {!isPro ? (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 · 언제든 취소 가능</p>
               ) : <div className="h-[24px]" />}
             </div>}
           </div>
 
-          {/* 친구 추천 */}
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between mb-3">
-            <div>
-              <p className="text-[12px] font-bold text-amber-800">친구 추천 시 양쪽 모두 1개월 무료</p>
-              <p className="text-[10px] text-amber-600 mt-0.5">LITE 가입자 한정 · 1회 제공</p>
-            </div>
-            <button
-              onClick={async () => {
-                const url = "https://govmatch.kr";
-                const text = "정부지원금, AI가 자동으로 찾아줍니다.";
-                try {
-                  if (navigator.share) await navigator.share({ title: "지원금AI", text, url });
-                  else { await navigator.clipboard.writeText(`${text}\n${url}`); toast("링크 복사됨!", "success"); }
-                } catch {
-                  try { await navigator.clipboard.writeText(`${text}\n${url}`); toast("링크 복사됨!", "success"); } catch {}
-                }
-              }}
-              className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-bold hover:bg-amber-700 transition-all active:scale-95 whitespace-nowrap"
-            >
-              공유하기
-            </button>
-          </div>
 
           {/* 닫기 */}
           <button onClick={onClose} className="w-full py-2 text-slate-400 text-[12px] font-medium hover:text-slate-600 transition-all">

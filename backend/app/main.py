@@ -2630,21 +2630,18 @@ SESSION_MSG_LIMITS = {
 }
 
 # 플랜 가격 (원/월) — user_type에 따라 분기
-# 개인 LITE: 2,900 / 사업자 LITE: 4,900 / PRO: 29,000 (3개월 이벤트, 정상가 49,000)
+# 개인 LITE: 2,900 / 사업자 LITE: 4,900 / PRO: 49,000
 PLAN_PRICES = {
     "lite_individual": 2900,
     "lite": 4900,       # 사업자 LITE (기본값)
-    "pro": 29000,       # 3개월 이벤트가 (~2026.07.12), 이후 49,000
+    "pro": 49000,       # PRO 월 구독
     "basic": 4900,      # legacy
-    "biz": 29000,       # legacy → PRO 취급
+    "biz": 49000,       # legacy → PRO 취급
 }
 
 # 신규 가입자 LITE 7일 무료체험 (상시)
 TRIAL_DAYS = 7
 PROMO_ACTIVE = False  # 프로모션 종료 (2026-05-23 이후)
-# PRO 3개월 오픈 이벤트: 29,000원/월 (정가 49,000원), 2026-07-31까지
-PRO_EVENT_PRICE = 29000
-PRO_EVENT_END = "2026-07-31"
 
 # AI 신청서 작성 가격 (원/건) — Coming Soon
 AI_GUIDE_PRICE = None
@@ -4449,8 +4446,6 @@ def api_plan_upgrade(
     """포트원 V2 결제 확인 후 플랜 업그레이드"""
     bn = current_user["bn"]
     target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
-
-    # PRO 3개월 오픈 이벤트 (2026-07-31까지 29,000원/월)
 
     # 사용자 정보 조회
     conn = get_db_connection()
@@ -14711,7 +14706,7 @@ def api_support_chat(req: dict, request: Request):
 [자주 묻는 질문]
 - 회원가입: 이메일 또는 소셜(카카오/네이버/구글) 로그인
 - 매칭이 안 될 때: 프로필 설정(지역, 업종, 매출 등)을 정확히 입력해야 합니다
-- 결제: Free(무료), Lite(개인 2,900원/사업자 4,900원), Pro(29,000원/월 이벤트가). 7일 무료 체험 가능
+- 결제: Free(무료), Lite(개인 2,900원/사업자 4,900원), Pro(49,000원/월). 7일 무료 체험 가능
 - 알림: 새 공고 등록 시 자동 알림 (이메일/푸시)
 - 환불: 결제 후 7일 이내 전액 환불 가능
 

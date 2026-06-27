@@ -266,6 +266,15 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 화이트라벨 브랜딩 (보험사/컨설턴트가 자기 브랜드로 리포트 발행)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_company TEXT DEFAULT ''")
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_contact TEXT DEFAULT ''")
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_phone TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # 개인 매칭용 프로필 컬럼 추가
         for col_def in [
             "gender VARCHAR(10) DEFAULT ''",
@@ -12392,6 +12401,46 @@ def _require_pro_or_trial(current_user: dict, counting: bool) -> str:
     return "trial"
 
 
+# ── 0) 화이트라벨 발신자 브랜딩 ──
+
+class BrandingUpdate(BaseModel):
+    brand_company: Optional[str] = ""
+    brand_contact: Optional[str] = ""
+    brand_phone: Optional[str] = ""
+
+
+@app.get("/api/pro/branding")
+def api_pro_branding_get(current_user: dict = Depends(_get_current_user)):
+    """PRO: 화이트라벨 발신자 브랜딩 조회 (리포트 헤더·푸터용)"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT brand_company, brand_contact, brand_phone FROM users WHERE business_number=%s LIMIT 1", (current_user["bn"],))
+    row = cur.fetchone()
+    conn.close()
+    b = dict(row) if row else {}
+    return {"status": "SUCCESS",
+            "brand_company": b.get("brand_company") or "",
+            "brand_contact": b.get("brand_contact") or "",
+            "brand_phone": b.get("brand_phone") or ""}
+
+
+@app.put("/api/pro/branding")
+def api_pro_branding_update(req: BrandingUpdate, current_user: dict = Depends(_get_current_user)):
+    """PRO: 화이트라벨 발신자 브랜딩 설정 — 고객 전달 리포트에 자기 브랜드로 발행"""
+    _require_pro(current_user)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET brand_company=%s, brand_contact=%s, brand_phone=%s WHERE business_number=%s",
+        ((req.brand_company or "").strip()[:100], (req.brand_contact or "").strip()[:60],
+         (req.brand_phone or "").strip()[:40], current_user["bn"]),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "SUCCESS", "message": "브랜딩이 저장되었습니다."}
+
+
 # ── 1) 고객사 프로필 CRUD ──
 
 class ClientProfileCreate(BaseModel):
@@ -13200,6 +13249,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
 - 즉시 신청 권장 공고 (1~2개)
 - 준비 후 신청 권장 공고
 - 다음 분기 대비 사항
+- ⚠️ 보고서 끝에 서명("~ 드림")·작성일·날짜를 절대 넣지 말 것 (상단 헤더에 이미 있음). 임의 날짜 생성 금지.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 [형식 규칙] — 매우 중요! 반드시 준수
@@ -13375,10 +13425,16 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     # ── 상담 요약 카드 (DB consult_summaries 직접 렌더) ──
     if consult_summaries:
         _rows = ""
+
+        def _clean_cell(s):
+            # 마크다운 마커(**, `, #, >) 제거 + HTML 이스케이프 — 고객 문서에 별표 누출 방지
+            s = re.sub(r"\*\*|\*|`|#{1,3}\s*|^>\s*", "", str(s or ""))
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").strip()
+
         for cs in consult_summaries[:10]:
-            _ct = (cs.get('title') or '')[:60]
-            _cc = cs.get('conclusion') or '미판정'
-            _cs_text = (cs.get('summary') or '')[:120]
+            _ct = _clean_cell((cs.get('title') or '')[:60])
+            _cc = _clean_cell(cs.get('conclusion') or '미판정')
+            _cs_text = _clean_cell((cs.get('summary') or '')[:120])
             _rows += f'''
 <tr>
 <td style="padding:6px 10px;border:1px solid #e5e7eb;font-size:12px;width:45%;">{_ct}</td>
@@ -13701,10 +13757,27 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
         (report_id, current_user["bn"])
     )
     row = cur.fetchone()
+    cur.execute(
+        "SELECT brand_company, brand_contact, brand_phone FROM users WHERE business_number=%s LIMIT 1",
+        (current_user["bn"],),
+    )
+    _brand = cur.fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
     r = dict(row)
+
+    # 화이트라벨: 발신자(보험사/컨설턴트) 브랜딩 — 미설정 시 지원금AI 기본
+    _b = dict(_brand) if _brand else {}
+    _bc = (_b.get("brand_company") or "").strip()
+    _bn = (_b.get("brand_contact") or "").strip()
+    _bp = (_b.get("brand_phone") or "").strip()
+    if _bc:
+        _hdr_brand = " · ".join(x for x in [_bc, _bn] if x)
+        _foot_brand = " | ".join(x for x in [_bc, _bn, (f"Tel {_bp}" if _bp else "")] if x) + " &nbsp;·&nbsp; powered by 지원금AI"
+    else:
+        _hdr_brand = "govmatch.kr"
+        _foot_brand = "지원금AI (govmatch.kr) | 밸류파인더 | Tel 010-5565-2299"
 
     # summary에서 brief + AI HTML 분리
     parts = (r.get("summary") or "").split("\n\n", 1)
@@ -13730,12 +13803,12 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
 <body>
 <div class="header">
 <h1>{r['title']}</h1>
-<p>{r['client_name']} | 작성일: {str(r.get('created_at',''))[:10]} | govmatch.kr</p>
+<p>{r['client_name']} | 작성일: {str(r.get('created_at',''))[:10]} | {_hdr_brand}</p>
 </div>
 {ai_html}
 <div class="footer">
-<p>본 보고서는 AI 분석 결과를 기반으로 작성되었으며, 최종 결과는 주관기관의 심사에 따릅니다.</p>
-<p>지원금AI (govmatch.kr) | 밸류파인더 | Tel 010-5565-2299</p>
+<p>본 자료는 정보 제공 목적으로 작성된 참고 자료이며, 특정 금융상품의 권유·대출 모집이 아닙니다.<br/>발신자는 정부지원사업 대행·알선 기관이 아니며, 최종 자격·한도·금리·선정은 주관기관 심사에 따릅니다.</p>
+<p>{_foot_brand}</p>
 </div>
 </body></html>"""
 

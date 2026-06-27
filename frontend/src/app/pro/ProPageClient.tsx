@@ -147,7 +147,8 @@ export default function ProPageClient() {
       <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
         <div className="w-full max-w-2xl space-y-10">
 
-          {/* ── PRO 가치 제안 (비로그인 방문자 설득 · 가치+무료 체험만 / 가격·결제는 로그인 후) ── */}
+          {/* ── 1단계: PRO 가치 제안 — '상담 시작하기' 클릭 전까지만 표시 (클릭 시 로그인 화면으로 전환) ── */}
+          {!showLogin && (
           <div className="space-y-6">
             <div>
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold mb-3">전문가 전용 · PRO</span>
@@ -179,10 +180,12 @@ export default function ProPageClient() {
               )}
             </div>
           </div>
+          )}
 
-          {/* ── 로그인/회원가입 (‘상담 시작하기’ 클릭 시 노출) ── */}
+          {/* ── 2단계: 로그인/회원가입 (‘상담 시작하기’ 클릭 시 이 화면으로 전환) ── */}
           {showLogin && (
-          <div id="pro-login" className="w-full max-w-sm mx-auto lg:mx-0 space-y-8 scroll-mt-6">
+          <div id="pro-login" className="w-full max-w-sm mx-auto space-y-7">
+            <button type="button" onClick={() => { setShowLogin(false); setError(""); }} className="text-sm text-gray-400 hover:text-gray-700 transition-colors">← 뒤로</button>
 
           <div className="text-center space-y-1">
             <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>

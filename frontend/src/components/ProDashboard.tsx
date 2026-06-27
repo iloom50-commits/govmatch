@@ -929,6 +929,15 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
               >
                 PDF 다운로드
               </button>
+              <button
+                onClick={() => {
+                  const token = localStorage.getItem("auth_token") || "";
+                  window.open(`${API}/api/pro/reports/${detail.id}/pdf?format=html&authorization=Bearer ${token}`, "_blank");
+                }}
+                className="px-3 py-1.5 bg-slate-600 text-white rounded-lg text-[11px] font-bold hover:bg-slate-700 transition-all"
+              >
+                HTML로 저장
+              </button>
             </div>
             <div className="p-5 bg-white rounded-xl border border-violet-200 shadow-sm overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: (() => {
@@ -962,6 +971,12 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
                   <p className="font-semibold text-slate-900 text-sm">{a.title}</p>
                   <p className="text-xs text-slate-500 mt-1">{a.category} | {a.department} | 마감 {a.deadline_date} | {a.support_amount}</p>
                   <p className="text-xs text-slate-600 mt-1">{a.reason}</p>
+                  {a.announcement_id && (
+                    <a href={`/announcements/${a.announcement_id}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 mt-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-800">
+                      공고 보기 ↗
+                    </a>
+                  )}
                 </div>
                 <div className="ml-3">
                   {a.conclusion === "eligible" && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">가능</span>}
@@ -1009,13 +1024,15 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-slate-900 text-sm truncate">{r.title}</p>
-                  <p className="text-xs text-slate-500 mt-1">{r.client_name} | {r.created_at?.slice(0, 16)}</p>
+                  <p className="text-xs text-slate-500 mt-1">{r.client_name} · {r.created_at?.slice(0, 16).replace("T", " ")}</p>
                 </div>
-                <div className="flex items-center gap-2 ml-3">
-                  <span className="text-emerald-600 text-xs font-bold">{r.total_eligible}</span>
-                  <span className="text-amber-600 text-xs font-bold">{r.total_conditional}</span>
-                  <span className="text-rose-600 text-xs font-bold">{r.total_ineligible}</span>
-                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                <div className="flex items-center gap-1.5 ml-3 shrink-0">
+                  <span className="text-[11px] font-bold text-emerald-600">가능 {r.total_eligible}</span>
+                  <span className="text-slate-300 text-[11px]">·</span>
+                  <span className="text-[11px] font-bold text-amber-600">확인 {r.total_conditional}</span>
+                  <span className="text-slate-300 text-[11px]">·</span>
+                  <span className="text-[11px] font-bold text-rose-600">불가 {r.total_ineligible}</span>
+                  <svg className="w-4 h-4 text-slate-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                 </div>
               </div>
             </button>

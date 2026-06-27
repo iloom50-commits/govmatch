@@ -24,6 +24,22 @@ def _clip(text, n: int) -> str:
     return s if len(s) <= n else s[:n].rstrip() + "…"
 
 
+def _clip_clause(text, n: int) -> str:
+    """n자 초과면 구분자(/ , 공백) 경계에서 잘라 …로 마무리 (단어/구 중간 끊김 방지)."""
+    s = str(text) if text is not None else ""
+    if len(s) <= n:
+        return s
+    cut = s[:n]
+    best = -1
+    for sep in ("/", ",", " "):
+        idx = cut.rfind(sep)
+        if idx > best:
+            best = idx
+    if best >= n // 2:  # 너무 앞이면 그냥 n에서 자름
+        cut = cut[:best]
+    return cut.rstrip(" /,") + "…"
+
+
 def _dedupe_announcements(anns: list) -> list:
     """같은 정책자금의 표기 변형 제거. 괄호·공백 제거한 제목을 키로 첫 항목만 유지.
 
@@ -90,14 +106,28 @@ def build_fund_section_html(reply_text, announcements) -> str:
         for a in _dedupe_announcements(anns):
             title = _esc(_clip(a.get("title") or "", 80))
             dept = _esc(_clip(a.get("department") or "기관 미상", 40))
-            amount = _esc(_clip(a.get("support_amount") or "공고 참조", 70))
-            deadline = _esc(a.get("deadline") or "상시")
+            amount = _esc(_clip_clause(a.get("support_amount") or "공고 참조", 40))
+            # 마감일: 날짜 > 상시(ongoing) > 확인 필요(미상). NULL을 상시로 단정하지 않음.
+            _dl = (a.get("deadline") or "").strip()
+            if _dl and _dl.lower() not in ("none", "null"):
+                deadline, _dcolor = _esc(_dl), "#dc2626"
+            elif a.get("deadline_type") == "ongoing":
+                deadline, _dcolor = "상시", "#64748b"
+            else:
+                deadline, _dcolor = "확인 필요", "#ea580c"
+            # 정책자금명 → 지원금AI 공고 상세(절대경로). id 없으면 텍스트만.
+            _aid = a.get("id")
+            if _aid is not None and str(_aid).strip().lstrip("-").isdigit():
+                title = (
+                    f'<a href="https://govmatch.kr/announcements/{int(_aid)}" target="_blank" '
+                    f'style="color:#5b21b6;text-decoration:underline;">{title}</a>'
+                )
             rows += (
                 "<tr>"
                 f'<td style="{_TD}width:40%;">{title}</td>'
                 f'<td style="{_TD}width:22%;">{dept}</td>'
                 f'<td style="{_TD}width:26%;color:#16a34a;font-weight:bold;">{amount}</td>'
-                f'<td style="{_TD}width:12%;color:#dc2626;">{deadline}</td>'
+                f'<td style="{_TD}width:12%;color:{_dcolor};">{deadline}</td>'
                 "</tr>"
             )
         table_html = (

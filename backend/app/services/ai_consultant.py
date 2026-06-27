@@ -1091,7 +1091,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                     params.extend([vec_str, limit])
                     cur.execute(f"""
                         SELECT a.announcement_id, a.title, a.department,
-                               a.support_amount, a.deadline_date, a.region,
+                               a.support_amount, a.deadline_date, a.deadline_type, a.region,
                                a.summary_text, a.category,
                                1 - (e.embedding <=> %s::vector) AS similarity
                         FROM announcement_embeddings e
@@ -1115,6 +1115,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                             "department": (d.get("department") or "")[:60],
                             "support_amount": (d.get("support_amount") or "")[:60],
                             "deadline": str(d.get("deadline_date") or "")[:10],
+                            "deadline_type": d.get("deadline_type"),
                             "region": (d.get("region") or "")[:30],
                             "summary": (d.get("summary_text") or "")[:300],
                             "category": d.get("category"),
@@ -1148,7 +1149,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
             params2.append(limit)
             cur.execute(f"""
                 SELECT announcement_id, title, department, support_amount,
-                       deadline_date, region, summary_text, category
+                       deadline_date, deadline_type, region, summary_text, category
                 FROM announcements
                 WHERE COALESCE(target_type, 'business') IN (%s, 'both')
                   AND (deadline_date >= CURRENT_DATE OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '6 months'))
@@ -1176,6 +1177,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                         "department": (d.get("department") or "")[:60],
                         "support_amount": (d.get("support_amount") or "")[:60],
                         "deadline": str(d.get("deadline_date") or "")[:10],
+                        "deadline_type": d.get("deadline_type"),
                         "region": (d.get("region") or "")[:30],
                         "summary": (d.get("summary_text") or "")[:300],
                         "category": d.get("category"),
@@ -1721,8 +1723,9 @@ def chat_lite_fund_expert(
         """도구 실행 — 이름으로 라우팅"""
         if name == "search_fund_announcements":
             # [Level 1+2] 프로필 전달 — Tool 레벨에서 나이·업력·업종 자동 필터
+            # target_type은 상담 모드(tt)에 고정 — 기업 상담에 개인 서민금융이 섞이는 것 차단
             rows = _tool_search_fund_announcements(
-                db_conn, args.get("keywords", ""), args.get("target_type", tt),
+                db_conn, args.get("keywords", ""), tt,
                 limit=5, user_region=_user_region, profile=user_profile,
             )
             for r in rows:
@@ -1816,9 +1819,10 @@ def chat_lite_fund_expert(
 
             def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
                 """자금/대출/보증 관련 공고를 DB에서 검색합니다."""
-                # OpenAI 경로와 동일하게: 프로필·지역 제외필터 적용 + 참조공고 수집
+                # target_type은 상담 모드(tt)에 고정 — 기업 상담에 개인 서민금융 혼입 차단
+                # + 프로필·지역 제외필터 적용 + 참조공고 수집 (OpenAI 경로와 동일)
                 rows = _tool_search_fund_announcements(
-                    db_conn, keywords, target_type, limit=5,
+                    db_conn, keywords, tt, limit=5,
                     user_region=_user_region, profile=user_profile,
                 )
                 for r in rows:

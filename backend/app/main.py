@@ -12967,9 +12967,14 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             reason = a.get("recommendation_reason") or "자격 요건 충족"
             eligible_count += 1
 
-        # 마감일 표시
+        # 마감일 표시: 날짜 > 상시(ongoing) > 확인 필요(미상). NULL을 상시로 단정하지 않음.
         dl_raw = a.get("deadline_date")
-        deadline_display = str(dl_raw) if dl_raw else "상시모집"
+        if dl_raw:
+            deadline_display = str(dl_raw)
+        elif a.get("deadline_type") == "ongoing":
+            deadline_display = "상시모집"
+        else:
+            deadline_display = "확인 필요"
 
         results.append({
             "announcement_id": a.get("announcement_id"),
@@ -12980,8 +12985,22 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             "reason": reason,
             "support_amount": a.get("support_amount", ""),
             "deadline_date": deadline_display,
+            "deadline_type": a.get("deadline_type"),
             "eligibility_status": status,
         })
+
+    # [신뢰도] '확인 필요'(eligibility_logic 없음)는 정밀판정 불가한 후보 — 과다 노출(수백 건) 방지.
+    # 신청가능/대상아님은 전부 유지, 확인필요는 관련도 상위 _COND_CAP건만 리포트에 포함.
+    _COND_CAP = 20
+    _kept, _cond = [], 0
+    for _r in results:
+        if _r["conclusion"] == "확인 필요":
+            if _cond >= _COND_CAP:
+                continue
+            _cond += 1
+        _kept.append(_r)
+    results = _kept
+    conditional_count = _cond
 
     # 4. 공고AI 상담 이력 수집 (이 고객사 관련 최근 30건)
     consult_summaries = []
@@ -12994,8 +13013,13 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                ORDER BY cl.created_at DESC LIMIT 30""",
             (current_user["bn"],)
         )
+        _seen_consult = set()  # 같은 공고 중복 표시 방지 (created_at DESC라 첫 행=최신)
         for row in cur.fetchall():
             r = dict(row)
+            _t = r.get("title", "")
+            if _t in _seen_consult:
+                continue
+            _seen_consult.add(_t)
             msgs = r.get("messages") or []
             # 마지막 AI 응답만 추출
             last_ai = ""
@@ -13005,7 +13029,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                         last_ai = m.get("text", "")[:200]
                         break
             consult_summaries.append({
-                "title": r.get("title", ""),
+                "title": _t,
                 "conclusion": r.get("conclusion", ""),
                 "summary": last_ai,
             })
@@ -13657,8 +13681,15 @@ def api_pro_report_update(report_id: int, req: ReportSaveRequest, current_user: 
 
 
 @app.get("/api/pro/reports/{report_id}/pdf")
-def api_pro_report_pdf(report_id: int, current_user: dict = Depends(_get_current_user)):
-    """PRO: 리포트 PDF 다운로드 — HTML → PDF 변환"""
+def api_pro_report_pdf(report_id: int, format: str = "pdf",
+                       authorization: Optional[str] = None,
+                       auth_header: Optional[str] = Header(None, alias="Authorization")):
+    """PRO: 리포트 다운로드 — PDF(기본) 또는 format=html.
+    브라우저 window.open 대응: 토큰을 쿼리(authorization) 또는 헤더로 받음."""
+    _tok = authorization or auth_header
+    if not _tok or not _tok.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    current_user = _decode_jwt(_tok.split(" ", 1)[1])
     _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -13716,6 +13747,15 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         full = f"{_cli}_report.{ext}"
         ascii_fallback = (_cli.encode("ascii", "ignore").decode("ascii").strip() or "report") + f"_report.{ext}"
         return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{_urlquote(full)}"
+
+    # format=html: 링크가 확실히 살아있는 HTML 산출물 (고객 전달·클릭용)
+    if (format or "").lower() == "html":
+        from fastapi.responses import Response
+        return Response(
+            content=html.encode("utf-8"),
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": _disp("html")},
+        )
 
     # HTML → PDF (weasyprint 사용 시도, 없으면 HTML 반환)
     try:

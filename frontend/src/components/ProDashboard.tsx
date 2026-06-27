@@ -779,6 +779,24 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<any>(null);
+  const [brand, setBrand] = useState<any>({ brand_company: "", brand_contact: "", brand_phone: "" });
+  const [brandOpen, setBrandOpen] = useState(false);
+  const [brandMsg, setBrandMsg] = useState("");
+
+  useEffect(() => {
+    fetch(`${API}/api/pro/branding`, { headers: headers() })
+      .then((r) => r.json())
+      .then((d) => { if (d.status === "SUCCESS") setBrand({ brand_company: d.brand_company || "", brand_contact: d.brand_contact || "", brand_phone: d.brand_phone || "" }); })
+      .catch(() => { /* */ });
+  }, [headers]);
+
+  const saveBrand = async () => {
+    try {
+      const r = await fetch(`${API}/api/pro/branding`, { method: "PUT", headers: headers(), body: JSON.stringify(brand) });
+      if (r.ok) { setBrandMsg("저장됨 ✓"); toast("발신자 브랜딩 저장됨", "success"); setTimeout(() => setBrandMsg(""), 2000); }
+      else toast("저장 실패", "error");
+    } catch { toast("서버 오류", "error"); }
+  };
 
   // 상세 진입 시 history entry 추가 → 브라우저 뒤로가기가 목록으로 돌아오게 함
   useEffect(() => {
@@ -993,6 +1011,27 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
 
   return (
     <div>
+      {/* 발신자 브랜딩 (화이트라벨) — 고객에게 내 브랜드로 리포트 발행 */}
+      <div className="mb-4 border border-slate-200 rounded-xl overflow-hidden">
+        <button onClick={() => setBrandOpen((o) => !o)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">
+          <span>🏷️ 발신자 브랜딩 {brand.brand_company ? `· ${brand.brand_company}` : "(미설정 — 지원금AI로 발행)"}</span>
+          <span className="text-xs text-slate-400">{brandOpen ? "접기 ▲" : "설정 ▼"}</span>
+        </button>
+        {brandOpen && (
+          <div className="p-4 space-y-2 bg-white">
+            <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금AI 기본.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: 한빛생명 부산지점)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자 (예: 김설계 FC)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_phone} onChange={(e) => setBrand({ ...brand, brand_phone: e.target.value })} placeholder="연락처 (예: 010-1234-5678)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={saveBrand} className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700">저장</button>
+              {brandMsg && <span className="text-xs text-emerald-600 font-bold">{brandMsg}</span>}
+            </div>
+          </div>
+        )}
+      </div>
       {/* Generate */}
       <div className="flex items-center gap-3 mb-5 p-4 bg-violet-50/50 rounded-xl border border-violet-200">
         <select

@@ -266,7 +266,7 @@ def init_database():
         except Exception:
             conn.rollback()
 
-        # 화이트라벨 브랜딩 (보험사/컨설턴트가 자기 브랜드로 리포트 발행)
+        # 화이트라벨 브랜딩 (세무·노무·컨설팅 등 전문가가 자기 브랜드로 리포트 발행)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_company TEXT DEFAULT ''")
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_contact TEXT DEFAULT ''")
@@ -13737,7 +13737,7 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
     r = dict(row)
 
-    # 화이트라벨: 발신자(보험사/컨설턴트) 브랜딩 — 미설정 시 지원금AI 기본
+    # 화이트라벨: 발신자(전문가) 브랜딩 — 미설정 시 지원금AI 기본
     _b = dict(_brand) if _brand else {}
     _bc = (_b.get("brand_company") or "").strip()
     _bn = (_b.get("brand_contact") or "").strip()
@@ -13778,7 +13778,7 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
 </div>
 {ai_html}
 <div class="footer">
-<p>본 자료는 정보 제공 목적으로 작성된 참고 자료이며, 특정 금융상품의 권유·대출 모집이 아닙니다.<br/>발신자는 정부지원사업 대행·알선 기관이 아니며, 최종 자격·한도·금리·선정은 주관기관 심사에 따릅니다.</p>
+<p>본 자료는 정보 제공 목적의 참고 자료이며, 특정 상품·서비스의 권유를 위한 것이 아닙니다.<br/>발신자는 정부지원사업 대행·알선 기관이 아니며, 최종 자격·지원 규모·선정은 주관기관 심사에 따릅니다.</p>
 <p>{_foot_brand}</p>
 </div>
 </body></html>"""

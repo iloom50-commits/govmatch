@@ -1021,8 +1021,8 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
           <div className="p-4 space-y-2 bg-white">
             <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금AI 기본.</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: 한빛생명 부산지점)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
-              <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자 (예: 김설계 FC)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: ○○세무회계 / ○○컨설팅)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자명·직함 (예: 홍길동 세무사)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
               <input value={brand.brand_phone} onChange={(e) => setBrand({ ...brand, brand_phone: e.target.value })} placeholder="연락처 (예: 010-1234-5678)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
             </div>
             <div className="flex items-center gap-2">

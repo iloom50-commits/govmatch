@@ -14227,6 +14227,37 @@ async def api_pro_file_upload_analyze(
     return result
 
 
+@app.post("/api/pro/extract-profile")
+async def api_pro_extract_profile(
+    files: list[UploadFile] = File(...),
+    current_user: dict = Depends(_get_current_user),
+):
+    """PRO: 회사 자료(복수) → 기본정보 자동 추출 (폼 프리필용).
+    자료유형 무관 추출+병합. 파일 저장은 안 함(보관은 상담 시작 후 client_files로)."""
+    _require_pro(current_user)
+    from app.services.profile_extract import extract_one, merge, to_form_fields
+    results, per_file = [], []
+    for f in files[:8]:
+        content = await f.read()
+        name = f.filename or "파일"
+        if len(content) > 20 * 1024 * 1024:
+            per_file.append({"filename": name, "ok": False, "reason": "20MB 초과"})
+            continue
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        d = extract_one(content, ext, name)
+        if d:
+            results.append(d)
+            got = [k for k in ("company_name", "business_number", "establishment_date",
+                               "industry", "revenue_won", "employee_count", "address")
+                   if str(d.get(k) or "").strip()]
+            per_file.append({"filename": name, "ok": True, "doc_type": d.get("doc_type", "기타"), "got": got})
+        else:
+            per_file.append({"filename": name, "ok": False, "reason": "판독 불가"})
+    merged, sources = merge(results)
+    fields = to_form_fields(merged)
+    return {"status": "SUCCESS", "fields": fields, "sources": sources, "per_file": per_file}
+
+
 def _analyze_image_with_gemini(content: bytes, file_name: str, ext: str) -> dict:
     """Gemini Vision으로 이미지 분석 (사업자등록증, 명함, 재무제표 사진 등)"""
     try:

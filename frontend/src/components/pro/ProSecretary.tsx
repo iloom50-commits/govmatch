@@ -142,6 +142,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
   // 입력 폼 (고객 정보 수집)
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [extractBusy, setExtractBusy] = useState(false);  // 자료 업로드 자동채움 진행중
   const PROFILE_FORM_STORAGE_KEY = "pro_secretary_profile_form_v1";
   const [profileForm, setProfileForm] = useState(() => {
     // localStorage에서 복원 (브라우저 새로고침/뒤로가기 방어)
@@ -595,6 +596,46 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
     return "corporate";
   };
 
+  // ─── 회사 자료 업로드 → 기본정보 자동 채움 (사업자등록증·크레탑·재무제표·회사소개서 등) ───
+  const handleAutoFill = async (fileList: File[]): Promise<any[] | null> => {
+    if (!fileList || fileList.length === 0) return null;
+    setExtractBusy(true);
+    try {
+      const fd = new FormData();
+      for (const f of fileList) fd.append("files", f);
+      const r = await fetch(`${API}/api/pro/extract-profile`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const d = await r.json();
+      if (d.status === "SUCCESS") {
+        const fx = d.fields || {};
+        setProfileForm((prev: any) => ({
+          ...prev,
+          company_name: fx.company_name || prev.company_name,
+          establishment_year: fx.establishment_year || prev.establishment_year,
+          establishment_date: fx.establishment_date || prev.establishment_date,
+          industry: fx.industry_name ? `${fx.industry_name} (${fx.industry_code})` : prev.industry,
+          industry_code: fx.industry_code || prev.industry_code,
+          industry_name: fx.industry_name || prev.industry_name,
+          revenue_bracket: fx.revenue_bracket || prev.revenue_bracket,
+          employee_bracket: fx.employee_bracket || prev.employee_bracket,
+          address_city: fx.address_city || prev.address_city,
+        }));
+        toast("자료에서 기본정보를 채웠어요. 확인·수정 후 진행하세요.", "success");
+        return d.per_file || [];
+      }
+      toast(d.detail || "추출에 실패했습니다.", "error");
+      return null;
+    } catch (e) {
+      toast("업로드/추출 실패", "error");
+      return null;
+    } finally {
+      setExtractBusy(false);
+    }
+  };
+
   // ─── 고객 선택 후 상담 시작 (신규: 폼으로 / 기존: 상담목적 화면으로) ───
   const startNewChat = (category: ClientCategory, client?: ClientProfile) => {
     setActiveView("chat");
@@ -1041,6 +1082,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                   clientCategory={clientCategory}
                   profileForm={profileForm}
                   setProfileForm={setProfileForm}
+                  onAutoFill={handleAutoFill}
+                  autoFillBusy={extractBusy}
                   onSubmit={handleProfileSubmit}
                   onBack={() => {
                     setShowProfileForm(false);
@@ -2233,12 +2276,14 @@ function determineSME(catKey: string, emp: string, rev: string): "yes" | "no" | 
 }
 
 // ─── 고객 정보 입력 폼 (버튼식) ───
-function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm, onSubmit, onBack }: {
+function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm, onAutoFill, autoFillBusy, onSubmit, onBack }: {
   dark: boolean; t: any; clientCategory: string;
   profileForm: any; setProfileForm: (f: any) => void;
+  onAutoFill?: (files: File[]) => Promise<any[] | null>; autoFillBusy?: boolean;
   onSubmit: () => void; onBack: () => void;
 }) {
   const isIndiv = clientCategory === "individual";
+  const [upResults, setUpResults] = useState<any[] | null>(null);
   const catLabel = clientCategory === "corporate" || clientCategory === "individual_biz" ? "사업자" : isIndiv ? "개인" : "고객";
   const update = (key: string, val: string) => setProfileForm((prev: any) => ({ ...prev, [key]: val }));
   const toggleInterest = (v: string) => setProfileForm((prev: any) => ({
@@ -2277,6 +2322,37 @@ function ProfileInputForm({ dark, t, clientCategory, profileForm, setProfileForm
             뒤로
           </button>
         </div>
+
+        {/* 회사 자료로 자동 채우기 (사업자만) */}
+        {!isIndiv && onAutoFill && (
+          <div className={`rounded-xl border p-4 ${dark ? "border-violet-500/30 bg-violet-500/[0.06]" : "border-violet-200 bg-violet-50/60"}`}>
+            <p className={`text-[12px] font-bold mb-1 ${dark ? "text-violet-300" : "text-violet-700"}`}>📎 회사 자료로 자동 채우기</p>
+            <p className={`text-[11px] mb-2.5 ${t.muted}`}>사업자등록증·크레탑·재무제표·회사소개서 등 무엇이든 (여러 개). 아래 항목이 자동으로 채워집니다.</p>
+            <label className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-bold text-white cursor-pointer transition-all ${autoFillBusy ? "opacity-60 cursor-wait bg-violet-500" : "bg-violet-600 hover:bg-violet-700 active:scale-[0.98]"}`}>
+              {autoFillBusy ? "⏳ 분석 중…" : "파일 선택"}
+              <input type="file" multiple disabled={autoFillBusy}
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.hwp,.hwpx,.docx,.xlsx,.txt"
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []) as File[];
+                  e.target.value = "";
+                  if (!files.length) return;
+                  const res = await onAutoFill(files);
+                  if (res) setUpResults(res);
+                }} />
+            </label>
+            {upResults && upResults.length > 0 && (
+              <div className="mt-2.5 space-y-1">
+                {upResults.map((f: any, i: number) => (
+                  <p key={i} className={`text-[11px] ${f.ok ? (dark ? "text-emerald-400" : "text-emerald-600") : (dark ? "text-slate-500" : "text-slate-400")}`}>
+                    {f.ok ? `✓ ${f.filename} → ${f.doc_type} 인식` : `· ${f.filename} (${f.reason})`}
+                  </p>
+                ))}
+                <p className={`text-[10px] mt-1 ${t.muted}`}>※ 추출값을 아래에서 확인·수정한 뒤 진행하세요.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 기업명/이름 (선택) */}
         <div>

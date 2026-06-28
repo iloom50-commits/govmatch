@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Props {
   value: string;               // 'YYYY-MM-DD' | 'YYYY'
@@ -18,6 +18,8 @@ export default function EstablishmentDateInput({
 }: Props) {
   const [text, setText] = useState(value || "");
   const [showPicker, setShowPicker] = useState(false);
+  // 외부에서 value가 바뀌면(자료 자동채움 등) 입력값 동기화
+  useEffect(() => { setText(value || ""); }, [value]);
 
   const handleTextChange = (v: string) => {
     // 숫자와 하이픈만 허용

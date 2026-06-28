@@ -12396,6 +12396,43 @@ def _require_pro_or_trial(current_user: dict, counting: bool) -> str:
     return "trial"
 
 
+# ── 공개 티저 (비로그인 마케팅) — 지역 기준 신청 가능 건수만 노출, AI 없음 ──
+
+class MatchTeaserRequest(BaseModel):
+    region: Optional[str] = ""
+    industry_code: Optional[str] = ""  # 수집만(로그인 후 정밀 매칭용), 티저 건수엔 미반영
+
+
+@app.post("/api/public/match-teaser")
+def api_public_match_teaser(req: MatchTeaserRequest):
+    """비로그인 공개 — 지역 기준 '신청 가능 지원사업/정책자금' 건수 (도구 데모 티저).
+    경량 COUNT만(AI·매칭엔진 호출 없음). 실제 목록·AI·보고서는 로그인 후."""
+    region = (req.region or "").strip()[:20]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    _valid = ("(deadline_date >= CURRENT_DATE OR deadline_type='ongoing' "
+              "OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '60 days'))")
+    _biz = "COALESCE(target_type,'business') IN ('business','both')"
+    if region and region != "전국":
+        _rf = "(region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
+        params = [f"%{region}%"]
+    else:
+        _rf = "TRUE"
+        params = []
+    try:
+        cur.execute(f"SELECT COUNT(*) AS n FROM announcements WHERE is_archived=FALSE AND {_biz} AND {_valid} AND {_rf}", params)
+        support = cur.fetchone()["n"]
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM announcements WHERE is_archived=FALSE AND {_biz} AND {_valid} AND {_rf} "
+            f"AND (title ~ '정책자금|융자|보증|자금|대출' OR category ~ '자금|금융|보증')",
+            params,
+        )
+        fund = cur.fetchone()["n"]
+    finally:
+        conn.close()
+    return {"status": "SUCCESS", "region": region or "전국", "support_count": support, "fund_count": fund}
+
+
 # ── 0) 화이트라벨 발신자 브랜딩 ──
 
 class BrandingUpdate(BaseModel):

@@ -15,6 +15,22 @@ export default function ProPageClient() {
   const [showPayment, setShowPayment] = useState(false);
   const [showLogin, setShowLogin] = useState(false);  // '상담 시작하기' 클릭 전엔 로그인 폼 숨김
   const [showEmail, setShowEmail] = useState(false);  // 소셜이 메인, 이메일은 기존 회원용 fallback
+  const [region, setRegion] = useState("");           // 공개 티저: 고객사 소재지
+  const [teaser, setTeaser] = useState<any>(null);    // 티저 결과 (건수)
+  const [teaserLoading, setTeaserLoading] = useState(false);
+
+  const runTeaser = async () => {
+    setTeaserLoading(true);
+    try {
+      const res = await fetch(`${API}/api/public/match-teaser`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region }),
+      });
+      const d = await res.json();
+      if (d.status === "SUCCESS") setTeaser(d);
+    } catch { /* */ }
+    setTeaserLoading(false);
+  };
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -148,8 +164,7 @@ export default function ProPageClient() {
       <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
         <div className="w-full max-w-2xl space-y-10">
 
-          {/* ── 1단계: PRO 가치 제안 — '상담 시작하기' 클릭 전까지만 표시 (클릭 시 로그인 화면으로 전환) ── */}
-          {!showLogin && (
+          {/* ── PRO 가치 제안 (항상 표시 — 로그인은 모달 오버레이) ── */}
           <div className="space-y-6">
             <div>
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold mb-3">전문가 전용 · PRO</span>
@@ -170,28 +185,57 @@ export default function ProPageClient() {
                 </div>
               ))}
             </div>
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-              <p className="text-base font-black text-violet-700">카드 없이 월 3회 무료</p>
-              <p className="text-[12px] text-gray-600 font-medium mt-1 leading-relaxed">고객 조건만 입력하면 맞춤 공고 매칭·자격 판정·전문가 인사이트까지. 회원가입만 하면 매달 3회 무료로 체험하세요.</p>
-              {!showLogin && (
-                <button onClick={() => { setShowLogin(true); setError(""); setTimeout(() => document.getElementById("pro-login")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); }}
-                  className="mt-3 w-full px-4 py-3 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">
-                  상담 시작하기 →
+            {/* ── 매칭 미리보기 티저 (고객사 소재지 → 신청 가능 건수, 도구 데모) ── */}
+            <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-5 space-y-3">
+              <div>
+                <p className="text-base font-black text-violet-700">고객사 조건으로 30초 매칭 미리보기</p>
+                <p className="text-[12px] text-gray-600 font-medium mt-1 leading-relaxed">고객 소재지만 골라도 지금 신청 가능한 지원사업·정책자금 규모를 즉시 확인하세요. 회원가입만 하면 매달 3회 무료.</p>
+              </div>
+              <div className="flex gap-2">
+                <select value={region} onChange={e => { setRegion(e.target.value); setTeaser(null); }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-violet-200">
+                  <option value="">고객사 소재지 선택</option>
+                  {["서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주","전국"].map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <button onClick={runTeaser} disabled={teaserLoading}
+                  className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap transition-all active:scale-[0.99]">
+                  {teaserLoading ? "조회 중…" : "매칭 미리보기"}
+                </button>
+              </div>
+              {teaser ? (
+                <div className="rounded-lg bg-white border border-violet-200 p-4 text-center space-y-2.5">
+                  <p className="text-[12px] text-gray-500">🎯 {teaser.region} 고객사 기준 — 지금 신청 가능</p>
+                  <p className="text-lg font-black text-gray-900 leading-snug">
+                    지원사업 <span className="text-violet-700">{Number(teaser.support_count).toLocaleString()}건</span>
+                    <span className="text-gray-300"> · </span>
+                    정책자금 <span className="text-violet-700">{Number(teaser.fund_count).toLocaleString()}건</span>
+                  </p>
+                  <button onClick={() => { setShowLogin(true); setError(""); }}
+                    className="mt-1 w-full px-4 py-3 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">
+                    로그인하고 고객 상담 시작 →
+                  </button>
+                  <p className="text-[11px] text-gray-400">전체 공고 목록 · AI 맞춤 상담 · 보고서는 로그인 후 제공</p>
+                </div>
+              ) : (
+                <button onClick={() => { setShowLogin(true); setError(""); }}
+                  className="w-full text-center text-xs text-violet-600 underline hover:text-violet-800 transition-colors">
+                  바로 로그인하고 시작하기 →
                 </button>
               )}
             </div>
           </div>
-          )}
 
-          {/* ── 2단계: 로그인/회원가입 (‘상담 시작하기’ 클릭 시 이 화면으로 전환) ── */}
+          {/* ── 로그인/회원가입 모달 (행동 시점 로그인 — 티저 맥락 유지) ── */}
           {showLogin && (
-          <div id="pro-login" className="w-full max-w-3xl mx-auto space-y-6">
-            <button type="button" onClick={() => { setShowLogin(false); setError(""); }} className="text-sm text-gray-400 hover:text-gray-700 transition-colors">← 뒤로</button>
-
-          <div className="text-center space-y-1">
-            <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
-            <p className="text-sm text-gray-400">전문상담툴</p>
-          </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); }}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
+                <p className="text-xs text-gray-400">전문상담툴 · 로그인</p>
+              </div>
+              <button type="button" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); }} className="text-gray-400 hover:text-gray-700 text-2xl leading-none -mt-1">×</button>
+            </div>
 
           {/* 소셜 로그인 (메인 — 가입·로그인 한 번에) */}
           <div className="max-w-sm mx-auto space-y-3 pt-2">
@@ -282,6 +326,7 @@ export default function ProPageClient() {
           </div>
           )}
 
+          </div>
           </div>
           )}
         </div>

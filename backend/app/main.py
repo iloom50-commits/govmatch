@@ -275,6 +275,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 공고 첨부(양식) 메타 캐시 (SmartDoc 연동 — 파일 바이트 아닌 메타만)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT NULL")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # 개인 매칭용 프로필 컬럼 추가
         for col_def in [
             "gender VARCHAR(10) DEFAULT ''",
@@ -15082,8 +15089,8 @@ def api_announcement_by_id(announcement_id: int):
 
 
 @app.get("/api/announcements/{announcement_id}/for-smartdoc")
-def api_announcement_for_smartdoc(announcement_id: int):
-    """SmartDoc용 공고 상세 — 원문/분석 데이터 반환"""
+def api_announcement_for_smartdoc(announcement_id: int, request: Request):
+    """SmartDoc용 공고 상세 — 원문/분석 데이터 + 첨부(양식) 반환"""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -15115,9 +15122,63 @@ def api_announcement_for_smartdoc(announcement_id: int):
         except Exception:
             pass
 
+        # 첨부(양식) — 무인증 프록시 url로 노출 (SmartDoc이 다운로드해 작성)
+        try:
+            from app.services.attachments import get_or_build
+            metas = get_or_build(announcement_id, conn)
+            base = str(request.base_url).rstrip("/")
+            result["attachments"] = [
+                {"kind": m["kind"], "filename": m["filename"], "mime_type": m["mime_type"],
+                 "url": f"{base}/api/announcements/{announcement_id}/files/{i}"}
+                for i, m in enumerate(metas)
+            ]
+        except Exception:
+            result["attachments"] = []
+
         return {"status": "SUCCESS", "data": result}
     finally:
         conn.close()
+
+
+@app.get("/api/announcements/{announcement_id}/files/{idx}")
+def api_announcement_file_proxy(announcement_id: int, idx: int):
+    """무인증 양식 다운로드 프록시 — origin에서 통과 스트림 (SmartDoc 연동).
+    파일을 저장하지 않고 요청 시 원본에서 가져와 정규화된 파일명·Content-Type으로 내려줌."""
+    import requests
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote as _q
+    conn = get_db_connection()
+    try:
+        from app.services.attachments import get_or_build
+        metas = get_or_build(announcement_id, conn)
+        cur = conn.cursor()
+        cur.execute("SELECT origin_url FROM announcements WHERE announcement_id=%s", (announcement_id,))
+        prow = cur.fetchone()
+        page_referer = (prow["origin_url"] if isinstance(prow, dict) else (prow[0] if prow else "")) or ""
+    finally:
+        conn.close()
+    if idx < 0 or idx >= len(metas):
+        raise HTTPException(status_code=404, detail="첨부를 찾을 수 없습니다.")
+    m = metas[idx]
+    _h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "*/*", "Accept-Language": "ko-KR,ko;q=0.9"}
+    if page_referer:
+        _h["Referer"] = page_referer
+    try:
+        rr = requests.get(m["origin_url"], headers=_h, stream=True, timeout=30, allow_redirects=True)
+    except Exception:
+        raise HTTPException(status_code=502, detail="원본 파일을 가져올 수 없습니다.")
+    if rr.status_code != 200:
+        rr.close()
+        raise HTTPException(status_code=502, detail=f"원본 응답 오류({rr.status_code})")
+    fn = m.get("filename") or "form"
+    ascii_fn = (fn.encode("ascii", "ignore").decode("ascii").strip() or "form")
+    disp = f"attachment; filename=\"{ascii_fn}\"; filename*=UTF-8''{_q(fn)}"
+    return StreamingResponse(
+        rr.iter_content(chunk_size=16384),
+        media_type=m.get("mime_type") or "application/octet-stream",
+        headers={"Content-Disposition": disp},
+    )
 
 
 @app.post("/api/admin/ai-coo/run")

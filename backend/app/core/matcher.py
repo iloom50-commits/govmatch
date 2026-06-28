@@ -73,6 +73,23 @@ RESTRICTED_TARGET_KEYWORDS = {
     "사회적경제": ["사회적기업", "마을기업", "자활기업", "협동조합"],
 }
 
+# 업종전용 사업 — 특정 업종 영위 기업만 대상. 신호어가 있으면 해당 업종 고객만 통과.
+# signals: 사업측 표현 / codes: 고객 KSIC 접두 / kw: 고객 업종명·관심분야 키워드
+INDUSTRY_EXCLUSIVE = [
+    {"name": "스포츠/체육", "signals": ["스포츠산업", "민간스포츠기업", "스포츠기업", "체육시설업", "체육용구", "스포츠서비스업"],
+     "codes": ("R90", "R91", "R93"), "kw": ("스포츠", "체육", "운동", "헬스", "피트니스", "레저")},
+    {"name": "관광", "signals": ["관광사업체", "관광기업", "관광사업자", "관광벤처", "여행업체", "호텔업체"],
+     "codes": ("I55", "N75", "R91"), "kw": ("관광", "여행", "호텔", "숙박", "리조트")},
+    {"name": "콘텐츠/문화", "signals": ["콘텐츠기업", "콘텐츠산업", "게임기업", "방송영상", "애니메이션기업", "웹툰기업"],
+     "codes": ("J58", "J59", "J60", "R90"), "kw": ("콘텐츠", "게임", "영상", "방송", "애니", "웹툰", "미디어")},
+    {"name": "농수산", "signals": ["농업경영체", "농업법인", "어업경영체", "수산업체", "임업인", "축산농가"],
+     "codes": ("A01", "A02", "A03"), "kw": ("농업", "어업", "수산", "임업", "축산", "양식")},
+]
+
+# 공지성(지원사업 아님) — 변경/수정/정정/결과 안내. 매칭·리포트에서 제외.
+NOTICE_KEYWORDS = ["변경 공고", "수정 공고", "정정 공고", "변경계획", "재공고 안내",
+                   "선정 결과", "결과 발표", "합격자 발표", "선정결과 발표"]
+
 # 카테고리 정규화 (AI가 영어/한글 혼재로 추출)
 CATEGORY_NORMALIZE = {
     # 영어
@@ -394,6 +411,23 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
         # target_type 메타데이터가 잘못 설정된 경우(business인데 실제 개인 대상) 대비
         if any(kw in title for kw in individual_only_keywords):
             reasons.append("개인 대상 공고 (제목 기반 판정)")
+
+        # 4. 공지성(변경/수정/정정/결과 안내) 제외 — 실제 신청사업 아님
+        if any(kw in title for kw in NOTICE_KEYWORDS):
+            reasons.append("공지성 공고 (지원사업 아님)")
+
+        # 5. 업종전용 사업 제외 — 신호어가 있는데 고객이 해당 업종이 아니면 제외
+        _itext = title + " " + summary
+        _iname = _to_str(user_profile.get("industry_name"))
+        _iint = _to_str(user_profile.get("interests"))
+        for _rule in INDUSTRY_EXCLUSIVE:
+            if any(sig in _itext for sig in _rule["signals"]):
+                _ok = (bool(user_industry) and user_industry.startswith(_rule["codes"])) \
+                    or any(k in _iname for k in _rule["kw"]) \
+                    or any(k in _iint for k in _rule["kw"])
+                if not _ok:
+                    reasons.append(f"업종전용 사업 ({_rule['name']} 기업 대상)")
+                break
 
         if reasons:
             excluded.append({"ad": ad, "reasons": reasons})

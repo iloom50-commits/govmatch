@@ -13007,7 +13007,7 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     ineligible_count = 0
 
     # 공지/주의/결과발표 등 '지원사업이 아닌' 항목은 고객 리포트에서 제외 (사기주의·정정공고 등)
-    _NONSUPPORT = re.compile(r"사기|사칭|보이스피싱|스미싱|피해\s*예방|결과\s*발표|선정\s*결과|합격자\s*발표|정정\s*공고|만족도\s*조사|설문\s*조사|채용\s*공고|주의\s*안내|주의$")
+    _NONSUPPORT = re.compile(r"사기|사칭|보이스피싱|스미싱|피해\s*예방|결과\s*발표|선정\s*결과|합격자\s*발표|정정\s*공고|변경\s*공고|수정\s*공고|변경계획|재공고\s*안내|만족도\s*조사|설문\s*조사|채용\s*공고|주의\s*안내|주의$")
 
     for ann in matched:
         a = ann if isinstance(ann, dict) else dict(ann)

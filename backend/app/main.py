@@ -13053,10 +13053,19 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             reason = a.get("recommendation_reason") or "자격 요건 충족"
             eligible_count += 1
 
-        # 마감일 표시: 날짜 > 상시(ongoing) > 확인 필요(미상). NULL을 상시로 단정하지 않음.
+        # 마감일 표시: (미래)날짜 > 상시(ongoing) > 확인 필요(미상). NULL을 상시로 단정하지 않음.
+        # 과거 날짜는 노출 금지 — stale 날짜가 ongoing/unknown에 남아도 만료일이 보이지 않도록 가드.
         dl_raw = a.get("deadline_date")
+        _today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()  # KST
+        _dl_future = False
         if dl_raw:
-            deadline_display = str(dl_raw)
+            try:
+                _dl_d = dl_raw if isinstance(dl_raw, datetime.date) else datetime.date.fromisoformat(str(dl_raw)[:10])
+                _dl_future = _dl_d >= _today
+            except Exception:
+                _dl_future = False
+        if _dl_future:
+            deadline_display = str(dl_raw)[:10]
         elif a.get("deadline_type") == "ongoing":
             deadline_display = "상시모집"
         else:

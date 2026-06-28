@@ -1274,7 +1274,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                       {(m.support_amount || m.support_amount_max) && (
                                         <span className="text-emerald-500 font-semibold">💰 {formatAmount(m.support_amount, m.support_amount_max)}</span>
                                       )}
-                                      {m.deadline_date && m.deadline_date !== "None" ? (
+                                      {m.deadline_date && m.deadline_date !== "None" && new Date(String(m.deadline_date).slice(0, 10)) >= new Date(new Date().toDateString()) ? (
                                         <span className={t.muted}>📅 {String(m.deadline_date).slice(0, 10)}</span>
                                       ) : m.deadline_type === "ongoing" ? (
                                         <span className={t.muted}>🔄 상시 접수</span>
@@ -1384,9 +1384,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                       setLoading(false);
                                     }
                                   }}
-                                  className="w-full mt-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                  disabled={loading || typing}
+                                  className="w-full mt-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  📄 이 매칭 결과로 보고서 생성
+                                  {loading ? "⏳ 보고서 생성 중… (최대 1분 소요)" : "📄 이 매칭 결과로 보고서 생성"}
                                 </button>
                               )}
                             </div>
@@ -1810,7 +1811,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                 {selectedMatchedAnnouncement.support_amount && (
                   <div>
                     <p className={`text-[11px] font-semibold mb-1 ${dark ? "text-slate-400" : "text-slate-500"}`}>지원금액</p>
-                    <p className="text-[14px] font-bold text-emerald-500">{selectedMatchedAnnouncement.support_amount}</p>
+                    <p className="text-[14px] font-bold text-emerald-500">{formatAmount(selectedMatchedAnnouncement.support_amount, selectedMatchedAnnouncement.support_amount_max)}</p>
                   </div>
                 )}
                 {selectedMatchedAnnouncement.deadline_date && selectedMatchedAnnouncement.deadline_date !== "None" && (
@@ -2170,7 +2171,10 @@ function formatAmount(raw: string, max?: number | null): string {
   if (!raw) return "";
   const stripped = raw.replace(/,/g, "").replace(/원$/, "").trim();
   if (/^\d+$/.test(stripped)) return toKRW(parseInt(stripped));
-  return raw;
+  // 텍스트 내 raw 숫자 정규화: "600000 KRW" → "60만원", "10000000000 KRW (10억 원)" → "100억원 ..."
+  return raw
+    .replace(/(\d{4,})\s*KRW/gi, (_m, n: string) => toKRW(parseInt(n)))              // "NNNN KRW" (기계단위)
+    .replace(/(?<![\d.,])(\d{8,})(?![\d.,])/g, (_m, n: string) => toKRW(parseInt(n))); // 8자리+ 순수 raw 원
 }
 
 // ─── 소상공인 판별 헬퍼 ───

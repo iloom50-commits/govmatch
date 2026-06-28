@@ -1598,77 +1598,52 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
-            # ── 상시모집 만료 아카이브 — 매주 일요일 03:30 KST (UTC 일요일 18:30) ──
-            def _archive_expired_ongoing_job():
+            # ── 만료 공고 아카이브 — 매일 03:30 KST (UTC 18:30) ──
+            # 근본수정: 컬럼 is_active(미존재) → is_archived. 만료 유형 전체 처리.
+            def _archive_expired_job():
                 try:
                     conn = get_db_connection()
                     try:
-                        expiry_keywords = [
-                            '마감', '종료', '완료', '신청불가', '접수마감',
-                            '접수종료', '선정완료', '모집완료', '소진', '예산소진',
-                            '조기마감', '예산 소진', '사업종료',
-                        ]
-                        keyword_conditions = " OR ".join(
-                            [f"summary_text ILIKE %s" for _ in expiry_keywords]
-                        )
-                        keyword_params = [f"%{kw}%" for kw in expiry_keywords]
-
+                        kst = "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::DATE"
                         with conn.cursor() as cur:
-                            # 아카이브 대상 조회 (롤백용 로그에 저장)
+                            # 1) 마감 지난(fixed/unknown 과거날짜) + 마감일 미상 오래된(unknown 3개월+) → 만료
                             cur.execute(f"""
-                                SELECT announcement_id, title, created_at
-                                FROM announcements
-                                WHERE deadline_type = 'ongoing'
-                                  AND is_active = true
-                                  AND created_at < NOW() - INTERVAL '6 months'
-                                  AND ({keyword_conditions})
-                            """, keyword_params)
-                            targets = cur.fetchall()
-
-                            if not targets:
-                                print("[Archive] 상시모집 만료 대상 없음")
-                                return
-
-                            target_ids = [row['announcement_id'] for row in targets]
-                            id_list = ', '.join(str(i) for i in target_ids)
-                            print(f"[Archive] 상시모집 만료 아카이브 대상: {len(target_ids)}건 → IDs: {id_list[:200]}")
-
-                            # 롤백 정보를 system_logs에 기록
-                            _log_system(
-                                "ongoing_archive",
-                                "archive",
-                                f"archived_ids={id_list}",
-                                "success",
-                                count=len(target_ids)
-                            )
-
-                            # is_active = false 처리
-                            cur.execute("""
-                                UPDATE announcements
-                                SET is_active = false
-                                WHERE announcement_id = ANY(%s)
-                            """, (target_ids,))
+                                UPDATE announcements SET is_archived = TRUE
+                                WHERE is_archived = FALSE AND (
+                                    (deadline_date IS NOT NULL AND deadline_date < {kst}
+                                        AND COALESCE(deadline_type,'') <> 'ongoing')
+                                    OR (COALESCE(deadline_type,'unknown') = 'unknown'
+                                        AND created_at < {kst} - INTERVAL '3 months')
+                                )
+                            """)
+                            n_exp = cur.rowcount
+                            # 2) 상시(ongoing)인데 만료 키워드 포함 + 6개월 경과 → 마감으로 판단해 아카이브
+                            expiry_keywords = ['마감', '종료', '완료', '신청불가', '접수마감',
+                                               '접수종료', '선정완료', '모집완료', '소진', '예산소진',
+                                               '조기마감', '사업종료']
+                            kw = " OR ".join(["summary_text ILIKE %s" for _ in expiry_keywords])
+                            cur.execute(f"""
+                                UPDATE announcements SET is_archived = TRUE
+                                WHERE is_archived = FALSE AND deadline_type = 'ongoing'
+                                  AND created_at < {kst} - INTERVAL '6 months' AND ({kw})
+                            """, [f"%{k}%" for k in expiry_keywords])
+                            n_ong = cur.rowcount
                             conn.commit()
-                            print(f"[Archive] 완료: {len(target_ids)}건 비활성화")
-                            _log_system(
-                                "ongoing_archive_done",
-                                "archive",
-                                f"비활성화 완료: {len(target_ids)}건",
-                                "success",
-                                count=len(target_ids)
-                            )
+                            print(f"[Archive] 만료 아카이브: 마감/미상 {n_exp}건 + 상시만료 {n_ong}건")
+                            _log_system("expired_archive_done", "archive",
+                                        f"expired={n_exp} ongoing={n_ong}", "success", count=n_exp + n_ong)
                     finally:
                         try: conn.close()
                         except: pass
                 except Exception as e:
                     print(f"[Archive] 오류: {e}")
-                    _log_system("ongoing_archive_error", "archive", f"오류: {e}", "error")
+                    _log_system("expired_archive_error", "archive", f"오류: {e}", "error")
 
             pipeline_scheduler.add_job(
-                _archive_expired_ongoing_job,
-                CronTrigger(day_of_week='sun', hour=18, minute=30),  # UTC 일 18:30 = KST 월 03:30
-                id="archive_expired_ongoing",
-                name="상시모집 만료 공고 아카이브 (매주 일 03:30 KST)",
+                _archive_expired_job,
+                CronTrigger(hour=18, minute=30),  # 매일 UTC 18:30 = KST 03:30
+                id="archive_expired",
+                name="만료 공고 아카이브 (매일 03:30 KST)",
                 replace_existing=True,
             )
 

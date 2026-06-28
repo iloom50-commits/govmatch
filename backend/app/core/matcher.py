@@ -490,7 +490,8 @@ def get_matches_for_user(user_profile):
            origin_url, summary_text, eligibility_logic,
            established_years_limit, revenue_limit, employee_limit
     FROM announcements
-    WHERE (established_years_limit IS NULL OR established_years_limit >= %s)
+    WHERE is_archived = FALSE
+    AND (established_years_limit IS NULL OR established_years_limit >= %s)
     AND (revenue_limit IS NULL OR revenue_limit >= %s)
     AND (employee_limit IS NULL OR employee_limit >= %s)
     AND (COALESCE(target_type, 'business') IN ('business', 'both'))
@@ -1102,7 +1103,8 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
            origin_url, summary_text, eligibility_logic,
            established_years_limit, revenue_limit, employee_limit
     FROM announcements
-    WHERE target_type IN ('individual', 'both')
+    WHERE is_archived = FALSE
+    AND target_type IN ('individual', 'both')
     AND (
         (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
         OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '90 days')
@@ -1408,7 +1410,7 @@ def get_matches_by_embedding(user_profile: dict, top_k: int = 50, target_type_fi
                    1 - (e.embedding <=> %s::vector) AS similarity
             FROM announcement_embeddings e
             JOIN announcements a ON e.announcement_id = a.announcement_id
-            WHERE (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE){tt_filter}
+            WHERE a.is_archived = FALSE AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE){tt_filter}
             ORDER BY e.embedding <=> %s::vector
             LIMIT %s
         """

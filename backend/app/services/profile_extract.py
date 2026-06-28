@@ -11,12 +11,12 @@ _EXTRACT_PROMPT = """당신은 한국 기업 서류 판독 전문가입니다.
 주어진 자료(사업자등록증·크레탑·재무제표·회사소개서·법인등기부 등 무엇이든)에서
 아래 항목을 **자료에 실제로 적힌 것만** 추출해 JSON으로만 답하세요. 없으면 빈 문자열.
 추측·창작 금지. 숫자는 자료의 값 그대로.
+※ 개인정보(대표자 성명·주민등록번호·생년월일·개인 연락처)는 **추출하지 마세요.** 법인/사업 정보만.
 
 {
   "doc_type": "사업자등록증|크레탑|재무제표|회사소개서|법인등기부|기타 중 가장 가까운 것",
   "company_name": "상호/법인명",
   "business_number": "사업자등록번호(000-00-00000)",
-  "ceo": "대표자명",
   "establishment_date": "개업일/설립일 (YYYY-MM-DD 또는 YYYY)",
   "industry": "업종/업태/주요사업 (텍스트, 예: 자동차부품 제조)",
   "revenue_won": "최근 연매출(원 단위 정수, 모르면 빈칸)",
@@ -94,7 +94,7 @@ def extract_one(content: bytes, ext: str, filename: str = "") -> dict:
         return {}
 
 
-_FIELDS = ["company_name", "business_number", "ceo", "establishment_date",
+_FIELDS = ["company_name", "business_number", "establishment_date",
            "industry", "revenue_won", "employee_count", "address", "business_content"]
 
 

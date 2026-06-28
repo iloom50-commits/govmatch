@@ -13775,11 +13775,13 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
     _bn = (_b.get("brand_contact") or "").strip()
     _bp = (_b.get("brand_phone") or "").strip()
     if _bc:
+        # 화이트라벨: 전문가 브랜드가 주(主). 플랫폼은 작은 크레딧만.
         _hdr_brand = " · ".join(x for x in [_bc, _bn] if x)
         _foot_brand = " | ".join(x for x in [_bc, _bn, (f"Tel {_bp}" if _bp else "")] if x) + " &nbsp;·&nbsp; powered by 지원금AI"
     else:
-        _hdr_brand = "govmatch.kr"
-        _foot_brand = "지원금AI (govmatch.kr) | 밸류파인더 | Tel 010-5565-2299"
+        # 브랜드 미설정 — 플랫폼 기본 표기만 (개발사 연락처 하드코딩 금지)
+        _hdr_brand = "지원금AI"
+        _foot_brand = "지원금AI · govmatch.kr"
 
     # summary에서 brief + AI HTML 분리
     parts = (r.get("summary") or "").split("\n\n", 1)
@@ -14427,6 +14429,17 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
     failed = 0
     skipped = 0
 
+    # 화이트라벨: 발신자(전문가) 브랜딩 — 미설정 시 플랫폼 기본만 (개발사 연락처 하드코딩 금지)
+    cur.execute("SELECT brand_company, brand_contact, brand_phone FROM users WHERE business_number=%s LIMIT 1", (current_user["bn"],))
+    _eb = dict(cur.fetchone() or {})
+    _ebc = (_eb.get("brand_company") or "").strip()
+    if _ebc:
+        _eparts = [_ebc, (_eb.get("brand_contact") or "").strip(),
+                   (f"Tel {(_eb.get('brand_phone') or '').strip()}" if (_eb.get("brand_phone") or "").strip() else "")]
+        _email_foot = "본 메일은 " + " | ".join(x for x in _eparts if x) + " 가 발송했습니다.<br>powered by 지원금AI"
+    else:
+        _email_foot = "본 메일은 지원금AI(govmatch.kr)를 통해 발송되었습니다."
+
     for c in clients:
         email = c.get("contact_email")
         if not email or "@" not in email:
@@ -14458,8 +14471,7 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
             {report_html}
             <hr style="margin:30px 0;border:1px solid #e5e7eb;">
             <p style="color:#94a3b8;font-size:11px;text-align:center;">
-                본 메일은 지원금AI(govmatch.kr)를 통해 발송되었습니다.<br>
-                밸류파인더 | Tel 010-5565-2299
+                {_email_foot}
             </p>
         </div>"""
 

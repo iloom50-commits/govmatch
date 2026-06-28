@@ -36,7 +36,23 @@ export default function IndustryPicker({
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const timerRef = useRef<any>(null);
+  const pickedRef = useRef(false);  // 사용자가 후보를 명시적으로 클릭했는지
   const API = process.env.NEXT_PUBLIC_API_URL;
+
+  // 후보 클릭(명시적 선택). pickedRef로 blur 자동선택과 충돌 방지.
+  const handlePick = (code: string, name: string) => {
+    pickedRef.current = true;
+    onSelect(code, name);
+  };
+
+  // 입력 후 선택 없이 포커스를 벗어나면 최상위 추천 자동 적용 (free-text가 항상 매칭에 반영되도록)
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (!pickedRef.current && !selectedCode && candidates.length > 0) {
+        handlePick(candidates[0].code, candidates[0].name);
+      }
+    }, 200);  // 후보 클릭(blur 직후 발생)이 우선하도록 지연
+  };
 
   const search = useCallback(async (q: string) => {
     if (!q || q.trim().length < 1) {
@@ -75,6 +91,7 @@ export default function IndustryPicker({
   }, [query, search]);
 
   const clearSelection = () => {
+    pickedRef.current = false;
     onSelect("", "");
     setQuery("");
     setCandidates([]);
@@ -119,7 +136,8 @@ export default function IndustryPicker({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { pickedRef.current = false; setQuery(e.target.value); }}
+            onBlur={handleBlur}
             placeholder={placeholder}
             className={inputCls}
           />
@@ -139,7 +157,8 @@ export default function IndustryPicker({
                 <button
                   key={c.code}
                   type="button"
-                  onClick={() => onSelect(c.code, c.name)}
+                  onMouseDown={() => handlePick(c.code, c.name)}
+                  onClick={() => handlePick(c.code, c.name)}
                   className={`w-full text-left p-2.5 rounded-xl border transition-all active:scale-[0.98] ${
                     dark
                       ? "bg-white/[0.03] border-white/10 hover:border-violet-400/50 hover:bg-violet-500/10"

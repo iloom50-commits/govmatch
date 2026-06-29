@@ -271,6 +271,9 @@ def init_database():
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_company TEXT DEFAULT ''")
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_contact TEXT DEFAULT ''")
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS brand_phone TEXT DEFAULT ''")
+            # SmartDoc 별도 과금 사용권 (GovMatch가 관리, SmartDoc은 조회만)
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS smartdoc_plan TEXT")
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS smartdoc_expires_at TIMESTAMP")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -2296,7 +2299,7 @@ class SecurityAgent:
                 del counter[key]
 
     # 공개 API + 내부 서비스 경로 — 보안 검사 예외
-    _whitelisted_paths = ("/api/announcements/", "/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/push/vapid-key", "/api/auth/", "/health", "/api/admin/")
+    _whitelisted_paths = ("/api/announcements/", "/api/announcements/public", "/api/announcements/search", "/for-smartdoc", "/api/smartdoc/", "/api/push/vapid-key", "/api/auth/", "/health", "/api/admin/")
 
     def check_request(self, ip: str, path: str, method: str, query: str = "", body: str = "", user_agent: str = "") -> str | None:
         """요청을 검사하고 차단 사유가 있으면 반환, 없으면 None"""
@@ -15203,6 +15206,107 @@ def api_announcement_by_id(announcement_id: int):
         return {"status": "SUCCESS", "data": dict(row)}
     finally:
         conn.close()
+
+
+# ── SmartDoc 연동 (핸드오프 SSO · 사용권 · 기업프로필) ──
+SMARTDOC_BASE = os.getenv("SMARTDOC_BASE", "https://smartdoc.govmatch.kr")
+
+
+def _create_handoff_jwt(user_id, bn: str, email: str) -> str:
+    """SmartDoc 진입용 단기 핸드오프 토큰(공유 JWT_SECRET, aud=smartdoc, 5분)."""
+    payload = {
+        "sub": str(user_id) if user_id is not None else "", "bn": bn, "email": email,
+        "aud": "smartdoc", "purpose": "handoff",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=300),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _smartdoc_bearer(authorization: Optional[str]) -> dict:
+    """핸드오프 토큰(ht) 또는 일반 user JWT 모두 허용 → {user_id, bn, email}."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
+    token = authorization.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    bn = payload.get("bn")
+    if not bn:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    return {"user_id": payload.get("user_id") or payload.get("sub"), "bn": bn, "email": payload.get("email")}
+
+
+class SmartDocHandoffRequest(BaseModel):
+    announcement_id: Optional[int] = None
+
+
+@app.post("/api/smartdoc/handoff")
+def api_smartdoc_handoff(req: SmartDocHandoffRequest, current_user: dict = Depends(_get_current_user)):
+    """카드 클릭 시 SmartDoc 진입용 핸드오프 토큰 발급 → 리다이렉트 URL 반환."""
+    ht = _create_handoff_jwt(current_user.get("user_id"), current_user["bn"], current_user.get("email"))
+    url = f"{SMARTDOC_BASE}?ht={ht}" + (f"&aid={req.announcement_id}" if req.announcement_id else "")
+    return {"status": "SUCCESS", "handoff_token": ht, "url": url}
+
+
+@app.get("/api/smartdoc/entitlement")
+def api_smartdoc_entitlement(authorization: Optional[str] = Header(None)):
+    """SmartDoc 사용권 확인 (별도 과금 — GovMatch 관리). SmartDoc 백엔드가 호출."""
+    u = _smartdoc_bearer(authorization)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT smartdoc_plan, smartdoc_expires_at FROM users WHERE business_number=%s", (u["bn"],))
+        row = cur.fetchone()
+    finally:
+        conn.close()
+    plan = (row.get("smartdoc_plan") if row else None) or None
+    exp = row.get("smartdoc_expires_at") if row else None
+    has_access = False
+    if plan:
+        has_access = (exp is None) or (exp > datetime.datetime.utcnow())
+    return {
+        "status": "SUCCESS", "has_access": has_access, "plan": plan,
+        "remaining": None, "expires_at": (str(exp)[:10] if exp else None),
+        "purchase_url": "https://govmatch.kr/pro?buy=smartdoc",
+    }
+
+
+@app.get("/api/smartdoc/client-profile")
+def api_smartdoc_client_profile(client_profile_id: Optional[int] = None, authorization: Optional[str] = Header(None)):
+    """SmartDoc 신청서 자동작성용 기업(고객) 프로필. id 없으면 토큰 본인 기업."""
+    u = _smartdoc_bearer(authorization)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if client_profile_id:
+            cur.execute(
+                """SELECT client_name AS company_name, business_number, industry_code, industry_name,
+                          address_city, establishment_date, revenue_bracket, employee_count_bracket, interests
+                   FROM client_profiles WHERE id=%s AND owner_business_number=%s""",
+                (client_profile_id, u["bn"]),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="고객사를 찾을 수 없습니다.")
+        else:
+            cur.execute(
+                """SELECT company_name, business_number, industry_code, industry_name,
+                          address_city, establishment_date, revenue_bracket, employee_count_bracket, interests
+                   FROM users WHERE business_number=%s""",
+                (u["bn"],),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    finally:
+        conn.close()
+    prof = dict(row)
+    if prof.get("establishment_date"):
+        prof["establishment_date"] = str(prof["establishment_date"])[:10]
+    return {"status": "SUCCESS", "profile": prof}
 
 
 @app.get("/api/announcements/{announcement_id}/for-smartdoc")

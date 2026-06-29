@@ -98,11 +98,12 @@ resp: { "status":"SUCCESS",
 // client_profile_id 없으면 토큰의 user(bn) 본인 기업 정보 반환
 ```
 
-### 3.3 핸드오프 URL 규약
+### 3.3 핸드오프 URL 규약 (SmartDoc 진입 라우트 = /handoff)
 ```
-https://smartdoc.govmatch.kr?ht=<handoff_token>&aid=<announcement_id?>
+https://smartdoc.govmatch.kr/handoff?ht=<handoff_token>&aid=<announcement_id?>
 ```
 - `ht` 필수, `aid` 선택(특정 공고 양식 작성 시).
+- ht 클레임에 `client_profile_id`(선택) 포함 가능 → 기업정보 자동조회. 없으면 토큰 user 본인 기업으로 폴백.
 
 ---
 

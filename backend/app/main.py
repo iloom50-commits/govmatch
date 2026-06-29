@@ -15212,13 +15212,15 @@ def api_announcement_by_id(announcement_id: int):
 SMARTDOC_BASE = os.getenv("SMARTDOC_BASE", "https://smartdoc.govmatch.kr")
 
 
-def _create_handoff_jwt(user_id, bn: str, email: str) -> str:
+def _create_handoff_jwt(user_id, bn: str, email: str, client_profile_id=None) -> str:
     """SmartDoc 진입용 단기 핸드오프 토큰(공유 JWT_SECRET, aud=smartdoc, 5분)."""
     payload = {
         "sub": str(user_id) if user_id is not None else "", "bn": bn, "email": email,
         "aud": "smartdoc", "purpose": "handoff",
         "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=300),
     }
+    if client_profile_id:
+        payload["client_profile_id"] = client_profile_id
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -15241,13 +15243,18 @@ def _smartdoc_bearer(authorization: Optional[str]) -> dict:
 
 class SmartDocHandoffRequest(BaseModel):
     announcement_id: Optional[int] = None
+    client_profile_id: Optional[int] = None
 
 
 @app.post("/api/smartdoc/handoff")
 def api_smartdoc_handoff(req: SmartDocHandoffRequest, current_user: dict = Depends(_get_current_user)):
-    """카드 클릭 시 SmartDoc 진입용 핸드오프 토큰 발급 → 리다이렉트 URL 반환."""
-    ht = _create_handoff_jwt(current_user.get("user_id"), current_user["bn"], current_user.get("email"))
-    url = f"{SMARTDOC_BASE}?ht={ht}" + (f"&aid={req.announcement_id}" if req.announcement_id else "")
+    """카드 클릭 시 SmartDoc 진입용 핸드오프 토큰 발급 → 리다이렉트 URL 반환.
+    진입 경로는 SmartDoc의 /handoff (SmartDoc 합의)."""
+    ht = _create_handoff_jwt(
+        current_user.get("user_id"), current_user["bn"], current_user.get("email"),
+        client_profile_id=req.client_profile_id,
+    )
+    url = f"{SMARTDOC_BASE}/handoff?ht={ht}" + (f"&aid={req.announcement_id}" if req.announcement_id else "")
     return {"status": "SUCCESS", "handoff_token": ht, "url": url}
 
 

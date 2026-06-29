@@ -13317,6 +13317,23 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                 ai_summary = "\n".join(lines).strip()
             # AI가 본문 맨 위에 자체 제목(<h1>)을 만들면 상단 헤더 제목과 중복 → 제거
             ai_summary = re.sub(r"^\s*<h1\b[^>]*>.*?</h1>\s*", "", ai_summary, count=1, flags=re.IGNORECASE | re.DOTALL)
+
+            # 공고 제목 → ?aid 링크(메인화면 카드). 표 셀 경계(>제목<)의 정확한 제목만 링크해 프로즈 오링크 방지.
+            def _linkify(html, rows):
+                items = sorted(((str(r.get("title") or "").strip(), r.get("announcement_id") or r.get("id")) for r in rows),
+                               key=lambda x: -len(x[0]))
+                for _t, _aid in items:
+                    if not _t or len(_t) < 6 or not _aid:
+                        continue
+                    _lnk = (f'<a href="https://govmatch.kr?aid={_aid}" target="_blank" '
+                            f'style="color:#5b21b6;text-decoration:underline;">{_t}</a>')
+                    html = re.sub(r'>(\s*)' + re.escape(_t) + r'(\s*)<',
+                                  lambda m, l=_lnk: '>' + m.group(1) + l + m.group(2) + '<', html)
+                return html
+            try:
+                ai_summary = _linkify(ai_summary, results)
+            except Exception as _le:
+                print(f"[report] linkify skip: {_le}")
             print(f"[report] AI summary generated: {len(ai_summary)} chars")
     except Exception as e:
         ai_summary = f"AI 요약 생성 실패: {str(e)[:200]}"
@@ -13368,6 +13385,10 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             for t in ordered[:10]:
                 rr = t["r"]
                 title = (rr.get("title") or "")[:55]
+                _gaid = rr.get("announcement_id") or rr.get("id")
+                if _gaid:
+                    title = (f'<a href="https://govmatch.kr?aid={_gaid}" target="_blank" '
+                             f'style="color:#5b21b6;text-decoration:underline;">{title}</a>')
                 amt = _short_amt(rr.get("support_amount"))
                 if t["days_left"] is None:
                     bar_color = "#94a3b8"

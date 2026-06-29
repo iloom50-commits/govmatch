@@ -80,8 +80,13 @@ resp: { "status":"SUCCESS",
 **(c) 공고 상세 + 양식** — **이미 존재** (변경 없음)
 ```
 GET /api/announcements/{id}/for-smartdoc   (무인증 화이트리스트)
-resp: { 공고 원문/분석 + attachments[]( 양식 프록시 URL ) }   // 기존 계약 유지
+resp: { ...공고, "full_text": "<공고/양식 추출 텍스트>",
+        "attachments": [ {kind, filename, mime_type, origin_url(프록시)} ] }
 ```
+- **`full_text`**: GovMatch가 첨부(PDF/HWP/HWPX)를 **이미 텍스트 추출**해 제공. **.hwp도 GovMatch가 `olefile`로 Linux에서 추출**(COM 불필요).
+- 각 attachment에 `filename`(확장자)·`kind`(신청서양식/공고문 등) 포함 → SmartDoc이 .hwp/.hwpx 라우팅 가능.
+
+> **.hwp 입력 처리(중요·갭 해소):** GovMatch는 원본을 변환 없이 제공하므로 **.hwp·.hwpx 둘 다** 온다. 단 **.hwp는 Linux에서 읽힌다** — SmartDoc은 ⓐ `full_text`(이미 추출됨)를 쓰거나 ⓑ 동일하게 `olefile`로 직접 추출. **COM 불필요.** native .hwp→.hwpx **변환**만 COM이 필요한데, SmartDoc 산출물은 **새 DOCX/HWPX(분석기반 생성)**라 원본 레이아웃 복제가 아니므로 **텍스트 수준 이해로 충분**.
 
 **(d) 기업(고객) 프로필** — SmartDoc이 신청서 자동작성에 사용 (신규 추가)
 ```

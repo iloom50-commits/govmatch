@@ -982,6 +982,15 @@ def _profile_exclusion_clause(profile: dict, alias: str = "a") -> tuple:
     except Exception:
         pass
 
+    # 채무조정/재기지원/신용회복 대상 전용 (부실·재기 기업용) — 일반 고객 제외.
+    # 고객이 재창업/재도전이면 통과. matcher.py 제외 규칙과 동일 철학.
+    certs = str((profile or {}).get("certifications", "") or "")
+    if not any(k in certs for k in ("재창업", "재도전", "재기")):
+        conds.append(f"NOT ({p}title ~* '채무조정|관리종결|미변제|신용회복|재기지원|파산|워크아웃|회생절차')")
+
+    # 정책자금 '융자계획 공고' 등 우산(umbrella) 공고 제외 — 세부자금만 노출(상담은 세부자금 단위).
+    conds.append(f"NOT ({p}title ~* '융자계획')")
+
     if not conds:
         return "", []
     return " AND " + " AND ".join(conds), params

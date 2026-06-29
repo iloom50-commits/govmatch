@@ -806,6 +806,9 @@ def get_matches_for_user(user_profile):
         elif any(kw in title for kw in
                  ["채무조정", "관리종결", "미변제", "신용회복", "재기지원", "회생절차", "파산", "워크아웃"]) and not has_restart:
             restricted_reason = "채무조정/재기지원 대상 전용"
+        # 정책자금 '융자계획 공고' 등 우산(umbrella) 공고 — 세부자금이 별도로 있어 상위 plan은 제외
+        elif "융자계획" in title:
+            restricted_reason = "융자계획 우산공고(세부자금 별도 매칭)"
 
         if restricted_reason:
             _mark_ineligible(ad, restricted_reason)

@@ -13353,24 +13353,17 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         if ordered:
             max_days = max((t["days_left"] for t in ordered if t["days_left"] is not None), default=60) or 60
             chart_max = max(max_days, 30)  # 최소 30일 스케일
-            def _fmt_krw(v):
-                # 원 단위 정수 → 보기 좋은 한글 금액
-                if v >= 10 ** 8:
-                    eok = v / 10 ** 8
-                    return (f"{eok:.0f}억원" if eok == int(eok) else f"{eok:.1f}억원")
-                if v >= 10 ** 4:
-                    return f"{v / 10 ** 4:,.0f}만원"
-                return f"{v:,}원"
+            from app.services.amount_parser import normalize_amount_text, won_to_baekman
 
             def _short_amt(s):
-                # 금액 칸: 금액을 새로 합성하지 않음(왜곡 방지). 짧으면 원문 그대로,
-                # 길면 안전 절단(…), 순수 정수만 한글 금액으로 포맷.
+                # 금액 칸: 표기를 백만원 단위로 통일(무왜곡). 짧으면 그대로, 길면 안전 절단.
                 t = re.sub(r"\s+", " ", str(s or "")).strip()
                 if not t or t == "0":
                     return "-"
                 if t.isdigit():
-                    return f"최대 {_fmt_krw(int(t))}"
-                return t if len(t) <= 19 else (t[:18].rstrip(" ,(") + "…")
+                    return won_to_baekman(int(t)) or "-"
+                t = normalize_amount_text(t)
+                return t if len(t) <= 40 else (t[:39].rstrip(" ,(") + "…")
             rows_html = ""
             for t in ordered[:10]:
                 rr = t["r"]
@@ -13394,8 +13387,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                     label = f"D-{t['days_left']}"
                 rows_html += f'''
                 <tr>
-                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;width:38%;vertical-align:middle;">{title}</td>
-                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;width:24%;color:#16a34a;font-weight:bold;vertical-align:middle;">{amt}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;width:34%;vertical-align:middle;">{title}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;width:28%;color:#16a34a;font-weight:bold;vertical-align:middle;">{amt}</td>
                     <td style="padding:6px 8px;border:1px solid #e5e7eb;width:38%;vertical-align:middle;">
                         <div style="position:relative;height:18px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
                             <div style="position:absolute;left:0;top:0;height:100%;width:{bar_width}%;background:{bar_color};border-radius:3px;"></div>

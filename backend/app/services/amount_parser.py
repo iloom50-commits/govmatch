@@ -190,3 +190,51 @@ def parse_support_amount(raw: Optional[str]) -> Tuple[str, Optional[int], Option
 
     # 숫자는 있으나 모두 제외(투자/대출 등)되거나 단위 해석 실패 → text_only
     return ("text_only", None, None)
+
+
+def won_to_baekman(v) -> str:
+    """원 단위 정수 → '백만원' 단위 표기. 1백만원 미만은 원 그대로."""
+    try:
+        v = int(v)
+    except Exception:
+        return ""
+    if v <= 0:
+        return ""
+    man = v / 1_000_000
+    if man >= 1:
+        return (f"{man:,.0f}백만원" if abs(man - round(man)) < 1e-9 else f"{man:,.1f}백만원")
+    return f"{v:,}원"
+
+
+# 한글단위 금액 토큰 (5억원 / 300만원 / 20억 / 2.5억 / 3천만원 / 1억5천만원 등)
+_KR_AMT_TOKEN = re.compile(
+    r'\d[\d,\.]*\s*(?:조|억|천만|백만|천|만)(?:\s*\d[\d,]*\s*(?:천만|백만|천|만))*\s*원?'
+)
+
+
+def normalize_amount_text(text) -> str:
+    """금액 문자열 내 인식 가능한 금액 토큰을 '백만원' 단위로 통일.
+
+    - 'N KRW' / 'N,NNN KRW' → 백만원
+    - 순수숫자+'원'(큰 숫자) → 백만원
+    - 한글단위(억/만/천만 등) → 백만원
+    값 해석 실패 토큰은 원문 유지(무왜곡). 주변 텍스트(최대/총/내외 등)는 보존.
+    """
+    s = str(text or "")
+    if not s:
+        return s
+    # 1) 'N KRW'
+    s = re.sub(r'([\d,]{4,})\s*KRW',
+               lambda m: won_to_baekman(int(m.group(1).replace(',', ''))) or m.group(0), s)
+    # 2) 순수숫자 + '원' (한글단위 없는 큰 숫자, 4자리 이상)
+    s = re.sub(r'(?<![\d가-힣.])([\d,]{4,})\s*원',
+               lambda m: won_to_baekman(int(m.group(1).replace(',', ''))) or m.group(0), s)
+    # 2.5) 'N천M백만'(천·백이 만의 하위단위, 예 3천6백만=3,600만) — 일반 파서가 못 읽는 케이스
+    s = re.sub(r'(\d+)\s*천\s*(\d+)\s*백\s*만\s*원?',
+               lambda m: won_to_baekman((int(m.group(1)) * 1000 + int(m.group(2)) * 100) * 10000), s)
+    # 3) 한글단위 금액
+    def _kr(m):
+        v = _parse_numeric_with_unit(m.group(0).replace('원', '').replace(' ', ''))
+        return won_to_baekman(v) if v else m.group(0)
+    s = _KR_AMT_TOKEN.sub(_kr, s)
+    return s

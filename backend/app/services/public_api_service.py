@@ -1,10 +1,36 @@
 import os
+import re
 import requests
 import json
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def sanitize_origin_url(url) -> str:
+    """수집된 원본 URL 위생 — 유효한 http(s) URL만 통과, 무효는 "" 반환.
+
+    무효(#portalHome, 가짜스킴 manual://, 공백, 스킴없음 등)를 ""로 만들어
+    호출부의 폴백(유효 URL) 또는 NULL 저장이 작동하게 한다. (깨진 링크 저장 방지)
+    """
+    u = (url or "").strip()
+    if not u:
+        return ""
+    m = list(re.finditer(r"https?://", u, re.I))
+    if len(m) >= 2:
+        u = u[m[-1].start():]          # 중복 스킴 → 마지막 http부터
+    if not re.match(r"^https?://", u, re.I):
+        return ""                       # 스킴 없음(#portalHome 등)
+    rest = re.sub(r"^https?://", "", u, flags=re.I)
+    if "://" in rest:
+        return ""                       # manual:// 등 가짜 스킴
+    if re.search(r"\s", u):
+        return ""                       # 공백 포함
+    host = re.split(r"[/?#]", rest)[0]
+    if "." not in host:
+        return ""                       # 호스트 이상
+    return u
 
 class GovernmentAPIService:
     """공공데이터포털(data.go.kr) 공식 API를 통한 지원사업 수집 서비스"""
@@ -906,7 +932,7 @@ class GovernmentAPIService:
         mapped = []
         for item in items:
             title = item.get("서비스명", "")
-            detail_url = item.get("상세조회URL", "")
+            detail_url = sanitize_origin_url(item.get("상세조회URL", ""))
             if not title:
                 continue
             if not detail_url:
@@ -1019,7 +1045,7 @@ class GovernmentAPIService:
 
             # 상세 URL 구성
             serv_id = item.get("servId") or item.get("wlfareInfoId") or ""
-            detail_url = item.get("servDtlLink") or item.get("detailUrl") or ""
+            detail_url = sanitize_origin_url(item.get("servDtlLink") or item.get("detailUrl") or "")
             if not detail_url and serv_id:
                 detail_url = f"https://www.bokjiro.go.kr/ssis-teu/twataa/wlfareInfo/moveTWAT52011M.do?wlfareInfoId={serv_id}"
             if not detail_url:
@@ -1546,7 +1572,7 @@ class GovernmentAPIService:
         mapped = []
         for item in items:
             title = item.get("서비스명", "")
-            detail_url = item.get("상세조회URL", "")
+            detail_url = sanitize_origin_url(item.get("상세조회URL", ""))
             if not title:
                 continue
             if not detail_url:

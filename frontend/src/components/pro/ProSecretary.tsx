@@ -6,6 +6,7 @@ import DOMPurify from "dompurify";
 import IndustryPicker from "@/components/shared/IndustryPicker";
 import EstablishmentDateInput from "@/components/shared/EstablishmentDateInput";
 import { renderMarkdown } from "@/lib/markdown";
+import { cleanExternalUrl } from "@/lib/url";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -1233,9 +1234,9 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                             </div>
                           )}
                           {/* 원문 바로가기 — 공고 분석 결과 맨 마지막 */}
-                          {msg.role === "assistant" && msg.expert_insights && msg.origin_url && (
+                          {msg.role === "assistant" && msg.expert_insights && cleanExternalUrl(msg.origin_url) && (
                             <div className="mt-3">
-                              <a href={msg.origin_url} target="_blank" rel="noopener noreferrer"
+                              <a href={cleanExternalUrl(msg.origin_url)} target="_blank" rel="noopener noreferrer"
                                 className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${dark ? "border-violet-500/40 text-violet-300 hover:bg-violet-500/10 hover:border-violet-400" : "border-indigo-300 text-indigo-600 bg-white hover:bg-indigo-50 hover:border-indigo-400"}`}>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                 공고 원문 바로가기
@@ -1340,8 +1341,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
                                   </div>
                                   {/* 하단 버튼 바 */}
                                   <div className={`flex border-t ${dark ? "border-white/[0.06]" : "border-slate-100"}`}>
-                                    {m.origin_url && (
-                                      <a href={m.origin_url} target="_blank" rel="noopener noreferrer"
+                                    {cleanExternalUrl(m.origin_url) && (
+                                      <a href={cleanExternalUrl(m.origin_url)} target="_blank" rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         className={`flex-1 flex items-center justify-center gap-1 py-2 text-[12px] font-medium border-r transition-colors ${dark ? "text-slate-400 hover:bg-white/[0.04] border-white/[0.06]" : "text-slate-500 hover:bg-slate-50 border-slate-100"}`}>
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>

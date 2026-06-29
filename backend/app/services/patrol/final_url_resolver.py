@@ -170,7 +170,8 @@ def resolve_priority_announcements(db_conn, limit: int = 50) -> dict:
         aid = row["announcement_id"]
         origin = row["origin_url"]
         try:
-            final = resolve_final_url(origin)
+            from app.services.public_api_service import sanitize_origin_url
+            final = sanitize_origin_url(resolve_final_url(origin))  # #portalHome 등 무효 final_url 저장 방지
             if final and final != origin:
                 cur.execute(
                     "UPDATE announcements SET final_url = %s WHERE announcement_id = %s",

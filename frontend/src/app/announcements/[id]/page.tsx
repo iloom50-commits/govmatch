@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import AnnouncementDetail from "./AnnouncementDetail";
+import { bestExternalUrl } from "@/lib/url";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://govmatch-production.up.railway.app";
 
@@ -156,10 +157,10 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
           {/* 클라이언트 컴포넌트 — AI 상담 버튼 등 */}
           <AnnouncementDetail announcement={ann} />
 
-          {ann.origin_url && (
+          {bestExternalUrl(ann.final_url, ann.origin_url) && (
             <div className="mt-6 text-center">
               <a
-                href={ann.final_url || ann.origin_url}
+                href={bestExternalUrl(ann.final_url, ann.origin_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-slate-400 hover:text-indigo-600 underline"

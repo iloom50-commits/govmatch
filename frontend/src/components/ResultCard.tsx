@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/ui/Toast";
+import { bestExternalUrl } from "@/lib/url";
 
 function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: string, type?: "success" | "error" | "info") => void; announcementId?: number; announcementTitle?: string }) {
   const [open, setOpen] = useState(false);
@@ -410,25 +411,10 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           </span>
         </div>
 
-        {/* Title + Amount — 클릭 시 최종 원본 페이지로 이동 (final_url 우선) */}
-        {(() => {
-          // final_url → origin_url → url 순서로 우선 사용
-          let rawUrl = res.final_url || res.origin_url || res.url || "";
-          if (rawUrl) {
-            const matches = [...rawUrl.matchAll(/https?:\/\//g)];
-            if (matches.length >= 2) {
-              rawUrl = rawUrl.substring(matches[matches.length - 1].index || 0);
-            }
-          }
-          return rawUrl;
-        })() ? (
+        {/* Title + Amount — 클릭 시 최종 원본 페이지로 이동 (유효 URL만 링크, 필드별 검증) */}
+        {bestExternalUrl(res.final_url, res.origin_url, res.url) ? (
           <a
-            href={(() => {
-              let u = res.final_url || res.origin_url || res.url || "";
-              const matches = [...u.matchAll(/https?:\/\//g)];
-              if (matches.length >= 2) u = u.substring(matches[matches.length - 1].index || 0);
-              return u;
-            })()}
+            href={bestExternalUrl(res.final_url, res.origin_url, res.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight hover:text-indigo-600 hover:underline underline-offset-2 transition-colors line-clamp-2 min-h-[2lh] cursor-pointer"

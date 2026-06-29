@@ -121,6 +121,51 @@ export default function ProPageClient() {
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const trialRemaining = planStatus?.pro_trial_remaining ?? 3;
 
+  // ── 2 제품 카드 진입 ──
+  const goConsult = () => setAuthState("pro");
+  const goSmartDoc = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${API}/api/smartdoc/handoff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data?.url) window.location.href = data.url;
+      else setError("SmartDoc 연결에 실패했습니다.");
+    } catch { setError("SmartDoc 연결에 실패했습니다."); }
+  };
+  // SmartDoc 배포 전엔 "곧 출시" (배포 후 NEXT_PUBLIC_SMARTDOC_READY=true 로 활성화)
+  const SMARTDOC_READY = process.env.NEXT_PUBLIC_SMARTDOC_READY === "true";
+  // 비로그인이면 로그인(모달) → 로그인 후 카드 다시 클릭하면 진입
+  const onCardClick = (action: "smartdoc" | "consult") => {
+    if (action === "smartdoc" && !SMARTDOC_READY) {
+      alert("정책자금 융자신청서 자동 작성(SmartDoc)은 곧 출시 예정입니다.");
+      return;
+    }
+    if (!planStatus) { setShowLogin(true); setError(""); return; }
+    if (action === "smartdoc") goSmartDoc(); else goConsult();
+  };
+
+  const ProductCards = (
+    <div className="grid sm:grid-cols-2 gap-4">
+      <button type="button" onClick={() => onCardClick("smartdoc")}
+        className="relative text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
+        {!SMARTDOC_READY && <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">곧 출시</span>}
+        <div className="text-3xl mb-2">📝</div>
+        <p className="text-[15px] font-black text-gray-900">정책자금 융자신청서 자동 작성</p>
+        <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">공고 첨부 양식을 AI가 분석해 기업 정보 기반 맞춤 신청서 초안을 자동 생성 <span className="text-violet-600 font-bold">(SmartDoc)</span></p>
+      </button>
+      <button type="button" onClick={() => onCardClick("consult")}
+        className="text-left rounded-2xl border border-indigo-200 bg-white hover:border-indigo-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
+        <div className="text-3xl mb-2">💼</div>
+        <p className="text-[15px] font-black text-gray-900">정부 지원사업 상담 프로그램</p>
+        <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">고객 조건만 입력하면 맞춤 공고 매칭·자격판정·전문가 인사이트·보고서까지 한 번에</p>
+      </button>
+    </div>
+  );
+
   const inputCls = "w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-shadow";
   const btnPrimary = { backgroundColor: "#111827", color: "#ffffff" };
 
@@ -163,6 +208,16 @@ export default function ProPageClient() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
         <div className="w-full max-w-2xl space-y-10">
+
+          {/* ── 2 제품 카드 (첫 진입) ── */}
+          <div className="space-y-3">
+            <div>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold">전문가 전용 · PRO</span>
+              <h2 className="mt-3 text-2xl font-bold text-gray-900">무엇을 시작하시겠습니까?</h2>
+              <p className="mt-1 text-sm text-gray-500">카드를 선택하면 시작됩니다. (로그인이 필요하면 그때 안내됩니다)</p>
+            </div>
+            {ProductCards}
+          </div>
 
           {/* ── PRO 가치 제안 (항상 표시 — 로그인은 모달 오버레이) ── */}
           <div className="space-y-6">
@@ -337,8 +392,8 @@ export default function ProPageClient() {
   // ── 대시보드 ──
   return (
     <>
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
+        <div className="w-full max-w-2xl space-y-6">
 
           <div className="text-center space-y-1">
             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
@@ -362,41 +417,23 @@ export default function ProPageClient() {
             </div>
           </div>
 
-          {/* 액션 */}
-          {isPro ? (
-            <button onClick={() => setAuthState("pro")} style={btnPrimary}
-              className="w-full py-3 rounded-lg text-sm font-semibold transition-colors">
-              전문상담툴 시작하기 →
-            </button>
-          ) : trialRemaining > 0 ? (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-violet-100 bg-violet-50/50 px-5 py-4 text-center">
-                <p className="text-sm text-gray-700">
-                  무료 체험 <span className="font-bold text-violet-700">{trialRemaining}회</span> 남았어요 <span className="text-gray-400 text-xs">(이번 달)</span>
-                </p>
-                <p className="text-[11px] text-gray-400 mt-1">매칭·공고상담을 카드 없이 직접 체험해 보세요</p>
-              </div>
-              <button onClick={() => setAuthState("pro")} style={btnPrimary}
-                className="w-full py-3 rounded-lg text-sm font-semibold transition-colors">
-                무료로 체험 시작하기 →
-              </button>
-              <button onClick={() => setShowPayment(true)}
-                className="w-full py-2.5 rounded-lg text-sm font-medium text-violet-700 border border-violet-200 hover:bg-violet-50 transition-colors">
-                PRO 플랜 결제하기
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-center">
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  이번 달 무료 체험을 모두 사용하셨어요.<br /><span className="font-semibold text-gray-900">PRO 플랜</span>으로 계속 이용하세요.
-                </p>
-              </div>
-              <button onClick={() => setShowPayment(true)} style={btnPrimary}
-                className="w-full py-3 rounded-lg text-sm font-semibold transition-colors">
-                PRO 플랜 결제하기
-              </button>
-            </div>
+          {/* 2 제품 카드 */}
+          <h2 className="text-lg font-bold text-gray-900 text-center">무엇을 시작하시겠습니까?</h2>
+          {ProductCards}
+
+          {/* 상담 프로그램 플랜 상태 (작게) */}
+          {!isPro && (
+            trialRemaining > 0 ? (
+              <p className="text-center text-[12px] text-gray-500">
+                상담 프로그램 무료 체험 <span className="font-bold text-violet-700">{trialRemaining}회</span> 남음 ·{" "}
+                <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900">PRO 결제</button>
+              </p>
+            ) : (
+              <p className="text-center text-[12px] text-gray-500">
+                이번 달 무료 체험 소진 ·{" "}
+                <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900 font-semibold">PRO 플랜 결제하기</button>
+              </p>
+            )
           )}
 
           <button onClick={handleLogout}

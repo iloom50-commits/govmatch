@@ -801,6 +801,11 @@ def get_matches_for_user(user_profile):
         # 재도전/재창업 전용 공고
         elif any(kw in title for kw in ["재도전", "재창업", "폐업 후"]) and not has_restart:
             restricted_reason = "재도전/재창업 전용"
+        # 채무조정/재기지원/신용회복 대상 전용 (부실·재기 기업용) — 일반 고객 제외
+        # 제목 기준(자격키워드는 오추출 잦음): 일반 공고가 자격에 '관리종결확정자'를 한 항목으로 넣어도 과잉 제외 방지
+        elif any(kw in title for kw in
+                 ["채무조정", "관리종결", "미변제", "신용회복", "재기지원", "회생절차", "파산", "워크아웃"]) and not has_restart:
+            restricted_reason = "채무조정/재기지원 대상 전용"
 
         if restricted_reason:
             _mark_ineligible(ad, restricted_reason)

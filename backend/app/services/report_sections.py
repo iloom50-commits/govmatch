@@ -181,7 +181,55 @@ def _render_fund_tables(funds, anns=None) -> str:
     return "".join(blocks)
 
 
-def build_fund_section_html(reply_text, announcements) -> str:
+_FUND_STRUCT_ROWS = [('verdict', '결론'), ('support_limit', '지원한도'), ('target', '대상요건'),
+                     ('apply', '신청처'), ('deadline', '마감'), ('docs', '준비서류'), ('action', '다음 액션')]
+
+
+def _render_fund_tables_struct(details, anns=None) -> str:
+    """구조화 자금 분석(JSON 목록) → 자금별 2열 표. 프로즈 파싱보다 안정적.
+
+    각 항목: {aid, name, verdict, support_limit, target, apply, deadline, docs, action}
+    금액은 백만원 통일, 자금명은 aid(없으면 제목매칭)로 ?aid 링크.
+    """
+    if not isinstance(details, list) or not details:
+        return ""
+    aid_by = {}
+    for a in (anns or []):
+        k = _norm_title(a.get("title"))
+        aid = a.get("id")
+        if k and k not in aid_by and aid is not None and str(aid).strip().lstrip("-").isdigit():
+            aid_by[k] = int(aid)
+    blocks = []
+    for f in details:
+        if not isinstance(f, dict):
+            continue
+        rows = ""
+        for key, label in _FUND_STRUCT_ROWS:
+            val = str(f.get(key) or "").strip()
+            if not val:
+                continue
+            val = normalize_amount_text(val)
+            rows += (f'<tr><th style="{_TH}white-space:nowrap;width:84px;vertical-align:top;">{_esc(label)}</th>'
+                     f'<td style="{_TD}vertical-align:top;">{_esc(val)}</td></tr>')
+        if not rows:
+            continue
+        name = str(f.get("name") or "정책자금").strip()
+        aid = f.get("aid")
+        if not (aid is not None and str(aid).strip().lstrip("-").isdigit()):
+            aid = aid_by.get(_norm_title(name))
+        name_html = (
+            f'<a href="https://govmatch.kr?aid={int(aid)}" target="_blank" '
+            f'style="color:#5b21b6;text-decoration:underline;">{_esc(name)}</a>'
+            if aid else _esc(name)
+        )
+        blocks.append(
+            f'<h4 style="margin:16px 0 4px 0;color:#5b21b6;font-size:13px;">{name_html}</h4>'
+            f'<table style="{_TABLE}"><tbody>{rows}</tbody></table>'
+        )
+    return "".join(blocks)
+
+
+def build_fund_section_html(reply_text, announcements, fund_details=None) -> str:
     """'💰 맞춤 정책자금' 섹션 HTML 생성.
 
     Args:
@@ -250,15 +298,19 @@ def build_fund_section_html(reply_text, announcements) -> str:
             '(신청 가능·확인 필요·해당 없음) 판정은 아래 분석을 참조하세요.</p>'
         )
 
-    # 상세 분석: 자금별 표로 렌더(일목요연). 파싱 실패 시 기존 텍스트로 폴백(악화 방지).
-    funds = _parse_fund_rationale(reply_text)
-    if funds:
-        rationale_block = f'<div style="margin-top:10px;">{_render_fund_tables(funds, anns)}</div>'
+    # 상세 분석: ① 구조화 JSON(가장 안정) → ② 프로즈 파싱 → ③ 원문 텍스트 순으로 폴백.
+    struct_html = _render_fund_tables_struct(fund_details, anns) if fund_details else ""
+    if struct_html:
+        rationale_block = f'<div style="margin-top:10px;">{struct_html}</div>'
     else:
-        rationale_html = _markdown_to_html(reply_text) if reply_text else ""
-        rationale_block = (
-            f'<div style="font-size:13px;color:#334155;line-height:1.7;margin-top:10px;">{rationale_html}</div>'
-            if rationale_html else ""
-        )
+        funds = _parse_fund_rationale(reply_text)
+        if funds:
+            rationale_block = f'<div style="margin-top:10px;">{_render_fund_tables(funds, anns)}</div>'
+        else:
+            rationale_html = _markdown_to_html(reply_text) if reply_text else ""
+            rationale_block = (
+                f'<div style="font-size:13px;color:#334155;line-height:1.7;margin-top:10px;">{rationale_html}</div>'
+                if rationale_html else ""
+            )
 
     return header + note + table_html + disclaimer + rationale_block

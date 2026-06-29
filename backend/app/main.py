@@ -12972,6 +12972,56 @@ def api_pro_consult_history_export(
 
 # ── 3) 종합 리포트 ──
 
+def _structured_fund_analysis(fund_anns: list, profile: dict) -> list:
+    """정책자금 목록 + 고객 프로필 → 자금별 구조화 분석(JSON 목록). 실패 시 [].
+
+    프로즈 파싱(형식 변동에 취약) 대신 Gemini JSON 출력으로 안정적인 표 데이터 생성.
+    각 항목: {aid, name, verdict, support_limit, target, apply, deadline, docs, action}
+    """
+    if not fund_anns:
+        return []
+    try:
+        import google.generativeai as _genai
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_BATCH_API_KEY")
+        if not key:
+            return []
+        _genai.configure(api_key=key)
+        gmodel = _genai.GenerativeModel(
+            "models/gemini-2.5-flash",
+            generation_config={"response_mime_type": "application/json"},
+        )
+        lines = []
+        for a in fund_anns[:8]:
+            aid = a.get("id") or a.get("announcement_id")
+            summ = str(a.get("summary") or a.get("summary_text") or "")[:200]
+            lines.append(f"- aid={aid} | {a.get('title','')} | 지원조건: {a.get('support_amount','')} | "
+                         f"마감: {a.get('deadline','')} | 요약: {summ}")
+        prof_txt = ", ".join(f"{k}:{v}" for k, v in (profile or {}).items() if v and k != "user_type")
+        prompt = (
+            "당신은 정책자금 전문 컨설턴트입니다. 아래 [고객사]와 [정책자금 목록]만 근거로 "
+            "각 자금을 분석해 JSON으로만 답하세요. 추측·창작 금지, 목록에 있는 값만 사용. "
+            "모르는 항목은 \"공고문 참조\".\n\n"
+            f"[고객사] {prof_txt}\n[정책자금 목록]\n" + "\n".join(lines) +
+            "\n\n출력(JSON): {\"funds\": [ {\"aid\": <목록의 aid 정수>, \"name\": \"<자금명>\", "
+            "\"verdict\": \"<결론 한 줄: 신청 가능/확인 필요/해당 없음 + 핵심 이유>\", "
+            "\"support_limit\": \"<지원한도·금액, 공고값 그대로>\", \"target\": \"<대상요건>\", "
+            "\"apply\": \"<신청처>\", \"deadline\": \"<마감>\", \"docs\": \"<준비서류, 없으면 빈칸>\", "
+            "\"action\": \"<전문가 다음 액션 1~2개>\"} ] }\n"
+            "목록의 모든 자금을 포함. JSON 외 텍스트 금지."
+        )
+        resp = gmodel.generate_content(prompt)
+        m = re.search(r"\{.*\}", getattr(resp, "text", "") or "", re.S)
+        if not m:
+            return []
+        import json as _json3
+        data = _json3.loads(m.group(0))
+        funds = data.get("funds") if isinstance(data, dict) else None
+        return funds if isinstance(funds, list) else []
+    except Exception as e:
+        print(f"[report] structured fund error: {e}")
+        return []
+
+
 class ReportRequest(BaseModel):
     client_profile_id: int
 
@@ -13531,11 +13581,15 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                 mode=fund_mode,
                 pro_consult_context=("individual" if is_individual_client else "business"),
             )
+            _fund_anns = fund_result.get("announcements", [])
+            # 구조화 JSON 분석 — 프로즈 파싱보다 안정적인 자금별 표
+            _fund_details = _structured_fund_analysis(_fund_anns, fund_profile)
             fund_section_html = build_fund_section_html(
                 fund_result.get("reply", ""),
-                fund_result.get("announcements", []),
+                _fund_anns,
+                fund_details=_fund_details,
             )
-            print(f"[report] fund section: {len(fund_section_html)} chars, {len(fund_result.get('announcements', []))} anns")
+            print(f"[report] fund section: {len(fund_section_html)} chars, {len(_fund_anns)} anns, {len(_fund_details)} structured")
         finally:
             try: fund_conn.close()
             except Exception: pass

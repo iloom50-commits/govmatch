@@ -13353,11 +13353,29 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         if ordered:
             max_days = max((t["days_left"] for t in ordered if t["days_left"] is not None), default=60) or 60
             chart_max = max(max_days, 30)  # 최소 30일 스케일
+            def _fmt_krw(v):
+                # 원 단위 정수 → 보기 좋은 한글 금액
+                if v >= 10 ** 8:
+                    eok = v / 10 ** 8
+                    return (f"{eok:.0f}억원" if eok == int(eok) else f"{eok:.1f}억원")
+                if v >= 10 ** 4:
+                    return f"{v / 10 ** 4:,.0f}만원"
+                return f"{v:,}원"
+
+            def _short_amt(s):
+                # 금액 칸: 금액을 새로 합성하지 않음(왜곡 방지). 짧으면 원문 그대로,
+                # 길면 안전 절단(…), 순수 정수만 한글 금액으로 포맷.
+                t = re.sub(r"\s+", " ", str(s or "")).strip()
+                if not t or t == "0":
+                    return "-"
+                if t.isdigit():
+                    return f"최대 {_fmt_krw(int(t))}"
+                return t if len(t) <= 19 else (t[:18].rstrip(" ,(") + "…")
             rows_html = ""
             for t in ordered[:10]:
                 rr = t["r"]
                 title = (rr.get("title") or "")[:55]
-                amt = rr.get("support_amount") or "-"
+                amt = _short_amt(rr.get("support_amount"))
                 if t["days_left"] is None:
                     bar_color = "#94a3b8"
                     bar_width = 100
@@ -13376,9 +13394,9 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
                     label = f"D-{t['days_left']}"
                 rows_html += f'''
                 <tr>
-                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;width:40%;vertical-align:middle;">{title}</td>
-                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;width:18%;color:#16a34a;font-weight:bold;vertical-align:middle;">{amt}</td>
-                    <td style="padding:6px 8px;border:1px solid #e5e7eb;width:42%;vertical-align:middle;">
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;width:38%;vertical-align:middle;">{title}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;width:24%;color:#16a34a;font-weight:bold;vertical-align:middle;">{amt}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;width:38%;vertical-align:middle;">
                         <div style="position:relative;height:18px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
                             <div style="position:absolute;left:0;top:0;height:100%;width:{bar_width}%;background:{bar_color};border-radius:3px;"></div>
                             <span style="position:relative;display:block;text-align:right;padding-right:6px;font-size:10px;line-height:18px;color:#1f2937;font-weight:bold;">{label}</span>

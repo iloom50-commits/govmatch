@@ -15,22 +15,6 @@ export default function ProPageClient() {
   const [showPayment, setShowPayment] = useState(false);
   const [showLogin, setShowLogin] = useState(false);  // '상담 시작하기' 클릭 전엔 로그인 폼 숨김
   const [showEmail, setShowEmail] = useState(false);  // 소셜이 메인, 이메일은 기존 회원용 fallback
-  const [region, setRegion] = useState("");           // 공개 티저: 고객사 소재지
-  const [teaser, setTeaser] = useState<any>(null);    // 티저 결과 (건수)
-  const [teaserLoading, setTeaserLoading] = useState(false);
-
-  const runTeaser = async () => {
-    setTeaserLoading(true);
-    try {
-      const res = await fetch(`${API}/api/public/match-teaser`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ region }),
-      });
-      const d = await res.json();
-      if (d.status === "SUCCESS") setTeaser(d);
-    } catch { /* */ }
-    setTeaserLoading(false);
-  };
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -336,67 +320,6 @@ export default function ProPageClient() {
               <p className="mt-1 text-sm text-gray-500">카드를 선택하면 시작됩니다. (로그인이 필요하면 그때 안내됩니다)</p>
             </div>
             {ProductCards}
-          </div>
-
-          {/* ── PRO 가치 제안 (항상 표시 — 로그인은 모달 오버레이) ── */}
-          <div className="space-y-6">
-            <div>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold mb-3">전문가 전용 · PRO</span>
-              <h2 className="text-2xl lg:text-[26px] font-bold text-gray-900 leading-snug">고객사 정부지원사업 상담,<br />전문가처럼 빠르게.</h2>
-              <p className="mt-3 text-sm text-gray-500 leading-relaxed">컨설턴트·세무·노무 전문가를 위한 상담 도구. 고객 조건만 입력하면 맞춤 공고 매칭부터 자격 판정·전문가 인사이트·보고서까지 한 번에.</p>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {[
-                { i: "🎯", t: "고객사별 맞춤 매칭", d: "업종·지역·매출 조건으로 적합 공고 자동 선별" },
-                { i: "📋", t: "자격 판정 + 전문가 인사이트", d: "선정률 추정·평가 배점·흔한 실수·신청 팁" },
-                { i: "👥", t: "고객 관리 · 보고서", d: "고객별 상담 이력 관리, 컨설팅 보고서 PDF" },
-                { i: "💰", t: "자금 상담 AI", d: "정책자금·보증·대출 전문 Q&A" },
-              ].map(f => (
-                <div key={f.t} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5">
-                  <div className="text-lg mb-1">{f.i}</div>
-                  <p className="text-[13px] font-bold text-gray-800">{f.t}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{f.d}</p>
-                </div>
-              ))}
-            </div>
-            {/* ── 매칭 미리보기 티저 (고객사 소재지 → 신청 가능 건수, 도구 데모) ── */}
-            <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-5 space-y-3">
-              <div>
-                <p className="text-base font-black text-violet-700">고객사 조건으로 30초 매칭 미리보기</p>
-                <p className="text-[12px] text-gray-600 font-medium mt-1 leading-relaxed">고객 소재지만 골라도 지금 신청 가능한 지원사업·정책자금 규모를 즉시 확인하세요. 회원가입만 하면 매달 3회 무료.</p>
-              </div>
-              <div className="flex gap-2">
-                <select value={region} onChange={e => { setRegion(e.target.value); setTeaser(null); }}
-                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-violet-200">
-                  <option value="">고객사 소재지 선택</option>
-                  {["서울","경기","인천","부산","대구","대전","광주","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주","전국"].map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button onClick={runTeaser} disabled={teaserLoading}
-                  className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap transition-all active:scale-[0.99]">
-                  {teaserLoading ? "조회 중…" : "매칭 미리보기"}
-                </button>
-              </div>
-              {teaser ? (
-                <div className="rounded-lg bg-white border border-violet-200 p-4 text-center space-y-2.5">
-                  <p className="text-[12px] text-gray-500">🎯 {teaser.region} 고객사 기준 — 지금 신청 가능</p>
-                  <p className="text-lg font-black text-gray-900 leading-snug">
-                    지원사업 <span className="text-violet-700">{Number(teaser.support_count).toLocaleString()}건</span>
-                    <span className="text-gray-300"> · </span>
-                    정책자금 <span className="text-violet-700">{Number(teaser.fund_count).toLocaleString()}건</span>
-                  </p>
-                  <button onClick={() => { setShowLogin(true); setError(""); }}
-                    className="mt-1 w-full px-4 py-3 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">
-                    로그인하고 고객 상담 시작 →
-                  </button>
-                  <p className="text-[11px] text-gray-400">전체 공고 목록 · AI 맞춤 상담 · 보고서는 로그인 후 제공</p>
-                </div>
-              ) : (
-                <button onClick={() => { setShowLogin(true); setError(""); }}
-                  className="w-full text-center text-xs text-violet-600 underline hover:text-violet-800 transition-colors">
-                  바로 로그인하고 시작하기 →
-                </button>
-              )}
-            </div>
           </div>
 
           {LoginModal}

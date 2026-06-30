@@ -170,7 +170,7 @@ export default function ProPageClient() {
 
   // 로그인/회원가입 모달 — 비로그인 랜딩과 상담 화면(ProSecretary) 위 오버레이 양쪽에서 재사용
   const LoginModal = showLogin && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); setLoginReason(""); }}>
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 px-4" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); setLoginReason(""); }}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>

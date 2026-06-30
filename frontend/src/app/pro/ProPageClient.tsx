@@ -316,7 +316,7 @@ export default function ProPageClient() {
   // ── 로그인 / 회원가입 ──
   if (authState === "auth") {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
         <div className="w-full max-w-2xl space-y-10">
 
           {/* ── 2 제품 카드 (첫 진입) ── */}

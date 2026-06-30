@@ -7,6 +7,14 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 type AuthState = "loading" | "auth" | "dashboard" | "pro";
 type AuthTab = "login" | "signup";
 
+// 카드 클릭 후 로그인하면 그 카드의 목적지로 직행 (로그인 후 카드 화면 중복 표시 방지).
+// 카드 없이 로그인/직접 진입이면 카드 허브(dashboard)로.
+function resolvePostAuthState(): "pro" | "dashboard" {
+  const pending = typeof window !== "undefined" ? sessionStorage.getItem("pending_action") : null;
+  if (pending) sessionStorage.removeItem("pending_action");
+  return pending === "consult" ? "pro" : "dashboard";
+}
+
 export default function ProPageClient() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [authTab, setAuthTab] = useState<AuthTab>("login");
@@ -48,7 +56,7 @@ export default function ProPageClient() {
         if (data.status === "SUCCESS" && data.plan) {
           setPlanStatus(data.plan);
           setUserData(data.user);
-          setAuthState("dashboard");
+          setAuthState(resolvePostAuthState());
         } else {
           localStorage.removeItem("auth_token");
           setAuthState("auth");
@@ -72,7 +80,7 @@ export default function ProPageClient() {
       }
       localStorage.setItem("auth_token", data.token);
       setPlanStatus(data.plan); setUserData(data.user);
-      setAuthState("dashboard");
+      setAuthState(resolvePostAuthState());
     } catch { setError("서버 연결에 실패했습니다."); }
     finally { setSubmitting(false); }
   };
@@ -99,7 +107,7 @@ export default function ProPageClient() {
       }
       localStorage.setItem("auth_token", data.token);
       setPlanStatus(data.plan); setUserData(data.user);
-      setAuthState("dashboard");
+      setAuthState(resolvePostAuthState());
     } catch { setError("서버 연결에 실패했습니다."); }
     finally { setSubmitting(false); }
   };
@@ -144,7 +152,11 @@ export default function ProPageClient() {
       alert("정책자금 융자신청서 자동 작성(SmartDoc)은 곧 출시 예정입니다.");
       return;
     }
-    if (!planStatus) { setShowLogin(true); setError(""); return; }
+    if (!planStatus) {
+      // 로그인 후 이 카드 목적지로 직행하도록 기억 (소셜 리다이렉트 대비 sessionStorage)
+      try { sessionStorage.setItem("pending_action", action); } catch { /* */ }
+      setShowLogin(true); setError(""); return;
+    }
     if (action === "smartdoc") goSmartDoc(); else goConsult();
   };
 

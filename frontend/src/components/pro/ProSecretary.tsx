@@ -124,7 +124,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
   planStatus?: any;
   onUpgrade?: () => void;
   userType?: string | null;
-  onRequireLogin?: () => void;  // 비로그인 진입 허용 → 상담 시작 액션에서 로그인 요구
+  onRequireLogin?: (reason?: string) => void;  // 비로그인 진입 허용 → 상담 시작/메뉴 액션에서 로그인 요구(사유 표시)
 }) {
   const { toast } = useToast();
 
@@ -641,7 +641,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
   // ─── 고객 선택 후 상담 시작 (신규: 폼으로 / 기존: 상담목적 화면으로) ───
   const startNewChat = (category: ClientCategory, client?: ClientProfile) => {
     // 비로그인 사용자는 여기까지(상담 대시보드) 들어올 수 있고, '상담 시작' 시점에 로그인
-    if (!getToken()) { onRequireLogin?.(); return; }
+    if (!getToken()) { onRequireLogin?.("맞춤 상담을 시작하려면 로그인이 필요해요."); return; }
     setActiveView("chat");
     setClientCategory(category);
     setFlowState("idle");
@@ -680,7 +680,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
 
   // ─── 상담 목적 선택 → AI 실행 ───
   const startConsultType = (type: "matching" | "fund" | "announcement") => {
-    if (!getToken()) { onRequireLogin?.(); return; }
+    if (!getToken()) { onRequireLogin?.("맞춤 상담을 시작하려면 로그인이 필요해요."); return; }
     if (type === "announcement") {
       setConsultType("announcement");
       setActiveView("announce_search");
@@ -981,7 +981,10 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
               ]).map(item => (
                 <button
                   key={item.view}
-                  onClick={() => { setActiveView(item.view); setLeftOpen(false); }}
+                  onClick={() => {
+                    if (!getToken()) { onRequireLogin?.("고객 관리·상담 이력·보고서·공고 검색은 로그인 후 이용할 수 있어요."); return; }
+                    setActiveView(item.view); setLeftOpen(false);
+                  }}
                   className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-all text-[13px] font-medium ${
                     activeView === item.view ? t.menuActive : t.menuInactive
                   }`}

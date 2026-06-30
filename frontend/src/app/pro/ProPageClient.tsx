@@ -14,6 +14,7 @@ export default function ProPageClient() {
   const [userData, setUserData] = useState<any>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showLogin, setShowLogin] = useState(false);  // '상담 시작하기' 클릭 전엔 로그인 폼 숨김
+  const [loginReason, setLoginReason] = useState("");  // 왜 로그인이 필요한지(메뉴/상담시작 액션 사유)
   const [showEmail, setShowEmail] = useState(false);  // 소셜이 메인, 이메일은 기존 회원용 fallback
 
   const [email, setEmail] = useState("");
@@ -134,7 +135,7 @@ export default function ProPageClient() {
     // 상담 프로그램: 비로그인도 상담 대시보드 진입 허용 → '상담 시작' 액션에서 로그인 요구
     if (action === "consult") { goConsult(); return; }
     // SmartDoc(핸드오프)은 로그인 필요
-    if (!planStatus) { setShowLogin(true); setError(""); return; }
+    if (!planStatus) { setLoginReason(""); setShowLogin(true); setError(""); return; }
     goSmartDoc();
   };
 
@@ -169,15 +170,21 @@ export default function ProPageClient() {
 
   // 로그인/회원가입 모달 — 비로그인 랜딩과 상담 화면(ProSecretary) 위 오버레이 양쪽에서 재사용
   const LoginModal = showLogin && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); setLoginReason(""); }}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
             <p className="text-xs text-gray-400">전문상담툴 · 로그인</p>
           </div>
-          <button type="button" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); }} className="text-gray-400 hover:text-gray-700 text-2xl leading-none -mt-1">×</button>
+          <button type="button" onClick={() => { setShowLogin(false); setShowEmail(false); setError(""); setLoginReason(""); }} className="text-gray-400 hover:text-gray-700 text-2xl leading-none -mt-1">×</button>
         </div>
+
+        {loginReason && (
+          <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 text-[12px] text-violet-700 text-center font-medium leading-relaxed">
+            {loginReason}
+          </div>
+        )}
 
         {/* 소셜 로그인 (메인 — 가입·로그인 한 번에) */}
         <div className="max-w-sm mx-auto space-y-3 pt-2">
@@ -288,7 +295,7 @@ export default function ProPageClient() {
           planStatus={planStatus}
           onUpgrade={() => setShowPayment(true)}
           userType={userData?.user_type || "business"}
-          onRequireLogin={() => { setShowLogin(true); setError(""); }}
+          onRequireLogin={(reason?: string) => { setLoginReason(reason || ""); setShowLogin(true); setError(""); }}
         />
         {/* 무료 체험 소진 등으로 onUpgrade 호출 시 결제 모달이 떠야 함 (pro 분기에도 렌더 필수) */}
         {showPayment && (

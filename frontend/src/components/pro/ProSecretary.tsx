@@ -119,11 +119,12 @@ const theme = {
 };
 
 // ─── 메인 컴포넌트 ───
-export default function ProSecretary({ onClose, planStatus, onUpgrade, userType }: {
+export default function ProSecretary({ onClose, planStatus, onUpgrade, userType, onRequireLogin }: {
   onClose: () => void;
   planStatus?: any;
   onUpgrade?: () => void;
   userType?: string | null;
+  onRequireLogin?: () => void;  // 비로그인 진입 허용 → 상담 시작 액션에서 로그인 요구
 }) {
   const { toast } = useToast();
 
@@ -639,6 +640,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
   // ─── 고객 선택 후 상담 시작 (신규: 폼으로 / 기존: 상담목적 화면으로) ───
   const startNewChat = (category: ClientCategory, client?: ClientProfile) => {
+    // 비로그인 사용자는 여기까지(상담 대시보드) 들어올 수 있고, '상담 시작' 시점에 로그인
+    if (!getToken()) { onRequireLogin?.(); return; }
     setActiveView("chat");
     setClientCategory(category);
     setFlowState("idle");
@@ -677,6 +680,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType 
 
   // ─── 상담 목적 선택 → AI 실행 ───
   const startConsultType = (type: "matching" | "fund" | "announcement") => {
+    if (!getToken()) { onRequireLogin?.(); return; }
     if (type === "announcement") {
       setConsultType("announcement");
       setActiveView("announce_search");

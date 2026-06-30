@@ -150,13 +150,21 @@ export default function ProPageClient() {
 
   const ProductCards = (
     <div className="grid sm:grid-cols-2 gap-4">
-      <button type="button" onClick={() => onCardClick("smartdoc")}
-        className="relative text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
-        {!SMARTDOC_READY && <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">곧 출시</span>}
-        <div className="text-3xl mb-2">📝</div>
-        <p className="text-[15px] font-black text-gray-900">정책자금 융자신청서 자동 작성</p>
-        <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">공고 첨부 양식을 AI가 분석해 기업 정보 기반 맞춤 신청서 초안을 자동 생성 <span className="text-violet-600 font-bold">(SmartDoc)</span></p>
-      </button>
+      {SMARTDOC_READY ? (
+        <button type="button" onClick={() => onCardClick("smartdoc")}
+          className="relative text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
+          <div className="text-3xl mb-2">📝</div>
+          <p className="text-[15px] font-black text-gray-900">정책자금 융자신청서 자동 작성</p>
+          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">공고 첨부 양식을 AI가 분석해 기업 정보 기반 맞춤 신청서 초안을 자동 생성 <span className="text-violet-600 font-bold">(SmartDoc)</span></p>
+        </button>
+      ) : (
+        <a href="/" target="_blank" rel="noopener noreferrer"
+          className="block text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
+          <div className="text-3xl mb-2">🔎</div>
+          <p className="text-[15px] font-black text-gray-900">지원금AI — 모든 지원금 찾기</p>
+          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">내 기업·상황에 맞는 정부지원금·정책자금을 AI가 한 번에 찾아드립니다</p>
+        </a>
+      )}
       <button type="button" onClick={() => onCardClick("consult")}
         className="text-left rounded-2xl border border-indigo-200 bg-white hover:border-indigo-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
         <div className="text-3xl mb-2">💼</div>

@@ -24,6 +24,7 @@ from app.config import DATABASE_URL
 
 # Admin Scraper Import for Manual Sync
 from app.services.admin_scraper import admin_scraper
+from app.services.launch_promo import launch_promo_grant, LAUNCH_PROMO_TAG, LAUNCH_PROMO_CAP
 
 
 def _hash_password(password: str) -> str:
@@ -274,6 +275,8 @@ def init_database():
             # SmartDoc 별도 과금 사용권 (GovMatch가 관리, SmartDoc은 조회만)
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS smartdoc_plan TEXT")
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS smartdoc_expires_at TIMESTAMP")
+            # 선착순 런칭 프로모션 부여 태그 (가입 선착순 N명 PRO 1개월 무료)
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_grant TEXT")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -3940,6 +3943,23 @@ def api_register(req: RegisterRequest, request: Request):
                     cursor.execute(
                         "UPDATE users SET merit_months=%s, plan_expires_at=%s WHERE user_id=%s",
                         (new_merit, new_end, referrer["user_id"])
+                    )
+
+            # 선착순 런칭 프로모션: 가입 선착순 LAUNCH_PROMO_CAP명 → PRO 1개월 무료
+            # (추천/체험으로 정해진 plan을 PRO로 상향 덮어씀 — 신규 가입자에 한함)
+            cursor.execute("SELECT COUNT(*) AS c FROM users WHERE promo_grant=%s", (LAUNCH_PROMO_TAG,))
+            if (cursor.fetchone()["c"] or 0) < LAUNCH_PROMO_CAP:
+                # 상한 미달일 때만 트랜잭션 advisory lock으로 직렬화(동시가입 초과 방지)
+                cursor.execute("SELECT pg_advisory_xact_lock(778001)")
+                cursor.execute("SELECT COUNT(*) AS c FROM users WHERE promo_grant=%s", (LAUNCH_PROMO_TAG,))
+                _promo_now = datetime.datetime.utcnow()
+                _grant = launch_promo_grant(cursor.fetchone()["c"] or 0, _promo_now)
+                if _grant:
+                    cursor.execute(
+                        "UPDATE users SET plan=%s, plan_started_at=%s, plan_expires_at=%s, "
+                        "ai_usage_month=0, ai_usage_reset_at=%s, promo_grant=%s WHERE user_id=%s",
+                        (_grant["plan"], _promo_now.isoformat(), _grant["expires_at"],
+                         _promo_now.isoformat(), _grant["tag"], user_id),
                     )
 
         conn.commit()

@@ -5224,7 +5224,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         if ai_usage >= consult_limit:
             conn.close()
             if plan == "free":
-                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 월 20회까지 이용할 수 있습니다."
+                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
             else:
                 msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
             raise HTTPException(status_code=429, detail=msg)

@@ -15,6 +15,8 @@ export default function ProPageClient() {
   const [showPayment, setShowPayment] = useState(false);
   const [showLogin, setShowLogin] = useState(false);  // '상담 시작하기' 클릭 전엔 로그인 폼 숨김
   const [loginReason, setLoginReason] = useState("");  // 왜 로그인이 필요한지(메뉴/상담시작 액션 사유)
+  const [promoCode, setPromoCode] = useState("");      // 파일럿 프로모션 코드
+  const [promoMsg, setPromoMsg] = useState("");
   const [showEmail, setShowEmail] = useState(false);  // 소셜이 메인, 이메일은 기존 회원용 fallback
 
   const [email, setEmail] = useState("");
@@ -97,6 +99,31 @@ export default function ProPageClient() {
     setPlanStatus(plan);
     setShowPayment(false);
     if (["pro", "biz"].includes(plan?.plan)) setAuthState("pro");
+  };
+
+  const applyPromo = async () => {
+    setPromoMsg("");
+    const code = promoCode.trim();
+    if (!code) { setPromoMsg("코드를 입력해주세요."); return; }
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${API}/api/pro/redeem-promo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "SUCCESS") {
+        if (data.token) localStorage.setItem("auth_token", data.token);
+        setPlanStatus(data.plan);
+        setPromoMsg("✓ PRO 1개월이 적용되었습니다.");
+        setPromoCode("");
+      } else if (data.status === "ALREADY") {
+        setPromoMsg("이미 적용된 프로모션입니다.");
+      } else {
+        setPromoMsg(data.detail || "코드가 올바르지 않습니다.");
+      }
+    } catch { setPromoMsg("서버 연결에 실패했습니다."); }
   };
 
   const handleLogout = () => {
@@ -380,6 +407,21 @@ export default function ProPageClient() {
                 <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900 font-semibold">PRO 플랜 결제하기</button>
               </p>
             )
+          )}
+
+          {/* 프로모션 코드 (파일럿 — 코드 보유자만 PRO 1개월 무료) */}
+          {!isPro && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-2">
+              <p className="text-[13px] font-bold text-violet-700">프로모션 코드</p>
+              <div className="flex gap-2">
+                <input value={promoCode} onChange={e => setPromoCode(e.target.value)} inputMode="numeric"
+                  placeholder="코드 입력" onKeyDown={e => { if (e.key === "Enter") applyPromo(); }}
+                  className="flex-1 px-3 py-2 border border-violet-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-200" />
+                <button onClick={applyPromo}
+                  className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">적용</button>
+              </div>
+              {promoMsg && <p className="text-[12px] text-gray-600">{promoMsg}</p>}
+            </div>
           )}
 
           <button onClick={handleLogout}

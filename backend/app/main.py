@@ -24,7 +24,7 @@ from app.config import DATABASE_URL
 
 # Admin Scraper Import for Manual Sync
 from app.services.admin_scraper import admin_scraper
-from app.services.launch_promo import launch_promo_grant, LAUNCH_PROMO_TAG, LAUNCH_PROMO_CAP
+from app.services.launch_promo import launch_promo_redeem, LAUNCH_PROMO_TAG
 
 
 def _hash_password(password: str) -> str:
@@ -3945,23 +3945,6 @@ def api_register(req: RegisterRequest, request: Request):
                         (new_merit, new_end, referrer["user_id"])
                     )
 
-            # 선착순 런칭 프로모션: 가입 선착순 LAUNCH_PROMO_CAP명 → PRO 1개월 무료
-            # (추천/체험으로 정해진 plan을 PRO로 상향 덮어씀 — 신규 가입자에 한함)
-            cursor.execute("SELECT COUNT(*) AS c FROM users WHERE promo_grant=%s", (LAUNCH_PROMO_TAG,))
-            if (cursor.fetchone()["c"] or 0) < LAUNCH_PROMO_CAP:
-                # 상한 미달일 때만 트랜잭션 advisory lock으로 직렬화(동시가입 초과 방지)
-                cursor.execute("SELECT pg_advisory_xact_lock(778001)")
-                cursor.execute("SELECT COUNT(*) AS c FROM users WHERE promo_grant=%s", (LAUNCH_PROMO_TAG,))
-                _promo_now = datetime.datetime.utcnow()
-                _grant = launch_promo_grant(cursor.fetchone()["c"] or 0, _promo_now)
-                if _grant:
-                    cursor.execute(
-                        "UPDATE users SET plan=%s, plan_started_at=%s, plan_expires_at=%s, "
-                        "ai_usage_month=0, ai_usage_reset_at=%s, promo_grant=%s WHERE user_id=%s",
-                        (_grant["plan"], _promo_now.isoformat(), _grant["expires_at"],
-                         _promo_now.isoformat(), _grant["tag"], user_id),
-                    )
-
         conn.commit()
         # 가입 후 실제 플랜 상태 조회 (체험/추천 적용 반영)
         cursor2 = conn.cursor()
@@ -3976,6 +3959,39 @@ def api_register(req: RegisterRequest, request: Request):
             "token": token,
             "plan": _get_plan_status(signup_plan, signup_expires, 0),
         }
+    finally:
+        conn.close()
+
+
+class RedeemPromoRequest(BaseModel):
+    code: str
+
+
+@app.post("/api/pro/redeem-promo")
+def api_redeem_promo(req: RedeemPromoRequest, current_user: dict = Depends(_get_current_user)):
+    """파일럿 프로모션 코드 입력 → 일치 시 PRO 1개월 부여(로그인 필요). 코드는 env LAUNCH_PROMO_CODE."""
+    now = datetime.datetime.utcnow()
+    grant = launch_promo_redeem(req.code, now)
+    if not grant:
+        raise HTTPException(status_code=400, detail="프로모션 코드가 올바르지 않습니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, email, promo_grant FROM users WHERE business_number=%s", (current_user["bn"],))
+        u = cur.fetchone()
+        if not u:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+        if (u.get("promo_grant") or "") == LAUNCH_PROMO_TAG:
+            return {"status": "ALREADY", "message": "이미 적용된 프로모션입니다."}
+        cur.execute(
+            "UPDATE users SET plan='pro', plan_started_at=%s, plan_expires_at=%s, "
+            "ai_usage_month=0, ai_usage_reset_at=%s, promo_grant=%s WHERE business_number=%s",
+            (now.isoformat(), grant["expires_at"], now.isoformat(), grant["tag"], current_user["bn"]),
+        )
+        conn.commit()
+        token = _create_jwt(u["user_id"], current_user["bn"],
+                            u.get("email") or current_user.get("email", ""), "pro", grant["expires_at"])
+        return {"status": "SUCCESS", "token": token, "plan": _get_plan_status("pro", grant["expires_at"], 0)}
     finally:
         conn.close()
 

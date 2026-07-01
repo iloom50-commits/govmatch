@@ -23,6 +23,7 @@ export default function ProPageClient() {
   const [password, setPassword] = useState("");
   const [businessNumber, setBusinessNumber] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [signupPromo, setSignupPromo] = useState("");  // 가입 폼 프로모션 코드
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -80,6 +81,7 @@ export default function ProPageClient() {
           business_number: businessNumber.replace(/-/g, ""),
           company_name: companyName,
           user_type: "business",
+          promo_code: signupPromo.trim(),
         }),
       });
       const data = await res.json();
@@ -289,6 +291,11 @@ export default function ProPageClient() {
               <label className="text-sm font-medium text-gray-700">회사명 <span className="text-gray-400 font-normal">(선택)</span></label>
               <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
                 placeholder="회사명" className={inputCls} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">프로모션 코드 <span className="text-gray-400 font-normal">(선택)</span></label>
+              <input type="text" inputMode="numeric" value={signupPromo} onChange={e => setSignupPromo(e.target.value)}
+                placeholder="코드가 있으면 입력 (PRO 1개월 무료)" className={inputCls} />
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <button type="submit" disabled={submitting} style={btnPrimary}

@@ -2550,6 +2550,7 @@ class RegisterRequest(BaseModel):
     interests: Optional[str] = None
     referred_by: Optional[str] = None
     user_type: Optional[str] = "both"
+    promo_code: Optional[str] = None  # 파일럿 프로모션 코드 — 일치 시 가입 즉시 PRO 1개월
 
 class LoginRequest(BaseModel):
     email: str
@@ -3943,6 +3944,18 @@ def api_register(req: RegisterRequest, request: Request):
                     cursor.execute(
                         "UPDATE users SET merit_months=%s, plan_expires_at=%s WHERE user_id=%s",
                         (new_merit, new_end, referrer["user_id"])
+                    )
+
+            # 프로모션 코드로 가입 → 코드 일치 시 PRO 1개월 부여 (신규 가입자에 한함)
+            if req.promo_code:
+                _pnow = datetime.datetime.utcnow()
+                _pgrant = launch_promo_redeem(req.promo_code, _pnow)
+                if _pgrant:
+                    cursor.execute(
+                        "UPDATE users SET plan='pro', plan_started_at=%s, plan_expires_at=%s, "
+                        "ai_usage_month=0, ai_usage_reset_at=%s, promo_grant=%s WHERE user_id=%s",
+                        (_pnow.isoformat(), _pgrant["expires_at"], _pnow.isoformat(),
+                         _pgrant["tag"], user_id),
                     )
 
         conn.commit()

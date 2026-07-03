@@ -31,6 +31,17 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
+def _as_text(v) -> str:
+    """AI가 스칼라 컬럼용 필드(department/category/summary)를 리스트로 줄 때가 있어
+    varchar/text 컬럼에 그대로 넣으면 psycopg2가 text[]로 변환→타입 불일치 크래시.
+    항상 문자열로 강제 변환."""
+    if v is None:
+        return ""
+    if isinstance(v, (list, tuple)):
+        return ", ".join(str(x) for x in v if x)
+    return str(v)
+
+
 def _mark_analyzed_only(db_conn, ann_id: int):
     """지원사업 아님/데이터 부족 등 elig 못 채워도 재처리 방지 마킹."""
     cur = db_conn.cursor()
@@ -53,7 +64,9 @@ def _save(db_conn, ann_id: int, details: dict):
         elig["target_industries"] = details["target_industries"]
 
     eligibility_json = json.dumps(elig, ensure_ascii=False)
-    ai_summary = details.get("summary_text") or details.get("description", "") or ""
+    ai_summary = _as_text(details.get("summary_text") or details.get("description", ""))
+    dept = _as_text(details.get("department", ""))
+    cat = _as_text(details.get("category", ""))
 
     dl = details.get("deadline_date")
     dl = dl if (isinstance(dl, str) and _DATE_RE.match(dl)) else None
@@ -73,8 +86,8 @@ def _save(db_conn, ann_id: int, details: dict):
         (
             eligibility_json,
             ai_summary, ai_summary,
-            details.get("department", "") or "",
-            details.get("category", "") or "",
+            dept,
+            cat,
             dl, dl,
             ann_id,
         ),

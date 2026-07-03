@@ -146,6 +146,20 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④ 공고 분석", step_4_analyze)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-0. matcher용 재분석 (eligibility_logic 백필)
+    #   matcher.py가 제외 판정에 쓰는 eligibility_logic이 비어있는 미분석 공고를
+    #   Gemini로 채우고 ai_analyzed_at 마킹. 기업·오래된 것 우선(starvation 방지).
+    #   한도는 MATCHER_REANALYZE_LIMIT 환경변수로 조정(기본 400).
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4a_matcher_reanalyze():
+        import os
+        from .matcher_reanalyze import reanalyze_empty_eligibility
+        limit = int(os.getenv("MATCHER_REANALYZE_LIMIT", "400"))
+        return reanalyze_empty_eligibility(db_conn, limit=limit)
+
+    _run_step("④-0 매칭 재분석", step_4a_matcher_reanalyze)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ④-1. 원문 URL 추적 (경유지 → 원본)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4b_resolve_urls():

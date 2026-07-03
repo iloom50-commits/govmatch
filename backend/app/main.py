@@ -11008,6 +11008,16 @@ def _run_reanalyze_in_thread(limit: int):
         text = _re.sub(r'\s+', ' ', text)
         return text.strip()
 
+    def _as_text(v):
+        """AI가 스칼라 컬럼용 필드(department/category/summary)를 리스트로 줄 때
+        varchar 컬럼에 그대로 넣으면 psycopg2가 text[]로 변환→CASE 타입 불일치 크래시.
+        항상 문자열로 강제."""
+        if v is None:
+            return ""
+        if isinstance(v, (list, tuple)):
+            return ", ".join(str(x) for x in v if x)
+        return str(v)
+
     _GOV24_URL_PAT = _re.compile(r"gov\.kr/portal/rcv[a-zA-Z]*Svc/dtlEx/([A-Z0-9]+)", _re.IGNORECASE)
 
     def _fetch_gov24_api(serv_id: str, title: str = "") -> str:
@@ -11143,8 +11153,13 @@ def _run_reanalyze_in_thread(limit: int):
                 revenue_limit = elig.get("max_revenue")
                 employee_limit = elig.get("max_employee_count") or elig.get("max_employees")
 
-                ai_summary = details.get("summary_text") or details.get("description", "")
+                ai_summary = _as_text(details.get("summary_text") or details.get("description", ""))
+                _dept = _as_text(details.get("department", ""))
+                _cat = _as_text(details.get("category", ""))
                 ai_deadline = details.get("deadline_date")
+                # AI가 리스트/비정형 날짜를 줄 때 CAST(... AS DATE) 크래시 방지 — YYYY-MM-DD만 허용
+                if not (isinstance(ai_deadline, str) and _re.match(r"^\d{4}-\d{2}-\d{2}$", ai_deadline)):
+                    ai_deadline = None
                 pk = row.get("announcement_id")
 
                 cursor.execute("""
@@ -11162,8 +11177,8 @@ def _run_reanalyze_in_thread(limit: int):
                 """, (
                     json.dumps(elig, ensure_ascii=False),
                     ai_summary, ai_summary,
-                    details.get("department", ""),
-                    details.get("category", ""),
+                    _dept,
+                    _cat,
                     ai_deadline, ai_deadline,
                     years_limit, revenue_limit, employee_limit,
                     pk,

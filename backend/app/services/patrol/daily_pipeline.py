@@ -299,6 +299,15 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("⑥-1 AI 맞춤 매칭", step_6b_smart_match)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑥-2 카테고리 정규화 — 구분류를 칩 분류로 편입 (신규 수집분 자동 처리)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_6c_normalize_categories():
+        from app.services.category_normalizer import normalize_all_categories
+        return normalize_all_categories(db_conn)
+
+    _run_step("⑥-2 카테고리 정규화", step_6c_normalize_categories)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑦ 오케스트레이터 (품질 체크 + 보고서)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_7_orchestrator():

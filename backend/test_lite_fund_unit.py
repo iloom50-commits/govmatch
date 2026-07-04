@@ -289,6 +289,115 @@ def test_prompt_no_hardcoded_rates():
 
 
 # ─────────────────────────────────────────────────────────────
+# 엔진 우선순위: Gemini 1차 / OpenAI 폴백 (2026-07-04 교체)
+# — gpt-4o-mini가 프롬프트 규칙(인용·선질문·이관)을 준수하지 못해
+#   품질 검증된 gemini-2.5-flash를 1차로 승격. 실제 API 호출 없이 가짜 객체로 검증.
+# ─────────────────────────────────────────────────────────────
+class _FakeGeminiChat:
+    def __init__(self, reply="제미니 응답입니다"):
+        self._reply = reply
+        self.history = []
+
+    def send_message(self, _msg):
+        class _R:
+            pass
+        r = _R()
+        r.text = self._reply
+        return r
+
+
+class _FakeGeminiModel:
+    fail = False  # 클래스 플래그 — 실패 시뮬레이션
+
+    def __init__(self, *a, **kw):
+        if _FakeGeminiModel.fail:
+            raise RuntimeError("simulated gemini failure")
+
+    def start_chat(self, **kw):
+        return _FakeGeminiChat()
+
+
+class _FakeOpenAIClient:
+    called = []  # 호출 기록 (클래스 공유)
+    fail = False
+
+    def __init__(self, api_key=None):
+        class _Msg:
+            tool_calls = None
+            content = "오픈AI 응답입니다"
+
+        class _Resp:
+            pass
+
+        class _Completions:
+            def create(_self, **kw):
+                _FakeOpenAIClient.called.append(kw.get("model"))
+                if _FakeOpenAIClient.fail:
+                    raise RuntimeError("simulated openai failure")
+                r = _Resp()
+                choice = type("C", (), {"message": _Msg()})()
+                r.choices = [choice]
+                return r
+
+        class _Chat:
+            completions = _Completions()
+
+        self.chat = _Chat()
+
+
+def _run_lite_with_fakes(gemini_fail=False, openai_fail=False):
+    """양 엔진을 가짜로 바꿔 chat_lite_fund_expert 1회 호출 (DB·실 API 없음)."""
+    import openai as _oai_mod  # 미리 임포트 — sys.modules 조회 실패로 실 API가 호출되는 것 방지
+    from app.services import ai_consultant as ac
+
+    os.environ.setdefault("GEMINI_API_KEY", "test-key")
+    os.environ.setdefault("OPENAI_API_KEY", "test-key")
+
+    _FakeGeminiModel.fail = gemini_fail
+    _FakeOpenAIClient.fail = openai_fail
+    _FakeOpenAIClient.called = []
+
+    _orig_configure = ac.genai.configure
+    _orig_model = ac.genai.GenerativeModel
+    _orig_openai_cls = _oai_mod.OpenAI
+    try:
+        ac.genai.configure = lambda **kw: None
+        ac.genai.GenerativeModel = _FakeGeminiModel
+        _oai_mod.OpenAI = _FakeOpenAIClient
+        return ac.chat_lite_fund_expert(
+            messages=[{"role": "user", "text": "운전자금 문의"}],
+            db_conn=None,
+            user_profile={"business_type": "제조업"},
+            mode="business_fund",
+        )
+    finally:
+        ac.genai.configure = _orig_configure
+        ac.genai.GenerativeModel = _orig_model
+        _oai_mod.OpenAI = _orig_openai_cls
+
+
+def test_engine_order_gemini_first():
+    """양 엔진 정상 시 Gemini가 답하고 OpenAI는 아예 호출되지 않아야 한다."""
+    result = _run_lite_with_fakes()
+    assert result["engine"] == "gemini", result
+    assert _FakeOpenAIClient.called == [], _FakeOpenAIClient.called
+
+
+def test_engine_fallback_to_openai():
+    """Gemini 실패 시 OpenAI 폴백으로 응답해야 한다."""
+    result = _run_lite_with_fakes(gemini_fail=True)
+    assert result["engine"] == "openai", result
+    assert "오픈AI" in result["reply"]
+
+
+def test_engine_both_fail_returns_retry():
+    """양 엔진 모두 실패 시 재시도 안내를 반환해야 한다."""
+    result = _run_lite_with_fakes(gemini_fail=True, openai_fail=True)
+    assert "일시적으로" in result["reply"], result
+    assert result["choices"] == ["✏️ 다시 시도"]
+
+
+# ─────────────────────────────────────────────────────────────
 # 스크립트 러너 (pytest 없이 실행)
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":

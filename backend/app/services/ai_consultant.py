@@ -1929,9 +1929,70 @@ def chat_lite_fund_expert(
     tool_calls = []
     _engine_used = "none"
 
-    # ── 1차: OpenAI (기본) ──
+    # ── 1차: Gemini (기본 — 2026-07-04 승격) ──
+    # gpt-4o-mini는 동일 프롬프트에서 인용([공고ID: N])·선질문·범위밖 이관 규칙을
+    # 지키지 못하는 것이 실측됨 → 규칙 준수가 검증된 gemini-2.5-flash를 1차로 사용
+    try:
+        genai.configure(api_key=api_key)
+
+        def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
+            """자금/대출/보증 관련 공고를 DB에서 검색합니다."""
+            # target_type은 상담 모드(tt)에 고정 — 기업 상담에 개인 서민금융 혼입 차단
+            # + 프로필·지역 제외필터 적용 + 참조공고 수집 (OpenAI 경로와 동일)
+            rows = _tool_search_fund_announcements(
+                db_conn, keywords, tt, limit=5,
+                user_region=_user_region, profile=user_profile,
+                exclude_ids=_mentioned_ids,
+            )
+            for r in rows:
+                if r not in _referenced_announcements:
+                    _referenced_announcements.append(r)
+            return {"count": len(rows), "results": rows}
+        def get_announcement_detail(announcement_id: int) -> dict:
+            """특정 공고의 상세 정보를 조회합니다."""
+            return _tool_get_announcement_detail(db_conn, int(announcement_id))
+        def search_knowledge_base(query: str) -> dict:
+            """금융/보증 관련 FAQ·실무 팁을 검색합니다."""
+            rows = _tool_search_knowledge_base(db_conn, query, limit=5)
+            return {"count": len(rows), "results": rows}
+        def check_eligibility(announcement_id: int) -> dict:
+            """사용자 프로필과 공고 자격 조건을 대조합니다."""
+            _p = _normalize_profile_for_eligibility(user_profile)
+            return _tool_check_eligibility(db_conn, int(announcement_id), _p)
+
+        tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
+        model = genai.GenerativeModel(
+            "models/gemini-2.5-flash", tools=tools, system_instruction=system_prompt,
+            generation_config={"max_output_tokens": 4096, "temperature": 0.5},
+        )
+        # 과거 user/model 턴을 history로 보존 — 재전송(재생성) 방지(T-9)
+        chat = model.start_chat(
+            history=_build_gemini_history(messages),
+            enable_automatic_function_calling=True,
+        )
+        last_msg = messages[-1].get("text", "") if messages else "시작"
+        response = chat.send_message(last_msg)
+        reply_text = response.text if hasattr(response, "text") else str(response)
+        reply_text, parsed_choices = _parse_choices_marker(reply_text)
+        reply_text = _remove_tool_code_leaks(reply_text)
+        _valid_ann_ids = {(a.get("id") or a.get("announcement_id")) for a in _referenced_announcements}
+        reply_text = _strip_unverified_ann_ids(reply_text, _valid_ann_ids)
+        _engine_used = "gemini"
+        try:
+            for h in chat.history:
+                for part in getattr(h, "parts", []):
+                    fc = getattr(part, "function_call", None)
+                    if fc and fc.name:
+                        tool_calls.append(fc.name)
+        except Exception: pass
+
+    except Exception as e:
+        logger.warning(f"[LITE Gemini] {e}")
+        reply_text = ""  # OpenAI 폴백으로 넘어감
+
+    # ── 2차: OpenAI (폴백) ──
     openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key:
+    if not reply_text and openai_key:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key)
@@ -1983,71 +2044,14 @@ def chat_lite_fund_expert(
             _engine_used = "openai"
 
         except Exception as oai_err:
-            logger.warning(f"[LITE OpenAI] {oai_err}")
-            reply_text = ""  # 폴백으로 넘어감
+            logger.warning(f"[LITE OpenAI fallback] {oai_err}")
+            reply_text = ""
 
-    # ── 2차: Gemini (폴백) ──
     if not reply_text:
-        try:
-            genai.configure(api_key=api_key)
-
-            def search_fund_announcements(keywords: str, target_type: str = tt) -> dict:
-                """자금/대출/보증 관련 공고를 DB에서 검색합니다."""
-                # target_type은 상담 모드(tt)에 고정 — 기업 상담에 개인 서민금융 혼입 차단
-                # + 프로필·지역 제외필터 적용 + 참조공고 수집 (OpenAI 경로와 동일)
-                rows = _tool_search_fund_announcements(
-                    db_conn, keywords, tt, limit=5,
-                    user_region=_user_region, profile=user_profile,
-                    exclude_ids=_mentioned_ids,
-                )
-                for r in rows:
-                    if r not in _referenced_announcements:
-                        _referenced_announcements.append(r)
-                return {"count": len(rows), "results": rows}
-            def get_announcement_detail(announcement_id: int) -> dict:
-                """특정 공고의 상세 정보를 조회합니다."""
-                return _tool_get_announcement_detail(db_conn, int(announcement_id))
-            def search_knowledge_base(query: str) -> dict:
-                """금융/보증 관련 FAQ·실무 팁을 검색합니다."""
-                rows = _tool_search_knowledge_base(db_conn, query, limit=5)
-                return {"count": len(rows), "results": rows}
-            def check_eligibility(announcement_id: int) -> dict:
-                """사용자 프로필과 공고 자격 조건을 대조합니다."""
-                _p = _normalize_profile_for_eligibility(user_profile)
-                return _tool_check_eligibility(db_conn, int(announcement_id), _p)
-
-            tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
-            model = genai.GenerativeModel(
-                "models/gemini-2.5-flash", tools=tools, system_instruction=system_prompt,
-                generation_config={"max_output_tokens": 4096, "temperature": 0.5},
-            )
-            # 과거 user/model 턴을 history로 보존 — 재전송(재생성) 방지(T-9)
-            chat = model.start_chat(
-                history=_build_gemini_history(messages),
-                enable_automatic_function_calling=True,
-            )
-            last_msg = messages[-1].get("text", "") if messages else "시작"
-            response = chat.send_message(last_msg)
-            reply_text = response.text if hasattr(response, "text") else str(response)
-            reply_text, parsed_choices = _parse_choices_marker(reply_text)
-            reply_text = _remove_tool_code_leaks(reply_text)
-            _valid_ann_ids = {(a.get("id") or a.get("announcement_id")) for a in _referenced_announcements}
-            reply_text = _strip_unverified_ann_ids(reply_text, _valid_ann_ids)
-            _engine_used = "gemini"
-            try:
-                for h in chat.history:
-                    for part in getattr(h, "parts", []):
-                        fc = getattr(part, "function_call", None)
-                        if fc and fc.name:
-                            tool_calls.append(fc.name)
-            except Exception: pass
-
-        except Exception as e:
-            logger.warning(f"[LITE Gemini fallback] {e}")
-            return {
-                "reply": "일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
-                "choices": ["✏️ 다시 시도"],
-            }
+        return {
+            "reply": "일시적으로 응답 생성에 실패했습니다. 다시 시도해주세요.",
+            "choices": ["✏️ 다시 시도"],
+        }
 
     # [Phase 2 통합] ai_engine extractor + updater — feature flag로 점진 적용
     # 이중 안전망: ① 정규식 NER (extract_profile_info) + ② Schema 강제 Gemini (schema_extract_profile)

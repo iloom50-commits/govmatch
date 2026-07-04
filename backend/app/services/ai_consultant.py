@@ -986,7 +986,9 @@ def _profile_exclusion_clause(profile: dict, alias: str = "a") -> tuple:
     # 고객이 재창업/재도전이면 통과. matcher.py 제외 규칙과 동일 철학.
     certs = str((profile or {}).get("certifications", "") or "")
     if not any(k in certs for k in ("재창업", "재도전", "재기")):
-        conds.append(f"NOT ({p}title ~* '채무조정|관리종결|미변제|신용회복|재기지원|파산|워크아웃|회생절차')")
+        # 제목뿐 아니라 summary_text도 검사 (재도전특별자금=제목/햇살론119=summary — 2026-07 검증)
+        _restart_kw = '채무조정|관리종결|미변제|신용회복|재기지원|재도전|재창업|파산|워크아웃|회생절차'
+        conds.append(f"NOT ({p}title ~* '{_restart_kw}' OR {p}summary_text ~* '{_restart_kw}')")
 
     # 정책자금 '융자계획 공고' 등 우산(umbrella) 공고 제외 — 세부자금만 노출(상담은 세부자금 단위).
     conds.append(f"NOT ({p}title ~* '융자계획')")
@@ -1058,17 +1060,26 @@ def _validate_against_profile(results: List[Dict], profile: dict) -> List[Dict]:
     return results
 
 
-def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None, profile: dict = None) -> List[Dict]:
+def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None, profile: dict = None, exclude_ids=None) -> List[Dict]:
     """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드).
 
     Args:
         profile: [Level 1] 사용자 프로필 — WHERE 절에 제외 조건 자동 추가
+        exclude_ids: 이미 추천한 공고 ID — 재나열 차단(T-6)
     """
     if not db_conn or not keywords:
         return []
     results = []
     # [Level 1] 프로필 기반 WHERE 추가 조건
     profile_where, profile_params = _profile_exclusion_clause(profile)
+    # [T-6] 이미 추천한 공고 제외
+    _exclude = []
+    for x in (exclude_ids or ()):
+        try:
+            _exclude.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    _excl_ph = ",".join(["%s"] * len(_exclude)) if _exclude else ""
     try:
         # 1) 임베딩 검색 시도
         try:
@@ -1092,11 +1103,17 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                     # 지역 필터: 사용자 지역 + 전국
                     region_filter = ""
                     params = [vec_str, tt_filter, fund_keywords, fund_keywords, fund_keywords]
-                    if user_region:
-                        region_filter = "AND (a.region IS NULL OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
-                        params.append(f"%{user_region[:10]}%")
+                    _rtok = _region_search_token(user_region)
+                    if _rtok:
+                        # 축약 토큰 매칭 + 'All'/빈값도 전국 취급 (T-11a, region 표기 실측 대응)
+                        region_filter = "AND (a.region IS NULL OR a.region IN ('', 'All') OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
+                        params.append(f"%{_rtok}%")
                     # [Level 1] 프로필 제외 조건 주입
                     params.extend(profile_params)
+                    exclude_filter = ""
+                    if _exclude:
+                        exclude_filter = f"AND a.announcement_id NOT IN ({_excl_ph})"
+                        params.extend(_exclude)
                     params.extend([vec_str, limit])
                     cur.execute(f"""
                         SELECT a.announcement_id, a.title, a.department,
@@ -1113,6 +1130,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                           )
                           {region_filter}
                           {profile_where}
+                          {exclude_filter}
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
                     """, params)
@@ -1150,11 +1168,16 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
             params2 = [tt_filter]
             for w in kw_words:
                 params2 += [f"%{w}%", f"%{w}%"]
-            if user_region:
-                region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
-                params2.append(f"%{user_region[:10]}%")
+            _rtok2 = _region_search_token(user_region)
+            if _rtok2:
+                region_filter2 = "AND (region IS NULL OR region IN ('', 'All') OR region ILIKE '%%전국%%' OR region ILIKE %s)"
+                params2.append(f"%{_rtok2}%")
             fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
             params2.extend(fallback_profile_params)
+            exclude_filter2 = ""
+            if _exclude:
+                exclude_filter2 = f"AND announcement_id NOT IN ({_excl_ph})"
+                params2.extend(_exclude)
             params2.append(limit)
             cur.execute(f"""
                 SELECT announcement_id, title, department, support_amount,
@@ -1169,6 +1192,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                   )
                   {region_filter2}
                   {fallback_profile_where}
+                  {exclude_filter2}
                 ORDER BY
                     CASE WHEN origin_source IN ('smes24-api','kised-api','bizinfo-api','bizinfo-portal-api','kosme','smba') THEN 0
                          ELSE 1 END,
@@ -1543,6 +1567,146 @@ def _detect_conversation_signals(messages: List[Dict]) -> str:
     return "\n\n".join(blocks)
 
 
+def _should_force_search(messages) -> bool:
+    """세션 첫 사용자 턴에서만 검색 도구를 강제한다(T-1).
+
+    후속 턴에서는 tool_choice를 auto로 두어 수집/되묻기 단계를 보존한다.
+    """
+    return sum(1 for m in (messages or []) if m.get("role") == "user") == 1
+
+
+# check_eligibility 프로필 정규화용 구간 매핑 (실제 DB 구간 값 기준, 2026-07 검증)
+_REV_LOWER_WON = {
+    "1억 미만": 0, "1억~5억": 100_000_000, "5억~10억": 500_000_000,
+    "10억~50억": 1_000_000_000, "50억 이상": 5_000_000_000,
+    "REV_1_5": 100_000_000, "REV_10_50": 1_000_000_000,
+    "1-5": 100_000_000, "10B_50B": 1_000_000_000,
+}
+_EMP_LOWER = {
+    "5인 미만": 1, "5인~10인": 5, "10인~30인": 10, "30인~50인": 30, "50인 이상": 50,
+    "EMP_5_10": 5, "EMP_10_30": 10, "10_50": 10, "5-10": 5,
+}
+
+
+def _normalize_profile_for_eligibility(profile: dict) -> dict:
+    """프로필(구간 문자열)을 _tool_check_eligibility가 읽는 키로 변환(T-2).
+
+    - establishment_date → business_years
+    - revenue_bracket → revenue_won (구간 하한값; rev<=max_won 상한체크에 보수적)
+    - employee_count_bracket → employees (구간 하한값)
+    - certifications → certs (리스트; '없음' 제외)
+    미지의 값은 변환하지 않아 기존과 동일하게 uncertain으로 남는다(무회귀).
+    """
+    p = dict(profile or {})
+    if "business_years" not in p:
+        est = p.get("establishment_date") or p.get("founded_date")
+        if est:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(str(est)[:10], "%Y-%m-%d")
+                p["business_years"] = (datetime.now() - dt).days // 365
+            except Exception:
+                pass
+    if "revenue_won" not in p:
+        rb = (p.get("revenue_bracket") or "").strip()
+        if rb in _REV_LOWER_WON:
+            p["revenue_won"] = _REV_LOWER_WON[rb]
+    if "employees" not in p:
+        eb = (p.get("employee_count_bracket") or "").strip()
+        if eb in _EMP_LOWER:
+            p["employees"] = _EMP_LOWER[eb]
+    if "certs" not in p:
+        raw = (p.get("certifications") or "").replace("·", ",")
+        items = [c.strip() for c in raw.split(",") if c.strip() and c.strip() != "없음"]
+        if items:
+            p["certs"] = items
+    return p
+
+
+# 공고 인용 마커 — [공고ID: N](신규 단일 포맷) + [ANN:N](구형) 겸용 (T-7)
+_ANN_SPLIT_PATTERN = r'\[(?:공고ID|ANN):\s*(\d+)\]'
+
+
+def _strip_unverified_ann_ids(reply, valid_ids):
+    """도구가 반환하지 않은 공고ID 인용을 태그째 제거한다(환각 방지, T-4).
+
+    [공고ID: N] / [ANN:N] 중 valid_ids(도구가 실제 반환한 공고 id)에 없는 것을 제거.
+    """
+    if not reply:
+        return reply
+    import re as _re
+    valid = set()
+    for v in (valid_ids or ()):
+        try:
+            valid.add(int(v))
+        except (TypeError, ValueError):
+            pass
+
+    def _repl(m):
+        try:
+            aid = int(m.group(1))
+        except (TypeError, ValueError):
+            return m.group(0)
+        return m.group(0) if aid in valid else ""
+
+    reply = _re.sub(r"\[공고ID:\s*(\d+)\]", _repl, reply)
+    reply = _re.sub(r"\[ANN:\s*(\d+)\]", _repl, reply)
+    return reply
+
+
+def _extract_mentioned_ids(messages) -> set:
+    """이전 assistant 답변에서 이미 추천한 공고 ID를 추출한다(T-6).
+
+    검색 시 exclude_ids로 넘겨 같은 공고 재나열을 코드 레벨에서 차단.
+    """
+    import re as _re
+    ids = set()
+    for m in (messages or []):
+        if m.get("role") == "assistant":
+            for x in _re.findall(r"\[(?:공고ID|ANN):\s*(\d+)\]", m.get("text", "") or ""):
+                ids.add(int(x))
+    return ids
+
+
+# 시도 풀네임 → DB region 축약형 (announcements.region 실측 표기 기준, 2026-07 검증)
+_REGION_CANON = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천",
+    "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산",
+    "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
+    "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북",
+    "전라남도": "전남", "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주", "제주도": "제주",
+}
+
+
+def _region_search_token(user_region) -> str:
+    """사용자 지역 문자열을 DB region 대조용 축약 토큰으로 변환(T-11a).
+
+    DB region은 축약형("부산")이 지배적이라 풀네임("부산광역시") ILIKE로는
+    매칭 실패 → 축약 토큰으로 변환해 축약형·풀네임·시군구 표기 모두 매칭.
+    """
+    if not user_region:
+        return ""
+    s = str(user_region).strip()
+    if not s:
+        return ""
+    tok = s.split()[0]
+    return _REGION_CANON.get(tok, tok)[:10]
+
+
+def _build_gemini_history(messages) -> list:
+    """Gemini 폴백용 대화 히스토리 구성(T-9).
+
+    마지막 메시지는 send_message로 보내므로 제외. user/assistant 턴을
+    그대로 보존해 과거 AI 답변이 유실되지 않게 한다.
+    """
+    history = []
+    for m in (messages or [])[:-1]:
+        role = "user" if m.get("role") == "user" else "model"
+        history.append({"role": role, "parts": [m.get("text", "")]})
+    return history
+
+
 def chat_lite_fund_expert(
     messages: List[Dict],
     db_conn=None,
@@ -1726,6 +1890,7 @@ def chat_lite_fund_expert(
     # 사용자 지역 추출 (도구 검색에 자동 적용)
     _user_region = (user_profile or {}).get("address_city", "")
     _referenced_announcements: List[Dict] = []  # 도구에서 검색된 공고 수집
+    _mentioned_ids = _extract_mentioned_ids(messages)  # 이미 추천한 공고 — 재나열 차단(T-6)
 
     # ── Tool 정의 (OpenAI / Gemini 공용) ──
     def _exec_tool(name: str, args: dict) -> dict:
@@ -1736,6 +1901,7 @@ def chat_lite_fund_expert(
             rows = _tool_search_fund_announcements(
                 db_conn, args.get("keywords", ""), tt,
                 limit=5, user_region=_user_region, profile=user_profile,
+                exclude_ids=_mentioned_ids,
             )
             for r in rows:
                 if r not in _referenced_announcements:
@@ -1747,14 +1913,7 @@ def chat_lite_fund_expert(
             rows = _tool_search_knowledge_base(db_conn, args.get("query", ""), limit=5)
             return {"count": len(rows), "results": rows}
         elif name == "check_eligibility":
-            _p = dict(user_profile or {})
-            try:
-                from datetime import datetime
-                est = _p.get("establishment_date")
-                if est and "business_years" not in _p:
-                    dt = datetime.strptime(str(est)[:10], "%Y-%m-%d")
-                    _p["business_years"] = (datetime.now() - dt).days // 365
-            except Exception: pass
+            _p = _normalize_profile_for_eligibility(user_profile)
             return _tool_check_eligibility(db_conn, int(args.get("announcement_id", 0)), _p)
         return {}
 
@@ -1784,9 +1943,13 @@ def chat_lite_fund_expert(
             oai_messages.append({"role": "user", "content": messages[-1].get("text", "시작") if messages else "시작"})
 
             # Tool Calling 루프 (최대 3회 도구 호출)
+            # 세션 첫 사용자 턴에서만 검색 강제 (수집/되묻기 단계 보존 — T-1)
+            _force_search_first = _should_force_search(messages)
             for _ in range(4):
-                # 첫 호출에서 반드시 도구를 사용하도록 강제
-                _tc = {"type": "function", "function": {"name": "search_fund_announcements"}} if _ == 0 else "auto"
+                if _ == 0 and _force_search_first:
+                    _tc = {"type": "function", "function": {"name": "search_fund_announcements"}}
+                else:
+                    _tc = "auto"
                 resp = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=oai_messages,
@@ -1807,7 +1970,7 @@ def chat_lite_fund_expert(
                         oai_messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": json.dumps(result, ensure_ascii=False)[:3000],
+                            "content": json.dumps(result, ensure_ascii=False)[:6000],
                         })
                 else:
                     reply_text = msg.content or ""
@@ -1815,6 +1978,8 @@ def chat_lite_fund_expert(
 
             reply_text, parsed_choices = _parse_choices_marker(reply_text)
             reply_text = _remove_tool_code_leaks(reply_text)
+            _valid_ann_ids = {(a.get("id") or a.get("announcement_id")) for a in _referenced_announcements}
+            reply_text = _strip_unverified_ann_ids(reply_text, _valid_ann_ids)
             _engine_used = "openai"
 
         except Exception as oai_err:
@@ -1833,6 +1998,7 @@ def chat_lite_fund_expert(
                 rows = _tool_search_fund_announcements(
                     db_conn, keywords, tt, limit=5,
                     user_region=_user_region, profile=user_profile,
+                    exclude_ids=_mentioned_ids,
                 )
                 for r in rows:
                     if r not in _referenced_announcements:
@@ -1847,14 +2013,7 @@ def chat_lite_fund_expert(
                 return {"count": len(rows), "results": rows}
             def check_eligibility(announcement_id: int) -> dict:
                 """사용자 프로필과 공고 자격 조건을 대조합니다."""
-                _p = dict(user_profile or {})
-                try:
-                    from datetime import datetime
-                    est = _p.get("establishment_date")
-                    if est and "business_years" not in _p:
-                        dt = datetime.strptime(str(est)[:10], "%Y-%m-%d")
-                        _p["business_years"] = (datetime.now() - dt).days // 365
-                except Exception: pass
+                _p = _normalize_profile_for_eligibility(user_profile)
                 return _tool_check_eligibility(db_conn, int(announcement_id), _p)
 
             tools = [search_fund_announcements, get_announcement_detail, search_knowledge_base, check_eligibility]
@@ -1862,15 +2021,18 @@ def chat_lite_fund_expert(
                 "models/gemini-2.5-flash", tools=tools, system_instruction=system_prompt,
                 generation_config={"max_output_tokens": 4096, "temperature": 0.5},
             )
-            chat = model.start_chat(enable_automatic_function_calling=True)
-            for m in messages[:-1]:
-                if m.get("role") == "user":
-                    chat.send_message(m.get("text", ""))
+            # 과거 user/model 턴을 history로 보존 — 재전송(재생성) 방지(T-9)
+            chat = model.start_chat(
+                history=_build_gemini_history(messages),
+                enable_automatic_function_calling=True,
+            )
             last_msg = messages[-1].get("text", "") if messages else "시작"
             response = chat.send_message(last_msg)
             reply_text = response.text if hasattr(response, "text") else str(response)
             reply_text, parsed_choices = _parse_choices_marker(reply_text)
             reply_text = _remove_tool_code_leaks(reply_text)
+            _valid_ann_ids = {(a.get("id") or a.get("announcement_id")) for a in _referenced_announcements}
+            reply_text = _strip_unverified_ann_ids(reply_text, _valid_ann_ids)
             _engine_used = "gemini"
             try:
                 for h in chat.history:
@@ -1923,11 +2085,12 @@ def chat_lite_fund_expert(
         except Exception as e:
             logger.warning(f"[AI_ENGINE_V2] LITE extract/save error (비차단): {e}")
 
-    # [ANN:id] 마커 파싱 → matched 배열 (이유 텍스트 + 공고 카드 쌍)
+    # 공고 인용 마커 파싱 → matched 배열 (이유 텍스트 + 공고 카드 쌍)
+    # [공고ID: N] 단일 포맷(신규 프롬프트) + [ANN:N](구형) 겸용 — T-7
     import re as _re
     matched = []
     clean_reply = reply_text
-    ann_blocks = _re.split(r'\[ANN:(\d+)\]', reply_text)
+    ann_blocks = _re.split(_ANN_SPLIT_PATTERN, reply_text)
     if len(ann_blocks) >= 3:
         # ann_blocks = [intro, id1, reason1, id2, reason2, ...]
         clean_reply = ann_blocks[0].strip()

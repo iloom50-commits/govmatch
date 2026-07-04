@@ -146,12 +146,7 @@ AI가 이전 대화를 기억하는지(컨텍스트 유지) 테스트하세요."
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def simulate_user_turn(persona: dict, conversation: List[Dict]) -> str:
-    """Gemini로 페르소나 역할의 다음 질문 생성."""
-    import google.generativeai as genai
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("models/gemini-2.5-flash",
-                                   generation_config={"max_output_tokens": 256, "temperature": 0.8})
-
+    """페르소나 역할의 다음 질문 생성 (Gemini → 실패 시 OpenAI 폴백)."""
     conv_text = "\n".join([f"[{m['role']}] {m.get('text', '')[:300]}" for m in conversation])
     prompt = f"""당신은 아래 페르소나로 정부 지원금 AI 상담을 이용 중입니다.
 {persona['persona_prompt']}
@@ -163,14 +158,35 @@ def simulate_user_turn(persona: dict, conversation: List[Dict]) -> str:
 오직 사용자의 다음 발화만 출력 (JSON 아님, 따옴표 없이).
 AI가 잘 답변했으면 더 깊은 질문, 애매하면 재질문, 만족하면 "감사합니다 종료"라고 답하세요."""
 
-    try:
-        resp = with_retry(lambda: model.generate_content(prompt), label="simulate_user")
-        text = (resp.text or "").strip()
-        # 앞뒤 따옴표·불필요 기호 제거
+    def _clean(text: str) -> str:
+        text = (text or "").strip()
         for q in ['"', "'", "`"]:
             if text.startswith(q) and text.endswith(q):
                 text = text[1:-1].strip()
-        return text or "더 자세히 알려주세요."
+        return text
+
+    # 1차: Gemini (크레딧 소진 등 실패 시 재시도 없이 즉시 OpenAI 폴백)
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        model = genai.GenerativeModel("models/gemini-2.5-flash",
+                                       generation_config={"max_output_tokens": 256, "temperature": 0.8})
+        text = _clean(model.generate_content(prompt).text)
+        if text:
+            return text
+    except Exception as e:
+        print(f"  [simulate_user gemini] {str(e)[:80]} -> OpenAI 폴백")
+
+    # 2차: OpenAI gpt-4o-mini
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        resp = with_retry(lambda: client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=256, temperature=0.8,
+        ), label="simulate_user_oai")
+        return _clean(resp.choices[0].message.content) or "더 자세히 알려주세요."
     except Exception as e:
         print(f"  [simulate_user] error: {e}")
         return "더 자세히 설명해주세요."
@@ -251,10 +267,11 @@ def evaluate_with_gemini(persona: dict, conversation: List[Dict]) -> dict:
         conversation=conv_text[:8000],
     )
     try:
-        resp = with_retry(lambda: model.generate_content(prompt), label="eval_gemini")
+        # 크레딧 소진(429) 시 재시도 대기 낭비 방지 — 실패는 _error로 처리되어 보고서에서 제외됨
+        resp = model.generate_content(prompt)
         return json.loads(resp.text)
     except Exception as e:
-        print(f"  [eval-gemini] error: {e}")
+        print(f"  [eval-gemini] error: {str(e)[:120]}")
         return {"_error": str(e)}
 
 

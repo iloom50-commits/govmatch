@@ -1060,17 +1060,26 @@ def _validate_against_profile(results: List[Dict], profile: dict) -> List[Dict]:
     return results
 
 
-def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None, profile: dict = None) -> List[Dict]:
+def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "business", limit: int = 5, user_region: str = None, profile: dict = None, exclude_ids=None) -> List[Dict]:
     """자금/대출/보증 관련 공고 DB 검색 (임베딩 + 키워드).
 
     Args:
         profile: [Level 1] 사용자 프로필 — WHERE 절에 제외 조건 자동 추가
+        exclude_ids: 이미 추천한 공고 ID — 재나열 차단(T-6)
     """
     if not db_conn or not keywords:
         return []
     results = []
     # [Level 1] 프로필 기반 WHERE 추가 조건
     profile_where, profile_params = _profile_exclusion_clause(profile)
+    # [T-6] 이미 추천한 공고 제외
+    _exclude = []
+    for x in (exclude_ids or ()):
+        try:
+            _exclude.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    _excl_ph = ",".join(["%s"] * len(_exclude)) if _exclude else ""
     try:
         # 1) 임베딩 검색 시도
         try:
@@ -1099,6 +1108,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                         params.append(f"%{user_region[:10]}%")
                     # [Level 1] 프로필 제외 조건 주입
                     params.extend(profile_params)
+                    exclude_filter = ""
+                    if _exclude:
+                        exclude_filter = f"AND a.announcement_id NOT IN ({_excl_ph})"
+                        params.extend(_exclude)
                     params.extend([vec_str, limit])
                     cur.execute(f"""
                         SELECT a.announcement_id, a.title, a.department,
@@ -1115,6 +1128,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                           )
                           {region_filter}
                           {profile_where}
+                          {exclude_filter}
                         ORDER BY e.embedding <=> %s::vector
                         LIMIT %s
                     """, params)
@@ -1157,6 +1171,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                 params2.append(f"%{user_region[:10]}%")
             fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
             params2.extend(fallback_profile_params)
+            exclude_filter2 = ""
+            if _exclude:
+                exclude_filter2 = f"AND announcement_id NOT IN ({_excl_ph})"
+                params2.extend(_exclude)
             params2.append(limit)
             cur.execute(f"""
                 SELECT announcement_id, title, department, support_amount,
@@ -1171,6 +1189,7 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                   )
                   {region_filter2}
                   {fallback_profile_where}
+                  {exclude_filter2}
                 ORDER BY
                     CASE WHEN origin_source IN ('smes24-api','kised-api','bizinfo-api','bizinfo-portal-api','kosme','smba') THEN 0
                          ELSE 1 END,
@@ -1628,6 +1647,33 @@ def _strip_unverified_ann_ids(reply, valid_ids):
     return reply
 
 
+def _extract_mentioned_ids(messages) -> set:
+    """이전 assistant 답변에서 이미 추천한 공고 ID를 추출한다(T-6).
+
+    검색 시 exclude_ids로 넘겨 같은 공고 재나열을 코드 레벨에서 차단.
+    """
+    import re as _re
+    ids = set()
+    for m in (messages or []):
+        if m.get("role") == "assistant":
+            for x in _re.findall(r"\[(?:공고ID|ANN):\s*(\d+)\]", m.get("text", "") or ""):
+                ids.add(int(x))
+    return ids
+
+
+def _build_gemini_history(messages) -> list:
+    """Gemini 폴백용 대화 히스토리 구성(T-9).
+
+    마지막 메시지는 send_message로 보내므로 제외. user/assistant 턴을
+    그대로 보존해 과거 AI 답변이 유실되지 않게 한다.
+    """
+    history = []
+    for m in (messages or [])[:-1]:
+        role = "user" if m.get("role") == "user" else "model"
+        history.append({"role": role, "parts": [m.get("text", "")]})
+    return history
+
+
 def chat_lite_fund_expert(
     messages: List[Dict],
     db_conn=None,
@@ -1811,6 +1857,7 @@ def chat_lite_fund_expert(
     # 사용자 지역 추출 (도구 검색에 자동 적용)
     _user_region = (user_profile or {}).get("address_city", "")
     _referenced_announcements: List[Dict] = []  # 도구에서 검색된 공고 수집
+    _mentioned_ids = _extract_mentioned_ids(messages)  # 이미 추천한 공고 — 재나열 차단(T-6)
 
     # ── Tool 정의 (OpenAI / Gemini 공용) ──
     def _exec_tool(name: str, args: dict) -> dict:
@@ -1821,6 +1868,7 @@ def chat_lite_fund_expert(
             rows = _tool_search_fund_announcements(
                 db_conn, args.get("keywords", ""), tt,
                 limit=5, user_region=_user_region, profile=user_profile,
+                exclude_ids=_mentioned_ids,
             )
             for r in rows:
                 if r not in _referenced_announcements:
@@ -1917,6 +1965,7 @@ def chat_lite_fund_expert(
                 rows = _tool_search_fund_announcements(
                     db_conn, keywords, tt, limit=5,
                     user_region=_user_region, profile=user_profile,
+                    exclude_ids=_mentioned_ids,
                 )
                 for r in rows:
                     if r not in _referenced_announcements:
@@ -1939,10 +1988,11 @@ def chat_lite_fund_expert(
                 "models/gemini-2.5-flash", tools=tools, system_instruction=system_prompt,
                 generation_config={"max_output_tokens": 4096, "temperature": 0.5},
             )
-            chat = model.start_chat(enable_automatic_function_calling=True)
-            for m in messages[:-1]:
-                if m.get("role") == "user":
-                    chat.send_message(m.get("text", ""))
+            # 과거 user/model 턴을 history로 보존 — 재전송(재생성) 방지(T-9)
+            chat = model.start_chat(
+                history=_build_gemini_history(messages),
+                enable_automatic_function_calling=True,
+            )
             last_msg = messages[-1].get("text", "") if messages else "시작"
             response = chat.send_message(last_msg)
             reply_text = response.text if hasattr(response, "text") else str(response)

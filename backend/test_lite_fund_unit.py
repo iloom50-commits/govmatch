@@ -154,6 +154,52 @@ def test_exclusion_clause_allows_restart_when_cert():
 
 
 # ─────────────────────────────────────────────────────────────
+# T-6: 이미 추천한 공고 ID 추출 (검색 중복 차단용)
+# ─────────────────────────────────────────────────────────────
+def test_extract_mentioned_ids_both_formats():
+    from app.services.ai_consultant import _extract_mentioned_ids
+    msgs = [{"role": "assistant", "text": "### 1. A [공고ID: 100]\n### 2. B [ANN:200]"}]
+    assert _extract_mentioned_ids(msgs) == {100, 200}
+
+
+def test_extract_mentioned_ids_ignores_user_messages():
+    from app.services.ai_consultant import _extract_mentioned_ids
+    msgs = [
+        {"role": "user", "text": "[공고ID: 999] 이거 뭐예요?"},
+        {"role": "assistant", "text": "안내드립니다 [공고ID: 100]"},
+    ]
+    assert _extract_mentioned_ids(msgs) == {100}
+
+
+def test_extract_mentioned_ids_empty():
+    from app.services.ai_consultant import _extract_mentioned_ids
+    assert _extract_mentioned_ids([]) == set()
+
+
+# ─────────────────────────────────────────────────────────────
+# T-9: Gemini 폴백 히스토리 구성 (user/model 턴 보존)
+# ─────────────────────────────────────────────────────────────
+def test_build_gemini_history_roles():
+    from app.services.ai_consultant import _build_gemini_history
+    h = _build_gemini_history([
+        {"role": "user", "text": "a"},
+        {"role": "assistant", "text": "b"},
+        {"role": "user", "text": "c"},
+    ])
+    # 마지막 메시지는 send_message로 보내므로 history에서 제외
+    assert h == [
+        {"role": "user", "parts": ["a"]},
+        {"role": "model", "parts": ["b"]},
+    ]
+
+
+def test_build_gemini_history_empty_and_single():
+    from app.services.ai_consultant import _build_gemini_history
+    assert _build_gemini_history([]) == []
+    assert _build_gemini_history([{"role": "user", "text": "only"}]) == []
+
+
+# ─────────────────────────────────────────────────────────────
 # 스크립트 러너 (pytest 없이 실행)
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":

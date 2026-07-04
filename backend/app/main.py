@@ -1921,8 +1921,19 @@ async def run_admin_scrape_endpoint(request: Request):
     try:
         from app.services.admin_scraper import admin_scraper
         result = await admin_scraper.run_batch(batch_size=9999)
+        # 결과 영구 기록 — 과거엔 무기록이라 skip(Playwright/크롬 부재)을 아무도 몰랐다(A-4).
+        try:
+            saved = int(result.get("saved", 0) or 0)
+            skipped = bool(result.get("skipped"))
+            res = "error" if skipped else "success"
+            detail = (f"skipped: {result.get('reason','')}" if skipped
+                      else f"processed={result.get('processed',0)} saved={saved}")
+            _log_system("admin_scrape", "scraper", detail, res, saved)
+        except Exception:
+            pass
         return JSONResponse(content=result)
     except Exception as e:
+        _log_system("admin_scrape", "scraper", f"오류: {e}", "error")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

@@ -3611,8 +3611,10 @@ def api_announcements_public(
     try:
         cursor.execute("SET LOCAL statement_timeout = '15s'")
         cursor.execute(f"SELECT COUNT(*) AS cnt FROM announcements WHERE {where_sql}", params)
-        cursor.execute("RESET statement_timeout")
+        # fetch를 RESET보다 먼저 — RESET 후 fetchone()은 'no results to fetch'로
+        # 항상 예외 → 근사치(reltuples≈29,065) 폴백되던 버그 (2026-07-05 진단)
         total = cursor.fetchone()["cnt"]
+        cursor.execute("RESET statement_timeout")
     except Exception as _count_err:
         print(f"[public] COUNT 타임아웃 폴백: {_count_err}")
         try: cursor.execute("RESET statement_timeout")

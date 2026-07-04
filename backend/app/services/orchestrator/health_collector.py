@@ -61,7 +61,7 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
         cur.execute("""
             SELECT created_at, result,
                    EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400 AS age_days
-            FROM system_logs WHERE action = 'pipeline_run'
+            FROM system_logs WHERE action IN ('daily_pipeline', 'pipeline_run')
             ORDER BY created_at DESC LIMIT 1
         """)
         r = cur.fetchone()
@@ -128,6 +128,101 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
                 alerts.append(f"🚨 {name} API 이상 — 크레딧 소진 의심 ({api.get(name + '_err', '')})")
     else:
         h["api"] = {}
+
+    # 4b. 기관 수집(admin_urls) 정지 감지 (A-4 — 99일 정지 사례를 잡는 신호)
+    try:
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE is_active = 1) AS active,
+                   EXTRACT(EPOCH FROM (NOW() - MAX(last_scraped))) / 86400 AS age
+            FROM admin_urls
+        """)
+        r = cur.fetchone()
+        age = float(r["age"] or 0)
+        h["admin_scraper"] = {"active": int(r["active"] or 0), "age_days": round(age, 1)}
+        if r["active"] and age > STALE_DAYS:
+            alerts.append(f"🚨 기관 수집(admin_urls {int(r['active'])}개) {age:.0f}일째 정지")
+    except Exception as e:
+        h["admin_scraper"] = {"error": str(e)[:80]}
+
+    # 4c. 소스별 수집 신선도 — 7일+ 정체한 활성 소스 (A-8/B-2: 전체 MAX만 보면 못 잡음)
+    try:
+        cur.execute("""
+            SELECT origin_source,
+                   EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS age
+            FROM announcements
+            WHERE origin_source IS NOT NULL
+            GROUP BY origin_source HAVING COUNT(*) >= 20
+        """)
+        stale = sorted(
+            [(row["origin_source"], float(row["age"] or 0)) for row in cur.fetchall()
+             if float(row["age"] or 0) > 7],
+            key=lambda x: -x[1],
+        )
+        h["stale_sources"] = [f"{s}({a:.0f}d)" for s, a in stale[:8]]
+        if len(stale) >= 5:
+            alerts.append(f"🚨 수집 정체 소스 {len(stale)}개(7일+): {', '.join(s for s, _ in stale[:5])} 등")
+    except Exception as e:
+        h["stale_sources"] = {"error": str(e)[:80]}
+
+    # 4d. 다이제스트/이메일 발송 (B-1)
+    try:
+        cur.execute("""
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(sent_at))) / 86400 AS age,
+                   COUNT(*) FILTER (WHERE sent_at >= NOW() - INTERVAL '1 day') AS d1
+            FROM notification_logs WHERE channel = 'email'
+        """)
+        r = cur.fetchone()
+        age = float(r["age"]) if r and r["age"] is not None else 999
+        h["digest"] = {"age_days": round(age, 1) if age < 999 else None, "sent_1d": int(r["d1"] or 0)}
+        if age > STALE_DAYS:
+            alerts.append(f"🚨 이메일/다이제스트 {age:.0f}일째 미발송")
+    except Exception as e:
+        h["digest"] = {"error": str(e)[:80]}
+
+    # 4e. 결제 실패/강등 (A-6) — 최근 3일 auto_renew partial/error
+    try:
+        cur.execute("""
+            SELECT detail, created_at FROM system_logs
+            WHERE action = 'auto_renew' AND result IN ('partial', 'error')
+              AND created_at >= NOW() - INTERVAL '3 days'
+            ORDER BY created_at DESC LIMIT 1
+        """)
+        r = cur.fetchone()
+        if r:
+            h["billing"] = {"issue": r["detail"], "at": str(r["created_at"])}
+            alerts.append(f"🚨 결제 이슈(최근3일): {r['detail']}")
+    except Exception as e:
+        h["billing"] = {"error": str(e)[:80]}
+
+    # 4f. 분석 실패 백로그 (B-4)
+    try:
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE resolved_at IS NULL) AS open_n,
+                   COUNT(*) FILTER (WHERE resolved_at IS NULL AND retry_count >= 5) AS exhausted
+            FROM analysis_failures
+        """)
+        r = cur.fetchone()
+        open_n = int(r["open_n"] or 0)
+        h["analysis_backlog"] = {"open": open_n, "exhausted": int(r["exhausted"] or 0)}
+        if open_n >= 5000:
+            alerts.append(f"⚠️ 분석 실패 백로그 {open_n:,}건 누적 (재시도소진 {int(r['exhausted'] or 0)})")
+    except Exception as e:
+        h["analysis_backlog"] = {"error": str(e)[:80]}
+
+    # 4g. Hot이슈 자동생성 정체 (A-5)
+    try:
+        cur.execute("""
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS age
+            FROM hot_issues WHERE auto_generated = TRUE
+        """)
+        r = cur.fetchone()
+        age = float(r["age"]) if r and r["age"] is not None else 999
+        h["hot_issue"] = {"age_days": round(age, 1) if age < 999 else None}
+        if age > 8:
+            label = f"{age:.0f}일째" if age < 999 else "기록 없음"
+            alerts.append(f"⚠️ Hot이슈 자동생성 {label} 정체")
+    except Exception as e:
+        h["hot_issue"] = {"error": str(e)[:80]}
 
     # 5. 매출/전환 신호 (users.plan / billing_key / plan_started_at)
     try:

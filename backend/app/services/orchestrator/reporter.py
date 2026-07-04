@@ -52,6 +52,13 @@ def _build_alert_text(health: dict) -> str:
         f"공고 {co.get('age_days','?')}일전(어제 +{co.get('new_1d','?')}) | "
         f"재분석 {ra.get('age_days','?')}일전(백로그 {ra.get('backlog','?')})\n"
     )
+    admin = health.get("admin_scraper", {}) or {}
+    dig = health.get("digest", {}) or {}
+    bl = health.get("analysis_backlog", {}) or {}
+    lines += (
+        f"  · 기관수집 {admin.get('age_days','?')}일전 | "
+        f"이메일 {dig.get('age_days','?')}일전 | 분석백로그 {bl.get('open','?')}\n"
+    )
     if api:
         parts = []
         for k in ("Gemini", "OpenAI"):
@@ -193,11 +200,17 @@ def _build_alert_html(health: dict) -> str:
         f"{k} {'✅' if api.get(k) is True else '🚨' if api.get(k) is False else '–'}"
         for k in ("Gemini", "OpenAI") if k in api
     )
+    admin = health.get("admin_scraper", {}) or {}
+    dig = health.get("digest", {}) or {}
+    bl = health.get("analysis_backlog", {}) or {}
     box += (
         '<p style="color:#6b7280;font-size:12px;margin:4px 0 0">'
         f'파이프라인 {pl.get("age_days","?")}일전 · 공고 {co.get("age_days","?")}일전(+{co.get("new_1d","?")}) · '
         f'재분석 {ra.get("age_days","?")}일전(백로그 {ra.get("backlog","?")})'
         f'{" · " + api_str if api_str else ""}</p>'
+        '<p style="color:#6b7280;font-size:12px;margin:2px 0 0">'
+        f'기관수집 {admin.get("age_days","?")}일전 · 이메일 {dig.get("age_days","?")}일전 · '
+        f'분석백로그 {bl.get("open","?")}</p>'
     )
     return box
 

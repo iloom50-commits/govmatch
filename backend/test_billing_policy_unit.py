@@ -149,6 +149,101 @@ def test_subscribe_charges_immediately():
 
 
 # ─────────────────────────────────────────────────────────────
+# 환불 정책 (_refund_amount_policy) — /refund 페이지 공개 정책 그대로
+#   7일 이내·미사용: 전액 / 7일 이내·사용: 일할 공제 / 7일 경과: 불가
+# ─────────────────────────────────────────────────────────────
+def test_refund_full_within_7days_unused():
+    import datetime
+    from app.main import _refund_amount_policy
+    started = datetime.datetime(2026, 7, 1)
+    now = datetime.datetime(2026, 7, 4)
+    ok, amount, _ = _refund_amount_policy(49000, started, now, used=False)
+    assert ok is True and amount == 49000
+
+
+def test_refund_prorated_within_7days_used():
+    import datetime
+    from app.main import _refund_amount_policy
+    started = datetime.datetime(2026, 7, 1)
+    now = datetime.datetime(2026, 7, 4)  # 이용 4일차 (당일 포함)
+    ok, amount, _ = _refund_amount_policy(49000, started, now, used=True)
+    assert ok is True
+    assert amount == round(49000 * (30 - 4) / 30), amount  # 잔여 26일분
+
+
+def test_refund_denied_after_7days():
+    import datetime
+    from app.main import _refund_amount_policy
+    started = datetime.datetime(2026, 7, 1)
+    now = datetime.datetime(2026, 7, 9)
+    ok, amount, reason = _refund_amount_policy(49000, started, now, used=False)
+    assert ok is False and amount == 0
+    assert "7일" in reason
+
+
+def test_refund_same_day_used_counts_one_day():
+    import datetime
+    from app.main import _refund_amount_policy
+    started = datetime.datetime(2026, 7, 4, 9, 0)
+    now = datetime.datetime(2026, 7, 4, 15, 0)
+    ok, amount, _ = _refund_amount_policy(30000, started, now, used=True)
+    assert ok is True
+    assert amount == round(30000 * 29 / 30), amount  # 이용 1일 공제
+
+
+# ─────────────────────────────────────────────────────────────
+# _cancel_payment — V1/V2 겸용 결제 취소(부분 취소 포함)
+# ─────────────────────────────────────────────────────────────
+def test_cancel_v2_success():
+    import app.main as m
+    orig_httpx = sys.modules.get("httpx")
+    orig_secret = m.PORTONE_API_SECRET
+    try:
+        fake = _fake_httpx(200)
+        sys.modules["httpx"] = fake
+        m.PORTONE_API_SECRET = "secret"
+        ok = m._cancel_payment("first-999-20260704", 49000, "billing-key-abc")
+        assert ok is True
+        assert "first-999-20260704/cancel" in fake._calls["url"]
+        assert fake._calls["json"]["amount"] == 49000
+    finally:
+        if orig_httpx is not None:
+            sys.modules["httpx"] = orig_httpx
+        m.PORTONE_API_SECRET = orig_secret
+
+
+def test_cancel_v2_failure():
+    import app.main as m
+    orig_httpx = sys.modules.get("httpx")
+    orig_secret = m.PORTONE_API_SECRET
+    try:
+        sys.modules["httpx"] = _fake_httpx(400)
+        m.PORTONE_API_SECRET = "secret"
+        assert m._cancel_payment("p1", 1000, "billing-key-abc") is False
+    finally:
+        if orig_httpx is not None:
+            sys.modules["httpx"] = orig_httpx
+        m.PORTONE_API_SECRET = orig_secret
+
+
+def test_refund_endpoint_uses_real_cancel():
+    """환불 API가 실제 취소 호출 없이 성공 메시지만 반환하던 결함 회귀 방지."""
+    import inspect
+    import app.main as m
+    src = inspect.getsource(m.api_plan_refund)
+    assert "_cancel_payment" in src, "환불 API가 실제 취소를 호출하지 않음"
+    assert "환불이 처리되었습니다" not in src or "_cancel_payment" in src
+
+
+def test_subscribe_no_pg_fails_loud():
+    """PG 미설정 시 무료 구독으로 조용히 넘어가지 않고 명시적 오류."""
+    import inspect
+    import app.main as m
+    src = inspect.getsource(m.api_plan_subscribe)
+    assert "첫 청구 생략" not in src, "PG 미설정 시 무과금 구독 경로 잔존"
+
+
+# ─────────────────────────────────────────────────────────────
 # 스크립트 러너
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":

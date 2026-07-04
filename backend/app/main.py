@@ -279,6 +279,8 @@ def init_database():
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_grant TEXT")
             # 자동결제 실패 유예 카운터 (구독 시작·자동갱신 공용 — 지연 생성 의존 제거)
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS renew_fail_count INTEGER DEFAULT 0")
+            # 최근 결제 ID — 환불(부분취소) 대상 추적
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_payment_id TEXT")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -4760,24 +4762,25 @@ def api_plan_subscribe(
     label = "LITE" if target == "lite" else "PRO"
     price = _plan_price(target, u.get("user_type"))
     now = datetime.datetime.utcnow()
-    _pg_ready = bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)
-    if _pg_ready:
-        _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
-        if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
-            conn.close()
-            raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
-        print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
-    else:
-        print("[subscribe] PG 미설정 — 첫 청구 생략 (테스트 환경)")
+    if not (bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)):
+        # 무과금 구독이 조용히 생기지 않도록 명시적 실패
+        conn.close()
+        raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다. 관리자에게 문의해주세요.")
+    _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
+    if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
+        conn.close()
+        raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
+    print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
 
     # 결제 성공 → 30일 이용권 시작 (다음 청구는 만료일에 자동갱신)
     expires_at = (now + datetime.timedelta(days=30)).isoformat()
 
     cur.execute(
         """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s, renew_fail_count = 0
+           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s, renew_fail_count = 0,
+           last_payment_id = %s
            WHERE business_number = %s""",
-        (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, bn),
+        (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, _payment_id, bn),
     )
     conn.commit()
     conn.close()
@@ -4812,59 +4815,56 @@ def api_plan_cancel(current_user: dict = Depends(_get_current_user)):
 
 @app.post("/api/plan/refund")
 def api_plan_refund(current_user: dict = Depends(_get_current_user)):
-    """구독 환불 — 최근 자동결제 건을 포트원 API로 취소 + FREE 전환"""
-    if not PORTONE_API_SECRET:
-        raise HTTPException(status_code=500, detail="결제 시스템 설정 오류")
-
+    """구독 환불 — 공개 정책(/refund 페이지) 그대로 실환불:
+    7일 이내·미사용 전액 / 7일 이내·사용 일할 공제 / 7일 경과 불가(해지만 가능).
+    실제 취소는 last_payment_id로 포트원(V2)/아임포트(V1) 취소 API 호출."""
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT plan, billing_key, plan_started_at, plan_expires_at, user_type FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-
-    u = dict(user)
-    plan = u.get("plan") or "free"
-    if plan == "free":
-        conn.close()
-        raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
-
-    # [2026-07-04 즉시 첫 청구 전환] 구 '무료체험이면 그냥 해지' 분기 제거 —
-    # 결제한 사용자(30일권)를 무료체험으로 오인해 환불 없이 해지시키는 오동작이 되므로 삭제.
-
-    # 실 결제 건 환불 — 최근 결제 ID 조회 시도
-    import httpx
     try:
-        # 결제 ID 패턴: renew-{bn}-{timestamp}
-        # 포트원 API로 최근 결제 조회
-        resp = httpx.get(
-            f"https://api.portone.io/payments?filter.merchantId={bn}&pageSize=1&sort.order=DESC",
-            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            # 결제 이력 조회 실패 → 단순 해지로 처리
+        cur.execute(
+            "SELECT plan, billing_key, user_type, plan_started_at, ai_usage_month, last_payment_id "
+            "FROM users WHERE business_number = %s", (bn,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+        u = dict(user)
+        plan = u.get("plan") or "free"
+        if plan == "free":
+            raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
+
+        payment_id = (u.get("last_payment_id") or "").strip()
+        if not payment_id:
+            # 결제 이력 없음(레거시 무료기간 등) — 해지만 처리, 환불 사칭 금지
             cur.execute(
                 "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
-                (bn,),
-            )
+                (bn,))
             conn.commit()
-            conn.close()
-            return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 환불은 고객센터로 문의해주세요."}
+            return {"status": "SUCCESS", "message": "결제 이력이 없어 해지만 처리되었습니다. FREE 플랜으로 전환되었습니다."}
 
-        # 해지 + FREE 전환
+        started = u.get("plan_started_at")
+        try:
+            started_dt = started if isinstance(started, datetime.datetime) else datetime.datetime.fromisoformat(str(started))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="결제 시점을 확인할 수 없습니다. 고객센터로 문의해주세요.")
+
+        now = datetime.datetime.utcnow()
+        price = _plan_price("lite" if plan in ("lite", "basic") else "pro", u.get("user_type"))
+        used = (u.get("ai_usage_month") or 0) > 0
+        refundable, amount, policy_reason = _refund_amount_policy(price, started_dt, now, used)
+        if not refundable:
+            raise HTTPException(status_code=400, detail=f"{policy_reason}. 구독 해지는 언제든 가능하며 잔여 기간까지 이용할 수 있습니다.")
+
+        if amount > 0 and not _cancel_payment(payment_id, amount, u.get("billing_key") or ""):
+            raise HTTPException(status_code=502, detail="환불 처리에 실패했습니다. 고객센터로 문의해주시면 수동 처리해드립니다.")
+
         cur.execute(
-            "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
-            (bn,),
-        )
+            "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL, last_payment_id = NULL "
+            "WHERE business_number = %s", (bn,))
         conn.commit()
+        return {"status": "SUCCESS", "message": f"환불이 완료되었습니다 ({amount:,}원 · {policy_reason}). FREE 플랜으로 전환되었습니다."}
+    finally:
         conn.close()
-        return {"status": "SUCCESS", "message": "환불이 처리되었습니다. FREE 플랜으로 전환되었습니다."}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=f"환불 처리 중 오류: {str(e)}")
 
 
 def _charge_v1(customer_uid: str, merchant_uid: str, amount: int, order_name: str) -> bool:
@@ -4931,6 +4931,68 @@ def _send_renew_notice(email: str, plan: str, downgraded: bool):
         )
     except Exception as e:
         print(f"[renew] 통지 메일 실패({email}): {e}")
+
+
+def _refund_amount_policy(price: int, started_at, now, used: bool) -> tuple:
+    """공개 환불 정책(/refund 페이지) 산정 — 순수 로직.
+    7일 이내·미사용: 전액 / 7일 이내·사용: 이용일수(당일=1일) 공제 일할 / 7일 경과: 불가.
+
+    Returns: (refundable: bool, amount: int, reason: str)
+    """
+    elapsed = now - started_at
+    if elapsed.days >= 7:
+        return False, 0, "결제일로부터 7일 경과 — 환불 불가"
+    if not used:
+        return True, int(price), "7일 이내 미사용 — 전액 환불"
+    used_days = elapsed.days + 1
+    amount = max(0, round(price * (30 - used_days) / 30))
+    return True, amount, f"이용 {used_days}일 공제 — 일할 환불"
+
+
+def _cancel_payment(payment_id: str, amount: int, billing_key: str) -> bool:
+    """결제 취소(전액/부분) — V1(cust_)/V2 겸용. 성공 시 True."""
+    key = (billing_key or "").strip()
+    if key.startswith("cust_"):
+        if not (PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET):
+            return False
+        import httpx as _httpx
+        try:
+            token_res = _httpx.post(
+                "https://api.iamport.kr/users/getToken",
+                json={"imp_key": PORTONE_V1_API_KEY, "imp_secret": PORTONE_V1_API_SECRET},
+                timeout=10,
+            )
+            access_token = ((token_res.json().get("response") or {}).get("access_token", "")
+                            if token_res.status_code == 200 else "")
+            if not access_token:
+                return False
+            res = _httpx.post(
+                "https://api.iamport.kr/payments/cancel",
+                headers={"Authorization": access_token},
+                json={"merchant_uid": payment_id, "amount": amount, "reason": "구독 환불"},
+                timeout=15,
+            )
+            return res.status_code == 200 and res.json().get("code") == 0
+        except Exception as e:
+            print(f"[refund-v1] 취소 오류: {e}")
+            return False
+    if not PORTONE_API_SECRET:
+        return False
+    import httpx
+    try:
+        resp = httpx.post(
+            f"https://api.portone.io/payments/{payment_id}/cancel",
+            headers={
+                "Authorization": f"PortOne {PORTONE_API_SECRET}",
+                "Content-Type": "application/json",
+            },
+            json={"reason": "구독 환불", "amount": amount},
+            timeout=15,
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"[refund-v2] 취소 오류: {e}")
+        return False
 
 
 def _charge_billing_key(billing_key: str, payment_id: str, price: int, order_name: str) -> bool:
@@ -5036,8 +5098,9 @@ def _auto_renew_subscriptions():
                     new_expires = (now + datetime.timedelta(days=30)).isoformat()
                     cur.execute(
                         """UPDATE users SET plan_expires_at = %s, ai_usage_month = 0,
-                           ai_usage_reset_at = %s, renew_fail_count = 0 WHERE business_number = %s""",
-                        (new_expires, now.isoformat(), u["business_number"]),
+                           ai_usage_reset_at = %s, renew_fail_count = 0, last_payment_id = %s
+                           WHERE business_number = %s""",
+                        (new_expires, now.isoformat(), payment_id, u["business_number"]),
                     )
                     conn.commit()
                     renewed += 1

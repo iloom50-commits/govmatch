@@ -130,6 +130,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
 
   // 상태
   const [activeView, setActiveView] = useState<ActiveView>("chat");
+  const [reportModal, setReportModal] = useState<any>(null); // 상담 중 생성한 보고서 상세 — 모달로 즉시 표시
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
   const [existingClients, setExistingClients] = useState<ClientProfile[]>([]);
   const [flowState, setFlowState] = useState<FlowState>("idle");
@@ -1427,8 +1428,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
                                       if (!rg.ok) throw new Error("보고서 생성 실패");
                                       const rgData = await rg.json();
                                       toast(`📄 보고서 생성 완료 (${rgData.total}건 매칭, ${rgData.eligible}건 적합)`, "success");
-                                      // 보고서 탭으로 이동
-                                      setActiveView("reports");
+                                      // 생성된 보고서 상세를 바로 모달로 표시 (조회 실패 시 기존처럼 보고서 탭으로)
+                                      try {
+                                        const dr = await fetch(`${API}/api/pro/reports/${rgData.report_id}`, { headers: headers() });
+                                        const dd = await dr.json();
+                                        if (dd.report) setReportModal(dd.report);
+                                        else setActiveView("reports");
+                                      } catch {
+                                        setActiveView("reports");
+                                      }
                                     } catch (e: any) {
                                       toast(e?.message || "보고서 생성 실패", "error");
                                     } finally {
@@ -1935,6 +1943,29 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
           </div>
         </div>
       )}
+
+      {/* 상담 중 생성한 보고서 — 상세 모달 (HTML 렌더) */}
+      {reportModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setReportModal(null)}>
+          <div className="relative w-full max-w-3xl max-h-[88vh] rounded-2xl shadow-2xl bg-white overflow-hidden flex flex-col animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
+            <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-indigo-50 flex items-center justify-between gap-3">
+              <p className="text-[13px] font-bold text-violet-700">📄 결과 보고서</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setReportModal(null); setActiveView("reports"); }}
+                  className="px-3 py-1.5 text-[11px] font-bold text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition-all">
+                  보고서 탭에서 보기
+                </button>
+                <button onClick={() => setReportModal(null)} className="p-2 rounded-lg hover:bg-slate-100 transition-all">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <ReportDetailBodyWrapper detail={reportModal} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2127,6 +2158,11 @@ function HistoryTabWrapper({ headers, toast }: { headers: () => any; toast: any 
 function ReportsTabWrapper({ headers, toast }: { headers: () => any; toast: any }) {
   const { ReportsTab } = require("@/components/ProDashboard");
   return <ReportsTab headers={headers} toast={toast} clientType="business" />;
+}
+
+function ReportDetailBodyWrapper({ detail }: { detail: any }) {
+  const { ReportDetailBody } = require("@/components/ProDashboard");
+  return <ReportDetailBody detail={detail} />;
 }
 
 

@@ -899,6 +899,88 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
             {generating ? "생성 중..." : "🔄 다시 생성"}
           </button>
         </div>
+        <ReportDetailBody detail={detail} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* 발신자 브랜딩 (화이트라벨) — 고객에게 내 브랜드로 리포트 발행 */}
+      <div className="mb-4 border border-slate-200 rounded-xl overflow-hidden">
+        <button onClick={() => setBrandOpen((o) => !o)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">
+          <span>🏷️ 발신자 브랜딩 {brand.brand_company ? `· ${brand.brand_company}` : "(미설정 — 지원금AI로 발행)"}</span>
+          <span className="text-xs text-slate-400">{brandOpen ? "접기 ▲" : "설정 ▼"}</span>
+        </button>
+        {brandOpen && (
+          <div className="p-4 space-y-2 bg-white">
+            <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금AI 기본.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: ○○세무회계 / ○○컨설팅)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자명·직함 (예: 홍길동 세무사)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+              <input value={brand.brand_phone} onChange={(e) => setBrand({ ...brand, brand_phone: e.target.value })} placeholder="연락처 (예: 010-1234-5678)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={saveBrand} className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700">저장</button>
+              {brandMsg && <span className="text-xs text-emerald-600 font-bold">{brandMsg}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Generate */}
+      <div className="flex items-center gap-3 mb-5 p-4 bg-violet-50/50 rounded-xl border border-violet-200">
+        <select
+          value={selectedClient || ""}
+          onChange={(e) => setSelectedClient(Number(e.target.value) || null)}
+          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none"
+        >
+          <option value="">고객사 선택</option>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+        </select>
+        <button onClick={() => handleGenerate(false)} disabled={generating || !selectedClient}
+          className="px-5 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap">
+          {generating ? "분석 중..." : "리포트 보기"}
+        </button>
+      </div>
+
+      {clients.length === 0 && (
+        <p className="text-center text-sm text-slate-400 mb-4">고객사를 먼저 등록해주세요 (고객사 관리 탭)</p>
+      )}
+
+      {/* Report List */}
+      {reports.length === 0 ? (
+        <div className="text-center py-12 text-slate-400 text-sm">생성된 리포트가 없습니다</div>
+      ) : (
+        <div className="space-y-2">
+          {reports.map((r) => (
+            <button key={r.id} onClick={() => handleDetail(r.id)}
+              className="w-full text-left p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-violet-200 transition-all">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-900 text-sm truncate">{r.title}</p>
+                  <p className="text-xs text-slate-500 mt-1">{r.client_name} · {r.created_at?.slice(0, 16).replace("T", " ")}</p>
+                </div>
+                <div className="flex items-center gap-1.5 ml-3 shrink-0">
+                  <span className="text-[11px] font-bold text-emerald-600">가능 {r.total_eligible}</span>
+                  <span className="text-slate-300 text-[11px]">·</span>
+                  <span className="text-[11px] font-bold text-amber-600">확인 {r.total_conditional}</span>
+                  <span className="text-slate-300 text-[11px]">·</span>
+                  <span className="text-[11px] font-bold text-rose-600">불가 {r.total_ineligible}</span>
+                  <svg className="w-4 h-4 text-slate-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 리포트 상세 본문 — ReportsTab 인라인 상세와 ProSecretary 결과 모달에서 공용
+export function ReportDetailBody({ detail }: { detail: any }) {
+  return (
+    <>
         <div className="mb-6">
           <h3 className="text-lg font-bold text-slate-900">{detail.title}</h3>
           <p className="text-sm text-slate-500 mt-1">{detail.client_name} | {detail.address_city} | {detail.revenue_bracket}</p>
@@ -1005,79 +1087,6 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* 발신자 브랜딩 (화이트라벨) — 고객에게 내 브랜드로 리포트 발행 */}
-      <div className="mb-4 border border-slate-200 rounded-xl overflow-hidden">
-        <button onClick={() => setBrandOpen((o) => !o)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">
-          <span>🏷️ 발신자 브랜딩 {brand.brand_company ? `· ${brand.brand_company}` : "(미설정 — 지원금AI로 발행)"}</span>
-          <span className="text-xs text-slate-400">{brandOpen ? "접기 ▲" : "설정 ▼"}</span>
-        </button>
-        {brandOpen && (
-          <div className="p-4 space-y-2 bg-white">
-            <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금AI 기본.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: ○○세무회계 / ○○컨설팅)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
-              <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자명·직함 (예: 홍길동 세무사)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
-              <input value={brand.brand_phone} onChange={(e) => setBrand({ ...brand, brand_phone: e.target.value })} placeholder="연락처 (예: 010-1234-5678)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={saveBrand} className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700">저장</button>
-              {brandMsg && <span className="text-xs text-emerald-600 font-bold">{brandMsg}</span>}
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Generate */}
-      <div className="flex items-center gap-3 mb-5 p-4 bg-violet-50/50 rounded-xl border border-violet-200">
-        <select
-          value={selectedClient || ""}
-          onChange={(e) => setSelectedClient(Number(e.target.value) || null)}
-          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-violet-300 outline-none"
-        >
-          <option value="">고객사 선택</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-        </select>
-        <button onClick={() => handleGenerate(false)} disabled={generating || !selectedClient}
-          className="px-5 py-2 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap">
-          {generating ? "분석 중..." : "리포트 보기"}
-        </button>
-      </div>
-
-      {clients.length === 0 && (
-        <p className="text-center text-sm text-slate-400 mb-4">고객사를 먼저 등록해주세요 (고객사 관리 탭)</p>
-      )}
-
-      {/* Report List */}
-      {reports.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-sm">생성된 리포트가 없습니다</div>
-      ) : (
-        <div className="space-y-2">
-          {reports.map((r) => (
-            <button key={r.id} onClick={() => handleDetail(r.id)}
-              className="w-full text-left p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-violet-200 transition-all">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 text-sm truncate">{r.title}</p>
-                  <p className="text-xs text-slate-500 mt-1">{r.client_name} · {r.created_at?.slice(0, 16).replace("T", " ")}</p>
-                </div>
-                <div className="flex items-center gap-1.5 ml-3 shrink-0">
-                  <span className="text-[11px] font-bold text-emerald-600">가능 {r.total_eligible}</span>
-                  <span className="text-slate-300 text-[11px]">·</span>
-                  <span className="text-[11px] font-bold text-amber-600">확인 {r.total_conditional}</span>
-                  <span className="text-slate-300 text-[11px]">·</span>
-                  <span className="text-[11px] font-bold text-rose-600">불가 {r.total_ineligible}</span>
-                  <svg className="w-4 h-4 text-slate-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    </>
   );
 }

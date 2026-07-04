@@ -179,6 +179,29 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     except Exception as e:
         h["digest"] = {"error": str(e)[:80]}
 
+    # 4d-2. 다이제스트 발송수 급감 감지 (6/25형 — 4명 vs 평소 중앙 67명)
+    #   어제(직전 발송일)가 평소 중앙값의 30% 미만이면 경고. 주말(발송 없음)은 자동 제외.
+    try:
+        cur.execute("""
+            WITH daily AS (
+                SELECT DATE(sent_at) AS d, COUNT(*) AS c
+                FROM notification_logs
+                WHERE channel = 'email' AND sent_at >= NOW() - INTERVAL '12 days'
+                GROUP BY DATE(sent_at)
+            )
+            SELECT
+                (SELECT c FROM daily WHERE d = (NOW() - INTERVAL '1 day')::date) AS yest,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY c) AS med
+            FROM daily WHERE d < (NOW() - INTERVAL '1 day')::date
+        """)
+        r = cur.fetchone()
+        yest = r["yest"] if r else None
+        med = float(r["med"]) if r and r["med"] is not None else None
+        if yest is not None and med and med >= 10 and yest < med * 0.3:
+            alerts.append(f"⚠️ 다이제스트 발송 급감: 어제 {int(yest)}명 (평소 중앙 {med:.0f}명)")
+    except Exception:
+        pass
+
     # 4e. 결제 실패/강등 (A-6) — 최근 3일 auto_renew partial/error
     try:
         cur.execute("""

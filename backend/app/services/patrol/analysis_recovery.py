@@ -14,6 +14,23 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
 
     cur = db_conn.cursor()
 
+    # extract_empty(본문 추출 불가 = PDF 파싱실패/빈 페이지)는 재시도해도 소용없다.
+    # 재시도 소진(retry_count>=5)된 것은 '분석 불가' 확정 마킹 → 백로그·재시도에서 영구 제외.
+    # (과거엔 retry<5만 재시도하고 소진분은 방치 → 357건이 백로그에 영영 남아있었음)
+    resolved_unanalyzable = 0
+    try:
+        cur.execute("""
+            UPDATE analysis_failures SET resolved_at = CURRENT_TIMESTAMP
+            WHERE resolved_at IS NULL AND retry_count >= 5 AND error_type = 'extract_empty'
+        """)
+        resolved_unanalyzable = cur.rowcount
+        db_conn.commit()
+    except Exception:
+        try:
+            db_conn.rollback()
+        except Exception:
+            pass
+
     # 재시도 대상: next_retry_at <= NOW + resolved_at IS NULL + retry_count < 5
     cur.execute("""
         SELECT af.id, af.announcement_id, af.error_type, af.retry_count,
@@ -67,6 +84,7 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
         "attempted": attempted,
         "recovered": recovered,
         "still_failed": still_failed,
+        "resolved_unanalyzable": resolved_unanalyzable,
         "by_error_type": by_error_type,
     }
 

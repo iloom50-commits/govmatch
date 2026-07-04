@@ -730,21 +730,24 @@ class NotificationService:
                     print(f"  [digest] {user_email_label}: filter error: {e}")
                     continue
 
+                # 사용자 임계값 — 프로그램 무관하므로 루프 밖에서 1회 계산
+                threshold = 65
+                try:
+                    if user.get('matching_threshold'):
+                        threshold = int(user['matching_threshold'])
+                except (KeyError, TypeError, ValueError):
+                    pass
+
                 matches = []
                 for program in programs:
                     try:
                         match_result = await self.match_program_with_user(program, user)
                     except Exception as e:
                         print(f"  [digest] AI match error: {e}")
-                        match_result = {"score": 60, "reasoning": "AI 매칭 실패 — 기본 추천"}
-
-                    # 기본점수(50) + 최소 1개 신호(키워드·지역·금액·마감) 필요
-                    threshold = 65
-                    try:
-                        if user.get('matching_threshold'):
-                            threshold = int(user['matching_threshold'])
-                    except (KeyError, TypeError, ValueError):
-                        pass
+                        # AI 매칭 일시 실패 시: 이미 get_filtered_programs(규칙기반)를 통과한
+                        # 후보이므로 임계값을 통과시켜 노출한다. 과거엔 score=60<65라 전멸 →
+                        # Gemini 다운일(예: 6/25)에 전 사용자 빈 다이제스트 발송(4명)했음.
+                        match_result = {"score": threshold, "reasoning": "AI 매칭 일시 실패 — 기본 추천"}
 
                     if match_result.get('excluded'):
                         continue

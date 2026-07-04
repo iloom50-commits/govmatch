@@ -1422,6 +1422,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       />
 
       <a
+        href="/pro"
+        className="relative z-10 w-full py-2 bg-violet-50 text-violet-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-violet-100 transition-all border border-violet-100 active:scale-95 text-xs"
+      >
+        <span className="text-sm">💼</span>
+        <span className="tracking-tight">전문가용 상담툴 (PRO)</span>
+      </a>
+
+      <a
         href="/api-partnership"
         className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
       >
@@ -1703,6 +1711,14 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <span className="tracking-tight">상담 이력</span>
         </a>
         {/* 드롭다운 제거 — 마이페이지 클릭 시 바로 ProfileSettings 모달 열림 */}
+        <a
+          href="/pro"
+          onClick={() => setSidebarOpen(false)}
+          className="w-full py-2 bg-violet-50 text-violet-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-violet-100 transition-all border border-violet-100 active:scale-95 text-xs"
+        >
+          <span className="text-sm">💼</span>
+          <span className="tracking-tight">전문가용 상담툴 (PRO)</span>
+        </a>
         <a
           href="/api-partnership"
           onClick={() => setSidebarOpen(false)}

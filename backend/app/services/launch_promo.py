@@ -30,6 +30,35 @@ def launch_promo_redeem(submitted_code, now: datetime.datetime) -> dict | None:
     return {"plan": "pro", "expires_at": expires.isoformat(), "tag": LAUNCH_PROMO_TAG}
 
 
+def partner_promo_redeem(row, submitted_code, now: datetime.datetime) -> dict | None:
+    """promo_codes 테이블 행(row) 기반 파트너 코드 판정 (순수 로직 — DB 조회는 호출 측).
+
+    row: {"code","partner_name","plan_days","max_uses","used_count","expires_at","active"} | None
+    expires_at은 datetime 또는 ISO 문자열 허용. max_uses/expires_at이 None이면 무제한/무기한.
+
+    Returns: {"plan": "pro", "expires_at": <isoformat>, "tag": "partner:<파트너명|코드>"} | None
+    """
+    if not row or not submitted_code:
+        return None
+    if str(submitted_code).strip() != str(row.get("code") or "").strip():
+        return None
+    if not row.get("active"):
+        return None
+    exp = row.get("expires_at")
+    if exp is not None:
+        if isinstance(exp, str):
+            exp = datetime.datetime.fromisoformat(exp)
+        if now > exp:
+            return None
+    max_uses = row.get("max_uses")
+    if max_uses is not None and (row.get("used_count") or 0) >= max_uses:
+        return None
+    days = int(row.get("plan_days") or 30)
+    expires = now + datetime.timedelta(days=days)
+    tag = f"partner:{row.get('partner_name') or row.get('code')}"
+    return {"plan": "pro", "expires_at": expires.isoformat(), "tag": tag}
+
+
 def launch_promo_grant(current_count: int, now: datetime.datetime) -> dict | None:
     """이미 부여된 인원(current_count)이 상한 미만이면 부여 페이로드, 아니면 None.
 

@@ -46,6 +46,14 @@ export default function ProPageClient() {
       .catch(() => { localStorage.removeItem("auth_token"); setAuthState("auth"); });
   }, []);
 
+  // 파트너 딥링크: /pro?code=XXXX → 프로모션 코드 자동 입력 (가입 폼·코드 박스 양쪽)
+  useEffect(() => {
+    try {
+      const c = new URLSearchParams(window.location.search).get("code");
+      if (c) { setPromoCode(c); setSignupPromo(c); }
+    } catch { /* */ }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true); setError("");
@@ -155,8 +163,6 @@ export default function ProPageClient() {
   };
   // SmartDoc 배포 전엔 "곧 출시" (배포 후 NEXT_PUBLIC_SMARTDOC_READY=true 로 활성화)
   const SMARTDOC_READY = process.env.NEXT_PUBLIC_SMARTDOC_READY === "true";
-  // 파일럿 모드: 결제 경로 숨기고 프로모션 코드만 (기본 ON — NEXT_PUBLIC_PILOT_MODE=false 로 정식판매 전환)
-  const PILOT_MODE = process.env.NEXT_PUBLIC_PILOT_MODE !== "false";
   // 비로그인이면 로그인(모달) → 로그인 후 카드 다시 클릭하면 진입
   const onCardClick = (action: "smartdoc" | "consult") => {
     if (action === "smartdoc" && !SMARTDOC_READY) {
@@ -329,7 +335,7 @@ export default function ProPageClient() {
         <ProSecretary
           onClose={handleLogout}
           planStatus={planStatus}
-          onUpgrade={() => { if (PILOT_MODE) { alert("무료 체험을 모두 사용했습니다.\n/pro 화면의 '프로모션 코드'에 코드를 입력하면 무제한으로 이용할 수 있어요."); return; } setShowPayment(true); }}
+          onUpgrade={() => setShowPayment(true)}
           userType={userData?.user_type || "business"}
           onRequireLogin={(reason?: string) => { setLoginReason(reason || ""); setShowLogin(true); setError(""); }}
         />
@@ -408,20 +414,14 @@ export default function ProPageClient() {
             trialRemaining > 0 ? (
               <p className="text-center text-[12px] text-gray-500">
                 상담 프로그램 무료 체험 <span className="font-bold text-violet-700">{trialRemaining}회</span> 남음
-                {PILOT_MODE ? (
-                  <> · 아래 <span className="text-violet-700 font-semibold">프로모션 코드</span>로 무제한 이용</>
-                ) : (
-                  <> ·{" "}<button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900">PRO 결제</button></>
-                )}
+                {" · "}<button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900">PRO 결제</button>
+                {" 또는 아래 프로모션 코드"}
               </p>
             ) : (
               <p className="text-center text-[12px] text-gray-500">
                 이번 달 무료 체험 소진 ·{" "}
-                {PILOT_MODE ? (
-                  <span className="text-violet-700 font-semibold">아래 프로모션 코드를 입력하면 무제한 이용</span>
-                ) : (
-                  <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900 font-semibold">PRO 플랜 결제하기</button>
-                )}
+                <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900 font-semibold">PRO 플랜 결제하기</button>
+                {" (프로모션 코드 보유 시 아래 입력)"}
               </p>
             )
           )}

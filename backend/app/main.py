@@ -24,7 +24,7 @@ from app.config import DATABASE_URL
 
 # Admin Scraper Import for Manual Sync
 from app.services.admin_scraper import admin_scraper
-from app.services.launch_promo import launch_promo_redeem, LAUNCH_PROMO_TAG
+from app.services.launch_promo import launch_promo_redeem, partner_promo_redeem
 
 
 def _hash_password(password: str) -> str:
@@ -284,6 +284,26 @@ def init_database():
         # 공고 첨부(양식) 메타 캐시 (SmartDoc 연동 — 파일 바이트 아닌 메타만)
         try:
             cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT NULL")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # 파트너별 프로모션 코드 (파일럿/제휴 채널 분리 — 코드·기간·상한·추적)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    id SERIAL PRIMARY KEY,
+                    code TEXT UNIQUE NOT NULL,
+                    partner_name TEXT NOT NULL,
+                    plan_days INTEGER NOT NULL DEFAULT 30,
+                    max_uses INTEGER,
+                    used_count INTEGER NOT NULL DEFAULT 0,
+                    expires_at TIMESTAMP,
+                    active BOOLEAN NOT NULL DEFAULT TRUE,
+                    memo TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -3946,10 +3966,10 @@ def api_register(req: RegisterRequest, request: Request):
                         (new_merit, new_end, referrer["user_id"])
                     )
 
-            # 프로모션 코드로 가입 → 코드 일치 시 PRO 1개월 부여 (신규 가입자에 한함)
+            # 프로모션 코드로 가입 → 파트너 코드(promo_codes) 우선, 레거시 env 코드 겸용
             if req.promo_code:
                 _pnow = datetime.datetime.utcnow()
-                _pgrant = launch_promo_redeem(req.promo_code, _pnow)
+                _pgrant, _p_is_partner = _resolve_promo_grant(cursor, req.promo_code, _pnow)
                 if _pgrant:
                     cursor.execute(
                         "UPDATE users SET plan='pro', plan_started_at=%s, plan_expires_at=%s, "
@@ -3957,6 +3977,11 @@ def api_register(req: RegisterRequest, request: Request):
                         (_pnow.isoformat(), _pgrant["expires_at"], _pnow.isoformat(),
                          _pgrant["tag"], user_id),
                     )
+                    if _p_is_partner:
+                        cursor.execute(
+                            "UPDATE promo_codes SET used_count = used_count + 1 WHERE code=%s",
+                            (str(req.promo_code).strip(),),
+                        )
 
         conn.commit()
         # 가입 후 실제 플랜 상태 조회 (체험/추천 적용 반영)
@@ -3980,33 +4005,69 @@ class RedeemPromoRequest(BaseModel):
     code: str
 
 
+def _resolve_promo_grant(cursor, code, now):
+    """프로모션 코드 판정: promo_codes 테이블(파트너 코드) 우선 → 레거시 env 코드.
+
+    SAVEPOINT로 조회 실패가 바깥 트랜잭션을 오염시키지 않도록 격리.
+    반환: (grant | None, is_partner: bool)
+    """
+    row = None
+    cursor.execute("SAVEPOINT promo_lookup")
+    try:
+        cursor.execute("SELECT * FROM promo_codes WHERE code=%s", (str(code).strip(),))
+        row = cursor.fetchone()
+        cursor.execute("RELEASE SAVEPOINT promo_lookup")
+    except Exception:
+        cursor.execute("ROLLBACK TO SAVEPOINT promo_lookup")
+        row = None
+    grant = partner_promo_redeem(dict(row) if row else None, code, now)
+    if grant:
+        return grant, True
+    return launch_promo_redeem(code, now), False
+
+
 @app.post("/api/pro/redeem-promo")
 def api_redeem_promo(req: RedeemPromoRequest, current_user: dict = Depends(_get_current_user)):
-    """파일럿 프로모션 코드 입력 → 일치 시 PRO 1개월 부여(로그인 필요). 코드는 env LAUNCH_PROMO_CODE."""
+    """프로모션 코드 입력 → PRO 부여(로그인 필요). 파트너 코드(promo_codes) 우선, 레거시 env 코드 겸용."""
     now = datetime.datetime.utcnow()
-    grant = launch_promo_redeem(req.code, now)
-    if not grant:
-        raise HTTPException(status_code=400, detail="프로모션 코드가 올바르지 않습니다.")
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        grant, is_partner = _resolve_promo_grant(cur, req.code, now)
+        if not grant:
+            raise HTTPException(status_code=400, detail="프로모션 코드가 올바르지 않습니다.")
         cur.execute("SELECT user_id, email, promo_grant FROM users WHERE business_number=%s", (current_user["bn"],))
         u = cur.fetchone()
         if not u:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-        if (u.get("promo_grant") or "") == LAUNCH_PROMO_TAG:
+        if (u.get("promo_grant") or "") == grant["tag"]:
             return {"status": "ALREADY", "message": "이미 적용된 프로모션입니다."}
         cur.execute(
             "UPDATE users SET plan='pro', plan_started_at=%s, plan_expires_at=%s, "
             "ai_usage_month=0, ai_usage_reset_at=%s, promo_grant=%s WHERE business_number=%s",
             (now.isoformat(), grant["expires_at"], now.isoformat(), grant["tag"], current_user["bn"]),
         )
+        if is_partner:
+            cur.execute(
+                "UPDATE promo_codes SET used_count = used_count + 1 WHERE code=%s",
+                (str(req.code).strip(),),
+            )
         conn.commit()
         token = _create_jwt(u["user_id"], current_user["bn"],
                             u.get("email") or current_user.get("email", ""), "pro", grant["expires_at"])
         return {"status": "SUCCESS", "token": token, "plan": _get_plan_status("pro", grant["expires_at"], 0)}
     finally:
         conn.close()
+
+
+class PromoCodeUpsertRequest(BaseModel):
+    code: str
+    partner_name: str
+    plan_days: int = 30
+    max_uses: Optional[int] = None        # NULL = 무제한
+    expires_at: Optional[str] = None      # ISO 문자열 (예: 2026-12-31T00:00:00), NULL = 무기한
+    active: bool = True
+    memo: Optional[str] = None
 
 
 @app.post("/api/auth/login")
@@ -7331,6 +7392,44 @@ def _verify_admin(authorization: Optional[str] = Header(None)):
     expected = _create_admin_token()
     if not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+
+@app.post("/api/admin/promo-codes", dependencies=[Depends(_verify_admin)])
+def api_admin_promo_upsert(req: PromoCodeUpsertRequest):
+    """파트너 프로모션 코드 등록/수정 (code 기준 upsert)."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO promo_codes (code, partner_name, plan_days, max_uses, expires_at, active, memo)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (code) DO UPDATE SET
+                 partner_name=EXCLUDED.partner_name, plan_days=EXCLUDED.plan_days,
+                 max_uses=EXCLUDED.max_uses, expires_at=EXCLUDED.expires_at,
+                 active=EXCLUDED.active, memo=EXCLUDED.memo""",
+            (req.code.strip(), req.partner_name, req.plan_days, req.max_uses, req.expires_at, req.active, req.memo),
+        )
+        conn.commit()
+        return {"status": "SUCCESS", "code": req.code.strip()}
+    finally:
+        conn.close()
+
+
+@app.get("/api/admin/promo-codes", dependencies=[Depends(_verify_admin)])
+def api_admin_promo_list():
+    """파트너 프로모션 코드 목록 + 사용 현황."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM promo_codes ORDER BY created_at DESC")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            for k in ("expires_at", "created_at"):
+                if r.get(k) is not None:
+                    r[k] = str(r[k])
+        return {"status": "SUCCESS", "codes": rows}
+    finally:
+        conn.close()
 
 
 @app.get("/api/admin/coverage", dependencies=[Depends(_verify_admin)])

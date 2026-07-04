@@ -552,7 +552,7 @@ export default function NotificationModal({
       }
       const notifyRes = await fetch(`${API}/api/notification-settings`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
         body: JSON.stringify({
           business_number: businessNumber,
           email,

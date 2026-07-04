@@ -1,6 +1,8 @@
 import google.generativeai as genai
 import os
 import json
+import hmac
+import hashlib
 import psycopg2
 import psycopg2.extras
 import datetime
@@ -11,6 +13,19 @@ from dotenv import load_dotenv
 from app.config import DATABASE_URL
 
 load_dotenv()
+
+# 수신거부 원클릭 토큰 — 로그인 불필요(이메일 클릭), bn+서버시크릿 HMAC
+_UNSUB_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-env")
+
+
+def make_unsubscribe_token(bn: str) -> str:
+    return hmac.new(_UNSUB_SECRET.encode(), f"unsub:{bn}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def verify_unsubscribe_token(bn: str, token: str) -> bool:
+    if not bn or not token:
+        return False
+    return hmac.compare_digest(make_unsubscribe_token(str(bn)), str(token))
 
 
 class NotificationService:
@@ -47,7 +62,7 @@ class NotificationService:
             LEFT JOIN notification_settings ns ON u.business_number = ns.business_number
             LEFT JOIN push_subscriptions ps ON u.business_number = ps.business_number
             WHERE ((ns.is_active = 1 AND ns.email IS NOT NULL AND ns.email != '')
-               OR ps.id IS NOT NULL)
+               OR (ps.id IS NOT NULL AND COALESCE(ns.is_active, 1) = 1))
         """)
         users = cursor.fetchall()
         conn.close()
@@ -150,7 +165,11 @@ class NotificationService:
             {target_type_clause}
             {interest_clause}
             AND (established_years_limit IS NULL OR established_years_limit >= %s)
-            AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+            AND is_archived = FALSE
+            AND (
+                (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
+                OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '3 months')
+            )
             ORDER BY
                 interest_score DESC,
                 CASE WHEN support_amount IS NOT NULL AND support_amount != '' THEN 0 ELSE 1 END,
@@ -296,7 +315,7 @@ class NotificationService:
         reasoning = f"관심사 {kw_hits}개 키워드 일치" if kw_hits else "전국 공통 지원사업"
         return {"score": score, "reasoning": reasoning, "excluded": False}
 
-    def _build_email_html(self, company_name: str, matches: List[Dict], user_type: str = "business") -> str:
+    def _build_email_html(self, company_name: str, matches: List[Dict], user_type: str = "business", bn: str = "") -> str:
         """매칭 결과를 HTML 이메일 본문으로 변환 — 기업/개인 섹션 분리"""
         today = datetime.date.today()
         today_str = today.strftime("%Y년 %m월 %d일")
@@ -448,11 +467,11 @@ class NotificationService:
   </div>
   <!-- 푸터 -->
   <div style="padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;">지원금AI · 자동 발송 알림 · <a href="{APP_URL}/unsubscribe" style="color:#94a3b8;">수신 거부</a></p>
+    <p style="margin:0;font-size:11px;color:#94a3b8;">지원금AI · 자동 발송 알림 · <a href="{APP_URL}/unsubscribe?bn={bn}&token={make_unsubscribe_token(bn) if bn else ''}" style="color:#94a3b8;">수신 거부</a></p>
   </div>
 </div>"""
 
-    def send_email(self, to_email: str, company_name: str, matches: List[Dict], user_type: str = "business") -> bool:
+    def send_email(self, to_email: str, company_name: str, matches: List[Dict], user_type: str = "business", bn: str = "") -> bool:
         """Resend HTTP API를 통해 매칭 결과 이메일 발송.
 
         Railway가 SMTP(25/587/465)를 차단하므로 Resend HTTPS API 사용.
@@ -463,7 +482,7 @@ class NotificationService:
             except Exception: pass
             return False
 
-        html_body = self._build_email_html(company_name, matches, user_type)
+        html_body = self._build_email_html(company_name, matches, user_type, bn=bn)
         subject = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
 
         try:
@@ -712,6 +731,56 @@ class NotificationService:
         except Exception as e:
             print(f"  [log_sent] error: {e}")
 
+    def _matches_to_digest_cards(self, results: list, limit: int = 10) -> list:
+        """매칭 정본(get_matches_hybrid) 결과 → 다이제스트 카드 매핑.
+        ineligible 제외, announcement_id 없는 행 스킵, 상위 limit건."""
+        cards = []
+        for r in results or []:
+            if not isinstance(r, dict):
+                continue
+            if r.get("eligibility_status") == "ineligible":
+                continue
+            aid = r.get("announcement_id")
+            if not aid:
+                continue
+            cards.append({
+                "program_title": r.get("title") or "",
+                "score": int(round(r.get("match_score") or 0)),
+                "reasoning": r.get("recommendation_reason") or r.get("match_reason") or "프로필 기반 맞춤 매칭",
+                "url": r.get("origin_url") or "",
+                "announcement_id": aid,
+                "support_amount": r.get("support_amount") or "",
+                "deadline_date": str(r.get("deadline_date") or "")[:10],
+                "target_type": r.get("target_type") or "",
+                "category": r.get("category") or "",
+                "department": r.get("department") or "",
+            })
+            if len(cards) >= limit:
+                break
+        return cards
+
+    def _select_matches_via_matcher(self, user_dict: dict) -> list:
+        """[2026-07-05 C-1 수정] 다이제스트 공고 선정을 매칭 정본으로 전환.
+        기존 자체 SQL+휴리스틱은 지역/전용공고/아카이브 오발송이 실증돼 폐기(진단서 §3).
+        both 사용자는 기업+개인 결과를 합침(M-4 동시 해소)."""
+        from app.core.matcher import get_matches_hybrid
+        user_type = (user_dict.get("user_type") or "business").lower()
+        results = []
+        if user_type in ("business", "both"):
+            results.extend(get_matches_hybrid(user_dict, is_individual=False) or [])
+        if user_type in ("individual", "both"):
+            results.extend(get_matches_hybrid(user_dict, is_individual=True) or [])
+        seen = set()
+        uniq = []
+        for r in results:
+            aid = r.get("announcement_id") if isinstance(r, dict) else None
+            if aid and aid in seen:
+                continue
+            if aid:
+                seen.add(aid)
+            uniq.append(r)
+        return self._matches_to_digest_cards(uniq)
+
     async def generate_daily_digest(self):
         """데일리 다이제스트 생성 + 이메일 발송 — 모든 단계 격리"""
         try:
@@ -724,50 +793,14 @@ class NotificationService:
         for user in users:
             user_email_label = user.get('email','?') if isinstance(user, dict) else '?'
             try:
+                # [2026-07-05 C-1] 공고 선정을 매칭 정본(get_matches_hybrid)으로 전환 —
+                # 대시보드 매칭과 동일 기준(지역 하드필터·전용공고·아카이브·자격판정) 적용.
+                # 매칭 자체가 규칙 기반이므로 구 AI 점수 폴백(6/25형 빈 다이제스트)도 불필요.
                 try:
-                    programs = await self.get_filtered_programs(user)
+                    matches = self._select_matches_via_matcher(dict(user))
                 except Exception as e:
-                    print(f"  [digest] {user_email_label}: filter error: {e}")
+                    print(f"  [digest] {user_email_label}: matcher error: {e}")
                     continue
-
-                # 사용자 임계값 — 프로그램 무관하므로 루프 밖에서 1회 계산
-                threshold = 65
-                try:
-                    if user.get('matching_threshold'):
-                        threshold = int(user['matching_threshold'])
-                except (KeyError, TypeError, ValueError):
-                    pass
-
-                matches = []
-                for program in programs:
-                    try:
-                        match_result = await self.match_program_with_user(program, user)
-                    except Exception as e:
-                        print(f"  [digest] AI match error: {e}")
-                        # AI 매칭 일시 실패 시: 이미 get_filtered_programs(규칙기반)를 통과한
-                        # 후보이므로 임계값을 통과시켜 노출한다. 과거엔 score=60<65라 전멸 →
-                        # Gemini 다운일(예: 6/25)에 전 사용자 빈 다이제스트 발송(4명)했음.
-                        match_result = {"score": threshold, "reasoning": "AI 매칭 일시 실패 — 기본 추천"}
-
-                    if match_result.get('excluded'):
-                        continue
-
-                    if match_result.get('score', 0) >= threshold:
-                        matches.append({
-                            "program_title": program['title'],
-                            "score": match_result['score'],
-                            "reasoning": match_result.get('reasoning', ''),
-                            "url": program.get('origin_url') or '',
-                            "announcement_id": program.get('announcement_id'),
-                            "support_amount": program.get('support_amount') or '',
-                            "deadline_date": str(program.get('deadline_date') or '')[:10],
-                            "target_type": program.get('target_type') or '',
-                            "category": program.get('category') or '',
-                            "department": program.get('department') or '',
-                        })
-
-                # 점수 높은 순 상위 10개만 발송
-                matches = sorted(matches, key=lambda x: x['score'], reverse=True)[:10]
 
                 # ── 중복 발송 방지: 이미 보낸 공고는 D-7 임박이 아니면 제외 ──
                 _bn_check = (user.get('business_number') or '') if isinstance(user, dict) else ''
@@ -813,7 +846,7 @@ class NotificationService:
                     if email:
                         try:
                             u_type = user_dict.get('user_type') or 'business'
-                            entry["email_sent"] = self.send_email(email, company_name, matches, user_type=u_type)
+                            entry["email_sent"] = self.send_email(email, company_name, matches, user_type=u_type, bn=bn)
                             if entry["email_sent"] and bn:
                                 self._log_sent_announcements(bn, matches, "email")
                         except Exception as e:

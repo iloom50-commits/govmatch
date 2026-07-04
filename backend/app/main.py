@@ -12433,11 +12433,33 @@ def api_match_programs(request: BusinessNumberRequest, current_user: dict = Depe
     _set_cache(match_cache_key, result)
     return result
 
+@app.get("/api/unsubscribe")
+def api_unsubscribe(bn: str = "", token: str = ""):
+    """이메일 수신거부 원클릭 — 로그인 불필요(HMAC 토큰 검증). 모든 채널(이메일/푸시/카카오) 중단."""
+    from app.services.notification_service import verify_unsubscribe_token
+    if not verify_unsubscribe_token(bn, token):
+        raise HTTPException(status_code=403, detail="유효하지 않은 수신거부 링크입니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO notification_settings (business_number, is_active)
+               VALUES (%s, 0)
+               ON CONFLICT (business_number) DO UPDATE SET is_active = 0, updated_at = NOW()""",
+            (bn,))
+        conn.commit()
+        return {"status": "SUCCESS", "message": "수신거부가 완료되었습니다. 더 이상 맞춤 공고 알림이 발송되지 않습니다."}
+    finally:
+        conn.close()
+
+
 @app.post("/api/notification-settings")
-def api_save_notification_settings(settings: NotificationSettings):
+def api_save_notification_settings(settings: NotificationSettings, current_user: dict = Depends(_get_current_user)):
     """
-    Saves or updates user notification preferences.
+    Saves or updates user notification preferences. (본인 계정만 — H-4 무인증 변조 수정)
     """
+    if settings.business_number != current_user["bn"]:
+        raise HTTPException(status_code=403, detail="본인 계정의 알림 설정만 변경할 수 있습니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     try:

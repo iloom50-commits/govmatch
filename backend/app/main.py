@@ -277,6 +277,8 @@ def init_database():
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS smartdoc_expires_at TIMESTAMP")
             # 선착순 런칭 프로모션 부여 태그 (가입 선착순 N명 PRO 1개월 무료)
             cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_grant TEXT")
+            # 자동결제 실패 유예 카운터 (구독 시작·자동갱신 공용 — 지연 생성 의존 제거)
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS renew_fail_count INTEGER DEFAULT 0")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -2691,6 +2693,13 @@ PLAN_PRICES = {
     "biz": 49000,       # legacy → PRO 취급
 }
 
+
+def _plan_price(plan: str, user_type: str = None) -> int:
+    """월 구독가 — 서버 기준 단일 소스 (구독 시작·자동갱신 공용)"""
+    if plan == "lite":
+        return PLAN_PRICES.get("lite_individual" if (user_type or "") == "individual" else "lite", 4900)
+    return PLAN_PRICES.get("pro", 49000)
+
 # 신규 가입자 LITE 7일 무료체험 (상시)
 TRIAL_DAYS = 7
 PROMO_ACTIVE = False  # 프로모션 종료 (2026-05-23 이후)
@@ -4730,7 +4739,7 @@ def api_plan_subscribe(
     cur = conn.cursor()
 
     # 사용자 조회
-    cur.execute("SELECT plan, billing_key FROM users WHERE business_number = %s", (bn,))
+    cur.execute("SELECT plan, billing_key, user_type FROM users WHERE business_number = %s", (bn,))
     user = cur.fetchone()
     if not user:
         conn.close()
@@ -4747,13 +4756,26 @@ def api_plan_subscribe(
         conn.close()
         raise HTTPException(status_code=400, detail="PRO에서 LITE로 변경은 구독 해지 후 재가입해주세요.")
 
-    # 결제 후 첫 달 무료: 30일 후 첫 결제
+    # ── 즉시 첫 청구 (2026-07-04 정책: 사용량 체험이 무료체험 — 결제 시점부터 유료) ──
+    label = "LITE" if target == "lite" else "PRO"
+    price = _plan_price(target, u.get("user_type"))
     now = datetime.datetime.utcnow()
+    _pg_ready = bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)
+    if _pg_ready:
+        _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
+        if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
+            conn.close()
+            raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
+        print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
+    else:
+        print("[subscribe] PG 미설정 — 첫 청구 생략 (테스트 환경)")
+
+    # 결제 성공 → 30일 이용권 시작 (다음 청구는 만료일에 자동갱신)
     expires_at = (now + datetime.timedelta(days=30)).isoformat()
 
     cur.execute(
         """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s
+           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s, renew_fail_count = 0
            WHERE business_number = %s""",
         (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, bn),
     )
@@ -4761,7 +4783,6 @@ def api_plan_subscribe(
     conn.close()
 
     plan_status = _get_plan_status(target, expires_at, 0)
-    label = "LITE" if target == "lite" else "PRO"
     new_token = _create_jwt(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
@@ -4770,7 +4791,7 @@ def api_plan_subscribe(
         "status": "SUCCESS",
         "token": new_token,
         "plan": plan_status,
-        "message": f"{label} {trial_days}일 무료 체험이 시작되었습니다! 이후 자동결제됩니다.",
+        "message": f"{label} 구독이 시작되었습니다 ({price:,}원 결제 완료). 다음 결제일: {expires_at[:10]}",
     }
 
 
@@ -4810,25 +4831,8 @@ def api_plan_refund(current_user: dict = Depends(_get_current_user)):
         conn.close()
         raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
 
-    # 무료체험 기간이면 결제 건이 없으므로 그냥 해지
-    plan_started = u.get("plan_started_at")
-    plan_expires = u.get("plan_expires_at")
-    if plan_started and plan_expires:
-        try:
-            started = datetime.datetime.fromisoformat(str(plan_started))
-            expires = datetime.datetime.fromisoformat(str(plan_expires))
-            trial_days = (expires - started).days
-            # 무료체험: LITE 30일, PRO 7일 — 첫 구독이면 결제 없음
-            if trial_days <= 30:
-                cur.execute(
-                    "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
-                    (bn,),
-                )
-                conn.commit()
-                conn.close()
-                return {"status": "SUCCESS", "message": "무료체험이 해지되었습니다. FREE 플랜으로 전환되었습니다."}
-        except (ValueError, TypeError):
-            pass
+    # [2026-07-04 즉시 첫 청구 전환] 구 '무료체험이면 그냥 해지' 분기 제거 —
+    # 결제한 사용자(30일권)를 무료체험으로 오인해 환불 없이 해지시키는 오동작이 되므로 삭제.
 
     # 실 결제 건 환불 — 최근 결제 ID 조회 시도
     import httpx
@@ -4929,6 +4933,36 @@ def _send_renew_notice(email: str, plan: str, downgraded: bool):
         print(f"[renew] 통지 메일 실패({email}): {e}")
 
 
+def _charge_billing_key(billing_key: str, payment_id: str, price: int, order_name: str) -> bool:
+    """빌링키 즉시 청구 — V1(cust_)/V2 겸용. 성공 시 True. (구독 시작 첫 청구용)"""
+    key = (billing_key or "").strip()
+    if key.startswith("cust_"):
+        if not (PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET):
+            return False
+        return _charge_v1(key, payment_id, price, order_name)
+    if not PORTONE_API_SECRET:
+        return False
+    import httpx
+    try:
+        resp = httpx.post(
+            f"https://api.portone.io/payments/{payment_id}/billing-key",
+            headers={
+                "Authorization": f"PortOne {PORTONE_API_SECRET}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "billingKey": key,
+                "orderName": order_name,
+                "amount": {"total": price, "currency": "KRW"},
+            },
+            timeout=15,
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"[first-charge] V2 청구 오류: {e}")
+        return False
+
+
 def _auto_renew_subscriptions():
     """만료된 구독 자동 갱신 — V2 billing_key 또는 V1 customer_uid로 결제"""
     has_v2 = bool(PORTONE_API_SECRET)
@@ -4965,11 +4999,8 @@ def _auto_renew_subscriptions():
             user_type = u.get("user_type") or "both"
             stored_key = u["billing_key"] or ""
 
-            # 가격 결정
-            if plan == "lite":
-                price = PLAN_PRICES.get("lite_individual" if user_type == "individual" else "lite", 4900)
-            else:
-                price = PLAN_PRICES.get("pro", 49000)
+            # 가격 결정 — 구독 시작과 동일 소스
+            price = _plan_price(plan, user_type)
 
             payment_id = f"renew-{u['business_number']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M')}"
             order_name = f"지원금AI {plan.upper()} 월 구독"

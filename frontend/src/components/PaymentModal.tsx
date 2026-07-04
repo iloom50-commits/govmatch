@@ -202,7 +202,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
           <div className="relative w-full max-w-xs bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
             <h3 className="text-[16px] font-bold text-slate-900 text-center mb-1">결제 수단 선택</h3>
             <p className="text-[11px] text-slate-400 text-center mb-5">
-              {pendingPlan === "lite" ? "Lite" : "Pro"} 플랜 · 7일 무료체험 후 자동결제
+              {pendingPlan === "lite" ? "Lite" : "Pro"} 플랜 · 결제 즉시 시작 · 매월 자동갱신
             </p>
 
             <div className="flex flex-col gap-2 mb-5">
@@ -384,7 +384,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
               </ul>
 
               {!isLite && !isPro ? (
-                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">7일 무료체험 · 이후 자동결제</p>
+                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">결제 즉시 시작 · 매월 자동갱신</p>
               ) : <div className="h-[24px]" />}
             </div>}
 
@@ -438,7 +438,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
               </ul>
 
               {!isPro ? (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">7일 무료체험 · 언제든 취소 가능</p>
+                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">결제 즉시 시작 · 언제든 해지 가능</p>
               ) : <div className="h-[24px]" />}
             </div>}
           </div>

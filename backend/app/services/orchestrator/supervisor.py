@@ -105,8 +105,23 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → SEO 감시 오류: {e}")
             traceback.print_exc()
 
-        # ── 5. 보고서 발송 ──
-        print("[AI COO] Step 5/5: 보고서 생성 + 발송 중...")
+        # ── 5. 시스템 건강/경보 수집 (조용한 고장 감지) ──
+        print("[AI COO] Step 5/6: 시스템 건강/경보 수집 중...")
+        try:
+            from .health_collector import collect_health
+            health = collect_health(db_conn)
+            results["health"] = health
+            if health.get("alerts"):
+                print(f"  → 🚨 경보 {len(health['alerts'])}건: {health['alerts']}")
+            else:
+                print("  → ✅ 시스템 이상 없음")
+        except Exception as e:
+            results["health"] = {"error": str(e)}
+            print(f"  → 건강/경보 수집 오류: {e}")
+            traceback.print_exc()
+
+        # ── 6. 보고서 발송 ──
+        print("[AI COO] Step 6/6: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
             report_result = send_report(
@@ -114,6 +129,7 @@ def run_daily_supervision(db_conn=None) -> dict:
                 learning=results.get("learning", {}),
                 quality=results.get("quality", {}),
                 seo=results.get("seo", {}),
+                health=results.get("health", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

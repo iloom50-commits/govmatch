@@ -32,7 +32,50 @@ def _build_seo_text(seo: dict) -> str:
     return lines
 
 
-def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None) -> str:
+def _build_alert_text(health: dict) -> str:
+    """🚦 시스템 경보 (텍스트). health 없으면 빈 문자열."""
+    if not health:
+        return ""
+    alerts = health.get("alerts", [])
+    lines = "▌ 🚦 시스템 경보\n"
+    if alerts:
+        for a in alerts:
+            lines += f"  {a}\n"
+    else:
+        lines += "  ✅ 이상 없음 (파이프라인·수집·재분석·API 정상)\n"
+    pl = health.get("pipeline", {}) or {}
+    co = health.get("collection", {}) or {}
+    ra = health.get("reanalyze", {}) or {}
+    api = health.get("api", {}) or {}
+    lines += (
+        f"  · 파이프라인 {pl.get('age_days','?')}일전 | "
+        f"공고 {co.get('age_days','?')}일전(어제 +{co.get('new_1d','?')}) | "
+        f"재분석 {ra.get('age_days','?')}일전(백로그 {ra.get('backlog','?')})\n"
+    )
+    if api:
+        parts = []
+        for k in ("Gemini", "OpenAI"):
+            if k in api:
+                v = api[k]
+                parts.append(f"{k}={'정상' if v is True else '이상' if v is False else '미설정'}")
+        if parts:
+            lines += "  · API: " + "  ".join(parts) + "\n"
+    return lines
+
+
+def _build_sales_text(health: dict) -> str:
+    """💰 매출/전환 (텍스트)."""
+    s = (health or {}).get("sales", {}) or {}
+    if not s or s.get("error"):
+        return ""
+    return (
+        "▌ 💰 매출/전환\n"
+        f"  유료 PRO(결제): {s.get('pro_paying',0)}명  |  프로모·체험 PRO: {s.get('pro_promo_trial',0)}명\n"
+        f"  어제 신규 PRO 전환: {s.get('new_pro_yesterday',0)}명  |  전환율: {s.get('conversion_rate',0)}%\n"
+    )
+
+
+def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None, health: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -89,10 +132,13 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
         quality_lines = "  데이터 없음\n"
 
     seo_lines = _build_seo_text(seo or {})
+    alert_block = _build_alert_text(health)
+    sales_block = _build_sales_text(health)
 
     return f"""[GovMatch 일일 현황] {today}
 {'─' * 38}
 
+{alert_block}
 ▌ 구글 검색 유입
 {seo_lines}
 ▌ 회원 현황
@@ -100,6 +146,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
   유료 전환율: {conv_rt}%
   어제({yest}) 신규: {u_new}명 (기업 {u_biz} / 개인 {u_ind})
 
+{sales_block}
 ▌ 어제({yest}) 활동
   로그인(DAU): {dau}명
   AI 상담: {ai_cnt}건  |  PRO 상담: {pro_cnt}건
@@ -120,7 +167,42 @@ GovMatch | govmatch.kr"""
 
 
 # ── HTML 보고서 ───────────────────────────────────────────────
-def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None) -> str:
+def _build_alert_html(health: dict) -> str:
+    """🚦 시스템 경보 박스 (HTML). 경보 있으면 빨강, 없으면 초록."""
+    if not health:
+        return ""
+    alerts = health.get("alerts", [])
+    if alerts:
+        items = "".join(f'<li style="margin-bottom:4px">{a}</li>' for a in alerts)
+        box = (
+            '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin:12px 0">'
+            f'<div style="font-weight:bold;color:#dc2626;font-size:15px;margin-bottom:6px">&#128678; 시스템 경보 {len(alerts)}건</div>'
+            f'<ul style="margin:0;padding-left:18px;color:#b91c1c;font-size:13px">{items}</ul></div>'
+        )
+    else:
+        box = (
+            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:12px 0">'
+            '<span style="font-weight:bold;color:#16a34a;font-size:14px">&#9989; 시스템 정상</span> '
+            '<span style="color:#15803d;font-size:13px">— 파이프라인·수집·재분석·API 이상 없음</span></div>'
+        )
+    pl = health.get("pipeline", {}) or {}
+    co = health.get("collection", {}) or {}
+    ra = health.get("reanalyze", {}) or {}
+    api = health.get("api", {}) or {}
+    api_str = "  ".join(
+        f"{k} {'✅' if api.get(k) is True else '🚨' if api.get(k) is False else '–'}"
+        for k in ("Gemini", "OpenAI") if k in api
+    )
+    box += (
+        '<p style="color:#6b7280;font-size:12px;margin:4px 0 0">'
+        f'파이프라인 {pl.get("age_days","?")}일전 · 공고 {co.get("age_days","?")}일전(+{co.get("new_1d","?")}) · '
+        f'재분석 {ra.get("age_days","?")}일전(백로그 {ra.get("backlog","?")})'
+        f'{" · " + api_str if api_str else ""}</p>'
+    )
+    return box
+
+
+def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None, health: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -189,6 +271,21 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
     def stat_row(label, value):
         return f'<tr><td style="padding:5px 0;color:#6b7280;font-size:13px">{label}</td><td style="font-weight:bold;font-size:13px">{value}</td></tr>'
 
+    # 🚦 경보 + 💰 매출 HTML
+    alert_html = _build_alert_html(health)
+    _s = (health or {}).get("sales", {}) or {}
+    sales_html = ""
+    if _s and not _s.get("error"):
+        sales_html = (
+            '<h3 style="color:#111;font-size:15px;margin-top:20px">&#128176; 매출/전환</h3>'
+            '<table style="width:100%;border-collapse:collapse">'
+            + stat_row("유료 PRO (결제)", f'<span style="color:#6d28d9">{_s.get("pro_paying",0)}명</span>')
+            + stat_row("프로모·체험 PRO", f'{_s.get("pro_promo_trial",0)}명')
+            + stat_row("어제 신규 PRO 전환", f'<span style="color:#6d28d9">{_s.get("new_pro_yesterday",0)}명</span>')
+            + stat_row("유료 전환율", f'{_s.get("conversion_rate",0)}%')
+            + '</table>'
+        )
+
     # SEO HTML 섹션
     seo = seo or {}
     seo_t = seo.get("total", {})
@@ -224,6 +321,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
   <h2 style="color:#6d28d9;margin-bottom:4px">GovMatch 일일 현황</h2>
   <p style="color:#6b7280;font-size:13px;margin-top:0">{today} 보고</p>
   <hr style="border-color:#e5e7eb">
+  {alert_html}
   {seo_html}
 
   <h3 style="color:#111;font-size:15px">&#128101; 회원</h3>
@@ -234,6 +332,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
     {stat_row("유료 전환율", f'<span style="color:#6d28d9">{conv_rt}%</span>')}
     {stat_row(f"어제({yest}) 신규", f'{u_new}명 &nbsp;<span style="color:#6b7280;font-weight:normal;font-size:12px">(기업 {u_biz} / 개인 {u_ind})</span>')}
   </table>
+  {sales_html}
 
   <h3 style="color:#111;font-size:15px;margin-top:20px">&#9889; 어제({yest}) 활동</h3>
   <table style="width:100%;border-collapse:collapse">
@@ -373,13 +472,15 @@ def _send_kakao(metrics: dict) -> bool:
 
 
 # ── 발송 ──────────────────────────────────────────────────────
-def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None) -> dict:
+def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None, health: dict = None) -> dict:
     if quality is None:
         quality = {}
     if seo is None:
         seo = {}
-    report_text = _build_report_text(metrics, learning, quality, seo)
-    report_html = _build_report_html(metrics, learning, quality, seo)
+    if health is None:
+        health = {}
+    report_text = _build_report_text(metrics, learning, quality, seo, health)
+    report_html = _build_report_html(metrics, learning, quality, seo, health)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──

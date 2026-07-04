@@ -200,6 +200,39 @@ def test_build_gemini_history_empty_and_single():
 
 
 # ─────────────────────────────────────────────────────────────
+# T-11a: 지역 검색 토큰 정규화 (DB region 축약형 대응 — V-2 검증)
+# ─────────────────────────────────────────────────────────────
+def test_region_token_metropolitan():
+    from app.services.ai_consultant import _region_search_token
+    assert _region_search_token("부산광역시") == "부산"
+    assert _region_search_token("서울특별시") == "서울"
+
+
+def test_region_token_province():
+    from app.services.ai_consultant import _region_search_token
+    assert _region_search_token("전라남도") == "전남"
+    assert _region_search_token("전북특별자치도") == "전북"
+    assert _region_search_token("경기도") == "경기"
+    assert _region_search_token("강원특별자치도") == "강원"
+
+
+def test_region_token_already_short():
+    from app.services.ai_consultant import _region_search_token
+    assert _region_search_token("부산") == "부산"
+
+
+def test_region_token_full_address():
+    from app.services.ai_consultant import _region_search_token
+    assert _region_search_token("부산광역시 해운대구 우동") == "부산"
+
+
+def test_region_token_empty():
+    from app.services.ai_consultant import _region_search_token
+    assert _region_search_token("") == ""
+    assert _region_search_token(None) == ""
+
+
+# ─────────────────────────────────────────────────────────────
 # 스크립트 러너 (pytest 없이 실행)
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":

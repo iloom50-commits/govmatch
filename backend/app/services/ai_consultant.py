@@ -1103,9 +1103,11 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
                     # 지역 필터: 사용자 지역 + 전국
                     region_filter = ""
                     params = [vec_str, tt_filter, fund_keywords, fund_keywords, fund_keywords]
-                    if user_region:
-                        region_filter = "AND (a.region IS NULL OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
-                        params.append(f"%{user_region[:10]}%")
+                    _rtok = _region_search_token(user_region)
+                    if _rtok:
+                        # 축약 토큰 매칭 + 'All'/빈값도 전국 취급 (T-11a, region 표기 실측 대응)
+                        region_filter = "AND (a.region IS NULL OR a.region IN ('', 'All') OR a.region ILIKE '%%전국%%' OR a.region ILIKE %s)"
+                        params.append(f"%{_rtok}%")
                     # [Level 1] 프로필 제외 조건 주입
                     params.extend(profile_params)
                     exclude_filter = ""
@@ -1166,9 +1168,10 @@ def _tool_search_fund_announcements(db_conn, keywords: str, target_type: str = "
             params2 = [tt_filter]
             for w in kw_words:
                 params2 += [f"%{w}%", f"%{w}%"]
-            if user_region:
-                region_filter2 = "AND (region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
-                params2.append(f"%{user_region[:10]}%")
+            _rtok2 = _region_search_token(user_region)
+            if _rtok2:
+                region_filter2 = "AND (region IS NULL OR region IN ('', 'All') OR region ILIKE '%%전국%%' OR region ILIKE %s)"
+                params2.append(f"%{_rtok2}%")
             fallback_profile_where, fallback_profile_params = _profile_exclusion_clause(profile, alias="")
             params2.extend(fallback_profile_params)
             exclude_filter2 = ""
@@ -1659,6 +1662,32 @@ def _extract_mentioned_ids(messages) -> set:
             for x in _re.findall(r"\[(?:공고ID|ANN):\s*(\d+)\]", m.get("text", "") or ""):
                 ids.add(int(x))
     return ids
+
+
+# 시도 풀네임 → DB region 축약형 (announcements.region 실측 표기 기준, 2026-07 검증)
+_REGION_CANON = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천",
+    "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산",
+    "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
+    "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북",
+    "전라남도": "전남", "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주", "제주도": "제주",
+}
+
+
+def _region_search_token(user_region) -> str:
+    """사용자 지역 문자열을 DB region 대조용 축약 토큰으로 변환(T-11a).
+
+    DB region은 축약형("부산")이 지배적이라 풀네임("부산광역시") ILIKE로는
+    매칭 실패 → 축약 토큰으로 변환해 축약형·풀네임·시군구 표기 모두 매칭.
+    """
+    if not user_region:
+        return ""
+    s = str(user_region).strip()
+    if not s:
+        return ""
+    tok = s.split()[0]
+    return _REGION_CANON.get(tok, tok)[:10]
 
 
 def _build_gemini_history(messages) -> list:

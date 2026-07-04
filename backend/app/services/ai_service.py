@@ -77,13 +77,14 @@ class AIService:
         """
         
         try:
-            response = self.model.generate_content(prompt)
+            # 타임아웃 필수 — 없으면 한 호출이 멈출 때 전체 파이프라인/배치가 무한 대기(hang)
+            response = self.model.generate_content(prompt, request_options={"timeout": 60})
             clean_json = response.text.strip()
             if "```json" in clean_json:
                 clean_json = clean_json.split("```json")[-1].split("```")[0].strip()
             elif "```" in clean_json:
                 clean_json = clean_json.split("```")[-1].split("```")[0].strip()
-                
+
             return json.loads(clean_json)
         except Exception as e:
             print(f"Error in extract_program_details: {e}")

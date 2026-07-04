@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
+import SubscriptionManageModal from "@/components/SubscriptionManageModal";
 
 interface ProfileSettingsProps {
   profile: any;
@@ -19,6 +20,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
     return () => { document.body.style.overflow = ""; };
   }, []);
   const [showPwChange, setShowPwChange] = useState(false);
+  const [showSubManage, setShowSubManage] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
@@ -159,6 +161,12 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
             />
             <Divider />
             <Row label="저장 · 알림" value={plan === "free" ? "불가" : "사용 가능"} />
+            {["lite", "pro", "biz", "basic"].includes(plan) && (
+              <>
+                <Divider />
+                <Row label="구독 관리 (해지·환불)" value="" onClick={() => setShowSubManage(true)} />
+              </>
+            )}
           </div>
 
           {/* ── 계정 관리 ── */}
@@ -256,6 +264,10 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
           </div>
         </div>
       </div>
+
+      {showSubManage && (
+        <SubscriptionManageModal planStatus={planStatus} onClose={() => setShowSubManage(false)} />
+      )}
     </div>
   );
 }

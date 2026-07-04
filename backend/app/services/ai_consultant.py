@@ -1623,6 +1623,10 @@ def _normalize_profile_for_eligibility(profile: dict) -> dict:
     return p
 
 
+# 공고 인용 마커 — [공고ID: N](신규 단일 포맷) + [ANN:N](구형) 겸용 (T-7)
+_ANN_SPLIT_PATTERN = r'\[(?:공고ID|ANN):\s*(\d+)\]'
+
+
 def _strip_unverified_ann_ids(reply, valid_ids):
     """도구가 반환하지 않은 공고ID 인용을 태그째 제거한다(환각 방지, T-4).
 
@@ -2081,11 +2085,12 @@ def chat_lite_fund_expert(
         except Exception as e:
             logger.warning(f"[AI_ENGINE_V2] LITE extract/save error (비차단): {e}")
 
-    # [ANN:id] 마커 파싱 → matched 배열 (이유 텍스트 + 공고 카드 쌍)
+    # 공고 인용 마커 파싱 → matched 배열 (이유 텍스트 + 공고 카드 쌍)
+    # [공고ID: N] 단일 포맷(신규 프롬프트) + [ANN:N](구형) 겸용 — T-7
     import re as _re
     matched = []
     clean_reply = reply_text
-    ann_blocks = _re.split(r'\[ANN:(\d+)\]', reply_text)
+    ann_blocks = _re.split(_ANN_SPLIT_PATTERN, reply_text)
     if len(ann_blocks) >= 3:
         # ann_blocks = [intro, id1, reason1, id2, reason2, ...]
         clean_reply = ann_blocks[0].strip()

@@ -233,6 +233,62 @@ def test_region_token_empty():
 
 
 # ─────────────────────────────────────────────────────────────
+# T-7: 인용 파서 겸용 패턴 ([공고ID: N] + [ANN:N])
+# ─────────────────────────────────────────────────────────────
+def test_ann_split_pattern_accepts_both_formats():
+    import re
+    from app.services.ai_consultant import _ANN_SPLIT_PATTERN
+    blocks = re.split(_ANN_SPLIT_PATTERN, "intro [공고ID: 31524] 이유A [ANN:99] 이유B")
+    assert blocks[1] == "31524" and blocks[3] == "99"
+
+
+# ─────────────────────────────────────────────────────────────
+# 섹션2: 프롬프트 정합성 (재설계 회귀 방지)
+# ─────────────────────────────────────────────────────────────
+def test_prompt_no_legacy_ann_tag():
+    from app.services.prompts.lite_fund_tool import (
+        PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL)
+    assert "[ANN:" not in PROMPT_LITE_FUND_BIZ_TOOL
+    assert "[ANN:" not in PROMPT_LITE_FUND_INDIV_TOOL
+    assert "[공고ID: N]" in PROMPT_LITE_FUND_BIZ_TOOL
+    assert "[공고ID: N]" in PROMPT_LITE_FUND_INDIV_TOOL
+
+
+def test_prompt_persona_is_fund_expert():
+    from app.services.prompts.lite_fund_tool import (
+        PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL)
+    assert "융자" in PROMPT_LITE_FUND_BIZ_TOOL[:200]
+    assert "대출" in PROMPT_LITE_FUND_INDIV_TOOL[:200]
+
+
+def test_prompt_has_domain_knowledge():
+    from app.services.prompts.lite_fund_tool import PROMPT_LITE_FUND_BIZ_TOOL
+    for kw in ["신용보증기금", "기술보증기금", "소진공", "중진공", "대리대출"]:
+        assert kw in PROMPT_LITE_FUND_BIZ_TOOL, kw
+
+
+def test_prompt_backend_compat():
+    """---choices--- 마커 + 도구명 4종 유지 (백엔드 파서/라우팅 호환)."""
+    from app.services.prompts.lite_fund_tool import (
+        PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL)
+    for p in (PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL):
+        assert "---choices---" in p
+        for tool in ("search_fund_announcements", "get_announcement_detail",
+                     "search_knowledge_base", "check_eligibility"):
+            assert tool in p, tool
+
+
+def test_prompt_no_hardcoded_rates():
+    """금리·한도 수치 하드코딩 금지 원칙 (환각·구정보 방지)."""
+    import re
+    from app.services.prompts.lite_fund_tool import (
+        PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL)
+    for p in (PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL):
+        assert not re.search(r"연\s*\d+(\.\d+)?%", p)  # "연 3.5%" 류
+        assert not re.search(r"최대\s*\d+억", p)       # "최대 2억원" 류
+
+
+# ─────────────────────────────────────────────────────────────
 # 스크립트 러너 (pytest 없이 실행)
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":

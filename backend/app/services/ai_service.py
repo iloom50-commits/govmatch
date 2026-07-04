@@ -76,18 +76,44 @@ class AIService:
         반드시 순수 JSON 데이터만 반환하세요.
         """
         
+        # 1차: Gemini (타임아웃 필수 — 없으면 한 호출이 멈출 때 전체가 무한 대기)
         try:
-            # 타임아웃 필수 — 없으면 한 호출이 멈출 때 전체 파이프라인/배치가 무한 대기(hang)
             response = self.model.generate_content(prompt, request_options={"timeout": 60})
-            clean_json = response.text.strip()
-            if "```json" in clean_json:
-                clean_json = clean_json.split("```json")[-1].split("```")[0].strip()
-            elif "```" in clean_json:
-                clean_json = clean_json.split("```")[-1].split("```")[0].strip()
-
-            return json.loads(clean_json)
+            return self._parse_json_block(response.text)
         except Exception as e:
-            print(f"Error in extract_program_details: {e}")
+            print(f"Error in extract_program_details (gemini): {e}")
+
+        # 2차 폴백: OpenAI — Gemini 실패/크레딧 소진(429) 대비 (상담 경로와 동일 OPENAI_API_KEY)
+        return self._extract_details_via_openai(prompt)
+
+    @staticmethod
+    def _parse_json_block(raw: str) -> Dict[str, Any]:
+        """```json 펜스 제거 후 json.loads. 파싱 실패 시 예외 → 상위에서 폴백 유도."""
+        clean = (raw or "").strip()
+        if "```json" in clean:
+            clean = clean.split("```json")[-1].split("```")[0].strip()
+        elif "```" in clean:
+            clean = clean.split("```")[-1].split("```")[0].strip()
+        return json.loads(clean)
+
+    def _extract_details_via_openai(self, prompt: str) -> Dict[str, Any]:
+        """Gemini 실패 시 OpenAI(gpt-4o-mini)로 동일 프롬프트 추출. 상담과 동일 OPENAI_API_KEY 사용."""
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return {}
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                timeout=60,
+            )
+            return json.loads(resp.choices[0].message.content or "{}")
+        except Exception as e:
+            print(f"Error in extract_program_details (openai fallback): {e}")
             return {}
 
     async def extract_structured_eligibility(self, text: str) -> Dict[str, Any]:

@@ -902,7 +902,7 @@ export default function NotificationModal({
                         <p className="text-sm font-semibold text-amber-800">브라우저 푸시 알림 미지원</p>
                         <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
                           iOS 브라우저에서는 푸시 알림이 지원되지 않습니다.<br />
-                          위 이메일로 매일 오전 9시에 맞춤 공고를 보내드려요.
+                          위 이메일로 평일 오전 9시에 맞춤 공고를 보내드려요.
                         </p>
                       </div>
                     </div>

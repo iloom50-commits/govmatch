@@ -153,6 +153,50 @@ def test_p3_unsubscribe_route_exists():
 
 
 # ─────────────────────────────────────────────────────────────
+# P7~P11 — 중간·낮음 결함 (M-1·M-2·M-3·M-5·L-1·L-3)
+# ─────────────────────────────────────────────────────────────
+def test_m1_push_only_users_get_sent_log():
+    """이메일 없이 push/kakao만 성공해도 per-공고 이력 기록 → 반복 발송 방지."""
+    from app.services import notification_service as ns
+    src = inspect.getsource(ns.NotificationService.generate_daily_digest)
+    assert '"push" if entry["push_sent"] else "kakao"' in src, "push/kakao 단독 이력 기록 없음 (M-1)"
+
+
+def test_m2_kakao_respects_toggle_and_scope_error():
+    from app.services import notification_service as ns
+    src = inspect.getsource(ns.NotificationService.send_kakao_message)
+    assert "kakao_enabled" in src, "카카오 토글 미참조 (M-2)"
+    assert "-402" in src, "scope 미동의 시 재시도 중단 없음 (M-2)"
+
+
+def test_m3_no_users_email_fallback():
+    """push 구독만 한 사용자에게 옵트인 없는 users.email 폴백 발송 금지."""
+    from app.services import notification_service as ns
+    src = inspect.getsource(ns.NotificationService.generate_daily_digest)
+    assert "or user_dict.get('email')" not in src, "users.email 폴백 잔존 (M-3)"
+
+
+def test_m5_cooldown_fixed():
+    import app.main as m
+    src = inspect.getsource(m.run_digest_endpoint)
+    assert "EXTRACT(EPOCH" in src, "쿨다운이 DB 시간 계산으로 수정되지 않음 (M-5)"
+    assert "_last[0]" not in src, "RealDictRow 인덱스 접근 잔재 (M-5 사코드)"
+    assert "if False else" not in src, "if False else 잔재 (M-5)"
+
+
+def test_l1_dead_digest_loop_removed():
+    import app.main as m
+    assert not hasattr(m, "_daily_digest_loop"), "죽은 코드 _daily_digest_loop 잔존 (L-1)"
+    assert not hasattr(m, "DIGEST_HOUR"), "죽은 상수 DIGEST_HOUR 잔존 (L-1)"
+
+
+def test_l3_stats_query_integer_compare():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "main.py")
+    src = open(p, encoding="utf-8").read()
+    assert "notification_settings WHERE is_active = true" not in src, "통계 쿼리 boolean 비교 잔존 (L-3: 컬럼은 integer)"
+
+
+# ─────────────────────────────────────────────────────────────
 # P6 — notification-settings POST 인증
 # ─────────────────────────────────────────────────────────────
 def test_p6_settings_post_requires_auth():

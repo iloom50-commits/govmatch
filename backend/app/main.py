@@ -689,7 +689,6 @@ _db_init_thread.start()
 
 
 SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "8"))
-DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", "0"))  # UTC 0시 = 한국시간 09시
 
 
 async def _daily_sync_loop():
@@ -758,39 +757,6 @@ async def _daily_sync_loop():
         except Exception as e:
             _log_system("scheduler_run", "system", f"스케줄러 오류: {e}", "error")
             print(f"[Scheduler] sync error: {e}")
-
-
-async def _daily_digest_loop():
-    """평일 한국시간 09시(UTC 0시)에 매칭 + 이메일/푸시 발송"""
-    from app.services.notification_service import notification_service
-    while True:
-        now = datetime.datetime.utcnow()
-        target = now.replace(hour=DIGEST_HOUR, minute=0, second=0, microsecond=0)
-        if now >= target:
-            target += datetime.timedelta(days=1)
-        # 평일만 (월~금, UTC 기준 → 한국 요일과 동일)
-        while target.weekday() >= 5:  # 5=토, 6=일
-            target += datetime.timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        kst_target = target + datetime.timedelta(hours=9)
-        weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][kst_target.weekday()]
-        print(f"[Scheduler] next digest at KST {kst_target.strftime('%Y-%m-%d')}({weekday_kr}) 09:00 (in {wait_seconds/3600:.1f}h)")
-        await asyncio.sleep(wait_seconds)
-        try:
-            print("[Scheduler] Running scheduled daily digest (평일 09시 KST)...")
-            results = await notification_service.generate_daily_digest()
-            sent = sum(1 for r in results if r.get("email_sent"))
-            push_sent = sum(r.get("push_sent", 0) for r in results)
-            print(f"[Scheduler] Digest complete: {len(results)} users, {sent} emails, {push_sent} pushes sent")
-        except Exception as e:
-            print(f"[Scheduler] digest error: {e}")
-        # 사전 매칭 캐시 생성 — 활성 사용자 매칭 결과를 DB에 저장
-        try:
-            print("[Scheduler] Running pre-match cache for active users...")
-            _prematch_count = _run_prematch_cache()
-            print(f"[Scheduler] Pre-match complete: {_prematch_count} users cached")
-        except Exception as e:
-            print(f"[Scheduler] pre-match error: {e}")
 
 
 def _run_prematch_cache() -> int:
@@ -1757,20 +1723,22 @@ async def run_digest_endpoint(request: Request):
         return JSONResponse({"status": "SKIPPED", "message": "이미 다이제스트 발송이 진행 중입니다."})
 
     # 6시간 내 이미 발송됐으면 중복 실행 방지
+    # [M-5] 구현 수정: RealDictRow를 [0]으로 접근해 KeyError → 쿨다운이 항상 무시되던 사코드.
+    # 시간 계산을 DB에서 수행해 타임존 혼선도 제거.
     try:
         _chk = get_db_connection()
         _cur = _chk.cursor()
         _cur.execute("""
-            SELECT MAX(sent_at) FROM notification_logs
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(sent_at)))/3600 AS hours_ago
+            FROM notification_logs
             WHERE channel = 'email' AND sent_at >= NOW() - INTERVAL '6 hours'
         """)
-        _last = _chk.cursor().fetchone() if False else _cur.fetchone()
+        _last = _cur.fetchone()
         _chk.close()
-        if _last and _last[0]:
-            import datetime as _dt
-            _ago = (datetime.datetime.utcnow().replace(tzinfo=_dt.timezone.utc) - _last[0]).total_seconds() / 3600
-            print(f"[run-digest] 마지막 발송 {_ago:.1f}시간 전 — 6시간 내 중복 실행 차단")
-            return JSONResponse({"status": "SKIPPED", "reason": f"already sent {_ago:.1f}h ago"})
+        _ago = _last.get("hours_ago") if _last else None
+        if _ago is not None:
+            print(f"[run-digest] 마지막 발송 {float(_ago):.1f}시간 전 — 6시간 내 중복 실행 차단")
+            return JSONResponse({"status": "SKIPPED", "reason": f"already sent {float(_ago):.1f}h ago"})
     except Exception as _e:
         print(f"[run-digest] cooldown check error (무시): {_e}")
 
@@ -10165,7 +10133,7 @@ def get_admin_analytics():
     push_total = _safe_scalar("SELECT COUNT(*) as total FROM push_subscriptions")
 
     # 10. 알림 활성 사용자 수
-    notif_active = _safe_scalar("SELECT COUNT(*) as total FROM notification_settings WHERE is_active = true")
+    notif_active = _safe_scalar("SELECT COUNT(*) as total FROM notification_settings WHERE is_active = 1")
 
     # 11. 지역별 사용자 분포
     cursor.execute("""

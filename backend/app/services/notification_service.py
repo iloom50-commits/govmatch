@@ -599,7 +599,13 @@ class NotificationService:
 
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         cursor = conn.cursor()
-        cursor.execute("SELECT kakao_refresh_token FROM users WHERE business_number = %s", (business_number,))
+        # [M-2] 알림 설정에서 카카오 토글(kakao_enabled=1)을 켠 사용자만 발송
+        cursor.execute("""
+            SELECT u.kakao_refresh_token
+            FROM users u
+            JOIN notification_settings ns ON ns.business_number = u.business_number
+            WHERE u.business_number = %s AND COALESCE(ns.kakao_enabled, 0) = 1
+        """, (business_number,))
         row = cursor.fetchone()
         conn.close()
 
@@ -658,6 +664,20 @@ class NotificationService:
                     self._log_notification(business_number, company_name, "kakao", "sent")
                 else:
                     self._log_notification(business_number, company_name, "kakao", f"error:{result}")
+                    # [M-2] talk_message scope 미동의(-402)는 재시도 무의미 — 토글 자동 해제
+                    # (30일간 동일 사용자 49회 반복 실패 실측)
+                    if result.get("code") == -402:
+                        try:
+                            conn3 = psycopg2.connect(DATABASE_URL)
+                            cur3 = conn3.cursor()
+                            cur3.execute(
+                                "UPDATE notification_settings SET kakao_enabled = 0 WHERE business_number = %s",
+                                (business_number,))
+                            conn3.commit()
+                            conn3.close()
+                            print(f"  [kakao] {business_number} scope 미동의 — kakao_enabled 자동 해제")
+                        except Exception as _ke:
+                            print(f"  [kakao] toggle-off error: {_ke}")
                 return success
         except Exception as e:
             print(f"  Kakao message error: {e}")
@@ -831,7 +851,9 @@ class NotificationService:
                 if matches:
                     user_dict = dict(user)
                     company_name = user_dict.get('company_name') or '회원'
-                    email = user_dict.get('notify_email') or user_dict.get('email')
+                    # [M-3] 이메일은 알림 설정에서 동의한 주소(notify_email)만 사용 —
+                    # push 구독만 한 사용자에게 계정 이메일(users.email)로 폴백 발송 금지
+                    email = user_dict.get('notify_email')
                     bn = user_dict.get('business_number', '')
 
                     entry = {
@@ -861,6 +883,14 @@ class NotificationService:
                         entry["kakao_sent"] = await self.send_kakao_message(bn, company_name, matches)
                     except Exception as e:
                         print(f"  [digest] kakao send error: {e}")
+
+                    # [M-1] 이메일 없이 push/kakao만 성공한 사용자도 per-공고 이력 기록 —
+                    # 미기록 시 dedup이 안 걸려 동일 공고를 매일 반복 수신
+                    try:
+                        if bn and not entry["email_sent"] and (entry["push_sent"] or entry["kakao_sent"]):
+                            self._log_sent_announcements(bn, matches, "push" if entry["push_sent"] else "kakao")
+                    except Exception as e:
+                        print(f"  [digest] sent-log error: {e}")
 
                     digest_results.append(entry)
             except Exception as outer_e:

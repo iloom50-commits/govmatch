@@ -1606,30 +1606,13 @@ async def lifespan(app):
                 replace_existing=True,
             )
 
-            # ── 일일 공고 수집 파이프라인 — 매일 03:00 KST (UTC 18:00) ──
-            def _daily_pipeline_job():
-                try:
-                    from app.services.patrol.daily_pipeline import run_daily_pipeline
-                    conn = get_db_connection()
-                    try:
-                        print("[Pipeline] 일일 공고 수집 시작 (03:00 KST)...")
-                        result = run_daily_pipeline(conn)
-                        print(f"[Pipeline] 완료: {result.get('total_elapsed')}s, errors={result.get('error_count')}")
-                        _log_system("pipeline_run", "system", f"일일 파이프라인 완료: {result.get('total_elapsed')}s", "success")
-                    finally:
-                        try: conn.close()
-                        except: pass
-                except Exception as e:
-                    print(f"[Pipeline] 오류: {e}")
-                    _log_system("pipeline_run", "system", f"일일 파이프라인 오류: {e}", "error")
-
-            pipeline_scheduler.add_job(
-                _daily_pipeline_job,
-                CronTrigger(hour=18, minute=0),  # UTC 18:00 = KST 03:00
-                id="daily_pipeline",
-                name="일일 공고 수집 파이프라인 (03:00 KST)",
-                replace_existing=True,
-            )
+            # ── 일일 공고 수집 파이프라인 ──
+            # ⚠️ Railway Cron(POST /api/internal/run-pipeline)이 단독 트리거다.
+            #    과거 여기에 APScheduler 잡을 중복 등록해 매일 2회 실행됨
+            #    (scraper_runs 232=116×2 확인, AI 비용·중복분석 2배). 위 1512행 주석의
+            #    원래 의도(중복 실행 방지)대로 APScheduler 등록을 제거한다.
+            #    실행 여부는 run_daily_pipeline이 남기는 pipeline_start/daily_pipeline 로그 +
+            #    health_collector 경보로 감시(트리거가 죽으면 다음날 메일에 🚨).
 
             # ── 만료 공고 아카이브 — 매일 03:30 KST (UTC 18:30) ──
             # 근본수정: 컬럼 is_active(미존재) → is_archived. 만료 유형 전체 처리.
@@ -1849,7 +1832,18 @@ async def run_pipeline_endpoint(request: Request):
     """
     secret = request.headers.get("X-Cron-Secret", "")
     if not _CRON_SECRET or secret != _CRON_SECRET:
+        # 인증 실패도 흔적을 남긴다 — env(_CRON_SECRET) 누락 시 cron이 조용히 401 받고 죽는 것 방지
+        try:
+            _log_system("cron_auth_fail", "system",
+                        "run-pipeline 인증 실패 (_CRON_SECRET 미설정 또는 불일치)", "error")
+        except Exception:
+            pass
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    # 동시 실행 방지 — cron 중복 발사/이전 실행 미완료 시 겹치기 차단
+    if _pipeline_status.get("running"):
+        print("[Pipeline] 이미 실행 중 — 중복 트리거 무시")
+        return JSONResponse(content={"status": "already_running", "message": "파이프라인 이미 실행 중"})
 
     import threading
     from datetime import datetime as _dt

@@ -25,6 +25,22 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         "errors": [],
     }
 
+    # 시작 기록 — 트리거(cron/스케줄러) 무관하게 "파이프라인이 돌았다"는 유일한 증거.
+    # (과거엔 완료 로그가 varchar 버그로 유실돼, 실행 여부조차 알 수 없었음 — A-1/A-3)
+    try:
+        _sc = db_conn.cursor()
+        _sc.execute(
+            "INSERT INTO system_logs (action, category, detail, result) "
+            "VALUES ('pipeline_start', 'system', %s, 'started')",
+            (results["started_at"],),
+        )
+        db_conn.commit()
+    except Exception:
+        try:
+            db_conn.rollback()
+        except Exception:
+            pass
+
     def _run_step(name: str, func, **kwargs):
         """단계 실행 래퍼 — 에러 격리 + 시간 측정"""
         step_start = time.time()
@@ -265,15 +281,26 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     results["error_count"] = len(results["errors"])
 
     # system_logs에 결과 저장
+    #   ⚠️ result 컬럼은 varchar(20) — 짧은 상태만. 상세 JSON은 text인 detail에 넣는다.
+    #   (과거: 2000자 JSON을 result에 넣어 매번 길이초과 INSERT 실패 → 상세로그 전면 유실)
     try:
         cur = db_conn.cursor()
-        summary = f"파이프라인 완료 ({total_elapsed}s, 에러 {len(results['errors'])}건)"
+        err_n = len(results["errors"])
+        step_status = {name: (s or {}).get("status") for name, s in results.get("steps", {}).items()}
+        detail = json.dumps({
+            "elapsed": total_elapsed,
+            "error_count": err_n,
+            "steps": step_status,        # 스텝별 ok/error 한눈에
+            "errors": results["errors"],  # 실패 사유 전문
+        }, ensure_ascii=False, default=str)
+        result_status = "success" if err_n == 0 else "partial"
         cur.execute("""
-            INSERT INTO system_logs (action, category, detail, result)
-            VALUES ('daily_pipeline', 'system', %s, %s)
-        """, (summary, json.dumps(results, ensure_ascii=False, default=str)[:2000]))
+            INSERT INTO system_logs (action, category, detail, result, count_affected)
+            VALUES ('daily_pipeline', 'system', %s, %s, %s)
+        """, (detail, result_status, err_n))
         db_conn.commit()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[Pipeline] 결과 로그 저장 실패: {e}")
         try:
             db_conn.rollback()
         except Exception:

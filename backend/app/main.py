@@ -4852,6 +4852,34 @@ def _charge_v1(customer_uid: str, merchant_uid: str, amount: int, order_name: st
     return ok
 
 
+def _send_renew_notice(email: str, plan: str, downgraded: bool):
+    """자동결제 실패 시 사용자 통지 (Resend). 미설정/미상이면 조용히 스킵."""
+    api_key = os.environ.get("RESEND_API_KEY")
+    resend_from = os.environ.get("RESEND_FROM", "info@govmatch.kr")
+    if not api_key or not email:
+        return
+    try:
+        import requests as _rq
+        if downgraded:
+            subject = "[지원금AI] 결제 실패로 요금제가 FREE로 전환되었습니다"
+            body = (f"{plan.upper()} 자동결제가 여러 번 실패하여 FREE로 전환되었습니다.\n"
+                    f"등록하신 결제수단은 보관되어 있어, 카드 정보를 확인 후 재구독하시면 바로 복구됩니다.\n"
+                    f"https://govmatch.kr")
+        else:
+            subject = "[지원금AI] 자동결제에 실패했습니다 (서비스 유지·재시도 예정)"
+            body = (f"{plan.upper()} 자동결제에 실패했습니다. 며칠간 자동 재시도하며 서비스는 유지됩니다.\n"
+                    f"카드 잔액/유효기간을 확인해 주세요.\n"
+                    f"https://govmatch.kr")
+        _rq.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": resend_from, "to": [email], "subject": subject, "text": body},
+            timeout=15,
+        )
+    except Exception as e:
+        print(f"[renew] 통지 메일 실패({email}): {e}")
+
+
 def _auto_renew_subscriptions():
     """만료된 구독 자동 갱신 — V2 billing_key 또는 V1 customer_uid로 결제"""
     has_v2 = bool(PORTONE_API_SECRET)
@@ -4862,9 +4890,16 @@ def _auto_renew_subscriptions():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        # 유예 카운터 컬럼 보장 (결제 실패 시 즉시 강등 대신 유예 후 강등)
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS renew_fail_count INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         # 만료일이 지났고 빌링키가 있는 사용자
         cur.execute("""
-            SELECT business_number, plan, billing_key, user_type, email
+            SELECT business_number, plan, billing_key, user_type, email,
+                   COALESCE(renew_fail_count, 0) AS renew_fail_count
             FROM users
             WHERE billing_key IS NOT NULL
               AND plan IN ('lite', 'pro')
@@ -4872,9 +4907,11 @@ def _auto_renew_subscriptions():
         """)
         expired_users = cur.fetchall()
 
-        renewed, failed = 0, 0
+        GRACE_MAX = 3  # 결제 거절 이 횟수 도달 시에만 강등 (그 전엔 유예·재시도)
+        renewed, failed, downgraded, transient = 0, 0, 0, 0
         for row in expired_users:
             u = dict(row)
+            fail_count = int(u.get("renew_fail_count") or 0)
             plan = u["plan"]
             user_type = u.get("user_type") or "both"
             stored_key = u["billing_key"] or ""
@@ -4919,33 +4956,51 @@ def _auto_renew_subscriptions():
                     new_expires = (now + datetime.timedelta(days=30)).isoformat()
                     cur.execute(
                         """UPDATE users SET plan_expires_at = %s, ai_usage_month = 0,
-                           ai_usage_reset_at = %s WHERE business_number = %s""",
+                           ai_usage_reset_at = %s, renew_fail_count = 0 WHERE business_number = %s""",
                         (new_expires, now.isoformat(), u["business_number"]),
                     )
                     conn.commit()
                     renewed += 1
                     print(f"[renew] {u.get('email','?')} {plan.upper()} {price:,}원 결제 완료")
                 else:
+                    # 실제 결제 거절 → 유예 카운트 증가. GRACE_MAX 도달 시에만 강등.
+                    new_fail = fail_count + 1
                     failed += 1
-                    cur.execute(
-                        "UPDATE users SET plan = 'free', billing_key = NULL WHERE business_number = %s",
-                        (u["business_number"],),
-                    )
-                    conn.commit()
-                    print(f"[renew] {u.get('email','?')} 결제 실패 → FREE 전환")
+                    if new_fail >= GRACE_MAX:
+                        # billing_key는 보존(NULL 금지) — plan=free라 재청구 안 되고 재구독 시 재사용 가능
+                        cur.execute(
+                            "UPDATE users SET plan = 'free', renew_fail_count = %s WHERE business_number = %s",
+                            (new_fail, u["business_number"]),
+                        )
+                        conn.commit()
+                        downgraded += 1
+                        _send_renew_notice(u.get("email"), plan, downgraded=True)
+                        print(f"[renew] {u.get('email','?')} 결제 {new_fail}회 실패 → FREE 강등 (billing_key 보존, 통지)")
+                    else:
+                        # 유예: 플랜 유지 + plan_expires_at 그대로 두어 다음 실행에서 재시도
+                        cur.execute(
+                            "UPDATE users SET renew_fail_count = %s WHERE business_number = %s",
+                            (new_fail, u["business_number"]),
+                        )
+                        conn.commit()
+                        _send_renew_notice(u.get("email"), plan, downgraded=False)
+                        print(f"[renew] {u.get('email','?')} 결제 실패 {new_fail}/{GRACE_MAX} — 유예(플랜 유지)")
             except Exception as e:
-                failed += 1
-                cur.execute(
-                    "UPDATE users SET plan = 'free', billing_key = NULL WHERE business_number = %s",
-                    (u["business_number"],),
-                )
-                conn.commit()
-                print(f"[renew] {u.get('email','?')} 오류 → FREE 전환: {e}")
+                # 일시적 오류(네트워크/SSL/타임아웃 등)는 강등하지 않는다 — 다음 실행에서 재시도.
+                transient += 1
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                print(f"[renew] {u.get('email','?')} 일시 오류(강등 안 함, 재시도 예정): {e}")
 
         conn.close()
-        if renewed or failed:
-            _log_system("auto_renew", "payment", f"성공 {renewed}건, 실패 {failed}건 (총 {len(expired_users)}명)", "success" if failed == 0 else "partial", renewed)
-            print(f"[renew] 자동 갱신 완료: 성공 {renewed}건, 실패 {failed}건")
+        if renewed or failed or transient:
+            detail = (f"성공 {renewed}, 실패 {failed}(강등 {downgraded}), "
+                      f"일시오류 {transient} (총 {len(expired_users)}명)")
+            result = "success" if (failed == 0 and transient == 0) else "partial"
+            _log_system("auto_renew", "payment", detail, result, renewed)
+            print(f"[renew] 자동 갱신: {detail}")
     except Exception as e:
         _log_system("auto_renew", "payment", f"오류: {e}", "error")
         print(f"[renew] 오류: {e}")

@@ -133,6 +133,22 @@ def run_daily_supervision(db_conn=None) -> dict:
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")
+            # dead-man's switch용 heartbeat — 경보 채널(운영현황 메일)이 살아있다는 증거.
+            # 다이제스트 잡이 이 로그의 부재를 감지해 오너에게 교차 경보한다(C-4).
+            if report_result.get("email_sent") or report_result.get("kakao_sent"):
+                try:
+                    _hc = db_conn.cursor()
+                    _hc.execute(
+                        "INSERT INTO system_logs (action, category, detail, result) "
+                        "VALUES ('coo_report_sent', 'system', %s, 'success')",
+                        (f"email={report_result.get('email_sent')} kakao={report_result.get('kakao_sent')}",),
+                    )
+                    db_conn.commit()
+                except Exception:
+                    try:
+                        db_conn.rollback()
+                    except Exception:
+                        pass
         except Exception as e:
             results["report"] = {"error": str(e)}
             print(f"  → 보고서 발송 오류: {e}")

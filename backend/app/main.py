@@ -1805,6 +1805,44 @@ async def run_digest_endpoint(request: Request):
                 result["errors"].append(f"coverage: {e}")
 
             print(f"[Digest] 완료: users={result['users']}, email={result['email_sent']}, push={result['push_sent']}, prematch={result['prematch']}, errors={result['errors']}")
+
+            # 다이제스트 heartbeat(B-1) + dead-man's switch(C-4):
+            #  이 잡이 돌았다는 영구 기록 + 경보채널(AI COO 운영현황 메일)이 죽었는지 교차 확인.
+            #  COO가 죽어도 다이제스트는 살아있으면 오너에게 "운영현황 메일 안 옴" 경보를 보낸다.
+            try:
+                _dc = get_db_connection()
+                _dcur = _dc.cursor()
+                _dcur.execute(
+                    "INSERT INTO system_logs (action, category, detail, result, count_affected) "
+                    "VALUES ('digest_run', 'notification', %s, %s, %s)",
+                    (f"users={result['users']} email={result['email_sent']} push={result['push_sent']} err={len(result['errors'])}",
+                     "success" if not result["errors"] else "partial", result["email_sent"]),
+                )
+                _dc.commit()
+                # 나이는 DB NOW() 기준으로 계산(tz 안전) + RealDictCursor라 별칭으로 접근
+                _dcur.execute("SELECT EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS ago "
+                              "FROM system_logs WHERE action = 'coo_report_sent'")
+                _coo = _dcur.fetchone()
+                _coo_ago = float(_coo["ago"]) if _coo and _coo.get("ago") is not None else None
+                if _coo_ago is None or _coo_ago > 2:
+                    _owner = os.environ.get("OWNER_EMAIL") or os.environ.get("REPORT_EMAIL")
+                    _rk = os.environ.get("RESEND_API_KEY")
+                    if _owner and _rk:
+                        import requests as _rq
+                        _label = f"{_coo_ago:.0f}일째" if _coo_ago else "기록 없음"
+                        _rq.post(
+                            "https://api.resend.com/emails",
+                            headers={"Authorization": f"Bearer {_rk}", "Content-Type": "application/json"},
+                            json={"from": os.environ.get("RESEND_FROM", "info@govmatch.kr"), "to": [_owner],
+                                  "subject": "[GovMatch] ⚠️ 운영현황(AI COO) 메일이 안 오고 있습니다",
+                                  "text": f"일일 운영현황 메일(AI COO)이 {_label} 발송되지 않았습니다.\n"
+                                          f"오케스트레이터 실행 또는 메일 발송(Resend/OWNER_EMAIL)을 확인하세요.\nhttps://govmatch.kr"},
+                            timeout=15,
+                        )
+                        print(f"[Digest] dead-man's switch: COO 메일 {_label} 부재 → 오너 경보 발송")
+                _dc.close()
+            except Exception as _de:
+                print(f"[Digest] heartbeat/deadman 오류(무시): {_de}")
         except Exception as e:
             print(f"[Digest] Error: {e}")
         finally:

@@ -119,18 +119,32 @@ const theme = {
 };
 
 // ─── 메인 컴포넌트 ───
-export default function ProSecretary({ onClose, planStatus, onUpgrade, userType, onRequireLogin }: {
+export default function ProSecretary({ onClose, planStatus, onUpgrade, userType, onRequireLogin, userData, onLogout, onRedeemPromo, initialPromoCode, smartDocReady, onSmartDoc }: {
   onClose: () => void;
   planStatus?: any;
   onUpgrade?: () => void;
   userType?: string | null;
   onRequireLogin?: (reason?: string) => void;  // 비로그인 진입 허용 → 상담 시작/메뉴 액션에서 로그인 요구(사유 표시)
+  userData?: any;                              // 헤더 계정 표시 (회사명/이메일)
+  onLogout?: () => void;
+  onRedeemPromo?: (code: string) => Promise<string>;  // 프로모션 코드 리딤 — 결과 메시지 반환
+  initialPromoCode?: string;                   // /pro?code= 딥링크 자동 입력
+  smartDocReady?: boolean;
+  onSmartDoc?: () => void;
 }) {
   const { toast } = useToast();
 
   // 상태
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [reportModal, setReportModal] = useState<any>(null); // 상담 중 생성한 보고서 상세 — 모달로 즉시 표시
+  const [promoInput, setPromoInput] = useState("");          // 중앙 프로모션 코드 입력 (구 랜딩에서 이관)
+  const [promoMsg, setPromoMsg] = useState("");
+  const [homeStage, setHomeStage] = useState<"products" | "consult">("products"); // 홈: 제품 카드 → 고객 선택
+
+  // /pro?code= 딥링크 → 코드 자동 입력
+  useEffect(() => {
+    if (initialPromoCode) setPromoInput(initialPromoCode);
+  }, [initialPromoCode]);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
   const [existingClients, setExistingClients] = useState<ClientProfile[]>([]);
   const [flowState, setFlowState] = useState<FlowState>("idle");
@@ -589,6 +603,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
     setSessionId(null);
     setActiveView("chat");
     setLeftOpen(false);
+    setHomeStage("consult");  // '새 고객 상담' 의도가 명확 — 제품 카드 건너뛰고 고객 선택으로
     try { localStorage.removeItem("pro_session_id"); } catch {}
   };
 
@@ -914,6 +929,14 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
               상담 종료
             </button>
           )}
+          {/* 계정 표시 (로그인 시) — 구 랜딩의 사용자·플랜 카드를 헤더 칩으로 이관 */}
+          {userData && (
+            <div className="hidden sm:flex items-center gap-2 mr-1">
+              <span className="text-[11px] font-semibold opacity-80 max-w-[140px] truncate">{userData.company_name || userData.email}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${["pro", "biz"].includes(planStatus?.plan) ? "bg-violet-500/40 text-violet-100" : "bg-white/15 opacity-80"}`}>{planStatus?.label || "FREE"}</span>
+              <button onClick={onLogout} className="text-[10px] opacity-60 hover:opacity-100 underline">로그아웃</button>
+            </div>
+          )}
           <button onClick={toggleDark} className="p-2 hover:bg-white/10 rounded-lg transition-colors" title={dark ? "라이트 모드" : "다크 모드"}>
             {dark ? Icons.sun : Icons.moon}
           </button>
@@ -1028,10 +1051,79 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
                 </div>
               )}
 
-              {/* ① 고객 선택 화면 — 홈 스크린 */}
-              {!clientCategory && messages.length === 0 && !showProfileForm ? (
+              {/* ①-0 홈 첫 화면 — 제품 카드 2장 (구 /pro 랜딩 이관) */}
+              {!clientCategory && messages.length === 0 && !showProfileForm && homeStage === "products" ? (
+                <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
+                  <div className="max-w-2xl w-full space-y-5">
+                    <div className="text-center">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${dark ? "bg-violet-500/15 text-violet-300" : "bg-violet-100 text-violet-700"}`}>전문가 전용 · PRO</span>
+                      <h2 className={`mt-3 text-xl font-bold ${dark ? "text-slate-100" : "text-slate-800"}`}>무엇을 시작하시겠습니까?</h2>
+                      <p className={`mt-1 text-[13px] ${t.muted}`}>고객 조건만 입력하면 맞춤 공고 매칭 · 자격판정 · 보고서까지 한 번에</p>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {smartDocReady ? (
+                        <button type="button"
+                          onClick={() => { if (!getToken()) { onRequireLogin?.("SmartDoc은 로그인 후 이용할 수 있어요."); return; } onSmartDoc?.(); }}
+                          className={`text-left rounded-2xl border-2 p-5 transition-all active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
+                          <span className="text-3xl">📝</span>
+                          <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>정책자금 융자신청서 자동 작성</p>
+                          <p className={`text-[11px] ${t.muted}`}>공고 양식을 AI가 분석해 맞춤 신청서 초안 자동 생성 (SmartDoc)</p>
+                        </button>
+                      ) : (
+                        <a href="/" target="_blank" rel="noopener noreferrer"
+                          className={`block text-left rounded-2xl border-2 p-5 transition-all active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
+                          <span className="text-3xl">🔎</span>
+                          <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원금AI — 모든 지원금 찾기</p>
+                          <p className={`text-[11px] ${t.muted}`}>내 기업·상황에 맞는 정부지원금·정책자금을 AI가 한 번에</p>
+                        </a>
+                      )}
+                      <button type="button" onClick={() => setHomeStage("consult")}
+                        className={`text-left rounded-2xl border-2 p-5 transition-all active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
+                        <span className="text-3xl">💼</span>
+                        <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>정부 지원사업 상담 프로그램</p>
+                        <p className={`text-[11px] ${t.muted}`}>고객 조건만 입력하면 매칭·자격판정·인사이트·보고서까지</p>
+                      </button>
+                    </div>
+
+                    {/* 비PRO 로그인: 무료 체험·결제·프로모션 코드 (구 랜딩 이관) */}
+                    {getToken() && planStatus && !["pro", "biz"].includes(planStatus.plan) && (
+                      <div className={`rounded-xl border p-4 space-y-2 ${dark ? "border-violet-500/20 bg-white/[0.02]" : "border-violet-200 bg-violet-50/50"}`}>
+                        <p className={`text-center text-[12px] ${t.muted}`}>
+                          {(planStatus?.pro_trial_remaining ?? 3) > 0
+                            ? <>상담 프로그램 무료 체험 <span className="font-bold text-violet-500">{planStatus?.pro_trial_remaining ?? 3}회</span> 남음 · </>
+                            : <>이번 달 무료 체험 소진 · </>}
+                          <button onClick={onUpgrade} className="text-violet-500 underline hover:text-violet-400 font-semibold">PRO 결제</button>
+                          {" 또는 프로모션 코드"}
+                        </p>
+                        <div className="flex gap-2">
+                          <input value={promoInput} onChange={e => setPromoInput(e.target.value)} inputMode="numeric"
+                            placeholder="프로모션 코드 입력"
+                            onKeyDown={e => { if (e.key === "Enter") { onRedeemPromo?.(promoInput).then(m => setPromoMsg(m)); } }}
+                            className={`flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300 ${dark ? "bg-white/5 border-violet-500/30 text-slate-200" : "border-violet-200"}`} />
+                          <button onClick={() => onRedeemPromo?.(promoInput).then(m => setPromoMsg(m))}
+                            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">적용</button>
+                        </div>
+                        {promoMsg && <p className={`text-center text-[12px] ${t.muted}`}>{promoMsg}</p>}
+                      </div>
+                    )}
+
+                    {/* 비로그인 + 딥링크 코드: 가입 시 자동 적용 안내 */}
+                    {!getToken() && initialPromoCode && (
+                      <p className={`text-center text-[12px] font-semibold ${dark ? "text-violet-300" : "text-violet-700"}`}>
+                        ✓ 프로모션 코드가 확인되었습니다 — 가입 시 자동 적용됩니다.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : !clientCategory && messages.length === 0 && !showProfileForm ? (
+                /* ① 고객 선택 화면 */
                 <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
                   <div className="max-w-2xl w-full">
+                    <button onClick={() => setHomeStage("products")}
+                      className={`mb-4 flex items-center gap-1 text-[12px] font-semibold ${dark ? "text-violet-400 hover:text-violet-300" : "text-violet-600 hover:text-violet-800"}`}>
+                      ← 처음으로
+                    </button>
                     <div className="text-center mb-8">
                       <div className={`w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center ${t.emptyIcon}`}>
                         <span className="text-3xl">👥</span>

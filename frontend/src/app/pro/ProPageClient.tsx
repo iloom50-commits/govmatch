@@ -4,7 +4,7 @@ import PaymentModal from "@/components/PaymentModal";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-type AuthState = "loading" | "auth" | "dashboard" | "pro";
+type AuthState = "loading" | "pro";  // 랜딩·대시보드 제거 — /pro는 곧바로 ProSecretary
 type AuthTab = "login" | "signup";
 
 export default function ProPageClient() {
@@ -29,7 +29,7 @@ export default function ProPageClient() {
 
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
-    if (!token) { setAuthState("auth"); return; }
+    if (!token) { setAuthState("pro"); return; }  // 비로그인도 바로 진입 — 액션 시점에 로그인
     fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
@@ -37,13 +37,12 @@ export default function ProPageClient() {
           setPlanStatus(data.plan);
           setUserData(data.user);
           setShowLogin(false);
-      setAuthState(cur => cur === "pro" ? "pro" : "dashboard");
         } else {
           localStorage.removeItem("auth_token");
-          setAuthState("auth");
         }
+        setAuthState("pro");
       })
-      .catch(() => { localStorage.removeItem("auth_token"); setAuthState("auth"); });
+      .catch(() => { localStorage.removeItem("auth_token"); setAuthState("pro"); });
   }, []);
 
   // 파트너 딥링크: /pro?code=XXXX → 프로모션 코드 자동 입력 (가입 폼·코드 박스 양쪽)
@@ -70,7 +69,6 @@ export default function ProPageClient() {
       localStorage.setItem("auth_token", data.token);
       setPlanStatus(data.plan); setUserData(data.user);
       setShowLogin(false);
-      setAuthState(cur => cur === "pro" ? "pro" : "dashboard");
     } catch { setError("서버 연결에 실패했습니다."); }
     finally { setSubmitting(false); }
   };
@@ -99,7 +97,6 @@ export default function ProPageClient() {
       localStorage.setItem("auth_token", data.token);
       setPlanStatus(data.plan); setUserData(data.user);
       setShowLogin(false);
-      setAuthState(cur => cur === "pro" ? "pro" : "dashboard");
     } catch { setError("서버 연결에 실패했습니다."); }
     finally { setSubmitting(false); }
   };
@@ -108,46 +105,38 @@ export default function ProPageClient() {
     localStorage.setItem("auth_token", token);
     setPlanStatus(plan);
     setShowPayment(false);
-    if (["pro", "biz"].includes(plan?.plan)) setAuthState("pro");
   };
 
-  const applyPromo = async () => {
-    setPromoMsg("");
-    const code = promoCode.trim();
-    if (!code) { setPromoMsg("코드를 입력해주세요."); return; }
+  // 프로모션 코드 리딤 — ProSecretary 중앙 코드 입력에서 호출, 결과 메시지 반환
+  const redeemPromo = async (code: string): Promise<string> => {
+    const c = (code || "").trim();
+    if (!c) return "코드를 입력해주세요.";
+    const token = localStorage.getItem("auth_token");
+    if (!token) return "로그인 후 적용할 수 있습니다.";
     try {
-      const token = localStorage.getItem("auth_token");
       const res = await fetch(`${API}/api/pro/redeem-promo`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: c }),
       });
       const data = await res.json();
       if (res.ok && data.status === "SUCCESS") {
         if (data.token) localStorage.setItem("auth_token", data.token);
         setPlanStatus(data.plan);
-        setPromoMsg("✓ PRO 1개월이 적용되었습니다.");
-        setPromoCode("");
+        return "✓ PRO가 적용되었습니다.";
       } else if (data.status === "ALREADY") {
-        setPromoMsg("이미 적용된 프로모션입니다.");
-      } else {
-        setPromoMsg(data.detail || "코드가 올바르지 않습니다.");
+        return "이미 적용된 프로모션입니다.";
       }
-    } catch { setPromoMsg("서버 연결에 실패했습니다."); }
+      return data.detail || "코드가 올바르지 않습니다.";
+    } catch { return "서버 연결에 실패했습니다."; }
   };
 
   const handleLogout = () => {
     localStorage.removeItem("auth_token");
     setPlanStatus(null); setUserData(null);
     setEmail(""); setPassword(""); setError("");
-    setAuthState("auth");
   };
 
-  const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
-  const trialRemaining = planStatus?.pro_trial_remaining ?? 3;
-
-  // ── 2 제품 카드 진입 ──
-  const goConsult = () => setAuthState("pro");
   const goSmartDoc = async () => {
     try {
       const token = localStorage.getItem("auth_token");
@@ -158,49 +147,11 @@ export default function ProPageClient() {
       });
       const data = await res.json();
       if (data?.url) window.location.href = data.url;
-      else setError("SmartDoc 연결에 실패했습니다.");
-    } catch { setError("SmartDoc 연결에 실패했습니다."); }
+      else alert("SmartDoc 연결에 실패했습니다.");
+    } catch { alert("SmartDoc 연결에 실패했습니다."); }
   };
   // SmartDoc 배포 전엔 "곧 출시" (배포 후 NEXT_PUBLIC_SMARTDOC_READY=true 로 활성화)
   const SMARTDOC_READY = process.env.NEXT_PUBLIC_SMARTDOC_READY === "true";
-  // 비로그인이면 로그인(모달) → 로그인 후 카드 다시 클릭하면 진입
-  const onCardClick = (action: "smartdoc" | "consult") => {
-    if (action === "smartdoc" && !SMARTDOC_READY) {
-      alert("정책자금 융자신청서 자동 작성(SmartDoc)은 곧 출시 예정입니다.");
-      return;
-    }
-    // 상담 프로그램: 비로그인도 상담 대시보드 진입 허용 → '상담 시작' 액션에서 로그인 요구
-    if (action === "consult") { goConsult(); return; }
-    // SmartDoc(핸드오프)은 로그인 필요
-    if (!planStatus) { setLoginReason(""); setShowLogin(true); setError(""); return; }
-    goSmartDoc();
-  };
-
-  const ProductCards = (
-    <div className="grid sm:grid-cols-2 gap-4">
-      {SMARTDOC_READY ? (
-        <button type="button" onClick={() => onCardClick("smartdoc")}
-          className="relative text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
-          <div className="text-3xl mb-2">📝</div>
-          <p className="text-[15px] font-black text-gray-900">정책자금 융자신청서 자동 작성</p>
-          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">공고 첨부 양식을 AI가 분석해 기업 정보 기반 맞춤 신청서 초안을 자동 생성 <span className="text-violet-600 font-bold">(SmartDoc)</span></p>
-        </button>
-      ) : (
-        <a href="/" target="_blank" rel="noopener noreferrer"
-          className="block text-left rounded-2xl border border-violet-200 bg-white hover:border-violet-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
-          <div className="text-3xl mb-2">🔎</div>
-          <p className="text-[15px] font-black text-gray-900">지원금AI — 모든 지원금 찾기</p>
-          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">내 기업·상황에 맞는 정부지원금·정책자금을 AI가 한 번에 찾아드립니다</p>
-        </a>
-      )}
-      <button type="button" onClick={() => onCardClick("consult")}
-        className="text-left rounded-2xl border border-indigo-200 bg-white hover:border-indigo-400 hover:shadow-md p-5 transition-all active:scale-[0.99]">
-        <div className="text-3xl mb-2">💼</div>
-        <p className="text-[15px] font-black text-gray-900">정부 지원사업 상담 프로그램</p>
-        <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">고객 조건만 입력하면 맞춤 공고 매칭·자격판정·전문가 인사이트·보고서까지 한 번에</p>
-      </button>
-    </div>
-  );
 
   const inputCls = "w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-shadow";
   const btnPrimary = { backgroundColor: "#111827", color: "#ffffff" };
@@ -327,127 +278,24 @@ export default function ProPageClient() {
     );
   }
 
-  // ── PRO → ProSecretary 전체화면 ──
-  if (authState === "pro") {
-    const ProSecretary = require("@/components/pro/ProSecretary").default;
-    return (
-      <>
-        <ProSecretary
-          onClose={handleLogout}
-          planStatus={planStatus}
-          onUpgrade={() => setShowPayment(true)}
-          userType={userData?.user_type || "business"}
-          onRequireLogin={(reason?: string) => { setLoginReason(reason || ""); setShowLogin(true); setError(""); }}
-        />
-        {/* 무료 체험 소진 등으로 onUpgrade 호출 시 결제 모달이 떠야 함 (pro 분기에도 렌더 필수) */}
-        {showPayment && (
-          <PaymentModal
-            mode="pro"
-            planStatus={planStatus}
-            userType={userData?.user_type || "business"}
-            onSuccess={handlePaymentSuccess}
-            onClose={() => setShowPayment(false)}
-          />
-        )}
-        {/* 비로그인 상담 진입 → '상담 시작' 시점 로그인 (상담 화면 위 오버레이) */}
-        {LoginModal}
-      </>
-    );
-  }
-
-  // ── 로그인 / 회원가입 ──
-  if (authState === "auth") {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-2xl space-y-10">
-
-          {/* ── 2 제품 카드 (첫 진입) ── */}
-          <div className="space-y-3">
-            <div>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold">전문가 전용 · PRO</span>
-              <h2 className="mt-3 text-2xl font-bold text-gray-900">무엇을 시작하시겠습니까?</h2>
-              <p className="mt-1 text-sm text-gray-500">카드를 선택하면 시작됩니다. (로그인이 필요하면 그때 안내됩니다)</p>
-            </div>
-            {ProductCards}
-          </div>
-
-          {LoginModal}
-        </div>
-      </div>
-    );
-  }
-
-  // ── 대시보드 ──
+  // ── ProSecretary가 곧 첫 화면 (로그인 여부 무관 — 카드·코드·계정 표시는 내부에서) ──
+  const ProSecretary = require("@/components/pro/ProSecretary").default;
   return (
     <>
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-2xl space-y-6">
-
-          <div className="text-center space-y-1">
-            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">GovMatch</h1>
-            <p className="text-sm text-gray-400">전문상담툴</p>
-          </div>
-
-          {/* 사용자 + 플랜 */}
-          <div className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {userData?.company_name || userData?.email || "사용자"}
-                </p>
-                {userData?.company_name && (
-                  <p className="text-xs text-gray-400 truncate">{userData.email}</p>
-                )}
-              </div>
-              <span className={`ml-3 flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${isPro ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"}`}>
-                {planStatus?.label || "FREE"}
-              </span>
-            </div>
-          </div>
-
-          {/* 2 제품 카드 */}
-          <h2 className="text-lg font-bold text-gray-900 text-center">무엇을 시작하시겠습니까?</h2>
-          {ProductCards}
-
-          {/* 상담 프로그램 플랜 상태 (작게) */}
-          {!isPro && (
-            trialRemaining > 0 ? (
-              <p className="text-center text-[12px] text-gray-500">
-                상담 프로그램 무료 체험 <span className="font-bold text-violet-700">{trialRemaining}회</span> 남음
-                {" · "}<button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900">PRO 결제</button>
-                {" 또는 아래 프로모션 코드"}
-              </p>
-            ) : (
-              <p className="text-center text-[12px] text-gray-500">
-                이번 달 무료 체험 소진 ·{" "}
-                <button onClick={() => setShowPayment(true)} className="text-violet-700 underline hover:text-violet-900 font-semibold">PRO 플랜 결제하기</button>
-                {" (프로모션 코드 보유 시 아래 입력)"}
-              </p>
-            )
-          )}
-
-          {/* 프로모션 코드 (파일럿 — 코드 보유자만 PRO 1개월 무료) */}
-          {!isPro && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-2">
-              <p className="text-[13px] font-bold text-violet-700">프로모션 코드</p>
-              <div className="flex gap-2">
-                <input value={promoCode} onChange={e => setPromoCode(e.target.value)} inputMode="numeric"
-                  placeholder="코드 입력" onKeyDown={e => { if (e.key === "Enter") applyPromo(); }}
-                  className="flex-1 px-3 py-2 border border-violet-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-200" />
-                <button onClick={applyPromo}
-                  className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 transition-all active:scale-[0.99]">적용</button>
-              </div>
-              {promoMsg && <p className="text-[12px] text-gray-600">{promoMsg}</p>}
-            </div>
-          )}
-
-          <button onClick={handleLogout}
-            className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors py-1">
-            로그아웃
-          </button>
-        </div>
-      </div>
-
+      <ProSecretary
+        onClose={() => { window.location.href = "/"; }}
+        planStatus={planStatus}
+        userData={userData}
+        onLogout={handleLogout}
+        onUpgrade={() => setShowPayment(true)}
+        onRedeemPromo={redeemPromo}
+        initialPromoCode={promoCode}
+        smartDocReady={SMARTDOC_READY}
+        onSmartDoc={goSmartDoc}
+        userType={userData?.user_type || "business"}
+        onRequireLogin={(reason?: string) => { setLoginReason(reason || ""); setShowLogin(true); setError(""); }}
+      />
+      {/* 무료 체험 소진 등으로 onUpgrade 호출 시 결제 모달 */}
       {showPayment && (
         <PaymentModal
           mode="pro"
@@ -457,6 +305,8 @@ export default function ProPageClient() {
           onClose={() => setShowPayment(false)}
         />
       )}
+      {/* 비로그인 상담 진입 → '상담 시작' 시점 로그인 (상담 화면 위 오버레이) */}
+      {LoginModal}
     </>
   );
 }

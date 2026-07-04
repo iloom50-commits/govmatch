@@ -537,6 +537,33 @@ def _hard_filter_business(candidates: list, user_profile: dict, db_conn=None) ->
     return passed, excluded
 
 
+# 개인 공고 성별 전용 판정 (2026-07-05) — '경력단절여성' 공고가 남성에게 노출·발송된 실증 건.
+# 제목만 검사(요약은 '여성 우대' 등 비전용 언급이 많아 과차단 위험), 성별 미상은 배제하지 않음.
+_FEMALE_ONLY_RE = re.compile(r"여성|임산부|임신부|여대생|경단녀|미혼모")
+_MALE_ONLY_RE = re.compile(r"남성")
+_GENDER_GUARD_RE = re.compile(r"여성가족부|남녀|양성평등")  # 기관명·중립 표현 — 전용 신호 아님
+
+
+def _check_gender_exclusion(user_gender, title: str) -> tuple:
+    """개인 공고가 특정 성별 전용인데 사용자 성별과 다르면 제외.
+
+    Returns: (excluded: bool, reason: str|None)
+    """
+    g = str(user_gender or "").strip().lower()
+    if g in ("male", "남", "남성"):
+        g = "남성"
+    elif g in ("female", "여", "여성"):
+        g = "여성"
+    else:
+        return False, None  # 성별 미상 — 배제하지 않음
+    text = _GENDER_GUARD_RE.sub("", title or "")
+    if g == "남성" and _FEMALE_ONLY_RE.search(text):
+        return True, "여성 대상 공고"
+    if g == "여성" and _MALE_ONLY_RE.search(text):
+        return True, "남성 대상 공고"
+    return False, None
+
+
 def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) -> tuple:
     """개인 사용자 0단계 하드 필터.
     - 지역 전용 공고 제외
@@ -549,6 +576,8 @@ def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) 
         _cities = [_normalize_region(c.strip()) for c in raw_city.split(",") if c.strip() and c.strip() != "전국"]
         user_city_norm = next((c for c in _cities if c), "")
 
+    user_gender = user_profile.get("gender")
+
     passed = []
     excluded = []
     for ad in candidates:
@@ -560,6 +589,11 @@ def _hard_filter_individual(candidates: list, user_profile: dict, db_conn=None) 
         region_excl, region_reason = _check_region_exclusion(user_city_norm, region, title)
         if region_excl:
             reasons.append(region_reason)
+
+        # 성별 전용 제외 (2026-07-05 — 여성전용 공고가 남성에게 노출·발송된 실증 건)
+        gender_excl, gender_reason = _check_gender_exclusion(user_gender, title)
+        if gender_excl:
+            reasons.append(gender_reason)
 
         if reasons:
             excluded.append({"ad": ad, "reasons": reasons})

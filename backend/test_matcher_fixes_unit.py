@@ -175,6 +175,56 @@ def test_hard_filter_excludes_other_region():
 
 
 # ─────────────────────────────────────────────────────────────
+# G: 개인 공고 성별 전용 판정 (2026-07-05 — '경력단절여성'→남성 발송 실증 건)
+# ─────────────────────────────────────────────────────────────
+def test_gender_male_excluded_from_female_only():
+    from app.core.matcher import _check_gender_exclusion
+    excl, reason = _check_gender_exclusion("남성", "경력단절여성 등 취업지원")
+    assert excl is True and "여성" in (reason or "")
+    assert _check_gender_exclusion("남성", "임산부 교통비 지원")[0] is True
+    assert _check_gender_exclusion("남성", "여성농업인 농작업 편의장비 지원사업")[0] is True
+
+
+def test_gender_female_passes_female_only():
+    from app.core.matcher import _check_gender_exclusion
+    assert _check_gender_exclusion("여성", "경력단절여성 등 취업지원")[0] is False
+
+
+def test_gender_unknown_never_excluded():
+    from app.core.matcher import _check_gender_exclusion
+    for g in ("", None, "해당없음"):
+        assert _check_gender_exclusion(g, "경력단절여성 취업지원")[0] is False, g
+
+
+def test_gender_department_name_guard():
+    """'여성가족부' 등 기관명은 전용 신호가 아님 — 과차단 방지."""
+    from app.core.matcher import _check_gender_exclusion
+    assert _check_gender_exclusion("남성", "[여성가족부] 청소년 프로그램 지원")[0] is False
+    assert _check_gender_exclusion("남성", "남녀 임금격차 개선 컨설팅")[0] is False
+
+
+def test_gender_english_value_normalized():
+    from app.core.matcher import _check_gender_exclusion
+    assert _check_gender_exclusion("male", "여대생 커리어 캠프")[0] is True
+
+
+def test_gender_female_excluded_from_male_only():
+    from app.core.matcher import _check_gender_exclusion
+    assert _check_gender_exclusion("여성", "남성 육아휴직 장려금")[0] is True
+
+
+def test_hard_filter_individual_applies_gender():
+    from app.core.matcher import _hard_filter_individual
+    p = dict(P, user_type="individual", gender="남성", industry_code="", industry_name="")
+    cands = [
+        {"announcement_id": 1, "title": "경력단절여성 등 취업지원", "region": "부산", "summary_text": ""},
+        {"announcement_id": 2, "title": "청년 월세 지원", "region": "부산", "summary_text": ""},
+    ]
+    passed, excluded = _hard_filter_individual(cands, p, None)
+    assert {c["announcement_id"] for c in passed} == {2}, passed
+
+
+# ─────────────────────────────────────────────────────────────
 # D1: 임베딩 경로도 하드필터 적용
 # ─────────────────────────────────────────────────────────────
 def test_hybrid_embedding_applies_hard_filter():

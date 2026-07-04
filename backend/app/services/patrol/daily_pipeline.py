@@ -148,6 +148,25 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("② 직접 크롤링", step_2_crawl)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ②-1 기관 수집 (admin_urls) — 지자체·TP·진흥원 (A-4 부활)
+    #   별도 Railway cron 없이 파이프라인에 통합. Playwright로 last_scraped 오래된
+    #   순 batch_size개씩만 순환 수집(≈167/40 ≈ 4~5일 전체 주기) → 파이프라인 시간 완화.
+    #   MAX_ADMIN_BATCH 환경변수로 조정(기본 40). 크롬 미설치면 run_batch가 skip 반환.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_2b_admin_scrape():
+        import os
+        import asyncio
+        from app.services.admin_scraper import admin_scraper
+        n = int(os.getenv("MAX_ADMIN_BATCH", "40"))
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(admin_scraper.run_batch(batch_size=n))
+        finally:
+            loop.close()
+
+    _run_step("②-1 기관 수집(admin)", step_2b_admin_scrape)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ③ DB 정리
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_3_cleanup():

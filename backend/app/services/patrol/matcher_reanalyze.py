@@ -103,12 +103,18 @@ def reanalyze_empty_eligibility(db_conn, limit: int = 400) -> Dict[str, Any]:
     from app.services.ai_service import ai_service
 
     cur = db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # 대상: ① 미분석 & elig 빈 값 ② 구식 빈 형식({"min_revenue":"",...} — 값이 전부 공백,
+    #        분석 마킹 여부 무관. 정규식은 근사 선별 — 정확 판정은 아래 파이썬 루프에서)
     cur.execute(
         """
-        SELECT announcement_id, title, summary_text, deadline_date, target_type
+        SELECT announcement_id, title, summary_text, deadline_date, target_type, eligibility_logic
         FROM announcements
-        WHERE ai_analyzed_at IS NULL
-          AND (eligibility_logic IS NULL OR eligibility_logic = '' OR eligibility_logic = '{}')
+        WHERE (
+            (ai_analyzed_at IS NULL
+             AND (eligibility_logic IS NULL OR eligibility_logic = '' OR eligibility_logic = '{}'))
+            OR (eligibility_logic LIKE '{%%' AND LENGTH(eligibility_logic) <= 150
+                AND eligibility_logic !~ '[가-힣0-9]')
+          )
           AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
         ORDER BY
           CASE WHEN target_type IN ('business', 'both') THEN 0 ELSE 1 END,
@@ -128,10 +134,17 @@ def reanalyze_empty_eligibility(db_conn, limit: int = 400) -> Dict[str, Any]:
 
     ok = skipped = non_support = failed = 0
     try:
+        from app.core.matcher import is_blank_eligibility
         for row in rows:
             ann_id = row["announcement_id"]
             title = row.get("title") or ""
             clean = _strip_html(row.get("summary_text") or "")
+
+            # 정규식 근사 선별의 오탐 제거 — 실제 값이 있는 elig는 재분석하지 않음
+            _el = row.get("eligibility_logic")
+            if _el and not is_blank_eligibility(_el):
+                skipped += 1
+                continue
 
             # 데이터 너무 부족 → 마킹만 (재처리 방지)
             if len(clean) < 20 and len(title.strip()) < 10:

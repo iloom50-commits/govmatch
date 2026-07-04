@@ -13309,13 +13309,18 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
     client = dict(client)
 
     # 2. 매칭 엔진으로 공고 검색 — 기업/개인 분기
-    from app.core.matcher import get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid
+    from app.core.matcher import (
+        get_matches_for_user, get_individual_matches_for_user, get_matches_hybrid,
+        is_blank_eligibility, judge_eligibility_fields,
+    )
     profile = {
         "address_city": client.get("address_city") or "",
         "industry_code": client.get("industry_code") or "",
+        "industry_name": client.get("industry_name") or "",
         "revenue_bracket": client.get("revenue_bracket") or "",
         "employee_count_bracket": client.get("employee_count_bracket") or "",
         "interests": client.get("interests") or "",
+        "certifications": client.get("certifications") or "",
         "establishment_date": str(client.get("establishment_date") or ""),
     }
     is_individual_client = (client.get("client_type") or "business") == "individual"
@@ -13340,14 +13345,26 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
             conclusion = "대상 아님"
             reason = a.get("ineligible_reason") or "자격 요건 불일치"
             ineligible_count += 1
-        elif not a.get("eligibility_logic") or a.get("eligibility_logic") in ("{}", "null"):
+        elif is_blank_eligibility(a.get("eligibility_logic")):
+            # 구식 빈 elig({"min_revenue":""})도 blank — 무제약 오판 방지 (2026-07-04)
             conclusion = "확인 필요"
             reason = "공고 원문에서 세부 자격요건 확인 필요"
             conditional_count += 1
         else:
-            conclusion = "신청 가능"
-            reason = a.get("recommendation_reason") or "자격 요건 충족"
-            eligible_count += 1
+            # 신형 elig 필드(지정업종/지역제한/필수자격) 대조 — 검증테스트 D2
+            _fs, _fr = judge_eligibility_fields(a.get("eligibility_logic"), profile)
+            if _fs == "ineligible":
+                conclusion = "대상 아님"
+                reason = _fr or "자격 요건 불일치"
+                ineligible_count += 1
+            elif _fs == "conditional":
+                conclusion = "확인 필요"
+                reason = _fr or "세부 자격요건 확인 필요"
+                conditional_count += 1
+            else:
+                conclusion = "신청 가능"
+                reason = a.get("recommendation_reason") or "자격 요건 충족"
+                eligible_count += 1
 
         # 마감일 표시: (미래)날짜 > 상시(ongoing) > 확인 필요(미상). NULL을 상시로 단정하지 않음.
         # 과거 날짜는 노출 금지 — stale 날짜가 ongoing/unknown에 남아도 만료일이 보이지 않도록 가드.

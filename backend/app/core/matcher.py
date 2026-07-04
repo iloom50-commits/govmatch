@@ -32,6 +32,107 @@ def _to_str(val) -> str:
         return ",".join(str(v) for v in val)
     return str(val)
 
+def is_blank_eligibility(elig) -> bool:
+    """eligibility_logic이 판정 재료가 없는 상태인지.
+
+    None/''/'{}'/'null' 외에 구식 빈 형식({"min_revenue": "", "max_revenue": ""})도 포함 —
+    2026-07-04 검증테스트에서 이런 공고가 '무제약'으로 해석돼 타지역 공고가 신청가능 처리됨.
+    파싱 불가 문자열도 판정 불가이므로 blank 취급.
+    """
+    if elig in (None, "", "{}", "null"):
+        return True
+    if isinstance(elig, str):
+        try:
+            elig = json.loads(elig)
+        except Exception:
+            return True
+    if not isinstance(elig, dict) or not elig:
+        return True
+    for v in elig.values():
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        return False
+    return True
+
+
+_GENERIC_INDUSTRY = ("전업종", "제한없음", "무관", "전체", "모든 업종")
+
+
+def judge_eligibility_fields(elig, user_profile: dict) -> tuple:
+    """신형 eligibility_logic 필드 기반 판정 — target_industries / region_restriction /
+    required_certifications 대조. 제외 철학(exclusion 기반)에 따라 명백 불일치만 ineligible,
+    애매하면 conditional, 판정 재료 없으면 eligible(빈 elig는 상위에서 별도 처리).
+
+    Returns: (status: 'eligible'|'conditional'|'ineligible', reason: str|None)
+    """
+    if isinstance(elig, str):
+        try:
+            elig = json.loads(elig)
+        except Exception:
+            return "eligible", None
+    if not isinstance(elig, dict) or not elig:
+        return "eligible", None
+
+    _order = {"eligible": 0, "conditional": 1, "ineligible": 2}
+    status = "eligible"
+    reasons = []
+
+    def _worse(new):
+        nonlocal status
+        if _order[new] > _order[status]:
+            status = new
+
+    # 1) 지정 업종 (target_industries)
+    inds = elig.get("target_industries") or []
+    if isinstance(inds, str):
+        inds = [inds]
+    inds = [str(i).strip() for i in inds
+            if str(i or "").strip() and not any(g in str(i) for g in _GENERIC_INDUSTRY)]
+    if inds:
+        iname = _to_str(user_profile.get("industry_name"))
+        iint = _to_str(user_profile.get("interests"))
+        if not iname:
+            _worse("conditional")
+            reasons.append(f"지정 업종({','.join(inds[:3])}) — 고객 업종 확인 필요")
+        else:
+            hit = any((k in iname) or (iname[:3] in k) or (k and k in iint) for k in inds)
+            if not hit:
+                _worse("ineligible")
+                reasons.append(f"{','.join(inds[:3])} 업종 전용")
+
+    # 2) 지역 제한 (region_restriction)
+    restr = str(elig.get("region_restriction") or "").strip()
+    if restr and "전국" not in restr:
+        ucity = _to_str(user_profile.get("address_city")).split(",")[0].strip()
+        u = _normalize_region(ucity)
+        r_sido = _normalize_region(restr.split()[0])
+        if not u:
+            _worse("conditional")
+            reasons.append(f"지역 제한({restr}) — 소재지 확인 필요")
+        elif r_sido == u or r_sido in u or u in r_sido:
+            if len(restr.split()) > 1:  # 구·군 등 세부 제한 — 프로필은 시도 단위
+                _worse("conditional")
+                reasons.append(f"'{restr}' 소재 여부 확인 필요")
+        else:
+            _worse("ineligible")
+            reasons.append(f"{restr} 소재 전용")
+
+    # 3) 필수 자격/인증 (required_certifications)
+    reqs = elig.get("required_certifications") or []
+    if isinstance(reqs, str):
+        reqs = [reqs]
+    reqs = [str(c).strip() for c in reqs if str(c or "").strip()]
+    if reqs:
+        held = _to_str(user_profile.get("certifications"))
+        missing = [c for c in reqs
+                   if not (held and (c in held or any(w in held for w in c.split() if len(w) >= 2)))]
+        if missing:
+            _worse("conditional")
+            reasons.append(f"필수 자격({','.join(missing[:3])}) 보유 확인 필요")
+
+    return status, ("; ".join(reasons) if reasons else None)
+
+
 def _strip_html(text: str) -> str:
     if not text:
         return ""
@@ -1870,6 +1971,28 @@ def get_matches_hybrid(user_profile: dict, is_individual: bool = False, skip_buc
                 sim = c.pop("similarity", 0.0) or 0.0
                 c["match_score"] = round(max(0, min(100, sim * 100)))
                 c["match_reason"] = "의미 유사도 기반 매칭"
+            # [2026-07-04] 임베딩 후보에도 rule 경로와 동일한 하드필터 적용
+            # — 미적용 시 타지역·타업종 공고가 그대로 노출됨 (검증테스트 D1)
+            _hf_conn = None
+            try:
+                _hf_conn = get_db_connection()
+            except Exception:
+                _hf_conn = None  # DB 불가 시에도 지역·업종전용·공지성 필터는 동작
+            try:
+                if is_individual:
+                    candidates, _hf_excl = _hard_filter_individual(candidates, user_profile, _hf_conn)
+                else:
+                    candidates, _hf_excl = _hard_filter_business(candidates, user_profile, _hf_conn)
+                if _hf_excl:
+                    print(f"[MatchHybrid] emb hard_filter passed={len(candidates)}, excluded={len(_hf_excl)}")
+            except Exception as _hf_err:
+                print(f"[MatchHybrid] emb hard_filter error (원본 유지): {_hf_err}")
+            finally:
+                if _hf_conn is not None:
+                    try:
+                        _hf_conn.close()
+                    except Exception:
+                        pass
             results = candidates
 
     if skip_bucket:

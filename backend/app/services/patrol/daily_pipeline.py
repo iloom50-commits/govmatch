@@ -41,8 +41,35 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # ── 스텝별 영구 로그 헬퍼 (C-2) — 성공/0건/실패 무조건 system_logs 1행 ──
+    #   과거엔 실행 주체만 로그를 남겨, 스텝이 안 돌거나 0건·에러여도 흔적이 없었다.
+    def _extract_count(result):
+        if isinstance(result, dict):
+            for k in ("saved", "count", "updated", "ok", "processed", "recovered",
+                      "discovered", "queued_for_analysis", "sent", "attempted"):
+                v = result.get(k)
+                if isinstance(v, int):
+                    return v
+        return 0
+
+    def _log_step(name, result_status, detail_obj, count=0):
+        try:
+            _lc = db_conn.cursor()
+            _d = detail_obj if isinstance(detail_obj, str) else json.dumps(detail_obj, ensure_ascii=False, default=str)
+            _lc.execute(
+                "INSERT INTO system_logs (action, category, detail, result, count_affected) "
+                "VALUES (%s, 'pipeline_step', %s, %s, %s)",
+                (f"step:{name}"[:50], _d[:2000], str(result_status)[:20], int(count or 0)),
+            )
+            db_conn.commit()
+        except Exception:
+            try:
+                db_conn.rollback()
+            except Exception:
+                pass
+
     def _run_step(name: str, func, **kwargs):
-        """단계 실행 래퍼 — 에러 격리 + 시간 측정"""
+        """단계 실행 래퍼 — 에러 격리 + 시간 측정 + 스텝별 영구 로그(C-2)."""
         step_start = time.time()
         try:
             logger.info(f"[Pipeline] ▶ {name} 시작...")
@@ -50,6 +77,7 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
             elapsed = round(time.time() - step_start, 1)
             results["steps"][name] = {"status": "ok", "elapsed": elapsed, "result": result}
             logger.info(f"[Pipeline] ✓ {name} 완료 ({elapsed}s)")
+            _log_step(name, "ok", {"elapsed": elapsed, "result": result}, _extract_count(result))
         except Exception as e:
             elapsed = round(time.time() - step_start, 1)
             error_msg = f"{name} 실패: {type(e).__name__}: {str(e)[:200]}"
@@ -60,6 +88,7 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
                 db_conn.rollback()
             except Exception:
                 pass
+            _log_step(name, "error", error_msg)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ① 공고 수집 (외부 API)

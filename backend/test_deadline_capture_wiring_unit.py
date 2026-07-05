@@ -12,7 +12,6 @@ FABLE 근본설계(scratchpad/p2_2_collection_design.md) 2026-07-05.
 import os
 import sys
 import inspect
-import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -22,6 +21,8 @@ except Exception:
     pass
 
 import app.main as m
+import app.services.sync_service as ss
+import app.services.public_api_service as pas
 
 
 # ── P2-2a: 컬럼 2개 추가 (ADD-only) ──
@@ -31,6 +32,27 @@ def test_migration_adds_raw_text_and_source_columns():
         "deadline_raw_text 컬럼 마이그레이션 없음(원문 보존 불가)"
     assert "ADD COLUMN IF NOT EXISTS deadline_source VARCHAR(20)" in src, \
         "deadline_source 컬럼 마이그레이션 없음(기록자 귀속 불가)"
+
+
+# ── P2-2c: sync 관문 통합 + kised 필드명 + gov24/bizinfo raw ──
+def test_sync_gateway_uses_parse_deadline_and_stores_raw():
+    src = inspect.getsource(ss)
+    assert "parse_deadline" in src, "sync 관문이 중앙 파서 미사용(제각각 파싱 잔존)"
+    assert "deadline_raw_text, deadline_source" in src, "INSERT에 원문/기록자 컬럼 없음"
+    assert "'collect'" in src, "deadline_source='collect' 기록 없음"
+    assert "deadline_raw_text = CASE" in src, "업서트 원문 보존(CASE) 없음"
+    assert "deadline_source = COALESCE" in src, "업서트 기록자 보존(COALESCE) 없음"
+
+
+def test_kised_real_field_name_wired():
+    src = inspect.getsource(pas)
+    assert "pbanc_rcpt_end_dt" in src, "kised 실제 마감 필드명 미연결(99% NULL 지속)"
+
+
+def test_gov24_bizinfo_kised_pass_deadline_raw():
+    src = inspect.getsource(pas)
+    n = src.count('"deadline_raw"')
+    assert n >= 4, "파서 raw 전달 부족: %d곳(kised2+bizinfo+gov24x2 기대)" % n
 
 
 if __name__ == "__main__":

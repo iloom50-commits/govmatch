@@ -285,7 +285,9 @@ class GovernmentAPIService:
                     if url.rstrip("/") in ("https://www.k-startup.go.kr", "http://www.k-startup.go.kr") and pbanc_sn:
                         url = f"https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?schM=view&pbancSn={pbanc_sn}"
 
-                    deadline = cols.get("rcrit_end_de") or cols.get("rcritEndDe") or cols.get("pbanc_end_de") or cols.get("pbancEndDe")
+                    # pbanc_rcpt_end_dt가 실제 소스 필드(구 필드명 4종은 미존재) — P2-2 (e) 복구
+                    deadline = (cols.get("pbanc_rcpt_end_dt") or cols.get("pbancRcptEndDt") or
+                                cols.get("rcrit_end_de") or cols.get("rcritEndDe") or cols.get("pbanc_end_de") or cols.get("pbancEndDe"))
                     desc = cols.get("pbancCn") or cols.get("intg_pbanc_biz_nm") or ""
                     support_amount = (
                         cols.get("sprtScale") or cols.get("sprt_scale") or
@@ -303,6 +305,7 @@ class GovernmentAPIService:
                         "category": "Entrepreneurship",
                         "origin_source": "kised-api",
                         "deadline_date": self._normalize_date(deadline),
+                        "deadline_raw": deadline,
                         "support_amount": str(support_amount) if support_amount else "",
                     })
             print(f"    [OK] KISED XML Parsed {len(mapped)} items")
@@ -316,7 +319,8 @@ class GovernmentAPIService:
         for item in items:
             title = item.get("pbancNm") or item.get("title")
             url = item.get("detlUrl") or item.get("link")
-            deadline = item.get("rcritEndDe") or item.get("pbancEndDe") or item.get("rcritEndDt")
+            deadline = (item.get("pbanc_rcpt_end_dt") or item.get("pbancRcptEndDt") or
+                        item.get("rcritEndDe") or item.get("pbancEndDe") or item.get("rcritEndDt"))
             
             if title and url:
                 if not url.startswith("http"):
@@ -343,6 +347,7 @@ class GovernmentAPIService:
                     "category": "Entrepreneurship",
                     "origin_source": "kised-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "deadline_raw": deadline,
                     "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
@@ -474,6 +479,8 @@ class GovernmentAPIService:
             rel_url = item.get("pblancUrl")
             # 1) 개별 마감일 필드 시도
             deadline = item.get("rcritEndDe") or item.get("pblancEndDe") or item.get("reqstEndDe")
+            # 원문 보존: 기간 원문(reqstBeginEndDe) 우선 — 개방형("예산 소진시까지")도 관문이 상시 판정 (P2-2)
+            _deadline_raw = item.get("reqstBeginEndDe") or deadline
             # 2) reqstBeginEndDe ("2026-03-09 ~ 2026-03-27") 에서 종료일 추출
             if not deadline:
                 deadline = self._parse_period_end_date(item.get("reqstBeginEndDe"))
@@ -492,6 +499,7 @@ class GovernmentAPIService:
                     "category": item.get("pldirSportRealmLclasCodeNm") or "General Business Support",
                     "origin_source": "bizinfo-portal-api",
                     "deadline_date": self._normalize_date(deadline),
+                    "deadline_raw": _deadline_raw,
                     "support_amount": str(support_amount) if support_amount else "",
                 })
         return mapped
@@ -971,6 +979,7 @@ class GovernmentAPIService:
                 "origin_source": "gov24-api",
                 "region": region,
                 "deadline_date": deadline,
+                "deadline_raw": deadline_raw,
                 "eligibility_logic": eligibility,
                 "support_amount": support_amount,
             })
@@ -1616,6 +1625,7 @@ class GovernmentAPIService:
                 "origin_source": "gov24-individual-api",
                 "region": region,
                 "deadline_date": deadline,
+                "deadline_raw": deadline_raw,
                 "eligibility_logic": eligibility,
                 "target_type": "individual",
                 "support_amount": support_amount,

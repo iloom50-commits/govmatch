@@ -9,7 +9,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from app.services.scrapers.sbc import SBCScraper
-from app.services.public_api_service import gov_api_service, GovernmentAPIService
+from app.services.public_api_service import gov_api_service
 from app.services.admin_scraper import admin_scraper
 from app.services.ai_service import ai_service
 from app.config import DATABASE_URL
@@ -338,9 +338,12 @@ class SyncService:
                 existing_titles.add(dedup_key)
 
                 # 날짜 안전 정규화 (공백, day=0 등 처리)
-                raw_deadline = item.get('deadline_date')
-                deadline_safe = GovernmentAPIService._normalize_date(raw_deadline) if raw_deadline else None
-                # day=00 같은 비정상 날짜 최종 방어
+                # [P2-2] 수집 마감 원문 → 중앙 파서(날짜·상시·원문 일괄 판정). 파서는 원본 필드를
+                # 그대로 넘기고, 여기(저장 관문)서 한 번에 파싱 → 파서가 무엇을 흘려도 관문이 잡음.
+                from app.services.deadline_enricher import parse_deadline as _parse_deadline
+                _deadline_raw_in = item.get('deadline_raw') or item.get('deadline_date')
+                deadline_safe, _dtype_raw, _deadline_raw_text = _parse_deadline(_deadline_raw_in)
+                # day=00 등은 parse_deadline이 이미 unknown 처리 — 하위호환 방어만 유지
                 if deadline_safe and deadline_safe.endswith("-00"):
                     deadline_safe = None
 
@@ -350,11 +353,8 @@ class SyncService:
                 from app.services.amount_parser import parse_support_amount as _parse_amt
                 _amt_type, _amt_max, _amt_min = _parse_amt(support_amount)
 
-                # [Phase 2] deadline_type 자동 결정 — 수집 시점 상태 명시
-                # 1) 명확한 미래 마감일 있음 → 'fixed'
-                # 2) 제목/본문에 상시/연중/수시/마감일없음 키워드 → 'ongoing'
-                # 3) 과거 마감일 → 'expired' (이미 만료된 공고 유입 방지)
-                # 4) 그 외 → 'unknown' (분석 큐에서 재판정)
+                # [P2-2] deadline_type 결정 — 마감 원문 판정(_dtype_raw)이 1순위,
+                # 제목/설명 키워드 추론은 원문이 미상일 때의 2순위(보조). 과거일 → expired.
                 _ongoing_patterns = ("상시", "연중", "수시", "상시모집", "상시 모집", "마감일 없음", "마감 없음", "예산 소진", "마감일미정")
                 _text_for_detect = f"{item.get('title','')} {item.get('description','')}".lower()
                 _is_ongoing = any(p in _text_for_detect for p in _ongoing_patterns)
@@ -364,20 +364,17 @@ class SyncService:
                 if deadline_safe:
                     try:
                         _ddate = _dt_phase2.date.fromisoformat(str(deadline_safe)[:10])
-                        if _ddate >= _today:
-                            _deadline_type = "fixed"
-                        else:
-                            _deadline_type = "expired"
+                        _deadline_type = "fixed" if _ddate >= _today else "expired"
                     except Exception:
-                        _deadline_type = "ongoing" if _is_ongoing else "unknown"
-                elif _is_ongoing:
+                        _deadline_type = _dtype_raw if _dtype_raw != "unknown" else ("ongoing" if _is_ongoing else "unknown")
+                elif _dtype_raw == "ongoing" or _is_ongoing:
                     _deadline_type = "ongoing"
                 else:
                     _deadline_type = "unknown"
 
                 query = """
-                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount, deadline_type, analysis_status, support_amount_type, support_amount_max, support_amount_min)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s)
+                INSERT INTO announcements (title, origin_url, summary_text, eligibility_logic, department, category, origin_source, region, deadline_date, established_years_limit, revenue_limit, employee_limit, target_industry_codes, target_type, support_amount, deadline_type, analysis_status, support_amount_type, support_amount_max, support_amount_min, deadline_raw_text, deadline_source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s, %s, 'collect')
                 ON CONFLICT (origin_url) DO UPDATE SET
                     deadline_date = COALESCE(EXCLUDED.deadline_date, announcements.deadline_date),
                     deadline_type = CASE
@@ -412,14 +409,22 @@ class SyncService:
                         ELSE EXCLUDED.support_amount_type
                     END,
                     support_amount_max = COALESCE(announcements.support_amount_max, EXCLUDED.support_amount_max),
-                    support_amount_min = COALESCE(announcements.support_amount_min, EXCLUDED.support_amount_min)
+                    support_amount_min = COALESCE(announcements.support_amount_min, EXCLUDED.support_amount_min),
+                    -- 마감 원문: 신선한 원문 우선(마감 연장 반영), 없으면 기존 보존
+                    deadline_raw_text = CASE
+                        WHEN EXCLUDED.deadline_raw_text IS NOT NULL AND EXCLUDED.deadline_raw_text != ''
+                        THEN EXCLUDED.deadline_raw_text
+                        ELSE announcements.deadline_raw_text
+                    END,
+                    -- 기록자 귀속: 최초 기록자 보존
+                    deadline_source = COALESCE(announcements.deadline_source, EXCLUDED.deadline_source)
                 """
                 cursor.execute(query, (
                     item['title'], item['url'], item.get('description', ''), eligibility_json,
                     item.get('department', ''), item.get('category', ''), item.get('origin_source', ''),
                     item.get('region', 'All'), deadline_safe,
                     years_limit, revenue_limit, employee_limit, industry_codes, target_type,
-                    support_amount, _deadline_type, _amt_type, _amt_max, _amt_min
+                    support_amount, _deadline_type, _amt_type, _amt_max, _amt_min, _deadline_raw_text
                 ))
                 saved += 1
                 if saved % 100 == 0:

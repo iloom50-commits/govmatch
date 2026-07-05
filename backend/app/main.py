@@ -1051,8 +1051,9 @@ def _discover_new_sources():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 1. 기존 admin_urls 도메인 목록
-        cursor.execute("SELECT url FROM admin_urls WHERE is_active = 1")
+        # 1. 기존 admin_urls 도메인 목록 (활성+비활성 전체 — 비활성화된 죽은 도메인이
+        #    "미등록"으로 보여 다른 URL로 재등록되던 버그 차단)
+        cursor.execute("SELECT url FROM admin_urls")
         registered_domains = set()
         for row in cursor.fetchall():
             try:
@@ -1108,8 +1109,10 @@ def _discover_new_sources():
             print(f"[discover] {inserted}개 신규 소스 자동 등록")
         else:
             print(f"[discover] 신규 소스 없음 (후보 {len(new_domains)}개 검토)")
+        return inserted
     except Exception as e:
         print(f"[discover] 오류: {e}")
+        return 0
 
 
 def _cleanup_non_support_announcements() -> int:
@@ -1284,8 +1287,10 @@ def _deactivate_dead_urls():
             for row in deactivated:
                 print(f"[cleanup] 비활성화: {row['source_name']} (실패 {row['fail_count']}회)")
             print(f"[cleanup] {len(deactivated)}개 URL 비활성화 완료")
+        return len(deactivated)
     except Exception as e:
         print(f"[cleanup] 오류: {e}")
+        return 0
 
 
 def _db_keepalive():

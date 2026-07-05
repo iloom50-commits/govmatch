@@ -13,6 +13,23 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 
+def step_2c_source_maintenance(today=None) -> Dict[str, Any]:
+    """②-2 소스 정비 — 죽은 URL 비활성화(매일) + 신규 소스 발견(주1회 월요일).
+
+    구 _daily_sync_loop Step 0-A(main.py:711~712)의 이관. 두 함수는 자체 커넥션을
+    열고 닫으므로 파이프라인 db_conn과 무관. today는 테스트 주입용(기본 오늘).
+    """
+    from app.main import _deactivate_dead_urls, _discover_new_sources
+    if today is None:
+        today = datetime.date.today()
+    result: Dict[str, Any] = {"deactivated": _deactivate_dead_urls() or 0}
+    if today.weekday() == 0:   # 월요일만 — 30일 윈도우 집계라 매일 돌 이유 없음
+        result["discovered"] = _discover_new_sources() or 0
+    else:
+        result["discover"] = "skip(weekly-mon)"
+    return result
+
+
 def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     """전체 일일 파이프라인 순차 실행.
 
@@ -46,7 +63,7 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     def _extract_count(result):
         if isinstance(result, dict):
             for k in ("saved", "count", "updated", "ok", "processed", "recovered",
-                      "discovered", "queued_for_analysis", "sent", "attempted"):
+                      "discovered", "deactivated", "queued_for_analysis", "sent", "attempted"):
                 v = result.get(k)
                 if isinstance(v, int):
                     return v
@@ -165,6 +182,12 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
             loop.close()
 
     _run_step("②-1 기관 수집(admin)", step_2b_admin_scrape)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ②-2 소스 정비 — 죽은 URL 비활성화(매일) + 신규 소스 발견(주1 월요일)
+    #   구 _daily_sync_loop(죽은 코드)에 방치돼 2026-05-01 이후 정지했던 기능 복원.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _run_step("②-2 소스 정비", step_2c_source_maintenance)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ③ DB 정리

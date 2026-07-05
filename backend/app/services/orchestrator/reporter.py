@@ -82,6 +82,19 @@ def _build_sales_text(health: dict) -> str:
     )
 
 
+def _build_dq_text(health: dict) -> str:
+    """📊 데이터 품질 (텍스트) — 오분류·마감 파싱 추이 실측(근본개선 검증용)."""
+    d = (health or {}).get("data_quality", {}) or {}
+    if not d or d.get("error"):
+        return ""
+    return (
+        "▌ 📊 데이터 품질 (근본개선 추적)\n"
+        f"  개인탭 오분류 의심: {d.get('misclass_suspect',0)}건 (individual인데 사업자 제목)\n"
+        f"  both 잔존: {d.get('both_count',0)}건  |  미분류(NULL): {d.get('unclassified',0)}건\n"
+        f"  마감일 미상(NULL): {d.get('null_deadline',0)}건 ({d.get('null_deadline_rate',0)}%)\n"
+    )
+
+
 def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None, health: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
@@ -141,6 +154,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
     seo_lines = _build_seo_text(seo or {})
     alert_block = _build_alert_text(health)
     sales_block = _build_sales_text(health)
+    dq_block = _build_dq_text(health)
 
     return f"""[GovMatch 일일 현황] {today}
 {'─' * 38}
@@ -154,6 +168,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
   어제({yest}) 신규: {u_new}명 (기업 {u_biz} / 개인 {u_ind})
 
 {sales_block}
+{dq_block}
 ▌ 어제({yest}) 활동
   로그인(DAU): {dau}명
   AI 상담: {ai_cnt}건  |  PRO 상담: {pro_cnt}건
@@ -299,6 +314,19 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
             + '</table>'
         )
 
+    _dq = (health or {}).get("data_quality", {}) or {}
+    dq_html = ""
+    if _dq and not _dq.get("error"):
+        dq_html = (
+            '<h3 style="color:#111;font-size:15px;margin-top:20px">&#128202; 데이터 품질 (근본개선 추적)</h3>'
+            '<table style="width:100%;border-collapse:collapse">'
+            + stat_row("개인탭 오분류 의심", f'{_dq.get("misclass_suspect",0)}건')
+            + stat_row("both 잔존", f'{_dq.get("both_count",0)}건')
+            + stat_row("미분류(NULL)", f'{_dq.get("unclassified",0)}건')
+            + stat_row("마감일 미상(NULL)", f'{_dq.get("null_deadline",0)}건 ({_dq.get("null_deadline_rate",0)}%)')
+            + '</table>'
+        )
+
     # SEO HTML 섹션
     seo = seo or {}
     seo_t = seo.get("total", {})
@@ -346,6 +374,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
     {stat_row(f"어제({yest}) 신규", f'{u_new}명 &nbsp;<span style="color:#6b7280;font-weight:normal;font-size:12px">(기업 {u_biz} / 개인 {u_ind})</span>')}
   </table>
   {sales_html}
+  {dq_html}
 
   <h3 style="color:#111;font-size:15px;margin-top:20px">&#9889; 어제({yest}) 활동</h3>
   <table style="width:100%;border-collapse:collapse">

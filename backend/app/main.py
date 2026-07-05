@@ -3421,10 +3421,8 @@ def api_announcements_public(
         _tab_params: list = []
         if target_type:
             if target_type == "individual":
-                if search:
-                    _tab_where += " AND (target_type = 'individual' OR target_type = 'both' OR target_type IS NULL)"
-                else:
-                    _tab_where += " AND target_type = 'individual'"
+                # 개인탭: individual만 (both·NULL 제외, 문제3 혼입 차단) — 검색 유무 무관 통일
+                _tab_where += " AND target_type = 'individual'"
             else:
                 _tab_where += " AND (target_type = 'business' OR target_type = 'both' OR target_type IS NULL)"
         if category:
@@ -3619,8 +3617,8 @@ def api_announcements_public(
         s = f"%{search}%"  # 관련성 정렬용 원본 검색어
     if target_type:
         if target_type == "individual":
-            # 개인탭: individual + both만 — NULL은 기업 기본값이므로 제외 (bokjiro는 수집 시 individual 지정됨)
-            where_clauses.append("(target_type = 'individual' OR target_type = 'both')")
+            # 개인탭: individual만 — both(=개인사업자+법인, 사업자)·NULL(기업 기본값)은 제외 (혼입 차단, 문제3)
+            where_clauses.append("target_type = 'individual'")
         else:
             # 기업탭: business + both + NULL(미분류 = 기업 기본값)
             where_clauses.append("(target_type = 'business' OR target_type = 'both' OR target_type IS NULL)")

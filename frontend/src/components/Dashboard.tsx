@@ -1270,7 +1270,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return rawMatches.filter((m: any) => {
       const tt = m.target_type || "business";
       if (majorTab === "business") return tt === "business" || tt === "both";
-      if (majorTab === "individual") return tt === "individual" || tt === "both";
+      if (majorTab === "individual") return tt === "individual";  // both(사업자)·NULL 제외 (문제3)
       return true;
     });
   }, [rawMatches, majorTab]);

@@ -1281,7 +1281,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
            established_years_limit, revenue_limit, employee_limit
     FROM announcements
     WHERE is_archived = FALSE
-    AND target_type IN ('individual', 'both')
+    AND target_type = 'individual'
     AND (
         (deadline_date IS NOT NULL AND deadline_date >= CURRENT_DATE)
         OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '90 days')

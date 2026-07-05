@@ -182,6 +182,13 @@ _BUSINESS_ONLY_DEPTS = (
     "신용보증기금",
 )
 
+# 개인(복지) 출처라도 제목이 명백히 사업자 대상이면 individual 강제 금지 → Gemini 판단 위임.
+# (bokjiro/gov24 피드에 "소상공인지원(융자)" 등 사업자 공고가 섞여 개인탭 혼입 유발 — 문제3)
+_BUSINESS_TITLE_SIGNALS = (
+    "소상공인", "소공인", "중소기업", "창업기업", "스타트업", "벤처기업",
+    "장애인기업", "판로", "수출",
+)
+
 
 def _apply_source_override(items: list[dict]) -> tuple[dict[int, str], list[dict]]:
     """출처·소관기관 기반 강제 분류. 나머지는 Gemini로 넘김.
@@ -195,9 +202,14 @@ def _apply_source_override(items: list[dict]) -> tuple[dict[int, str], list[dict
         # 1순위: 사업자 전담기관 소관 → 개인피드여도 business (소상공인 자금 구제)
         if any(d in dept for d in _BUSINESS_ONLY_DEPTS):
             forced[it["id"]] = "business"
-        # 2순위: 개인 출처 — 복지 출처가 business로 뒤집히는 것을 영구 차단
+        # 2순위: 개인 출처 — 복지 출처가 business로 뒤집히는 것을 영구 차단.
+        #   단, 제목이 명백히 사업자 대상이면 강제하지 않고 Gemini 판단으로 넘긴다(혼입 차단).
         elif any(s in src for s in _INDIVIDUAL_ONLY_SOURCES):
-            forced[it["id"]] = "individual"
+            title = it.get("title") or ""
+            if any(sig in title for sig in _BUSINESS_TITLE_SIGNALS):
+                remaining.append(it)
+            else:
+                forced[it["id"]] = "individual"
         elif any(s in src for s in _BUSINESS_ONLY_SOURCES):
             forced[it["id"]] = "business"
         else:
@@ -382,20 +394,21 @@ def _classify_and_update(conn, cur, items: list[dict], label: Optional[str]) -> 
             new_type = forced_map[aid]
         elif aid in gemini_map:
             result = gemini_map[aid]
-            raw_type = result.get("type", "both")
+            raw_type = result.get("type", "")
             confidence = result.get("confidence", 80)
-            # 신뢰도 70 미만 → 양쪽 탭에 노출되는 "both"로 안전 처리
+            # 신뢰도 70 미만 → 판단 불가로 NULL(다음 배치 재분류). 'both'로 확정하면
+            # '개인사업자+법인(사업자)'과 '판단불가'가 같은 값에 섞여 의미가 오염됨(문제3 근본).
             if confidence < 70:
-                new_type = "both"
-                logger.info(f"[classifier] id={aid} 신뢰도 낮음({confidence}) → both 처리")
+                new_type = None
+                logger.info(f"[classifier] id={aid} 신뢰도 낮음({confidence}) → NULL(재분류 대기)")
             else:
                 new_type = raw_type
         else:
-            # Gemini 응답에 없는 항목 — 기업으로 추락시키지 않고 both(양쪽 노출)로 안전 처리
-            new_type = "both"
+            # Gemini 응답에 없는 항목 — NULL로 두고 다음 배치 재분류
+            new_type = None
 
-        if new_type not in valid_types:
-            new_type = "both"
+        if new_type is not None and new_type not in valid_types:
+            new_type = None
 
         try:
             cur.execute(

@@ -287,5 +287,32 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     except Exception as e:
         h["sales"] = {"error": str(e)[:80]}
 
+    # 데이터 품질 지표 — 문제2·3 근본개선이 실제로 되는지 매일 실측(추이 추적).
+    try:
+        biz_kw = ("소상공인", "소공인", "중소기업", "창업기업", "스타트업", "벤처기업", "장애인기업")
+        like = " OR ".join(["title ILIKE %s" for _ in biz_kw])
+        with db_conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE target_type='individual' AND ({like})) AS misclass_suspect,
+                    COUNT(*) FILTER (WHERE target_type='both') AS both_count,
+                    COUNT(*) FILTER (WHERE target_type IS NULL) AS unclassified,
+                    COUNT(*) FILTER (WHERE deadline_date IS NULL) AS null_deadline,
+                    COUNT(*) AS total
+                FROM announcements WHERE is_archived = FALSE
+            """, [f"%{k}%" for k in biz_kw])
+            r = cur.fetchone()
+            total = int(r["total"] or 1)
+            null_dl = int(r["null_deadline"] or 0)
+            h["data_quality"] = {
+                "misclass_suspect": int(r["misclass_suspect"] or 0),
+                "both_count": int(r["both_count"] or 0),
+                "unclassified": int(r["unclassified"] or 0),
+                "null_deadline": null_dl,
+                "null_deadline_rate": round(null_dl / total * 100, 1),
+            }
+    except Exception as e:
+        h["data_quality"] = {"error": str(e)[:80]}
+
     h["ok"] = len(alerts) == 0
     return h

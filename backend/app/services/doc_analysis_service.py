@@ -1183,7 +1183,11 @@ def _update_analysis_status(db_conn, announcement_id: int, status: str, attempts
         if attempts_inc:
             parts.append("analysis_attempts = COALESCE(analysis_attempts, 0) + 1")
         if deadline_type:
-            parts.append("deadline_type = %s")
+            if deadline_type == "ongoing":
+                # 기존 deadline_date가 있으면 ongoing으로 덮지 않음 (수집·파싱된 마감일 우선)
+                parts.append("deadline_type = CASE WHEN deadline_date IS NOT NULL THEN deadline_type ELSE %s END")
+            else:
+                parts.append("deadline_type = %s")
             params.append(deadline_type)
         if deadline_date:
             # NULL이면 업데이트, 아니면 보존 (수집 단계에서 들어온 값 우선)
@@ -1206,7 +1210,8 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
     import re as _re
     import datetime as _dt
 
-    # 1) 상시 모집 키워드 우선 감지
+    # 상시 키워드는 미리 계산만 하고, 날짜 추출을 먼저 시도한 뒤 '날짜가 전혀 없을 때만' ongoing 판정.
+    # (본문에 '상시 문의' 등 부수적 상시 단어가 있어도 실제 접수마감일이 있으면 그게 우선 — 문제2 근본 수정)
     ongoing_patterns = ("상시", "연중", "수시", "상시모집", "상시 모집", "마감일 없음", "마감 없음", "예산 소진", "마감일미정")
     search_text = ""
     if isinstance(parsed_sections, dict):
@@ -1216,9 +1221,7 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
         search_text = f"{tl} {(full_text or '')[:2000]}"
     else:
         search_text = (full_text or "")[:2000]
-
-    if any(p in search_text for p in ongoing_patterns):
-        return ("ongoing", None)
+    has_ongoing_kw = any(p in search_text for p in ongoing_patterns)
 
     # candidate_text 결정
     candidate_text = ""
@@ -1291,6 +1294,9 @@ def _detect_deadline_from_analysis(parsed_sections: dict, full_text: str) -> tup
         return ("fixed", best_future.isoformat())
     if best_past:
         return ("expired", best_past.isoformat())
+    # 날짜가 전혀 없을 때만 상시 판정 (부수적 '상시' 단어에 실제 마감일이 덮이지 않도록)
+    if has_ongoing_kw:
+        return ("ongoing", None)
     return ("unknown", None)
 
 

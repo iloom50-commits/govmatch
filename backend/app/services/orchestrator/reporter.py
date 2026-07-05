@@ -95,12 +95,20 @@ def _build_dq_text(health: dict) -> str:
             f"(날짜 {ni.get('n_date',0)} + 상시 {ni.get('n_ongoing',0)} / 신규 {ni.get('n_new',0)}) "
             f"| 원문만 {ni.get('n_raw_only',0)} | 부재 {ni.get('n_absent',0)}\n"
         )
+    l2 = d.get("l2_audit") or {}
+    l2_line = ""
+    if l2.get("conclusive"):
+        l2_line = (
+            f"  L2 표본감사 오분류율: {l2.get('mismatch_rate')}% "
+            f"({l2.get('mismatch',0)}/{l2.get('conclusive',0)} 표본, 무출처 Gemini 재판정)\n"
+        )
     return (
         "▌ 📊 데이터 품질 (근본개선 추적)\n"
         f"  개인탭 오분류 의심: {d.get('misclass_suspect',0)}건 (individual인데 사업자 제목)\n"
         f"  both 잔존: {d.get('both_count',0)}건  |  미분류(NULL): {d.get('unclassified',0)}건\n"
         f"  마감일 미상(NULL): {d.get('null_deadline',0)}건 ({d.get('null_deadline_rate',0)}%)\n"
         + intake_line
+        + l2_line
     )
 
 
@@ -335,6 +343,14 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
                 f'<span style="color:#6b7280;font-weight:normal;font-size:12px">'
                 f'(날짜 {_ni.get("n_date",0)}+상시 {_ni.get("n_ongoing",0)}/신규 {_ni.get("n_new",0)} '
                 f'| 원문만 {_ni.get("n_raw_only",0)} | 부재 {_ni.get("n_absent",0)})</span>')
+        _l2 = _dq.get("l2_audit") or {}
+        _l2_row = ""
+        if _l2.get("conclusive"):
+            _l2_row = stat_row(
+                "L2 표본감사 오분류율",
+                f'<span style="color:#6d28d9">{_l2.get("mismatch_rate")}%</span> '
+                f'<span style="color:#6b7280;font-weight:normal;font-size:12px">'
+                f'({_l2.get("mismatch",0)}/{_l2.get("conclusive",0)} 표본, 무출처 Gemini 재판정)</span>')
         dq_html = (
             '<h3 style="color:#111;font-size:15px;margin-top:20px">&#128202; 데이터 품질 (근본개선 추적)</h3>'
             '<table style="width:100%;border-collapse:collapse">'
@@ -343,6 +359,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
             + stat_row("미분류(NULL)", f'{_dq.get("unclassified",0)}건')
             + stat_row("마감일 미상(NULL)", f'{_dq.get("null_deadline",0)}건 ({_dq.get("null_deadline_rate",0)}%)')
             + _intake_row
+            + _l2_row
             + '</table>'
         )
 

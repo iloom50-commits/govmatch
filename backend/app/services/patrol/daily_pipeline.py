@@ -265,6 +265,16 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④-2 마감일 보강", step_4c_deadlines)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-3. 분류 표본감사 (L2) — 주 1회, 출처강제 없는 Gemini 재판정으로 실오분류율 측정
+    #   keyword 휴리스틱(misclass_suspect) 상한치가 아닌 표본 실측치. 내부 6일 게이팅.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4d_classification_audit():
+        from app.services.patrol.target_type_classifier import weekly_classification_audit
+        return weekly_classification_audit(db_conn, sample_size=50)
+
+    _run_step("④-3 분류 표본감사(L2)", step_4d_classification_audit)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ④-2. 외부 검색 학습 (Google Search → knowledge_base)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4c_search_learn():

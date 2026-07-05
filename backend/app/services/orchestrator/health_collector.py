@@ -335,6 +335,22 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
                 "n_absent": int(nr["n_absent"] or 0),
                 "capture_rate": round(n_captured / n_new * 100, 1) if n_new else None,
             }
+            # [P2-1] L2 표본감사 오분류율 — 출처강제 없는 Gemini 재판정 vs 저장값(최근 8일).
+            # misclass_suspect(키워드 상한치)가 아닌 표본 실측치.
+            cur.execute("""
+                SELECT COUNT(*) FILTER (WHERE new_type IS NOT NULL) AS conclusive,
+                       COUNT(*) FILTER (WHERE new_type IS NOT NULL AND new_type IS DISTINCT FROM old_type) AS mismatch
+                FROM classification_events
+                WHERE method = 'audit' AND created_at >= CURRENT_DATE - INTERVAL '8 days'
+            """)
+            ar = cur.fetchone()
+            _concl = int(ar["conclusive"] or 0)
+            _mis = int(ar["mismatch"] or 0)
+            h["data_quality"]["l2_audit"] = {
+                "conclusive": _concl,
+                "mismatch": _mis,
+                "mismatch_rate": round(_mis / _concl * 100, 1) if _concl else None,
+            }
     except Exception as e:
         h["data_quality"] = {"error": str(e)[:80]}
 

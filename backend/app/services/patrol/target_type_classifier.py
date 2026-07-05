@@ -294,6 +294,72 @@ def ai_classify_pending(conn, batch_size: int = 300) -> dict:
     return _classify_and_update(conn, cur, items, label="pending")
 
 
+def weekly_classification_audit(conn, sample_size: int = 50, force: bool = False) -> dict:
+    """주간 표본감사(L2) — 분류된 공고를 출처강제 없이 Gemini로 재판정, 저장값과 비교.
+
+    측정 전용: classification_events(method='audit')에 기록만 하고 target_type은 바꾸지
+    않는다(출처강제가 individual의 대부분을 담당 — 단일 Gemini 판정으로 뒤집으면 역오염).
+    keyword 휴리스틱 misclass_suspect의 상한치가 아닌 표본 실오분류율을 산출.
+    자기 게이팅: 최근 6일 내 감사가 있으면 스킵(주 1회, force로 우회).
+    """
+    cur = conn.cursor()
+    if not force:
+        cur.execute("SELECT MAX(created_at) AS last FROM classification_events WHERE method = 'audit'")
+        last = cur.fetchone()["last"]
+        if last is not None:
+            cur.execute("SELECT (CURRENT_TIMESTAMP - %s) < INTERVAL '6 days' AS recent", (last,))
+            if cur.fetchone()["recent"]:
+                return {"skipped": "audited within 6 days"}
+
+    cur.execute("""
+        SELECT announcement_id AS id, title, category, summary_text AS summary,
+               origin_source, department, target_type AS old_type
+        FROM announcements
+        WHERE is_archived = FALSE AND target_type IS NOT NULL
+        ORDER BY RANDOM()
+        LIMIT %s
+    """, (sample_size,))
+    rows = [dict(r) for r in cur.fetchall()]
+    if not rows:
+        return {"sampled": 0}
+
+    try:
+        gemini_map = _call_gemini_classify(rows)  # 출처강제 없는 순수 내용 판정
+    except Exception as e:
+        logger.warning(f"[L2 audit] Gemini 재판정 전체 실패: {e}")
+        return {"error": str(e)[:200]}
+
+    valid_types = {"business", "individual", "both"}
+    recorded = conclusive = mismatch = 0
+    for r in rows:
+        aid = r["id"]
+        old = r["old_type"]
+        g = gemini_map.get(aid)
+        if not g:
+            continue
+        conf = g.get("confidence", 0)
+        gtype = g.get("type")
+        # 고신뢰(>=70) + 유효 타입만 판정 반영 — 저신뢰는 inconclusive(new_type NULL)
+        new_type = gtype if (conf >= 70 and gtype in valid_types) else None
+        cur.execute("""
+            INSERT INTO classification_events
+                (announcement_id, old_type, new_type, method, confidence, detail)
+            VALUES (%s, %s, %s, 'audit', %s, %s)
+        """, (aid, old, new_type, conf, (r.get("origin_source") or "")[:200]))
+        recorded += 1
+        if new_type is not None:
+            conclusive += 1
+            if new_type != old:
+                mismatch += 1
+    conn.commit()
+    return {
+        "recorded": recorded,
+        "conclusive": conclusive,
+        "mismatch": mismatch,
+        "mismatch_rate": round(mismatch / conclusive * 100, 1) if conclusive else None,
+    }
+
+
 def reclassify_all(conn, batch_size: int = 20, max_batches: int = 200,
                    backup_label: str = "before_reclassify_all") -> dict:
     """기존 DB 전체 공고 AI 재분류 (1회성 마이그레이션).

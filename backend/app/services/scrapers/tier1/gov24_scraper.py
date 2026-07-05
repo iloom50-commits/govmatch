@@ -124,7 +124,8 @@ class Gov24Scraper(BaseScraper):
                     {
                         "title": title,
                         "origin_url": detail_url,
-                        "deadline_date": None,  # gov24는 마감일 필드 없음
+                        # serviceList가 신청기한 제공(구 주석 '마감일 필드 없음'은 오류) → 관문이 파싱 (P2-2 (d) 복구)
+                        "deadline_raw": _clean(item.get("신청기한") or "") or None,
                         "support_amount": None,
                         "summary_text": summary or None,
                         "region": "전국",

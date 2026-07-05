@@ -55,6 +55,22 @@ def test_gov24_bizinfo_kised_pass_deadline_raw():
     assert n >= 4, "파서 raw 전달 부족: %d곳(kised2+bizinfo+gov24x2 기대)" % n
 
 
+# ── P2-2d: tier1 저장부 통합 + gov24_scraper 수리 ──
+def test_tier1_base_uses_parse_deadline():
+    import app.services.scrapers.tier1.base as t1base
+    src = inspect.getsource(t1base.BaseScraper._save_item)
+    assert "parse_deadline" in src, "tier1 base가 중앙 파서 미사용(이분법 잔존)"
+    assert "deadline_raw_text" in src and "deadline_source" in src, "tier1 INSERT에 원문/기록자 없음"
+    assert '"fixed" if item.get("deadline_date") else "unknown"' not in src, "tier1 이분법 deadline_type 잔존"
+
+
+def test_gov24_scraper_reads_deadline_field():
+    import app.services.scrapers.tier1.gov24_scraper as gov24s
+    src = inspect.getsource(gov24s)
+    assert "신청기한" in src, "gov24_scraper가 신청기한 미판독(98.9% NULL 지속)"
+    assert "gov24는 마감일 필드 없음" not in src, "틀린 주석 잔존"
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

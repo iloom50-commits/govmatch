@@ -73,6 +73,7 @@ class BaseScraper:
           - title (str, 필수)
           - origin_url (str, 필수 — 상세 페이지)
           - deadline_date (str 'YYYY-MM-DD' or None)
+          - deadline_raw (str or None: 마감 원문 — 있으면 저장 관문이 우선 파싱)
           - support_amount (str or None)
           - summary_text (str or None)
           - region (str or None)
@@ -199,6 +200,10 @@ class BaseScraper:
             category = infer_category_from_title(title)
         target_type = item.get("target_type") or None
 
+        # [P2-2] 마감 원문 → 중앙 파서(tier1도 저장 관문 일원화). deadline_raw 우선, 없으면 deadline_date.
+        from app.services.deadline_enricher import parse_deadline
+        _dl_date, _dl_type, _dl_raw = parse_deadline(item.get("deadline_raw") or item.get("deadline_date"))
+
         cur = db_conn.cursor()
         # 중복 체크
         cur.execute(
@@ -215,9 +220,10 @@ class BaseScraper:
             """INSERT INTO announcements
                (title, origin_url, department, region, category, target_type,
                 support_amount, deadline_date, summary_text, origin_source,
-                is_archived, analysis_status, deadline_type, created_at)
+                is_archived, analysis_status, deadline_type, deadline_raw_text,
+                deadline_source, created_at)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       FALSE, 'pending', %s, CURRENT_TIMESTAMP)
+                       FALSE, 'pending', %s, %s, 'collect', CURRENT_TIMESTAMP)
                RETURNING announcement_id""",
             (
                 title[:500],
@@ -227,10 +233,11 @@ class BaseScraper:
                 category,
                 target_type,  # NULL이면 AI 분류(ai_classify_pending)가 처리
                 (item.get("support_amount") or None),
-                item.get("deadline_date") or None,
+                _dl_date,
                 (item.get("summary_text") or "")[:4000] or None,
                 f"scraper:{self.name}",
-                "fixed" if item.get("deadline_date") else "unknown",
+                _dl_type,
+                _dl_raw,
             ),
         )
         db_conn.commit()

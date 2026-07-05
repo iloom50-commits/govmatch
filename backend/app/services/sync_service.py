@@ -398,7 +398,9 @@ class SyncService:
                         THEN EXCLUDED.summary_text
                         ELSE announcements.summary_text
                     END,
-                    target_type = COALESCE(EXCLUDED.target_type, announcements.target_type),
+                    -- 단일 기록자: 기존 분류값 보존, NULL일 때만 수집 하드코딩이 채움.
+                    -- (복지피드 재수집이 매주 분류기 결과를 individual로 되돌리던 것 차단 — 문제3 P0-1)
+                    target_type = COALESCE(announcements.target_type, EXCLUDED.target_type),
                     support_amount = CASE
                         WHEN EXCLUDED.support_amount IS NOT NULL AND EXCLUDED.support_amount != ''
                         THEN EXCLUDED.support_amount

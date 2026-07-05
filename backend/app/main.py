@@ -1615,8 +1615,9 @@ async def lifespan(app):
                             cur.execute(f"""
                                 UPDATE announcements SET is_archived = TRUE
                                 WHERE is_archived = FALSE AND (
-                                    (deadline_date IS NOT NULL AND deadline_date < {kst}
-                                        AND COALESCE(deadline_type,'') <> 'ongoing')
+                                    -- 마감일이 과거면 type 무관 아카이브(ongoing+과거날짜 누수 차단).
+                                    -- 진짜 상시는 deadline_date NULL이라 IS NOT NULL 가드로 안전.
+                                    (deadline_date IS NOT NULL AND deadline_date < {kst})
                                     OR (COALESCE(deadline_type,'unknown') = 'unknown'
                                         AND created_at < {kst} - INTERVAL '3 months')
                                 )
@@ -2783,7 +2784,7 @@ def valid_announcement_where(alias: str = "") -> str:
     kst_today = "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::DATE"
     return (
         f"({p}is_archived = FALSE AND ("
-        f"  {p}deadline_type = 'ongoing'"
+        f"  ({p}deadline_type = 'ongoing' AND ({p}deadline_date IS NULL OR {p}deadline_date >= {kst_today}))"
         f"  OR ({p}deadline_type = 'fixed' AND {p}deadline_date >= {kst_today})"
         f"  OR ({p}deadline_type = 'unknown' AND {p}created_at >= {kst_today} - INTERVAL '3 months'"
         f"      AND ({p}deadline_date IS NULL OR {p}deadline_date >= {kst_today}))"

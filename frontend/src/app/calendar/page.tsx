@@ -66,7 +66,9 @@ export default function CalendarPage() {
   const fetchItems = useCallback(async () => {
     if (!bn) { setLoading(false); return; }
     try {
-      const res = await fetch(`${API}/api/saved/${bn}`);
+      const res = await fetch(`${API}/api/saved/${bn}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
+      });
       const data = await res.json();
       if (data.status === "SUCCESS") setItems(data.data);
     } catch { /* silent */ }
@@ -87,7 +89,10 @@ export default function CalendarPage() {
 
   const handleDelete = async (savedId: number) => {
     try {
-      const res = await fetch(`${API}/api/saved/${savedId}`, { method: "DELETE" });
+      const res = await fetch(`${API}/api/saved/${savedId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
+      });
       const data = await res.json();
       if (data.status === "SUCCESS") {
         toast("일정이 삭제되었습니다.", "success");

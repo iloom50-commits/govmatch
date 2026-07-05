@@ -176,6 +176,47 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* ── 새 배포 감지 → 부드러운 자동 새로고침 (옛 앱 인스턴스가 메모리에 남아 401 등 실패하는 것 방지) ── */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(){
+                try {
+                  var RUNNING = ${JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA || "")};
+                  if (!RUNNING) return;  // 로컬/미배포(SHA 없음)는 동작 안 함
+                  var handled = false;
+                  function onStale(){
+                    if (handled) return; handled = true;
+                    // 1) 배경에서 앱으로 돌아오는 순간 자동 새로고침 (입력 중이 아닌 안전한 시점)
+                    document.addEventListener('visibilitychange', function(){
+                      if (document.visibilityState === 'visible') location.reload();
+                    });
+                    // 2) 계속 보고 있는 사용자: 탭 한 번이면 되는 배너 (단축키 지식 불필요)
+                    if (document.getElementById('__vw_banner')) return;
+                    var b = document.createElement('div');
+                    b.id = '__vw_banner';
+                    b.textContent = '새 버전이 준비됐어요 · 탭하여 새로고침';
+                    b.setAttribute('role','button');
+                    b.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:99999;background:#2563eb;color:#fff;padding:11px 20px;border-radius:9999px;font-size:14px;font-weight:600;box-shadow:0 6px 20px rgba(37,99,235,.35);cursor:pointer;max-width:90vw;text-align:center;';
+                    b.onclick = function(){ location.reload(); };
+                    (document.body || document.documentElement).appendChild(b);
+                  }
+                  function check(){
+                    fetch('/version', { cache: 'no-store' })
+                      .then(function(r){ return r.ok ? r.text() : null; })
+                      .then(function(s){ if (s && s.trim() && s.trim() !== RUNNING) onStale(); })
+                      .catch(function(){});
+                  }
+                  setTimeout(check, 8000);  // 첫 로드 8초 뒤
+                  document.addEventListener('visibilitychange', function(){
+                    if (document.visibilityState === 'visible') check();  // 앱 복귀 시
+                  });
+                  setInterval(check, 300000);  // 5분마다
+                } catch(_) {}
+              })();
+            `,
+          }}
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden flex flex-col min-h-screen`}

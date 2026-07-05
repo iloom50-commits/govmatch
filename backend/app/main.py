@@ -12781,8 +12781,7 @@ def api_public_match_teaser(req: MatchTeaserRequest):
     region = (req.region or "").strip()[:20]
     conn = get_db_connection()
     cur = conn.cursor()
-    _valid = ("(deadline_date >= CURRENT_DATE OR deadline_type='ongoing' "
-              "OR (deadline_date IS NULL AND created_at >= CURRENT_DATE - INTERVAL '60 days'))")
+    _valid = valid_announcement_where()  # 공용 유효필터(KST·만료 상시 가드 포함)
     _biz = "COALESCE(target_type,'business') IN ('business','both')"
     if region and region != "전국":
         _rf = "(region IS NULL OR region ILIKE '%%전국%%' OR region ILIKE %s)"
@@ -12791,10 +12790,10 @@ def api_public_match_teaser(req: MatchTeaserRequest):
         _rf = "TRUE"
         params = []
     try:
-        cur.execute(f"SELECT COUNT(*) AS n FROM announcements WHERE is_archived=FALSE AND {_biz} AND {_valid} AND {_rf}", params)
+        cur.execute(f"SELECT COUNT(*) AS n FROM announcements WHERE {_biz} AND {_valid} AND {_rf}", params)
         support = cur.fetchone()["n"]
         cur.execute(
-            f"SELECT COUNT(*) AS n FROM announcements WHERE is_archived=FALSE AND {_biz} AND {_valid} AND {_rf} "
+            f"SELECT COUNT(*) AS n FROM announcements WHERE {_biz} AND {_valid} AND {_rf} "
             f"AND (title ~ '정책자금|융자|보증|자금|대출' OR category ~ '자금|금융|보증')",
             params,
         )
@@ -15344,7 +15343,8 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                    a.origin_url
             FROM trending_announcements t
             JOIN announcements a ON t.announcement_id = a.announcement_id
-            WHERE t.trending_date >= CURRENT_DATE - INTERVAL '7 days'{tt_filter_sql}
+            WHERE t.trending_date >= CURRENT_DATE - INTERVAL '7 days'
+              AND {valid_announcement_where('a')}{tt_filter_sql}
             ORDER BY t.trending_date DESC, t.rank
             LIMIT 3
         """, tt_params)
@@ -15362,7 +15362,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
-                    WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
+                    WHERE {valid_announcement_where()}
                       AND support_amount IS NOT NULL AND support_amount != ''{fb_tt_sql}
                     ORDER BY
                         CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,
@@ -15408,7 +15408,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                     SELECT announcement_id, title, department, category,
                            support_amount, deadline_date, region, origin_url
                     FROM announcements
-                    WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
+                    WHERE {valid_announcement_where()}
                       AND support_amount IS NOT NULL AND support_amount != ''{_reg_tt_sql}
                       AND (region IS NULL OR region = '' OR region = '전국' OR region = 'All' OR region ILIKE %s)
                       AND title NOT ILIKE %s
@@ -15448,7 +15448,7 @@ def api_trending(target_type: Optional[str] = None, authorization: Optional[str]
                 SELECT announcement_id, title, department, category,
                        support_amount, deadline_date, region, origin_url
                 FROM announcements
-                WHERE (deadline_type = 'ongoing' OR (deadline_type = 'fixed' AND deadline_date >= CURRENT_DATE) OR (deadline_type = 'unknown' AND created_at >= CURRENT_DATE - INTERVAL '3 months')) AND is_archived = FALSE
+                WHERE {valid_announcement_where()}
                   AND support_amount IS NOT NULL AND support_amount != ''{_outer_tt_sql}
                 ORDER BY
                     CASE WHEN support_amount ILIKE '%%억%%' THEN 0 ELSE 1 END,

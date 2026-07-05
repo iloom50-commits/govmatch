@@ -83,6 +83,8 @@ def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
     Returns: {"scanned","fixed","ongoing","unknown"}
     """
     cur = db_conn.cursor()
+    # 미검사(NULL) 또는 7일 지난 것만 스캔 — 같은 원문 반복 재스캔(낭비) 방지.
+    # 미검사·오래된 것 우선(NULLS FIRST) — 최신순 기아(오래된 NULL 영영 미처리) 해소.
     cur.execute(
         """SELECT a.announcement_id AS id, aa.full_text AS ft
            FROM announcements a
@@ -90,7 +92,9 @@ def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
            WHERE a.is_archived = FALSE AND a.deadline_date IS NULL
              AND LENGTH(aa.full_text) > 120
              AND (a.deadline_type IS NULL OR a.deadline_type = 'unknown')
-           ORDER BY a.created_at DESC
+             AND (a.deadline_checked_at IS NULL
+                  OR a.deadline_checked_at < CURRENT_TIMESTAMP - INTERVAL '7 days')
+           ORDER BY a.deadline_checked_at ASC NULLS FIRST, a.created_at ASC
            LIMIT %s""",
         (limit,),
     )
@@ -102,17 +106,22 @@ def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
         typ, dval = enrich_deadline(ft)
         if typ == "fixed" and dval:
             cur.execute(
-                "UPDATE announcements SET deadline_date=%s, deadline_type='fixed' WHERE announcement_id=%s AND deadline_date IS NULL",
+                "UPDATE announcements SET deadline_date=%s, deadline_type='fixed', deadline_checked_at=CURRENT_TIMESTAMP WHERE announcement_id=%s AND deadline_date IS NULL",
                 (dval, aid),
             )
             fixed += 1
         elif typ == "ongoing":
             cur.execute(
-                "UPDATE announcements SET deadline_type='ongoing' WHERE announcement_id=%s AND deadline_type IS DISTINCT FROM 'ongoing'",
+                "UPDATE announcements SET deadline_type='ongoing', deadline_checked_at=CURRENT_TIMESTAMP WHERE announcement_id=%s",
                 (aid,),
             )
             ongoing += 1
         else:
+            # 파싱 실패(원문에 마감 단서 없음) — checked만 마킹해 재스캔 낭비·기아 차단
+            cur.execute(
+                "UPDATE announcements SET deadline_checked_at=CURRENT_TIMESTAMP WHERE announcement_id=%s",
+                (aid,),
+            )
             unknown += 1
     db_conn.commit()
     return {"scanned": len(rows), "fixed": fixed, "ongoing": ongoing, "unknown": unknown}

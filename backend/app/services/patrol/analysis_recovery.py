@@ -170,7 +170,8 @@ def preanalyze_priority_categories(
 def discover_unanalyzed(db_conn, limit: int = 100) -> Dict[str, Any]:
     """분석되지 않은 공고를 자동 등록.
     아직 analysis_failures에도 없고 announcement_analysis에도 없는 항목을 큐에 추가.
-    origin_url이 있는 공고를 우선 처리.
+    origin_url이 있는 공고를 대상으로, 마감 미상(deadline_date NULL)을 우선 처리
+    (원문 확보→enricher가 마감 채움. 문제2 근본, P1-3).
     """
     cur = db_conn.cursor()
 
@@ -183,7 +184,7 @@ def discover_unanalyzed(db_conn, limit: int = 100) -> Dict[str, Any]:
           AND af.id IS NULL
           AND a.origin_url IS NOT NULL AND a.origin_url != ''
           AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
-        ORDER BY a.created_at DESC
+        ORDER BY (a.deadline_date IS NULL) DESC, a.created_at DESC
         LIMIT %s
     """, (limit,))
     candidates = cur.fetchall()

@@ -243,6 +243,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # enricher 재스캔 마킹 — unknown(파싱 실패)도 checked 처리해 재스캔 낭비·기아 방지 (문제2 근본, P1-3)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deadline_checked_at TIMESTAMP")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)

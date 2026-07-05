@@ -1,4 +1,5 @@
 import re
+import os
 import psycopg2
 import psycopg2.extras
 import asyncio
@@ -18,6 +19,29 @@ import json
 
 # 연속 실패 임계값: 이 횟수 이상이면 자동 복구 시도
 _FAIL_THRESHOLD = 3
+
+
+def _select_recovery_targets(candidates, max_rec, now, rate_limit_days=7):
+    """복구 시도 대상 선별 — 도메인 중복 제거 + N일 rate-limit + 상한.
+
+    candidates: fail_count>=_FAIL_THRESHOLD인 target dict 리스트
+                (last_recovery_attempt 포함 — run_batch의 SELECT * 결과).
+    반환: 실제 복구를 시도할 후보(입력 순서 유지).
+    """
+    selected = []
+    tried_domains = set()
+    for c in candidates:
+        if len(selected) >= max_rec:
+            break
+        dom = urlparse(c["url"]).netloc
+        if dom in tried_domains:
+            continue  # 같은 도메인(예: CCEI 14개 센터)은 회당 1회만
+        lra = c.get("last_recovery_attempt")
+        if lra and (now - lra).days < rate_limit_days:
+            continue  # 최근 시도한 URL은 rate-limit
+        tried_domains.add(dom)
+        selected.append(c)
+    return selected
 
 # 공고 목록에서 개별 링크로 보기 어려운 텍스트 패턴
 _SKIP_LINK_TEXTS = {
@@ -311,6 +335,29 @@ class AdminScraper:
             print(f"     루트 도메인 접속 실패: {e}")
             return False
 
+    async def _run_recovery_pass(self, candidates, browser, cursor, conn, max_rec, now) -> dict:
+        """복구 후보 선별 후 각각 _try_recover_url 시도 — 성공 집계 + 예외 격리.
+        (run_all 216~224행 복구 블록의 run_batch용 이관)"""
+        selected = _select_recovery_targets(candidates, max_rec, now)
+        recovered = 0
+        for cand in selected:
+            try:
+                # 시도 시각 먼저 기록 → 실패해도 7일 rate-limit 걸림
+                cursor.execute(
+                    "UPDATE admin_urls SET last_recovery_attempt = %s WHERE id = %s",
+                    (now.isoformat(), cand["id"]),
+                )
+                conn.commit()
+                if await self._try_recover_url(cand, browser, cursor, conn):
+                    recovered += 1
+            except Exception as _re:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                print(f"     [recovery] {cand.get('source_name','?')} 복구 오류(건너뜀): {_re}")
+        return {"attempted": len(selected), "recovered": recovered}
+
     async def _scrape_target(self, url: str, browser) -> list[dict]:
         """목록 페이지이면 개별 링크를 수집하고, 단일 공고이면 직접 분석"""
         list_page = await browser.new_page()
@@ -484,6 +531,8 @@ class AdminScraper:
 
         total_saved = 0
         total_failed = 0
+        recovery_candidates = []
+        recovery = {"attempted": 0, "recovered": 0}
         start_time = time.time()
 
         async with async_playwright() as p:
@@ -529,6 +578,9 @@ class AdminScraper:
                         """, (datetime.now().isoformat(), new_fail_count, error_reason[:500], target_id))
                         conn.commit()
                         print(f"     실패 (연속 {new_fail_count}회): {error_reason[:80]}")
+                        if new_fail_count >= _FAIL_THRESHOLD:
+                            # target은 SELECT * 결과라 last_recovery_attempt 포함
+                            recovery_candidates.append({**target, "fail_count": new_fail_count})
                 except Exception as _te:
                     # 이 기관 처리 실패 → 트랜잭션 복구 후 다음 기관으로 (배치 지속)
                     total_failed += 1
@@ -538,6 +590,12 @@ class AdminScraper:
                         pass
                     print(f"     [AdminBatch] {target.get('source_name','?')} 처리 오류(건너뜀): {_te}")
 
+            # ── 자동 복구 패스: 연속 실패(>=3) URL 재탐색 (run_all 복구 이관) ──
+            recovery = await self._run_recovery_pass(
+                recovery_candidates, browser, cursor, conn,
+                int(os.getenv("MAX_URL_RECOVERY", "3")), datetime.now(),
+            )
+
             await browser.close()
 
         conn.close()
@@ -545,6 +603,8 @@ class AdminScraper:
             "processed": len(targets),
             "saved": total_saved,
             "failed": total_failed,
+            "recovery_attempted": recovery["attempted"],
+            "recovered": recovery["recovered"],
             "elapsed": round(time.time() - start_time, 1),
         }
 

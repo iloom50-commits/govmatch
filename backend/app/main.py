@@ -213,6 +213,15 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # admin_urls.last_recovery_attempt — URL 자동복구 7일 rate-limit용 (기능 1)
+        try:
+            cursor.execute("""
+                ALTER TABLE admin_urls ADD COLUMN IF NOT EXISTS last_recovery_attempt TIMESTAMP
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)

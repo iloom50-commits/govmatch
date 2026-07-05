@@ -48,6 +48,14 @@ def test_helper_guards_expired_ongoing():
     assert "deadline_date IS NULL OR" in sql, "ongoing NULL/미래 가드 없음"
 
 
+def test_no_hardcoded_valid_filter_in_admin_batches():
+    """관리자 배치 8곳 포함 — main.py 전체에 무가드 ongoing 유효필터가 없어야(P1-2-admin)."""
+    src = inspect.getsource(m)
+    # alias 'a.' 버전(관리자 분석 배치)의 무가드 리터럴 잔존 금지
+    assert "deadline_type = 'ongoing' OR (a.deadline_type = 'fixed'" not in src, \
+        "관리자 배치에 무가드 ongoing 유효필터 잔존(만료 상시 분석 낭비·누수)"
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

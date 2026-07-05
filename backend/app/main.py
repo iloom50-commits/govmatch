@@ -7751,7 +7751,7 @@ def api_analyze_batch_broad(req: AdminAuthRequest):
         WHERE aa.id IS NULL
           AND a.origin_url IS NOT NULL
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
         ORDER BY a.announcement_id DESC
         LIMIT %s
     """, (MAX_ITEMS,))
@@ -7762,7 +7762,7 @@ def api_analyze_batch_broad(req: AdminAuthRequest):
         LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE aa.id IS NULL AND a.origin_url IS NOT NULL
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 50
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
     """)
     remaining_total = cur.fetchone()["cnt"]
 
@@ -7850,7 +7850,7 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
             WHERE aa.id IS NULL
               AND a.support_amount IS NOT NULL AND a.support_amount != ''
               AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
-              AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+              AND """ + valid_announcement_where('a') + """
             ORDER BY amt_priority ASC,
                      CASE WHEN a.deadline_date IS NULL THEN 1 ELSE 0 END,
                      a.deadline_date ASC NULLS LAST,
@@ -7871,7 +7871,7 @@ def api_analyze_batch_priority(req: AdminAuthRequest):
         WHERE aa.id IS NULL
           AND a.support_amount IS NOT NULL AND a.support_amount != ''
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) >= 200
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
     """)
     _cnt_row = cur.fetchone()
     total_remaining = dict(_cnt_row)["cnt"] if _cnt_row else 0
@@ -9717,7 +9717,7 @@ def api_embeddings_reembed_analyzed(req: AdminAuthRequest):
         JOIN announcements a ON a.announcement_id = aa.announcement_id
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
         ORDER BY a.announcement_id
         LIMIT %s
     """, (MAX_ITEMS,))
@@ -9794,7 +9794,7 @@ def api_embeddings_reembed_analyzed(req: AdminAuthRequest):
         JOIN announcements a ON a.announcement_id = aa.announcement_id
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE (e.source_text IS NULL OR e.source_text NOT LIKE '%%자격요건%%')
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
     """)
     remaining = cur.fetchone()["c"]
     conn.close()
@@ -9868,7 +9868,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         LEFT JOIN announcement_analysis aa ON a.announcement_id = aa.announcement_id
         WHERE e.announcement_id IS NULL
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
         ORDER BY
             CASE WHEN a.origin_source IN ('smes24-api','kised-api','bizinfo-api','bizinfo-portal-api','bizinfo','kosme','smba') THEN 0
@@ -9967,7 +9967,7 @@ def api_embeddings_batch(req: AdminAuthRequest):
         SELECT COUNT(*) AS remaining FROM announcements a
         LEFT JOIN announcement_embeddings e ON a.announcement_id = e.announcement_id
         WHERE e.announcement_id IS NULL
-          AND (a.deadline_type = 'ongoing' OR (a.deadline_type = 'fixed' AND a.deadline_date >= CURRENT_DATE) OR (a.deadline_type = 'unknown' AND a.created_at >= CURRENT_DATE - INTERVAL '3 months')) AND a.is_archived = FALSE
+          AND """ + valid_announcement_where('a') + """
           AND a.summary_text IS NOT NULL AND LENGTH(a.summary_text) > 50
     """)
     remaining = cur.fetchone()["remaining"]

@@ -193,12 +193,16 @@ class SyncService:
         except Exception as e:
             print(f"  Government API error: {e}")
 
-        # 2. Admin Targeted URLs (Dynamic AI Scraping) + 헬스체크
+        # 2. Admin Targeted URLs — run_batch(파이프라인 step ②-1)로 일원화.
+        #    run_all(전체 스캔)은 이중배선 + 중도사망(167개 중 ~34개만 처리 후 사망)으로
+        #    매일 ~85분·AI 분석비 중복 낭비 → 기본 off. ADMIN_FULL_SCAN=true일 때만
+        #    수동 전체 스캔(문제 시 env 한 줄로 즉시 되돌리기 가능).
         try:
-            print("  Processing Admin Targeted URLs...")
-            await admin_scraper.run_all()
+            if os.getenv("ADMIN_FULL_SCAN") == "true":
+                print("  Processing Admin Targeted URLs (FULL SCAN)...")
+                await admin_scraper.run_all()
 
-            # 동기화 후 실패 URL 알림
+            # 수집 실패 URL 알림 (get_health_report는 DB만 읽음 — run_batch 결과 기준으로도 유효)
             health = admin_scraper.get_health_report()
             if health["critical"] > 0:
                 print(f"  [Alert] 수집 실패 URL {health['critical']}개 — 관리자 알림 발송")

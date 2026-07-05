@@ -71,6 +71,14 @@ def test_gov24_scraper_reads_deadline_field():
     assert "gov24는 마감일 필드 없음" not in src, "틀린 주석 잔존"
 
 
+# ── P2-2e: admin_scraper 되돌림 가드 (P0-1 패턴 현존 버그 수리) ──
+def test_admin_scraper_deadline_reversal_guard():
+    import app.services.admin_scraper as adm
+    src = inspect.getsource(adm.AdminScraper._save_to_db)
+    assert "deadline_date=COALESCE(%s, deadline_date)" in src, \
+        "admin UPDATE 되돌림 가드 없음(AI None이 기존 마감 파괴)"
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

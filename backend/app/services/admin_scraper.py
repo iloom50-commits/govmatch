@@ -441,7 +441,8 @@ class AdminScraper:
                 cursor.execute(
                     """UPDATE announcements SET
                         title=%s, summary_text=%s, eligibility_logic=%s,
-                        department=%s, category=%s, origin_source=%s, deadline_date=%s,
+                        department=%s, category=%s, origin_source=%s,
+                        deadline_date=COALESCE(%s, deadline_date),
                         region=COALESCE(NULLIF(%s, ''), region)
                     WHERE origin_url=%s""",
                     (

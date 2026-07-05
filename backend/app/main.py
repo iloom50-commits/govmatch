@@ -250,6 +250,14 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 수집단 마감 원문 보존 + 기록자 귀속 — 파서가 실패해도 원문 안 버림 + 손실 측정 (문제2 근본, P2-2)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deadline_raw_text VARCHAR(200)")
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deadline_source VARCHAR(20)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)

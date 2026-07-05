@@ -57,7 +57,7 @@ def _build_alert_text(health: dict) -> str:
     bl = health.get("analysis_backlog", {}) or {}
     lines += (
         f"  · 기관수집 {admin.get('age_days','?')}일전 | "
-        f"이메일 {dig.get('age_days','?')}일전 | 분석백로그 {bl.get('open','?')}\n"
+        f"이메일 {dig.get('age_days','?')}일전 | 분석실패 {bl.get('real_fail', bl.get('open','?'))}\n"
     )
     if api:
         parts = []
@@ -210,7 +210,7 @@ def _build_alert_html(health: dict) -> str:
         f'{" · " + api_str if api_str else ""}</p>'
         '<p style="color:#6b7280;font-size:12px;margin:2px 0 0">'
         f'기관수집 {admin.get("age_days","?")}일전 · 이메일 {dig.get("age_days","?")}일전 · '
-        f'분석백로그 {bl.get("open","?")}</p>'
+        f'분석실패 {bl.get("real_fail", bl.get("open","?"))}</p>'
     )
     return box
 

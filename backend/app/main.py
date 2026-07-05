@@ -1537,7 +1537,12 @@ async def lifespan(app):
                     from app.services.issue_monitor import run_issue_monitoring
                     result = run_issue_monitoring(auto_activate=False)
                     print(f"[issue_monitor] 완료: {result}")
-                    _log_system("issue_monitor", "system", f"Hot이슈 자동 생성: {result.get('saved',0)}건", "success")
+                    # 에러(예: RSS 소스 사망)를 success로 숨기지 않는다 — 실제 상태로 로깅
+                    if result.get("error"):
+                        _log_system("issue_monitor", "system",
+                                    f"Hot이슈 실패: {result.get('error')} (수집 {result.get('collected', 0)}건)", "error")
+                    else:
+                        _log_system("issue_monitor", "system", f"Hot이슈 자동 생성: {result.get('saved',0)}건", "success")
                 except Exception as e:
                     print(f"[issue_monitor] 오류: {e}")
 

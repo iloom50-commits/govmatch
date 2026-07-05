@@ -144,25 +144,31 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     except Exception as e:
         h["admin_scraper"] = {"error": str(e)[:80]}
 
-    # 4c. 소스별 수집 신선도 — 7일+ 정체한 활성 소스 (A-8/B-2: 전체 MAX만 보면 못 잡음)
+    # 4c. 스크래퍼 이상 감지 — scraper_runs(실행+상태) 기준.
+    #   과거엔 announcements.created_at MAX로 판단해, 스크래퍼가 정상 실행돼도 신규가
+    #   전부 중복이면 "정체"로 오판(ulsan_tp found=143인데 56일 정체로 표시). 실제 문제는
+    #   "스크래퍼가 안 돌거나(3일+ 미실행) 에러 상태"이므로 그것만 경보. empty(무공고)는 제외.
     try:
         cur.execute("""
-            SELECT origin_source,
-                   EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS age
-            FROM announcements
-            WHERE origin_source IS NOT NULL
-            GROUP BY origin_source HAVING COUNT(*) >= 20
+            WITH latest AS (
+                SELECT DISTINCT ON (source) source, status,
+                       EXTRACT(EPOCH FROM (NOW() - started_at)) / 86400 AS age
+                FROM scraper_runs
+                ORDER BY source, started_at DESC
+            )
+            SELECT source, status, age FROM latest
+            WHERE status = 'error' OR age > 3
         """)
-        stale = sorted(
-            [(row["origin_source"], float(row["age"] or 0)) for row in cur.fetchall()
-             if float(row["age"] or 0) > 7],
-            key=lambda x: -x[1],
+        bad = sorted(
+            [(r["source"], r["status"], float(r["age"] or 0)) for r in cur.fetchall()],
+            key=lambda x: -x[2],
         )
-        h["stale_sources"] = [f"{s}({a:.0f}d)" for s, a in stale[:8]]
-        if len(stale) >= 5:
-            alerts.append(f"🚨 수집 정체 소스 {len(stale)}개(7일+): {', '.join(s for s, _ in stale[:5])} 등")
+        h["scraper_issues"] = [f"{s}({st},{a:.0f}d)" for s, st, a in bad[:10]]
+        if len(bad) >= 3:
+            names = ", ".join(s for s, _, _ in bad[:5])
+            alerts.append(f"🚨 스크래퍼 이상 {len(bad)}개(에러 or 3일+ 미실행): {names} 등")
     except Exception as e:
-        h["stale_sources"] = {"error": str(e)[:80]}
+        h["scraper_issues"] = {"error": str(e)[:80]}
 
     # 4d. 다이제스트/이메일 발송 (B-1)
     #   다이제스트는 평일(월~금, UTC)만 발송 → 주말(토·일)의 정체는 정상이므로 경보 제외.
@@ -220,18 +226,23 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     except Exception as e:
         h["billing"] = {"error": str(e)[:80]}
 
-    # 4f. 분석 실패 백로그 (B-4)
+    # 4f. 분석 실패 백로그 (B-4) — pending_first_analysis(첫 분석 대기 큐)는 실패가 아니므로
+    #     제외하고, 실제 실패(gemini_empty/extract_empty 등)만 경보. 큐와 실패를 구분.
     try:
         cur.execute("""
-            SELECT COUNT(*) FILTER (WHERE resolved_at IS NULL) AS open_n,
-                   COUNT(*) FILTER (WHERE resolved_at IS NULL AND retry_count >= 5) AS exhausted
+            SELECT
+                COUNT(*) FILTER (WHERE resolved_at IS NULL AND error_type <> 'pending_first_analysis') AS real_fail,
+                COUNT(*) FILTER (WHERE resolved_at IS NULL AND error_type = 'pending_first_analysis') AS pending,
+                COUNT(*) FILTER (WHERE resolved_at IS NULL AND retry_count >= 5) AS exhausted
             FROM analysis_failures
         """)
         r = cur.fetchone()
-        open_n = int(r["open_n"] or 0)
-        h["analysis_backlog"] = {"open": open_n, "exhausted": int(r["exhausted"] or 0)}
-        if open_n >= 5000:
-            alerts.append(f"⚠️ 분석 실패 백로그 {open_n:,}건 누적 (재시도소진 {int(r['exhausted'] or 0)})")
+        real_fail = int(r["real_fail"] or 0)
+        pending = int(r["pending"] or 0)
+        h["analysis_backlog"] = {"open": real_fail + pending, "real_fail": real_fail,
+                                 "pending": pending, "exhausted": int(r["exhausted"] or 0)}
+        if real_fail >= 1000:
+            alerts.append(f"⚠️ 분석 실패 {real_fail:,}건 (대기큐 {pending:,} 별도, 재시도소진 {int(r['exhausted'] or 0)})")
     except Exception as e:
         h["analysis_backlog"] = {"error": str(e)[:80]}
 

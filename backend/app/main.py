@@ -222,6 +222,27 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 분류 결정 로깅 — 왜 그 target_type이 됐는지 감사 + 오분류율 정밀 추적 (문제3 근본, P1-1)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS tt_method VARCHAR(30)")
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS tt_confidence SMALLINT")
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS tt_decided_at TIMESTAMP")
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS tt_attempts SMALLINT DEFAULT 0")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS classification_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    announcement_id INTEGER NOT NULL,
+                    old_type VARCHAR(20), new_type VARCHAR(20),
+                    method VARCHAR(30) NOT NULL, confidence SMALLINT,
+                    detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ce_aid ON classification_events (announcement_id)")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)

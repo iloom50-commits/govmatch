@@ -75,6 +75,76 @@ def enrich_deadline(full_text: Optional[str]) -> Tuple[str, Optional[str]]:
     return ("unknown", None)
 
 
+# ── 수집단 중앙 마감 파서 (P2-2) ──
+# 상시/무기한 키워드 — 기존 3벌의 합집합(enricher _SANGSI + sync _ongoing_patterns
+# + public_api always_open_kw). 전부 이미 프로덕션 ongoing 판정에 쓰이던 것이라 통합=무회귀.
+_ONGOING_RE = re.compile(
+    r"상시|연중|수시"
+    r"|예산\s*소진|소진\s*시"
+    r"|마감일?\s*없|마감일?\s*미정|기간\s*없"
+    r"|해당\s*시|매월|매년|사유\s*발생"
+)
+# 완전 날짜(연도 포함): YYYYMMDD / YYYY[.-/]M[.-/]D (공백 혼입 허용)
+_YMD8_RE = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)")
+_YMD_SEP_RE = re.compile(r"(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})")
+
+
+def _extract_full_date(seg: Optional[str]) -> Optional[str]:
+    """세그먼트에서 '연도 포함' 완전 날짜 1개를 ISO로. 연도 없으면 None(날조 금지)."""
+    if not seg:
+        return None
+    s = str(seg)
+    m = _YMD8_RE.search(s)
+    if m:
+        d = _mk_date(m.group(1), m.group(2), m.group(3))
+        if d:
+            return d
+    m = _YMD_SEP_RE.search(s)
+    if m:
+        return _mk_date(m.group(1), m.group(2), m.group(3))
+    return None
+
+
+def parse_deadline(raw) -> Tuple[Optional[str], str, Optional[str]]:
+    """수집 마감 원문 → (date_iso|None, deadline_type, raw_text|None).
+
+    수집단 단일 파서(중앙화). 파서는 원본 마감 필드를 그대로 넘기고, 날짜 정규화·상시
+    판정·원문 보존을 여기서 일괄 수행 → 파서가 무엇을 흘려도 관문이 잡는다.
+    - deadline_type: 'fixed'(유효 종료일) / 'ongoing'(상시·무기한) / 'unknown'
+    - raw_text: strip한 원문 앞 200자. 빈값이면 None(= 진짜 부재의 측정 신호).
+    - 연도 없는 날짜는 만들지 않는다(unknown + raw 보존). expired 전환은 호출측 책임.
+    """
+    if raw is None:
+        return (None, "unknown", None)
+    s = str(raw).strip()
+    if not s:
+        return (None, "unknown", None)
+    raw_text = s[:200]
+
+    # 무기한 관례값(99991231)은 날짜로 오인 전에 먼저 ongoing 처리
+    if re.sub(r"\D", "", s) == "99991231":
+        return (None, "ongoing", raw_text)
+
+    if "~" in s:
+        # '~' 기간: 마지막 '~' 뒤(종료)에서 완전 날짜 추출
+        head, tail = s.rsplit("~", 1)
+        end_date = _extract_full_date(tail)
+        if end_date:
+            start_date = _extract_full_date(head)
+            if start_date and end_date < start_date:
+                return (None, "unknown", raw_text)  # 역전 범위(이상) → 미상
+            return (end_date, "fixed", raw_text)
+    else:
+        d = _extract_full_date(s)
+        if d:
+            return (d, "fixed", raw_text)
+
+    # 완전 종료일 없음 → 상시 키워드면 ongoing, 아니면 미상(원문 보존)
+    if _ONGOING_RE.search(s):
+        return (None, "ongoing", raw_text)
+    return (None, "unknown", raw_text)
+
+
 def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
     """NULL 마감일 공고를 full_text로 보강 (파이프라인 단계용).
 

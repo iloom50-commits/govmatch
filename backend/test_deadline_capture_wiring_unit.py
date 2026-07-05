@@ -79,6 +79,20 @@ def test_admin_scraper_deadline_reversal_guard():
         "admin UPDATE 되돌림 가드 없음(AI None이 기존 마감 파괴)"
 
 
+# ── P2-2f: 측정 노출 (신규 유입분 마감 확보율) ──
+def test_reporter_renders_new_intake_capture_rate():
+    import app.services.orchestrator.reporter as rep
+    health = {"data_quality": {
+        "misclass_suspect": 0, "both_count": 0, "unclassified": 0,
+        "null_deadline": 0, "null_deadline_rate": 0.0,
+        "new_intake": {"n_new": 100, "n_date": 40, "n_ongoing": 30,
+                       "n_raw_only": 10, "n_absent": 20, "capture_rate": 70.0}}}
+    txt = rep._build_dq_text(health)
+    assert "신규 마감 확보율: 70.0%" in txt, "리포트 텍스트에 신규 확보율 미노출"
+    src = inspect.getsource(rep)
+    assert "new_intake" in src and "신규 마감 확보율" in src, "HTML 측정 노출 배선 없음"
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

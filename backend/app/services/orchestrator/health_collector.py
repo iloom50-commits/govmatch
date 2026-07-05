@@ -311,6 +311,30 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
                 "null_deadline": null_dl,
                 "null_deadline_rate": round(null_dl / total * 100, 1),
             }
+            # [P2-2] 어제 신규 유입분 마감 확보율(선행지표) — 수집 근본해결 여부를 매일 실측.
+            # 스톡 NULL율(위)은 후행지표. 확보=날짜 or 상시. raw만/완전부재는 책임 분리용.
+            cur.execute("""
+                SELECT COUNT(*) AS n_new,
+                       COUNT(*) FILTER (WHERE deadline_date IS NOT NULL) AS n_date,
+                       COUNT(*) FILTER (WHERE deadline_date IS NULL AND deadline_type = 'ongoing') AS n_ongoing,
+                       COUNT(*) FILTER (WHERE deadline_date IS NULL AND deadline_type IS DISTINCT FROM 'ongoing'
+                                          AND deadline_raw_text IS NOT NULL) AS n_raw_only,
+                       COUNT(*) FILTER (WHERE deadline_date IS NULL AND deadline_type IS DISTINCT FROM 'ongoing'
+                                          AND deadline_raw_text IS NULL) AS n_absent
+                FROM announcements
+                WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'
+            """)
+            nr = cur.fetchone()
+            n_new = int(nr["n_new"] or 0)
+            n_captured = int(nr["n_date"] or 0) + int(nr["n_ongoing"] or 0)
+            h["data_quality"]["new_intake"] = {
+                "n_new": n_new,
+                "n_date": int(nr["n_date"] or 0),
+                "n_ongoing": int(nr["n_ongoing"] or 0),
+                "n_raw_only": int(nr["n_raw_only"] or 0),
+                "n_absent": int(nr["n_absent"] or 0),
+                "capture_rate": round(n_captured / n_new * 100, 1) if n_new else None,
+            }
     except Exception as e:
         h["data_quality"] = {"error": str(e)[:80]}
 

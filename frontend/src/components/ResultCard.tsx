@@ -171,6 +171,7 @@ interface Result {
   bucket_label?: string;
   reasons?: { icon: string; label: string }[];
   deadline_date?: string;
+  deadline_type?: string;
   summary_text?: string;
   region?: string;
   established_years_limit?: number;
@@ -218,10 +219,15 @@ const SOURCE_KR: Record<string, string> = {
   "gov24-api": "정부24",
 };
 
-function getDDayInfo(dateStr?: string): { text: string; days: number | null; urgency: "expired" | "critical" | "warning" | "normal" | "open" } {
-  if (!dateStr) return { text: "상시모집", days: null, urgency: "open" };
+function getDDayInfo(dateStr?: string, deadlineType?: string): { text: string; days: number | null; urgency: "expired" | "critical" | "warning" | "normal" | "open" | "unknown" } {
+  // 날짜가 없으면: 진짜 상시(ongoing)만 "상시모집", 그 외(unknown·미상)는 "마감 확인 필요"로 정직 표기.
+  // (마감일 파싱 실패분을 "상시모집"으로 오표기하던 것 차단 — 문제2 정직표시)
+  if (!dateStr || isNaN(new Date(dateStr).getTime())) {
+    return deadlineType === "ongoing"
+      ? { text: "상시모집", days: null, urgency: "open" }
+      : { text: "마감 확인 필요", days: null, urgency: "unknown" };
+  }
   const target = new Date(dateStr);
-  if (isNaN(target.getTime())) return { text: "상시모집", days: null, urgency: "open" };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -239,6 +245,7 @@ const URGENCY_STYLES: Record<string, string> = {
   warning: "bg-amber-50 text-amber-700 border-amber-200",
   normal: "bg-emerald-50 text-emerald-600 border-emerald-100",
   open: "bg-sky-50 text-sky-600 border-sky-100",
+  unknown: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
 const URGENCY_BAR: Record<string, string> = {
@@ -247,6 +254,7 @@ const URGENCY_BAR: Record<string, string> = {
   warning: "bg-amber-400",
   normal: "bg-emerald-400",
   open: "bg-sky-400",
+  unknown: "bg-slate-300",
 };
 
 
@@ -267,7 +275,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const isExpired = !isPublic && planStatus?.plan === "expired";
   const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
   const { toast } = useToast();
-  const dDay = getDDayInfo(res.deadline_date);
+  const dDay = getDDayInfo(res.deadline_date, res.deadline_type);
   const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
   const rawSource = (res.origin_source || "").trim();
   const sourceKey = rawSource.includes(":") ? rawSource.split(":")[0] : rawSource;

@@ -1340,7 +1340,7 @@ def _prewarm_response_cache(startup: bool = False):
                 cur.execute(
                     f"""SELECT announcement_id, title, region, category, department,
                                support_amount, support_amount_max, support_amount_min, support_amount_type,
-                               deadline_date, origin_source, created_at,
+                               deadline_date, deadline_type, origin_source, created_at,
                                COALESCE(target_type, 'business') AS target_type,
                                origin_url, summary_text, eligibility_logic,
                                established_years_limit, revenue_limit, employee_limit
@@ -2931,7 +2931,7 @@ def api_announcements_public(
                             _pcur.execute(
                                 f"""SELECT announcement_id, title, region, category, department,
                                            support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                           deadline_date, origin_source, created_at,
+                                           deadline_date, deadline_type, origin_source, created_at,
                                            COALESCE(target_type, 'business') AS target_type,
                                            origin_url, summary_text, eligibility_logic,
                                            established_years_limit, revenue_limit, employee_limit
@@ -2987,7 +2987,7 @@ def api_announcements_public(
                         _pcur.execute(
                             f"""SELECT announcement_id, title, region, category, department,
                                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                       deadline_date, origin_source, created_at,
+                                       deadline_date, deadline_type, origin_source, created_at,
                                        COALESCE(target_type, 'business') AS target_type,
                                        origin_url, summary_text, eligibility_logic,
                                        established_years_limit, revenue_limit, employee_limit
@@ -3138,7 +3138,7 @@ def api_announcements_public(
                         f"""WITH ann AS (
                                 SELECT announcement_id, title, region, category, department,
                                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                       deadline_date, origin_source, created_at,
+                                       deadline_date, deadline_type, origin_source, created_at,
                                        COALESCE(target_type, 'business') AS target_type,
                                        origin_url, summary_text, eligibility_logic,
                                        established_years_limit, revenue_limit, employee_limit,
@@ -3380,7 +3380,7 @@ def api_announcements_public(
         _m_cur.execute(
             f"""SELECT announcement_id, title, region, category, department,
                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                       deadline_date, origin_source, created_at,
+                       deadline_date, deadline_type, origin_source, created_at,
                        COALESCE(target_type, 'business') AS target_type,
                        origin_url, summary_text, eligibility_logic,
                        established_years_limit, revenue_limit, employee_limit,
@@ -3464,7 +3464,7 @@ def api_announcements_public(
         _tab_cur.execute(
             f"""SELECT announcement_id, title, region, category, department,
                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                       deadline_date, origin_source, created_at,
+                       deadline_date, deadline_type, origin_source, created_at,
                        COALESCE(target_type, 'business') AS target_type,
                        origin_url, summary_text, eligibility_logic,
                        established_years_limit, revenue_limit, employee_limit
@@ -3671,7 +3671,7 @@ def api_announcements_public(
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
                    support_amount, support_amount_max, support_amount_min, support_amount_type,
-                   deadline_date, origin_source, created_at,
+                   deadline_date, deadline_type, origin_source, created_at,
                    COALESCE(target_type, 'business') AS target_type,
                    origin_url, summary_text, eligibility_logic,
                    established_years_limit, revenue_limit, employee_limit

@@ -165,16 +165,19 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
         h["stale_sources"] = {"error": str(e)[:80]}
 
     # 4d. 다이제스트/이메일 발송 (B-1)
+    #   다이제스트는 평일(월~금, UTC)만 발송 → 주말(토·일)의 정체는 정상이므로 경보 제외.
     try:
         cur.execute("""
             SELECT EXTRACT(EPOCH FROM (NOW() - MAX(sent_at))) / 86400 AS age,
-                   COUNT(*) FILTER (WHERE sent_at >= NOW() - INTERVAL '1 day') AS d1
+                   COUNT(*) FILTER (WHERE sent_at >= NOW() - INTERVAL '1 day') AS d1,
+                   EXTRACT(ISODOW FROM NOW()) AS dow
             FROM notification_logs WHERE channel = 'email'
         """)
         r = cur.fetchone()
         age = float(r["age"]) if r and r["age"] is not None else 999
+        is_weekend = int(r["dow"]) in (6, 7) if r and r["dow"] is not None else False  # 6=토,7=일
         h["digest"] = {"age_days": round(age, 1) if age < 999 else None, "sent_1d": int(r["d1"] or 0)}
-        if age > STALE_DAYS:
+        if age > STALE_DAYS and not is_weekend:
             alerts.append(f"🚨 이메일/다이제스트 {age:.0f}일째 미발송")
     except Exception as e:
         h["digest"] = {"error": str(e)[:80]}

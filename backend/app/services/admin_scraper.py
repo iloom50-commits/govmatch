@@ -490,37 +490,53 @@ class AdminScraper:
             browser = await p.chromium.launch(headless=True)
 
             for target in targets:
-                target_id = target["id"]
-                url = target.get("recovered_url") or target["url"]
-                source_name = target["source_name"]
-                print(f"\n  [AdminBatch] [{source_name}] {url[:60]}")
+                # 한 기관에서 DB/스크래핑 오류가 나도 배치 전체를 죽이지 않는다.
+                # (과거: _save_to_db 실패로 트랜잭션이 중단되면 rollback 없이 다음 쿼리를
+                #  실행해 InFailedSqlTransaction으로 배치 전체가 error → 파이프라인 partial)
+                try:
+                    target_id = target["id"]
+                    url = target.get("recovered_url") or target["url"]
+                    source_name = target["source_name"]
+                    print(f"\n  [AdminBatch] [{source_name}] {url[:60]}")
 
-                success, error_reason, items = await self._try_scrape(url, browser)
+                    success, error_reason, items = await self._try_scrape(url, browser)
 
-                if success:
-                    saved = 0
-                    for item in items:
-                        if self._save_to_db(item, source_name, conn):
-                            saved += 1
-                    total_saved += saved
-                    print(f"     -> {len(items)}건 분석 / {saved}건 신규 저장")
-                    cursor.execute("""
-                        UPDATE admin_urls SET
-                            last_scraped = %s, last_success = %s,
-                            fail_count = 0, last_fail_reason = NULL
-                        WHERE id = %s
-                    """, (datetime.now().isoformat(), datetime.now().isoformat(), target_id))
-                    conn.commit()
-                else:
+                    if success:
+                        saved = 0
+                        for item in items:
+                            try:
+                                if self._save_to_db(item, source_name, conn):
+                                    saved += 1
+                            except Exception as _ie:
+                                conn.rollback()  # 불량 항목 격리 — 트랜잭션 복구
+                                print(f"     [item] 저장 오류(건너뜀): {_ie}")
+                        total_saved += saved
+                        print(f"     -> {len(items)}건 분석 / {saved}건 신규 저장")
+                        cursor.execute("""
+                            UPDATE admin_urls SET
+                                last_scraped = %s, last_success = %s,
+                                fail_count = 0, last_fail_reason = NULL
+                            WHERE id = %s
+                        """, (datetime.now().isoformat(), datetime.now().isoformat(), target_id))
+                        conn.commit()
+                    else:
+                        total_failed += 1
+                        new_fail_count = (target.get("fail_count") or 0) + 1
+                        cursor.execute("""
+                            UPDATE admin_urls SET
+                                last_scraped = %s, fail_count = %s, last_fail_reason = %s
+                            WHERE id = %s
+                        """, (datetime.now().isoformat(), new_fail_count, error_reason[:500], target_id))
+                        conn.commit()
+                        print(f"     실패 (연속 {new_fail_count}회): {error_reason[:80]}")
+                except Exception as _te:
+                    # 이 기관 처리 실패 → 트랜잭션 복구 후 다음 기관으로 (배치 지속)
                     total_failed += 1
-                    new_fail_count = (target.get("fail_count") or 0) + 1
-                    cursor.execute("""
-                        UPDATE admin_urls SET
-                            last_scraped = %s, fail_count = %s, last_fail_reason = %s
-                        WHERE id = %s
-                    """, (datetime.now().isoformat(), new_fail_count, error_reason[:500], target_id))
-                    conn.commit()
-                    print(f"     실패 (연속 {new_fail_count}회): {error_reason[:80]}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    print(f"     [AdminBatch] {target.get('source_name','?')} 처리 오류(건너뜀): {_te}")
 
             await browser.close()
 

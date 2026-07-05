@@ -3,6 +3,7 @@ issue_monitor.py — 정부 보도자료 스캔 → Hot이슈 자동 생성
 주 2회 스케줄러 또는 관리자 수동 실행
 """
 import os
+import re
 import json
 import time
 import requests
@@ -11,35 +12,39 @@ import psycopg2.extras
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# 스크래핑 대상 정부 보도자료 RSS/페이지
+# 스크래핑 대상 정부 보도자료 RSS
+# 2026-07-05 FABLE 실측 교체: 구 5개 피드 전멸(404·HTML오응답·타임아웃) → 생존 검증된 6개.
+# {BIZINFO_PORTAL_KEY}는 _resolve_rss_url이 환경변수로 치환(키 없으면 해당 소스 skip).
 PRESS_SOURCES = [
     {
-        "name": "기획재정부",
-        "url": "https://www.moef.go.kr/nw/nes/detailNesDtaView.do?menuNo=4010100&bbsId=MOSFBBS_000000000028&nttId=",
-        "rss": "https://www.moef.go.kr/rss/moefRss.do?menuNo=4010100",
-        "category": "경제·재정",
-    },
-    {
-        "name": "중소벤처기업부",
-        "url": "https://www.mss.go.kr/site/smba/ex/bbs/List.do?cbIdx=86",
-        "rss": "https://www.mss.go.kr/site/smba/rss/smbaRss.do",
+        "name": "중소벤처기업부(보도자료)",
+        "rss": "https://www.mss.go.kr/rss/smba/board/86.do",
         "category": "중소기업·창업",
     },
     {
-        "name": "고용노동부",
-        "url": "https://www.moel.go.kr/news/news/newslist.do",
-        "rss": "https://www.moel.go.kr/rss/rssMain.do",
+        "name": "중소벤처기업부(사업공고)",
+        "rss": "https://www.mss.go.kr/rss/smba/board/310.do",
+        "category": "중소기업·창업",
+    },
+    {
+        "name": "중소벤처기업부(공지사항)",
+        "rss": "https://www.mss.go.kr/rss/smba/board/81.do",
+        "category": "중소기업·창업",
+    },
+    {
+        "name": "고용노동부(알려드립니다)",
+        "rss": "https://www.moel.go.kr/rss/notice.do",
         "category": "고용·노동",
     },
     {
-        "name": "국토교통부",
-        "rss": "https://www.molit.go.kr/portal/rss/rss.do",
-        "category": "주거·교통",
+        "name": "고용노동부(정책자료)",
+        "rss": "https://www.moel.go.kr/rss/policy.do",
+        "category": "고용·노동",
     },
     {
-        "name": "보건복지부",
-        "rss": "https://www.mohw.go.kr/react/al/rss.jsp",
-        "category": "복지·보건",
+        "name": "기업마당(지원사업)",
+        "rss": "https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do?crtfcKey={BIZINFO_PORTAL_KEY}&searchCnt=20",
+        "category": "중소기업·창업",
     },
 ]
 
@@ -50,6 +55,29 @@ HEADERS = {
 }
 
 MAX_ACTIVE = 5  # 동시 활성 이슈 최대 수
+
+
+def _resolve_rss_url(template: str) -> str | None:
+    """RSS URL 템플릿의 {ENV_KEY} placeholder를 환경변수로 치환.
+    필수 키가 비어 있으면 None 반환(해당 소스 skip — 인증오류 헛호출 방지)."""
+    if "{" not in template:
+        return template
+    values = {}
+    for k in re.findall(r"\{(\w+)\}", template):
+        v = os.environ.get(k, "")
+        if not v:
+            return None  # 필수 키 미설정 → skip
+        values[k] = v
+    return template.format(**values)
+
+
+def _count_by_source(items: list[dict]) -> dict:
+    """소스별 수집 건수 집계 (관측성 — 소스 사망을 로그에서 조기 식별)."""
+    counts: dict = {}
+    for it in items:
+        name = it.get("source_name") or "?"
+        counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 def _fetch_rss_titles(rss_url: str, max_items: int = 10) -> list[dict]:
@@ -81,7 +109,11 @@ def _collect_press_releases() -> list[dict]:
         rss = src.get("rss")
         if not rss:
             continue
-        items = _fetch_rss_titles(rss, max_items=8)
+        resolved = _resolve_rss_url(rss)
+        if resolved is None:
+            print(f"  [issue_monitor] 키 미설정으로 건너뜀: {src['name']}")
+            continue
+        items = _fetch_rss_titles(resolved, max_items=8)
         for it in items:
             it["source_name"] = src["name"]
             it["category"] = src["category"]
@@ -182,10 +214,11 @@ def run_issue_monitoring(auto_activate: bool = False) -> dict:
 
     print("[issue_monitor] 보도자료 수집 시작...")
     press_items = _collect_press_releases()
-    print(f"[issue_monitor] 수집 완료: {len(press_items)}건")
+    per_source = _count_by_source(press_items)
+    print(f"[issue_monitor] 수집 완료: {len(press_items)}건 (소스별: {per_source})")
 
     if not press_items:
-        return {"error": "보도자료 수집 실패", "collected": 0}
+        return {"error": "보도자료 수집 실패", "collected": 0, "per_source": per_source}
 
     issues = _generate_hot_issues(press_items, api_key, count=5)
     if not issues:
@@ -228,4 +261,5 @@ def run_issue_monitoring(auto_activate: bool = False) -> dict:
 
     conn.close()
     print(f"[issue_monitor] 완료: {saved}건 저장 (auto_activate={auto_activate})")
-    return {"collected": len(press_items), "generated": len(issues), "saved": saved}
+    return {"collected": len(press_items), "generated": len(issues), "saved": saved,
+            "per_source": per_source}

@@ -2742,6 +2742,20 @@ def _plan_price(plan: str, user_type: str = None, bn: str = None) -> int:
         return PLAN_PRICES.get("lite_individual" if (user_type or "") == "individual" else "lite", 4900)
     return PLAN_PRICES.get("pro", 49000)
 
+
+def _subscribe_charge(current_plan: str, target: str, user_type: str = None, bn: str = None):
+    """구독 청구액 계산 — LITE(또는 basic)→PRO 업그레이드 시 LITE 월정가만큼 단순 차감.
+
+    정책(2026-07-08): PRO 청구 = PRO 전액 − LITE 월정가(사용자 타입별). 일수 무관.
+    free→PRO는 차감 없음. Returns (charge, credit).
+    """
+    full = _plan_price(target, user_type, bn)
+    credit = 0
+    if target == "pro" and (current_plan or "") in ("lite", "basic"):
+        credit = _plan_price("lite", user_type)  # LITE 월정가(테스트오버라이드 미적용 — 실가)
+    return max(0, full - credit), credit
+
+
 # 신규 가입자 LITE 7일 무료체험 (상시)
 TRIAL_DAYS = 7
 PROMO_ACTIVE = False  # 프로모션 종료 (2026-05-23 이후)
@@ -4799,8 +4813,9 @@ def api_plan_subscribe(
         raise HTTPException(status_code=400, detail="PRO에서 LITE로 변경은 구독 해지 후 재가입해주세요.")
 
     # ── 즉시 첫 청구 (2026-07-04 정책: 사용량 체험이 무료체험 — 결제 시점부터 유료) ──
+    # LITE→PRO 업그레이드 시 LITE 월정가만큼 차감 (2026-07-08 정책)
     label = "LITE" if target == "lite" else "PRO"
-    price = _plan_price(target, u.get("user_type"), bn=bn)
+    price, upgrade_credit = _subscribe_charge(current_plan, target, u.get("user_type"), bn)
     now = datetime.datetime.utcnow()
     if not (bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)):
         # 무과금 구독이 조용히 생기지 않도록 명시적 실패
@@ -4830,11 +4845,12 @@ def api_plan_subscribe(
         current_user["user_id"], bn, current_user["email"], target, expires_at
     )
 
+    _credit_msg = f"잔여 LITE {upgrade_credit:,}원 차감, " if upgrade_credit else ""
     return {
         "status": "SUCCESS",
         "token": new_token,
         "plan": plan_status,
-        "message": f"{label} 구독이 시작되었습니다 ({price:,}원 결제 완료). 다음 결제일: {expires_at[:10]}",
+        "message": f"{label} 구독이 시작되었습니다 ({_credit_msg}{price:,}원 결제 완료). 다음 결제일: {expires_at[:10]}",
     }
 
 

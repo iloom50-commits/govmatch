@@ -258,6 +258,13 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 신청서양식 첨부 유무 — 'AI 신청서 작성' 버튼 게이팅용 (attachments 기록 시 동시 세팅, 2026-07-07 스펙)
+        try:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS has_application_form BOOLEAN DEFAULT FALSE")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # [Phase 1] 공고 상태 명시적 관리 컬럼 — deadline/금액 품질 근본 해결용
         # - deadline_type: 'fixed'(명확 마감일) / 'ongoing'(상시) / 'unknown'(파악 전) / 'expired'(자동 만료)
         # - is_archived: 아카이브 여부 (UI 노출 제외)
@@ -1376,7 +1383,7 @@ def _prewarm_response_cache(startup: bool = False):
                 cur.execute(
                     f"""SELECT announcement_id, title, region, category, department,
                                support_amount, support_amount_max, support_amount_min, support_amount_type,
-                               deadline_date, deadline_type, origin_source, created_at,
+                               deadline_date, deadline_type, origin_source, created_at, has_application_form,
                                COALESCE(target_type, 'business') AS target_type,
                                origin_url, summary_text, eligibility_logic,
                                established_years_limit, revenue_limit, employee_limit
@@ -2976,7 +2983,7 @@ def api_announcements_public(
                             _pcur.execute(
                                 f"""SELECT announcement_id, title, region, category, department,
                                            support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                           deadline_date, deadline_type, origin_source, created_at,
+                                           deadline_date, deadline_type, origin_source, created_at, has_application_form,
                                            COALESCE(target_type, 'business') AS target_type,
                                            origin_url, summary_text, eligibility_logic,
                                            established_years_limit, revenue_limit, employee_limit
@@ -3032,7 +3039,7 @@ def api_announcements_public(
                         _pcur.execute(
                             f"""SELECT announcement_id, title, region, category, department,
                                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                       deadline_date, deadline_type, origin_source, created_at,
+                                       deadline_date, deadline_type, origin_source, created_at, has_application_form,
                                        COALESCE(target_type, 'business') AS target_type,
                                        origin_url, summary_text, eligibility_logic,
                                        established_years_limit, revenue_limit, employee_limit
@@ -3183,7 +3190,7 @@ def api_announcements_public(
                         f"""WITH ann AS (
                                 SELECT announcement_id, title, region, category, department,
                                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                                       deadline_date, deadline_type, origin_source, created_at,
+                                       deadline_date, deadline_type, origin_source, created_at, has_application_form,
                                        COALESCE(target_type, 'business') AS target_type,
                                        origin_url, summary_text, eligibility_logic,
                                        established_years_limit, revenue_limit, employee_limit,
@@ -3425,7 +3432,7 @@ def api_announcements_public(
         _m_cur.execute(
             f"""SELECT announcement_id, title, region, category, department,
                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                       deadline_date, deadline_type, origin_source, created_at,
+                       deadline_date, deadline_type, origin_source, created_at, has_application_form,
                        COALESCE(target_type, 'business') AS target_type,
                        origin_url, summary_text, eligibility_logic,
                        established_years_limit, revenue_limit, employee_limit,
@@ -3509,7 +3516,7 @@ def api_announcements_public(
         _tab_cur.execute(
             f"""SELECT announcement_id, title, region, category, department,
                        support_amount, support_amount_max, support_amount_min, support_amount_type,
-                       deadline_date, deadline_type, origin_source, created_at,
+                       deadline_date, deadline_type, origin_source, created_at, has_application_form,
                        COALESCE(target_type, 'business') AS target_type,
                        origin_url, summary_text, eligibility_logic,
                        established_years_limit, revenue_limit, employee_limit
@@ -3716,7 +3723,7 @@ def api_announcements_public(
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
                    support_amount, support_amount_max, support_amount_min, support_amount_type,
-                   deadline_date, deadline_type, origin_source, created_at,
+                   deadline_date, deadline_type, origin_source, created_at, has_application_form,
                    COALESCE(target_type, 'business') AS target_type,
                    origin_url, summary_text, eligibility_logic,
                    established_years_limit, revenue_limit, employee_limit

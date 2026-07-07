@@ -91,11 +91,10 @@ def _classify_kind(filename: str, ext: str = "") -> str:
         return "붙임서식"
     if re.search(r"공고|공고문|안내", fn):
         return "공고문"
-    # 2) 키워드 없으면 포맷 기반 — 편집가능 문서는 작성 대상 양식으로 간주
-    if ext in _EDITABLE:
+    # 2) 키워드 없으면 포맷 기반 — 편집문서·PDF 모두 작성 대상 양식으로 간주
+    #    (SmartDoc이 PDF 신청서도 자동작성 → 키워드 없는 PDF도 신청서양식 후보. 2026-07-07 스펙)
+    if ext in _EDITABLE or ext == "pdf":
         return "신청서양식"
-    if ext == "pdf":
-        return "공고문"
     return "기타"
 
 
@@ -167,9 +166,52 @@ def get_or_build(announcement_id: int, conn) -> list:
     origin = row["origin_url"] if isinstance(row, dict) else row[1]
     title = row["title"] if isinstance(row, dict) else row[2]
     metas = build_attachments_meta(origin or "", title or "")
+    has_form = any(a.get("kind") == "신청서양식" for a in metas)
     cur.execute(
-        "UPDATE announcements SET attachments=%s WHERE announcement_id=%s",
-        (json.dumps(metas, ensure_ascii=False), announcement_id),
+        "UPDATE announcements SET attachments=%s, has_application_form=%s WHERE announcement_id=%s",
+        (json.dumps(metas, ensure_ascii=False), has_form, announcement_id),
     )
     conn.commit()
     return metas
+
+
+def enrich_attachments(db_conn, limit: int = 150) -> dict:
+    """미수집 기업공고의 첨부 메타 수집·분류 + 신청서양식 유무 기록 (일일 파이프라인 배치).
+
+    - 대상: 유효 기업공고(business/both) + origin_url 있음 + attachments 미수집(NULL)
+    - 각 공고: build_attachments_meta로 첨부 분류 → attachments + has_application_form 동시 기록
+    - attachments IS NULL 조건이 재처리 방지(skip-done). 경량 크롤이라 limit 작게.
+    Returns: {"scanned","with_form"}
+    """
+    cur = db_conn.cursor()
+    cur.execute(
+        """SELECT announcement_id AS id, origin_url, title
+           FROM announcements
+           WHERE is_archived = FALSE
+             AND COALESCE(target_type, 'business') IN ('business', 'both')
+             AND origin_url IS NOT NULL AND origin_url <> ''
+             AND attachments IS NULL
+           ORDER BY created_at DESC
+           LIMIT %s""",
+        (limit,),
+    )
+    rows = cur.fetchall()
+    scanned = with_form = 0
+    for r in rows:
+        aid = r["id"] if isinstance(r, dict) else r[0]
+        origin = (r["origin_url"] if isinstance(r, dict) else r[1]) or ""
+        title = (r["title"] if isinstance(r, dict) else r[2]) or ""
+        try:
+            metas = build_attachments_meta(origin, title)
+        except Exception:
+            metas = []
+        has_form = any(a.get("kind") == "신청서양식" for a in metas)
+        cur.execute(
+            "UPDATE announcements SET attachments=%s, has_application_form=%s WHERE announcement_id=%s",
+            (json.dumps(metas, ensure_ascii=False), has_form, aid),
+        )
+        scanned += 1
+        if has_form:
+            with_form += 1
+    db_conn.commit()
+    return {"scanned": scanned, "with_form": with_form}

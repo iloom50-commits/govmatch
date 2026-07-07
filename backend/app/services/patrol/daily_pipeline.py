@@ -275,6 +275,18 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("④-3 분류 표본감사(L2)", step_4d_classification_audit)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ④-4. 첨부 신청서양식 판정 — 'AI 신청서 작성' 버튼 게이팅용 (2026-07-07 스펙)
+    #   기업공고 첨부를 분류(신청서양식 유무)해 has_application_form 기록. 경량 배치.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_4e_attachments():
+        import os
+        from app.services.attachments import enrich_attachments
+        limit = int(os.getenv("ATTACH_ENRICH_LIMIT", "150"))
+        return enrich_attachments(db_conn, limit=limit)
+
+    _run_step("④-4 첨부 신청서 판정", step_4e_attachments)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ④-2. 외부 검색 학습 (Google Search → knowledge_base)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_4c_search_learn():

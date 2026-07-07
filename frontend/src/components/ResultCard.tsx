@@ -184,6 +184,7 @@ interface Result {
   department?: string;
   origin_source?: string;
   target_type?: string;
+  has_application_form?: boolean;   // 신청서양식 첨부 존재 → 'AI 신청서 작성' 버튼 노출 조건
   eligibility_logic?: EligibilityLogic;
 }
 
@@ -485,8 +486,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               >
                 <span>{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
               </button>
-              {/* AI 신청서 — 기업 공고만 (개인 복지 공고는 정부24 등에서 직접 신청) */}
-              {res.target_type !== "individual" && (
+              {/* AI 신청서 — 기업 공고 + 신청서양식 첨부가 있는 공고만 (2026-07-07 스펙) */}
+              {res.target_type !== "individual" && res.has_application_form && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

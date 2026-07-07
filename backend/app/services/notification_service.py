@@ -455,7 +455,7 @@ class NotificationService:
         return f"""<div style="max-width:520px;margin:0 auto;font-family:-apple-system,'Pretendard',Arial,sans-serif;color:#1e293b;background:#f8fafc;">
   <!-- 헤더 -->
   <div style="background:#4f46e5;padding:28px 24px 22px;">
-    <p style="margin:0;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">지원금AI</p>
+    <p style="margin:0;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">지원금길잡이</p>
     <p style="margin:6px 0 0;font-size:13px;color:#c7d2fe;">{today_str} · {company_name} 맞춤 공고 {total}건</p>
   </div>
   <!-- 본문 -->
@@ -467,7 +467,7 @@ class NotificationService:
   </div>
   <!-- 푸터 -->
   <div style="padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;">지원금AI · 자동 발송 알림 · <a href="{APP_URL}/unsubscribe?bn={bn}&token={make_unsubscribe_token(bn) if bn else ''}" style="color:#94a3b8;">수신 거부</a></p>
+    <p style="margin:0;font-size:11px;color:#94a3b8;">지원금길잡이 · 자동 발송 알림 · <a href="{APP_URL}/unsubscribe?bn={bn}&token={make_unsubscribe_token(bn) if bn else ''}" style="color:#94a3b8;">수신 거부</a></p>
   </div>
 </div>"""
 
@@ -483,7 +483,7 @@ class NotificationService:
             return False
 
         html_body = self._build_email_html(company_name, matches, user_type, bn=bn)
-        subject = f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건"
+        subject = f"[지원금길잡이] {company_name} 맞춤 공고 {len(matches)}건"
 
         try:
             resp = requests.post(
@@ -650,7 +650,7 @@ class NotificationService:
                     data={"template_object": json.dumps({
                         "object_type": "feed",
                         "content": {
-                            "title": f"[지원금AI] {company_name} 맞춤 공고 {len(matches)}건",
+                            "title": f"[지원금길잡이] {company_name} 맞춤 공고 {len(matches)}건",
                             "description": desc + (f"\n외 {more}건" if more > 0 else ""),
                             "image_url": "https://govmatch.kr/og-image.png",
                             "link": {"web_url": link_url, "mobile_web_url": link_url},

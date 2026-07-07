@@ -49,7 +49,7 @@ export default function UnsubscribePage() {
         {state === "done" ? (
           <>
             <p className="text-sm text-slate-600">{msg}</p>
-            <a href="/" className="inline-block text-sm text-indigo-600 underline">지원금AI로 돌아가기</a>
+            <a href="/" className="inline-block text-sm text-indigo-600 underline">지원금길잡이로 돌아가기</a>
           </>
         ) : (
           <>

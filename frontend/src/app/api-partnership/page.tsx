@@ -14,7 +14,7 @@ export default function ApiPartnershipPage() {
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "안녕하세요! 지원금AI API 제휴 상담입니다.\n\nAPI 요금, 제공 데이터, 연동 방법 등 궁금한 점을 물어보세요." },
+    { role: "assistant", content: "안녕하세요! 지원금길잡이 API 제휴 상담입니다.\n\nAPI 요금, 제공 데이터, 연동 방법 등 궁금한 점을 물어보세요." },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -261,7 +261,7 @@ export default function ApiPartnershipPage() {
       {/* Footer link */}
       <div className="text-center py-8">
         <a href="/" className="text-sm text-indigo-600 font-bold hover:underline">
-          ← 지원금AI 서비스로 돌아가기
+          ← 지원금길잡이 서비스로 돌아가기
         </a>
       </div>
 

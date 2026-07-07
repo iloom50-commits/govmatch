@@ -499,7 +499,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   const shareKakao = () => {
     if (typeof window === "undefined") return;
     if (navigator.share) {
-      navigator.share({ title: "지원금AI", text: shareText, url }).catch(() => {});
+      navigator.share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(
         () => toast("링크가 복사되었습니다!", "success"),
@@ -515,7 +515,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
         onClick={() => {
           // 모바일·태블릿: OS 네이티브 공유 시트 즉시 호출 (인기공고 추천하기와 동일 UX)
           if (typeof navigator !== "undefined" && (navigator as any).share) {
-            (navigator as any).share({ title: "지원금AI", text: shareText, url }).catch(() => {});
+            (navigator as any).share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
           } else {
             // 데스크톱 PC 등 미지원 환경: 커스텀 모달 표시
             setOpen(true);
@@ -552,7 +552,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                   </div>
                   <span className="text-[11px] font-bold text-slate-700">문자</span>
                 </button>
-                <button onClick={() => { if (navigator.share) navigator.share({ title: "지원금AI", text: shareText, url }); else navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
+                <button onClick={() => { if (navigator.share) navigator.share({ title: "지원금길잡이", text: shareText, url }); else navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
                   <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <span className="text-2xl">📤</span>
                   </div>
@@ -1417,7 +1417,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => `${window.location.origin}?v=2`}
-        shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
+        shareText="지원금길잡이 — 내 지원금 찾기 30초. 찾지말고, 받으세요."
         toast={toast}
       />
 
@@ -1641,7 +1641,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}&v=2`}
-            shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
+            shareText="지원금길잡이 — 내 지원금 찾기 30초. 찾지말고, 받으세요."
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (
@@ -1757,7 +1757,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </button>
       )}
 
-      {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
+      {/* 모바일 상단 지원금길잡이 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}
       {(profile || !isPublic) && sidebarOpen && (
@@ -2503,7 +2503,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <div className="flex items-start gap-2.5">
                       <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">📲</div>
                       <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
-                        <span className="font-black">대안:</span> <span className="font-bold text-emerald-700">⋮ 메뉴 → &quot;지원금AI 앱 설치&quot;</span>
+                        <span className="font-black">대안:</span> <span className="font-bold text-emerald-700">⋮ 메뉴 → &quot;지원금길잡이 앱 설치&quot;</span>
                       </p>
                     </div>
                   </>

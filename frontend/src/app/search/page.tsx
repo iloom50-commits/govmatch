@@ -72,7 +72,7 @@ export default function SearchPage() {
         </main>
 
         <footer className="mt-12 pt-6 border-t border-slate-100 text-xs text-slate-400">
-          <p>지원금AI(govmatch.kr)는 기업마당, K-Startup, 정부24 등 공식 출처의 공고를 실시간 수집·분석합니다.</p>
+          <p>지원금길잡이(govmatch.kr)는 기업마당, K-Startup, 정부24 등 공식 출처의 공고를 실시간 수집·분석합니다.</p>
         </footer>
       </div>
     </div>

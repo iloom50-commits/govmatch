@@ -11,7 +11,7 @@ interface ChatMessage {
 
 export default function SupportPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "안녕하세요! 지원금AI 고객 상담입니다.\n\n서비스 이용, 매칭, 결제 등 궁금한 점을 물어보세요." },
+    { role: "assistant", content: "안녕하세요! 지원금길잡이 고객 상담입니다.\n\n서비스 이용, 매칭, 결제 등 궁금한 점을 물어보세요." },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -191,7 +191,7 @@ export default function SupportPage() {
       {/* Footer link */}
       <div className="text-center pb-8">
         <a href="/" className="text-sm text-indigo-600 font-bold hover:underline">
-          ← 지원금AI 서비스로 돌아가기
+          ← 지원금길잡이 서비스로 돌아가기
         </a>
       </div>
     </main>

@@ -308,9 +308,9 @@ export function ClientsTab({ headers, toast, clientType }: { headers: () => any;
 export function EmailModal({ clientIds, clientCount, headers, toast, onClose, onDone }: {
   clientIds: number[]; clientCount: number; headers: () => any; toast: any; onClose: () => void; onDone: () => void;
 }) {
-  const [subject, setSubject] = useState("지원금AI — 맞춤 지원사업 안내");
+  const [subject, setSubject] = useState("지원금길잡이 — 맞춤 지원사업 안내");
   const [body, setBody] = useState(
-    `<p>안녕하세요, {{담당자명}}님.</p>\n<p><strong>{{고객명}}</strong>에 맞는 정부 지원사업 정보를 안내해 드립니다.</p>\n<p>자세한 내용은 아래 링크에서 확인하실 수 있습니다.</p>\n<p><a href="https://govmatch.kr" style="color:#5b21b6;font-weight:bold;">지원금AI 바로가기</a></p>\n<p>감사합니다.</p>`
+    `<p>안녕하세요, {{담당자명}}님.</p>\n<p><strong>{{고객명}}</strong>에 맞는 정부 지원사업 정보를 안내해 드립니다.</p>\n<p>자세한 내용은 아래 링크에서 확인하실 수 있습니다.</p>\n<p><a href="https://govmatch.kr" style="color:#5b21b6;font-weight:bold;">지원금길잡이 바로가기</a></p>\n<p>감사합니다.</p>`
   );
   const [includeReport, setIncludeReport] = useState(true);
   const [sending, setSending] = useState(false);
@@ -909,12 +909,12 @@ export function ReportsTab({ headers, toast, clientType }: { headers: () => any;
       {/* 발신자 브랜딩 (화이트라벨) — 고객에게 내 브랜드로 리포트 발행 */}
       <div className="mb-4 border border-slate-200 rounded-xl overflow-hidden">
         <button onClick={() => setBrandOpen((o) => !o)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">
-          <span>🏷️ 발신자 브랜딩 {brand.brand_company ? `· ${brand.brand_company}` : "(미설정 — 지원금AI로 발행)"}</span>
+          <span>🏷️ 발신자 브랜딩 {brand.brand_company ? `· ${brand.brand_company}` : "(미설정 — 지원금길잡이로 발행)"}</span>
           <span className="text-xs text-slate-400">{brandOpen ? "접기 ▲" : "설정 ▼"}</span>
         </button>
         {brandOpen && (
           <div className="p-4 space-y-2 bg-white">
-            <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금AI 기본.</p>
+            <p className="text-xs text-slate-500">리포트 헤더·푸터에 이 정보로 발행됩니다 (고객에게 내 브랜드로 전달). 비우면 지원금길잡이 기본.</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input value={brand.brand_company} onChange={(e) => setBrand({ ...brand, brand_company: e.target.value })} placeholder="회사·소속 (예: ○○세무회계 / ○○컨설팅)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />
               <input value={brand.brand_contact} onChange={(e) => setBrand({ ...brand, brand_contact: e.target.value })} placeholder="담당자명·직함 (예: 홍길동 세무사)" className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-300" />

@@ -65,7 +65,7 @@ def test_charge_v2_success():
         fake = _fake_httpx(200)
         sys.modules["httpx"] = fake
         m.PORTONE_API_SECRET = "secret"
-        ok = m._charge_billing_key("billing-key-abc123", "first-999-20260704", 49000, "지원금AI PRO 월 구독")
+        ok = m._charge_billing_key("billing-key-abc123", "first-999-20260704", 49000, "지원금길잡이 PRO 월 구독")
         assert ok is True
         assert fake._calls["json"]["amount"]["total"] == 49000
         assert fake._calls["json"]["billingKey"] == "billing-key-abc123"

@@ -88,7 +88,7 @@ def test_fund_deadline_unknown_shows_confirm_not_sangsi():
 
 
 def test_fund_table_links_announcement_when_id_present():
-    # 정책자금명을 지원금AI 공고 상세(절대경로)로 링크 — PDF/HTML 어디서나 클릭
+    # 정책자금명을 지원금길잡이 공고 상세(절대경로)로 링크 — PDF/HTML 어디서나 클릭
     anns = [{"id": 12345, "title": "신성장기반자금", "department": "중진공", "support_amount": "10억"}]
     html = build_fund_section_html("분석", anns)
     assert 'href="https://govmatch.kr/announcements/12345"' in html

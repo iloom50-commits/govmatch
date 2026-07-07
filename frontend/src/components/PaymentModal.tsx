@@ -96,7 +96,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
     if (payMethod === "kakao") {
       try {
         const issueId = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
+        const issueName = `지원금길잡이 ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
         const billingKeyResponse = await PortOne.requestIssueBillingKey({
           storeId: STORE_ID,
           channelKey: CHANNEL_KEY_KAKAO,
@@ -140,7 +140,7 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
       IMP.init(IMP_CODE);
       const customer_uid = `cust_${customerId}_${Date.now()}`;
       const merchantUid = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
+      const issueName = `지원금길잡이 ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
 
       IMP.request_pay(
         {

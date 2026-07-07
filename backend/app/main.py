@@ -2720,8 +2720,17 @@ PLAN_PRICES = {
 }
 
 
-def _plan_price(plan: str, user_type: str = None) -> int:
-    """월 구독가 — 서버 기준 단일 소스 (구독 시작·자동갱신 공용)"""
+def _plan_price(plan: str, user_type: str = None, bn: str = None) -> int:
+    """월 구독가 — 서버 기준 단일 소스 (구독 시작·자동갱신·환불 공용).
+
+    실결제 테스트용 임시 오버라이드(기본 OFF): env SUBSCRIPTION_TEST_PRICE 설정 시 적용.
+    SUBSCRIPTION_TEST_BN 지정 시 그 사업자번호에만(타 유저 자동갱신 보호). env 지우면 원복.
+    """
+    _t = os.getenv("SUBSCRIPTION_TEST_PRICE")
+    if _t and _t.isdigit():
+        _tbn = os.getenv("SUBSCRIPTION_TEST_BN")
+        if not _tbn or _tbn == bn:
+            return int(_t)
     if plan == "lite":
         return PLAN_PRICES.get("lite_individual" if (user_type or "") == "individual" else "lite", 4900)
     return PLAN_PRICES.get("pro", 49000)
@@ -4784,7 +4793,7 @@ def api_plan_subscribe(
 
     # ── 즉시 첫 청구 (2026-07-04 정책: 사용량 체험이 무료체험 — 결제 시점부터 유료) ──
     label = "LITE" if target == "lite" else "PRO"
-    price = _plan_price(target, u.get("user_type"))
+    price = _plan_price(target, u.get("user_type"), bn=bn)
     now = datetime.datetime.utcnow()
     if not (bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)):
         # 무과금 구독이 조용히 생기지 않도록 명시적 실패
@@ -4873,7 +4882,7 @@ def api_plan_refund(current_user: dict = Depends(_get_current_user)):
             raise HTTPException(status_code=400, detail="결제 시점을 확인할 수 없습니다. 고객센터로 문의해주세요.")
 
         now = datetime.datetime.utcnow()
-        price = _plan_price("lite" if plan in ("lite", "basic") else "pro", u.get("user_type"))
+        price = _plan_price("lite" if plan in ("lite", "basic") else "pro", u.get("user_type"), bn=bn)
         used = (u.get("ai_usage_month") or 0) > 0
         refundable, amount, policy_reason = _refund_amount_policy(price, started_dt, now, used)
         if not refundable:
@@ -5086,7 +5095,7 @@ def _auto_renew_subscriptions():
             stored_key = u["billing_key"] or ""
 
             # 가격 결정 — 구독 시작과 동일 소스
-            price = _plan_price(plan, user_type)
+            price = _plan_price(plan, user_type, bn=u["business_number"])
 
             payment_id = f"renew-{u['business_number']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M')}"
             order_name = f"지원금AI {plan.upper()} 월 구독"

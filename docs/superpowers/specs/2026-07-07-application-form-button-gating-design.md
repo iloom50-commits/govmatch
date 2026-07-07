@@ -1,7 +1,7 @@
 # 신청서 작성 버튼 게이팅 — 설계 문서
 
 - 작성일: 2026-07-07
-- 상태: **구현 착수 (게이팅만, 한번에 배포)** — SmartDoc 엔진(버튼 클릭 후 자동작성)은 아직 개발 중이므로 미연결. 이번엔 "신청서 있는 공고에만 버튼" 게이팅만 구현. 기능이 없어 초기 커버리지가 작아도 무방하므로 2단계 롤아웃 없이 한번에 배포.
+- 상태: **게이팅 구현 완료·배포 (94a8ca8)** — 6단계 전부 시공. SmartDoc 엔진(버튼 클릭 후 자동작성)은 미연결(기존 open-smartdoc-modal 유지) — SmartDoc 개발 완료 후 연결. 배포 직후엔 has_application_form이 전부 false라 버튼이 일시적으로 안 보이며, 일일 파이프라인 ④-4 스텝이 돌면서 신청서 있는 공고부터 버튼 노출.
 
 ## 1. 배경 / 문제
 
@@ -47,7 +47,7 @@ SmartDoc이 PDF 신청서도 자동작성 가능(사용자 확정)하므로, PDF
 신청서 판정을 넓게 확보하기 위해, `daily_pipeline`에 스텝을 추가한다(마감일 보강 ④-2와 동일 패턴, P1-3 enricher 방식).
 
 - **함수**: `attachments.py`에 신규 `enrich_attachments(db_conn, limit)` — 내부는 기존 `build_attachments_meta` 재사용(신규 판정 로직 없음).
-- **대상**: `is_archived=FALSE AND COALESCE(target_type,'business') IN ('business','both') AND origin_url IS NOT NULL AND attachments IS NULL`
+- **대상**: `is_archived=FALSE AND COALESCE(target_type,'business') IN ('business','both') AND origin_url IS NOT NULL AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE) AND attachments IS NULL` — 마감된 공고는 카드에 안 뜨므로 크롤 제외(낭비 방지)
 - **정렬/상한**: `ORDER BY created_at DESC LIMIT %s`(env `ATTACH_ENRICH_LIMIT`, 기본 150 — 경량 크롤이라 마감보강보다 작게). skip-done: `attachments IS NULL` 조건이 이미 재처리 방지.
 - **동작**: 대상별 origin_url 크롤 → 첨부 probe·분류 → `attachments` 컬럼 기록(+ 4-1의 `has_application_form` 동시 기록).
 - **결과**: 커버리지가 6건 → 기업 유효공고로 며칠에 걸쳐 확대. 신규 공고도 지속 처리.

@@ -190,6 +190,7 @@ def enrich_attachments(db_conn, limit: int = 150) -> dict:
            WHERE is_archived = FALSE
              AND COALESCE(target_type, 'business') IN ('business', 'both')
              AND origin_url IS NOT NULL AND origin_url <> ''
+             AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
              AND attachments IS NULL
            ORDER BY created_at DESC
            LIMIT %s""",

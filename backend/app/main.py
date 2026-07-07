@@ -5022,7 +5022,10 @@ def _cancel_payment(payment_id: str, amount: int, billing_key: str) -> bool:
             json={"reason": "구독 환불", "amount": amount},
             timeout=15,
         )
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            print(f"[refund] V2 취소 거절 status={resp.status_code} payment_id={payment_id} body={resp.text[:800]}")
+            return False
+        return True
     except Exception as e:
         print(f"[refund-v2] 취소 오류: {e}")
         return False
@@ -5048,7 +5051,8 @@ def _charge_billing_key(billing_key: str, payment_id: str, price: int, order_nam
             json={
                 "billingKey": key,
                 "orderName": order_name,
-                "amount": {"total": price, "currency": "KRW"},
+                "amount": {"total": price},
+                "currency": "KRW",
             },
             timeout=15,
         )
@@ -5121,7 +5125,8 @@ def _auto_renew_subscriptions():
                         json={
                             "billingKey": stored_key,
                             "orderName": order_name,
-                            "amount": {"total": price, "currency": "KRW"},
+                            "amount": {"total": price},
+                            "currency": "KRW",
                         },
                         timeout=15,
                     )

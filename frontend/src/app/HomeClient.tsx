@@ -800,6 +800,8 @@ export default function Home() {
           planStatus={planStatus}
           userType={profileData?.user_type}
           onSuccess={(newToken, newPlan) => {
+            // 새 플랜 토큰 저장 — 없으면 새로고침 시 옛 토큰(free)으로 되돌아감(구독관리·환불 숨김)
+            if (newToken) localStorage.setItem("auth_token", newToken);
             setPlanStatus(newPlan);
             setShowPayment(false);
             if (planStatus?.plan === "expired") {

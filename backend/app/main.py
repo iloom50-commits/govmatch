@@ -5052,7 +5052,11 @@ def _charge_billing_key(billing_key: str, payment_id: str, price: int, order_nam
             },
             timeout=15,
         )
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            # PG 거절 사유를 남긴다(기존엔 삼켜서 원인 파악 불가였음)
+            print(f"[first-charge] V2 청구 거절 status={resp.status_code} payment_id={payment_id} amount={price} body={resp.text[:800]}")
+            return False
+        return True
     except Exception as e:
         print(f"[first-charge] V2 청구 오류: {e}")
         return False

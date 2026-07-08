@@ -1478,13 +1478,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             onClick={() => { setNotifyShortcut(false); setIsNotifyOpen(true); setSidebarOpen(false); }}
             className="relative z-10 w-full p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all active:scale-[0.98] text-left"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">✅</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-bold text-emerald-800">맞춤 알림 설정 완료</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">평일 오전 9시에 맞춤 공고를 받아보고 있어요</p>
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 flex-shrink-0 bg-white rounded-xl flex items-center justify-center text-emerald-500 shadow-sm">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
               </div>
-              <span className="flex-shrink-0 px-3 py-1.5 text-sm font-bold text-emerald-700 bg-emerald-100 rounded-lg">
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-emerald-800 break-keep leading-tight">맞춤 알림 설정 완료</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 break-keep leading-snug">평일 오전 9시에 맞춤 공고를 받아보고 있어요</p>
+              </div>
+              <span className="flex-shrink-0 px-2.5 py-1 text-[13px] font-bold text-emerald-700 bg-emerald-100 rounded-lg">
                 수정
               </span>
             </div>

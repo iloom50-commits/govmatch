@@ -2878,13 +2878,36 @@ _STATS_SEED = {
 
 @app.get("/api/stats/live")
 def api_stats_live(request: Request):
-    """홈 화면 실시간 통계 — 시드 + 시간 자동증가 (DB 조회 없음, 즉시 응답)."""
+    """홈 화면 실시간 통계 — announcements는 마감 안 된 공고 실카운트(60분 캐시, 즉시 응답).
+    가짜 시드 자동증가 대신 실DB 값(정직). matches/consultations/companies는 아직 시드."""
     now = int(time.time())
+    # 활성 공고 실카운트 — 60분 캐시(DB는 1시간에 1번, 그 외 즉시). COUNT ~30ms 측정.
+    cache_key = "stats_ann_count:v1"
+    cached = _response_cache.get(cache_key)
+    if cached and time.time() - cached["ts"] < _CACHE_TTL:
+        ann = cached["data"]
+    else:
+        ann = cached["data"] if cached else 17000  # 실패 시 마지막 캐시 or 보수적 폴백
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS n FROM announcements WHERE deadline_date IS NULL OR deadline_date >= CURRENT_DATE")
+            row = cur.fetchone()
+            if row:
+                ann = int(row["n"])
+            cur.close()
+            _response_cache[cache_key] = {"ts": time.time(), "data": ann}
+        except Exception as e:
+            print(f"[stats/live] 공고 실카운트 실패, 폴백={ann}: {e}")
+        finally:
+            if conn:
+                conn.close()
     elapsed = max(0, now - _STATS_SEED["base_epoch"])
     seeds = _STATS_SEED["seeds"]
     incs = _STATS_SEED["increments"]
     return {
-        "announcements": 17500 + (elapsed // 3600),      # 시간당 +1
+        "announcements": ann,
         "matches":       seeds["matches"] + (elapsed // incs["matches"]),
         "consultations": seeds["consultations"] + (elapsed // incs["consultations"]),
         "companies":     seeds["companies"] + (elapsed // incs["companies"]),

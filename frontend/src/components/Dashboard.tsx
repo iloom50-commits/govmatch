@@ -1382,7 +1382,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     <div className="hidden md:flex items-center justify-between mb-4 px-1">
       <div className="flex items-center gap-2">
         <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">길잡이</span></span>
-        <span className="text-xs font-medium text-slate-400 tracking-normal">지원금 다나와</span>
       </div>
       {!isPwaInstalled && (
         <button
@@ -1831,7 +1830,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="flex lg:hidden items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">길잡이</span></span>
-              <span className="text-xs font-medium text-slate-400">지원금 다나와</span>
             </div>
             <div className="flex items-center gap-2">
               {profile && !hasNotificationSet && (
@@ -1853,6 +1851,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </div>
           </div>
+
+          {/* 모바일 슬림 히어로 — 가치 제안 1줄(사이드바 없는 모바일용) */}
+          <p className="lg:hidden text-[13px] text-slate-500 font-medium leading-snug mb-3 px-1">
+            정부 지원금·정책자금, <span className="text-slate-800 font-bold">AI가 30초</span> 만에 찾아드려요
+          </p>
 
           <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
           <header className="sticky top-0 z-20 bg-white">

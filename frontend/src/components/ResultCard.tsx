@@ -198,6 +198,12 @@ const CATEGORY_KR: Record<string, string> = {
   "General Business Support": "경영지원",
   "SME Support": "중소기업",
   "Food Industry": "식품산업",
+  "Human Resources": "인력",
+  "Employment": "인력·고용",
+  "Design": "디자인",
+  "Tech, R&D, Global": "기술·R&D",
+  "Global": "수출·글로벌",
+  "Export": "수출·판로",
   "General": "일반",
 };
 
@@ -213,7 +219,7 @@ const SOURCE_KR: Record<string, string> = {
   "innobiz-api": "이노비즈",
   "venture-api": "벤처확인",
   "mainbiz-api": "메인비즈",
-  "admin-manual": "수동등록",
+  // "admin-manual"(수동등록)은 내부 관리 메타 — 사용자에게 무의미하고 "나머지는 미검수?" 역추론 유발하므로 배지 숨김
   "sbc": "중진공",
   "sbc-scraper": "중진공",
   "gov24-individual-api": "정부24",
@@ -277,7 +283,9 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
   const { toast } = useToast();
   const dDay = getDDayInfo(res.deadline_date, res.deadline_type);
-  const categoryKr = CATEGORY_KR[(res.category || "").trim()] || res.category || "";
+  // 매핑에 있으면 국문, 없고 영문이면 숨김(한/영 혼용 방지), 없고 국문이면 원본 유지
+  const _catRaw = (res.category || "").trim();
+  const categoryKr = CATEGORY_KR[_catRaw] || (/[A-Za-z]/.test(_catRaw) ? "" : _catRaw);
   const rawSource = (res.origin_source || "").trim();
   const sourceKey = rawSource.includes(":") ? rawSource.split(":")[0] : rawSource;
   const sourceKr = SOURCE_KR[sourceKey] || SOURCE_KR[rawSource] || "";

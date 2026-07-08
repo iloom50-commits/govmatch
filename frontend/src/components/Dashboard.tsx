@@ -48,7 +48,7 @@ function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => 
         onClick={onClick}
         className="w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
       >
-        <span className="text-sm">🔔</span>
+        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
         <span className="tracking-tight">맞춤형 알림 요청</span>
       </button>
     </div>
@@ -84,7 +84,7 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all active:scale-95 text-xs shadow-md"
       >
-        <span className="text-sm">🔔</span>
+        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
         <span className="tracking-tight">(무료가입) AI맞춤 알림</span>
       </button>
     </div>
@@ -1404,13 +1404,13 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 핵심 기능 소개 */}
       <div className="relative z-10 space-y-2 pt-1">
         {[
-          { icon: "🎯", title: "AI 맞춤 매칭", desc: "내 조건에 딱 맞는 공고만" },
-          { icon: "💬", title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
-          { icon: "📝", title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
-          { icon: "🔔", title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
+          { icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /></svg>, title: "AI 맞춤 매칭", desc: "내 조건에 딱 맞는 공고만" },
+          { icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>, title: "지원대상 즉시 판별", desc: "공고별 자격요건 AI 정밀 분석" },
+          { icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>, title: "AI 신청서 자동작성", desc: "공고 양식 학습 후 자동 작성" },
+          { icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>, title: "마감 D-day 알림", desc: "놓치지 않는 맞춤형 알림" },
         ].map((item) => (
           <div key={item.title} className="flex items-center gap-3 px-3 py-2.5 bg-white/60 rounded-xl border border-slate-100/80">
-            <span className="text-lg flex-shrink-0">{item.icon}</span>
+            <span className="text-blue-600 flex-shrink-0 [&>svg]:w-5 [&>svg]:h-5">{item.icon}</span>
             <div>
               <p className="text-[12px] font-bold text-slate-800">{item.title}</p>
               <p className="text-[11px] text-slate-500 font-medium">{item.desc}</p>
@@ -1440,7 +1440,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         href="/pro"
         className="relative z-10 w-full py-2 bg-blue-50 text-blue-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
       >
-        <span className="text-sm">💼</span>
+        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
         <span className="tracking-tight">전문가용 상담툴 (PRO)</span>
       </a>
 
@@ -1448,7 +1448,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         href="/api-partnership"
         className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-100 active:scale-95 text-xs"
       >
-        <span className="text-sm">🤝</span>
+        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
         <span className="tracking-tight">API 제공 · 협업 제안 하기</span>
       </a>
     </div>
@@ -1860,8 +1860,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             {/* 대분류 탭 — Toss식 하단 언더라인 탭(다크 블록 대신 가벼운 밑줄) */}
             <div className="flex border-b border-slate-200">
               {([
-                { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab },
-                { key: "individual" as MajorTab, label: "개인 지원금", icon: "👤", show: showIndividualTab },
+                { key: "business" as MajorTab, label: "기업 지원금", icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h.01M11 7h.01M15 7h.01M11 11h.01M15 11h.01M11 15h.01M15 15h.01" /></svg>, show: showBusinessTab },
+                { key: "individual" as MajorTab, label: "개인 지원금", icon: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>, show: showIndividualTab },
               ]).map((tab) => {
                 if (!tab.show) return null;
                 const isActive = majorTab === tab.key;
@@ -1875,7 +1875,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                         : "border-transparent text-slate-400 hover:text-slate-600"
                     }`}
                   >
-                    <span>{tab.icon}</span>
+                    <span className="flex [&>svg]:w-[18px] [&>svg]:h-[18px]">{tab.icon}</span>
                     {tab.label}
                   </button>
                 );
@@ -1929,7 +1929,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   showMatchedMode ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                <span className="leading-none">⭐</span>
+                <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.958a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.367 2.446a1 1 0 00-.364 1.118l1.287 3.958c.3.922-.755 1.688-1.54 1.118l-3.366-2.446a1 1 0 00-1.176 0l-3.366 2.446c-.784.57-1.838-.196-1.539-1.118l1.287-3.958a1 1 0 00-.364-1.118L2.98 9.385c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.287-3.958z" /></svg>
                 <span>맞춤</span>
               </button>
               {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(0, 3).map((chip, i) => {
@@ -1951,7 +1951,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                <span className="leading-none">📍</span>
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 <span>내지역</span>
               </button>
               {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(3, 6).map((chip, i) => {
@@ -2231,7 +2231,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           onClick={handleLoginRequired}
           className={`fixed bottom-6 left-4 z-50 lg:hidden bg-blue-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-blue-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
-          <span className="text-base">🚀</span>
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18 9v6m3-3h-6M13 7a4 4 0 11-8 0 4 4 0 018 0zM2 21a7 7 0 0114 0" /></svg>
           <span className="text-xs font-bold">무료 가입</span>
         </button>
       ) : (
@@ -2239,7 +2239,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           onClick={() => setSidebarOpen(true)}
           className={`fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
-          <span className="text-base">👤</span>
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
           <span className="text-xs font-bold">내 정보</span>
           {/* 맞춤알림 미설정 시 빨간 점 — 사이드바 열면 최상단 카드로 안내 */}
           {profile && !hasNotificationSet && (

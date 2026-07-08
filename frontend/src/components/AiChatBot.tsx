@@ -45,7 +45,7 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
           title={label}
           aria-label={label}
         >
-          <span className="text-2xl animate-ai-pulse">✨</span>
+          <svg className="w-6 h-6 animate-ai-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8 10.5h.01M12 10.5h.01M16 10.5h.01M21 12c0 4.418-4.03 8-9 8a9.8 9.8 0 01-4.2-.9L3 20l1.3-3.6C3.5 15.1 3 13.6 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
         </button>
       </div>
     </div>

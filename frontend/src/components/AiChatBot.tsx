@@ -833,7 +833,10 @@ ${convHtml}
       // 6. 완료 — 달걀 숨김 유지
       timers.push(setTimeout(() => setBotPhase("done"), 31500));
     };
-    timers.push(setTimeout(startBot, 4000));
+    // 마스코트 걷기 애니 — 하단 중앙에서 봇이 피드 카드 위로 등장/이동해 콘텐츠를 가림(UX 리뷰 지적).
+    // 오버랩 제거 위해 비활성화. 복원하려면 ENABLE_BOT_WALK=true (걷기 연출 자체는 startBot에 보존됨).
+    const ENABLE_BOT_WALK = false;
+    if (ENABLE_BOT_WALK) timers.push(setTimeout(startBot, 4000));
     return () => { timers.forEach(clearTimeout); };
   }, [open]);
 
@@ -1151,13 +1154,11 @@ ${convHtml}
             </>
           )}
 
-          {/* 브랜드 알 — crack 단계에서 흔들림, emerge 이후 안 보임 */}
+          {/* 브랜드 알 — crack 단계에서만 노출(흔들림). idle 정적 노출은 피드 콘텐츠를 가려 숨김 */}
           <div style={
             botPhase === "crack"
               ? undefined
-              : botPhase !== "idle"
-                ? { opacity: 0, pointerEvents: "none" as const }
-                : undefined
+              : { opacity: 0, pointerEvents: "none" as const }
           }>
             <BrandEgg
               shaking={botPhase === "crack"}

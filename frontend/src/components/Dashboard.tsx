@@ -1794,7 +1794,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </aside>
 
         <main
-          className="space-y-4 lg:space-y-5 pb-16 lg:pb-16 min-w-0"
+          className="space-y-4 lg:space-y-5 pb-28 lg:pb-16 min-w-0"
           onTouchStart={handleTabSwipeStart}
           onTouchEnd={handleTabSwipeEnd}
         >

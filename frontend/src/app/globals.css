@@ -73,30 +73,23 @@ html[data-vt-dir="right"]::view-transition-new(major-tab) {
 
 body {
   color: var(--foreground);
-  /* 평탄 배경 — 보라 mesh 제거(파랑 액센트와 조화, 흰 카드 대비 확보) */
-  background-color: #f8fafc;
-  background: #f8fafc;
+  /* 평탄 배경 — 흰 카드가 도드라지도록 살짝 회색(카드=흰색+회색테두리와 대비) */
+  background-color: #f1f5f9;
+  background: #f1f5f9;
   font-family: "Pretendard", var(--font-geist-sans), system-ui, sans-serif;
 }
 
 /* Premium Glassmorphism */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.05);
+  background: #ffffff;
+  border: 1px solid #e5e8eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.02),
-    0 2px 4px -1px rgba(0, 0, 0, 0.01),
-    inset 0 0 40px rgba(255, 255, 255, 0.3);
+  background: #ffffff;
+  border: 1px solid #e5e8eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 

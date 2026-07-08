@@ -1920,35 +1920,47 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
           </div>
 
-          {/* 카테고리 필터 — 알약 칩(누를 수 있는 형태로 명시, 격자선 삭제). 맞춤·내지역을 앞에 */}
-          <div className="flex flex-wrap gap-2 mt-3 mb-3">
-              {/* 맞춤 */}
+          {/* 카테고리 필터 — 셀 테두리 4열 그리드(다중선택 명확). 맞춤·내지역을 각 행 앞에 */}
+          <div className="grid grid-cols-4 mt-3 mb-3 border border-slate-200 rounded-lg overflow-hidden">
+              {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
-                className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  showMatchedMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"
+                className={`flex items-center justify-center gap-1 px-1 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-r border-b border-slate-200 ${
+                  showMatchedMode ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <span className="leading-none">⭐</span>
                 <span>맞춤</span>
               </button>
-              {/* 내지역 */}
-              <button
-                onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
-                className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"
-                }`}
-              >
-                <span className="leading-none">📍</span>
-                <span>내지역</span>
-              </button>
-              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).filter((chip) => chip.key !== "내 지역").map((chip) => {
+              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(0, 3).map((chip, i) => {
                 const isActive = activeChips.has(chip.key);
                 return (
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"}`}
+                    className={`flex items-center justify-center px-1 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-b border-slate-200 ${i < 2 ? "border-r border-slate-200" : ""} ${isActive ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
+              {/* Row 2: 📍내지역 | 칩3 | 칩4 | 칩5 */}
+              <button
+                onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
+                className={`flex items-center justify-center gap-1 px-1 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-r border-slate-200 ${
+                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span className="leading-none">📍</span>
+                <span>내지역</span>
+              </button>
+              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(3, 6).map((chip, i) => {
+                const isActive = activeChips.has(chip.key);
+                return (
+                  <button
+                    key={chip.key}
+                    onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
+                    className={`flex items-center justify-center px-1 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${i < 2 ? "border-r border-slate-200" : ""} ${isActive ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
                   >
                     {chip.label}
                   </button>

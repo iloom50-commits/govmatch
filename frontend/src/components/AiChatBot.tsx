@@ -366,7 +366,7 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         text: baseText + profileNote,
         choices: activeFundMode === "individual_fund"
           ? ["청년 전세자금 대출 조건", "햇살론 신청 가능한가요?", "긴급 생계비 빌리는 법", "학자금 대출 종류"]
-          : ["청년창업자금 조건 알려줘", "신용보증 받는 법", "소상공인 정책자금 대출", "운전자금 vs 시설자금 차이"],
+          : ["신성장기반자금 조건 알려줘", "창업기반지원자금 신청 자격", "긴급경영안정자금 받는 법", "신시장진출지원자금이 뭔가요?"],
       }]);
     } else {
       // consultant: 고객 유형 선택 화면 먼저 표시

@@ -1886,9 +1886,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           </header>
 
-          {/* 키워드 검색 — 스크롤과 함께 이동 */}
-          <div className="flex items-center gap-2 bg-white/70 backdrop-blur-md p-2 border border-slate-200/60 shadow-sm mt-3">
-              <div className="flex items-center gap-1.5 px-2 text-slate-400 flex-shrink-0">
+          {/* 키워드 검색 — 회색 채움 필드(탭·필터와 형태 구분) */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5 mt-3">
+              <div className="flex items-center gap-1.5 px-1 text-slate-400 flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -1904,7 +1904,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   }
                 }}
                 placeholder={majorTab === "business" ? "공고명, 키워드 검색 (예: 창업, R&D, 수출)" : "공고명, 키워드 검색 (예: 복지, 육아, 주거, 취업)"}
-                className="flex-1 bg-transparent border-none px-1 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none"
+                className="flex-1 bg-transparent border-none px-1 py-0.5 text-sm text-slate-800 placeholder-slate-400 outline-none"
               />
               {publicLoading && searchQuery && (
                 <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
@@ -1922,49 +1922,35 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
           </div>
 
-          {/* 2×4 카테고리 그리드 — 맞춤공고 통합 (sticky 해제, 스크롤과 함께 이동) */}
-          <div className="grid grid-cols-4 mt-3 mb-3 border border-slate-200">
-              {/* Row 1: ⭐맞춤 | 칩0 | 칩1 | 칩2 */}
+          {/* 카테고리 필터 — 알약 칩(누를 수 있는 형태로 명시, 격자선 삭제). 맞춤·내지역을 앞에 */}
+          <div className="flex flex-wrap gap-2 mt-3 mb-3">
+              {/* 맞춤 */}
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
-                className={`flex items-center justify-center gap-1 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-r border-b border-slate-200 ${
-                  showMatchedMode ? "bg-amber-50 text-amber-700" : "bg-white text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
+                  showMatchedMode ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"
                 }`}
               >
                 <span className="leading-none">⭐</span>
                 <span>맞춤</span>
               </button>
-              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(0, 3).map((chip, i) => {
-                const isActive = activeChips.has(chip.key);
-                const activeColor = majorTab === "business" ? "bg-slate-950 text-white" : "bg-emerald-700 text-white";
-                return (
-                  <button
-                    key={chip.key}
-                    onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`flex items-center justify-center px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-b border-slate-200 ${i < 2 ? "border-r border-slate-200" : ""} ${isActive ? activeColor : "bg-white text-slate-500 hover:bg-slate-50"}`}
-                  >
-                    {chip.label}
-                  </button>
-                );
-              })}
-              {/* Row 2: 📍내지역 | 칩3 | 칩4 | 칩5 */}
+              {/* 내지역 */}
               <button
                 onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
-                className={`flex items-center justify-center gap-1 px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 border-r border-slate-200 ${
-                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-white text-blue-600 hover:bg-blue-50"
+                className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
+                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"
                 }`}
               >
                 <span className="leading-none">📍</span>
                 <span>내지역</span>
               </button>
-              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).slice(3, 6).map((chip, i) => {
+              {(majorTab === "business" ? BUSINESS_CHIPS : INDIVIDUAL_CHIPS).filter((chip) => chip.key !== "내 지역").map((chip) => {
                 const isActive = activeChips.has(chip.key);
-                const activeColor = majorTab === "business" ? "bg-slate-950 text-white" : "bg-emerald-700 text-white";
                 return (
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`flex items-center justify-center px-0 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${i < 2 ? "border-r border-slate-200" : ""} ${isActive ? activeColor : "bg-white text-slate-500 hover:bg-slate-50"}`}
+                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"}`}
                   >
                     {chip.label}
                   </button>

@@ -88,7 +88,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
         }}
         className="w-full h-full py-2 bg-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
-        <span className="text-sm">📢</span> 친구에게 추천하기
+        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg> 친구에게 추천하기
       </button>
 
       {/* 공유 모달 — Portal로 body에 렌더링 (카드 hover 충돌 방지) */}
@@ -480,7 +480,6 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           {/* CTA — 일반: [나도 받을 수 있나?(넓게)][친구추천], 신청서: [나도][신청서]한줄+[친구추천] */}
           {(() => {
             const hasForm = res.target_type !== "individual" && res.has_application_form;
-            const lockIcon = isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨";
             const primary = (
               <button
                 onClick={(e) => {
@@ -494,7 +493,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 }}
                 className="w-full py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1 bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md active:scale-[0.98]"
               >
-                <span>{lockIcon}</span> 나도 받을 수 있나?
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> 나도 받을 수 있나?
               </button>
             );
             const formBtn = hasForm ? (
@@ -509,7 +508,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 }}
                 className="w-full py-2 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
               >
-                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V18a2 2 0 01-2 2z" /></svg> AI 신청서 작성
               </button>
             ) : null;
             const share = <ShareMenu toast={toast} announcementId={res.announcement_id} announcementTitle={res.title} />;

@@ -34,13 +34,13 @@ function FabWithBubble({ label, onClick, botPhase }: { label: string; onClick: (
   return (
     <div className="fixed bottom-6 right-6 z-40 flex items-end gap-3">
       <div className="flex flex-col items-end gap-2">
-        <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-violet-200 rounded-full shadow-lg">
-          <span className="text-[11px] font-bold text-violet-700">{label}</span>
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-white border border-blue-200 rounded-full shadow-lg">
+          <span className="text-[11px] font-bold text-blue-700">{label}</span>
         </div>
         {/* 버튼 */}
         <button
           onClick={onClick}
-          className="relative w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
+          className="relative w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
           style={botPhase === "return" ? { animation: "btnAbsorb 1.5s 1.5s ease-out forwards" } : undefined}
           title={label}
           aria-label={label}

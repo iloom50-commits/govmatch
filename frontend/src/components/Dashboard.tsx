@@ -521,7 +521,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
             setOpen(true);
           }
         }}
-        className="relative z-10 w-full py-2 bg-gradient-to-r from-blue-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-violet-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
+        className="relative z-10 w-full py-2 bg-gradient-to-r from-blue-50 to-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span>
         <span className="tracking-tight">{label}</span>
@@ -558,8 +558,8 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                   </div>
                   <span className="text-[11px] font-bold text-slate-700">더보기</span>
                 </button>
-                <button onClick={() => { navigator.clipboard.writeText(url).then(() => toast("링크 복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-violet-50 transition-all active:scale-95">
-                  <div className="w-14 h-14 bg-violet-500 rounded-2xl flex items-center justify-center shadow-sm">
+                <button onClick={() => { navigator.clipboard.writeText(url).then(() => toast("링크 복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <span className="text-2xl">🔗</span>
                   </div>
                   <span className="text-[11px] font-bold text-slate-700">링크복사</span>
@@ -1399,7 +1399,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const PublicSidebarContent = () => (
     <div className="glass p-5 rounded-2xl space-y-4 shadow-xl border border-white/40 overflow-hidden w-full max-w-full box-border relative">
       <div className="absolute -top-16 -right-16 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
-      <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
+      <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       {/* 핵심 기능 소개 */}
       <div className="relative z-10 space-y-2 pt-1">
@@ -1438,7 +1438,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       <a
         href="/pro"
-        className="relative z-10 w-full py-2 bg-violet-50 text-violet-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-violet-100 transition-all border border-violet-100 active:scale-95 text-xs"
+        className="relative z-10 w-full py-2 bg-blue-50 text-blue-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
       >
         <span className="text-sm">💼</span>
         <span className="tracking-tight">전문가용 상담툴 (PRO)</span>
@@ -1593,7 +1593,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {planStatus && (
         <div className={`relative z-10 p-3 rounded-lg border ${
           planStatus.plan === "pro" || planStatus.plan === "biz"
-            ? "bg-violet-50 border-violet-200"
+            ? "bg-blue-50 border-blue-200"
             : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
             ? "bg-blue-50 border-blue-200"
             : planStatus.plan === "expired"
@@ -1603,7 +1603,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-[11px] font-bold uppercase tracking-widest ${
               planStatus.plan === "pro" || planStatus.plan === "biz"
-                ? "text-violet-600"
+                ? "text-blue-600"
                 : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
                 ? "text-blue-600"
                 : planStatus.plan === "expired"
@@ -1660,7 +1660,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (
-            <p className="text-center text-[11px] text-violet-500 font-bold">
+            <p className="text-center text-[11px] text-blue-500 font-bold">
               추천 적립 {profile.merit_months}개월
             </p>
           )}
@@ -1720,7 +1720,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <a
           href="/my/consults"
           onClick={() => setSidebarOpen(false)}
-          className="w-full py-2 bg-violet-50 text-violet-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-violet-100 transition-all border border-violet-100 active:scale-95 text-xs"
+          className="w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
         >
           <span className="text-sm">💬</span>
           <span className="tracking-tight">상담 이력</span>
@@ -1729,7 +1729,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <a
           href="/pro"
           onClick={() => setSidebarOpen(false)}
-          className="w-full py-2 bg-violet-50 text-violet-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-violet-100 transition-all border border-violet-100 active:scale-95 text-xs"
+          className="w-full py-2 bg-blue-50 text-blue-600 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
         >
           <span className="text-sm">💼</span>
           <span className="tracking-tight">전문가용 상담툴 (PRO)</span>
@@ -1753,7 +1753,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (
         <button
           onClick={() => setShowPromoModal(true)}
-          className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-blue-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
+          className="w-full mb-3 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
         >
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1820,7 +1820,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             <div className="flex justify-end">
               <button
                 onClick={onClearConsultant}
-                className="px-3 py-1.5 bg-white border border-violet-200 text-violet-700 rounded-lg text-[11px] font-bold hover:bg-violet-50 transition-all active:scale-95"
+                className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-[11px] font-bold hover:bg-blue-50 transition-all active:scale-95"
               >
                 내 매칭으로 돌아가기
               </button>
@@ -2271,8 +2271,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <button onClick={() => setShowPromoModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all text-sm">✕</button>
             </div>
             <div className="space-y-3 mb-5">
-              <div className="bg-violet-50 rounded-xl p-4 border border-violet-100">
-                <p className="text-[13px] font-bold text-violet-700 mb-1">🗓 체험 기간</p>
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <p className="text-[13px] font-bold text-blue-700 mb-1">🗓 체험 기간</p>
                 <p className="text-[13px] text-slate-700">가입일로부터 <strong>7일간</strong> 무료</p>
               </div>
               <div className="space-y-2">
@@ -2366,7 +2366,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       alert("화면 우측 상단 ⋮(또는 ⋯) 메뉴를 누르고\n'다른 브라우저로 열기' 또는 'Safari로 열기'를 선택해주세요.");
                     }
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:opacity-90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-600 text-white text-[13px] font-bold rounded-xl hover:opacity-90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
                   🌐 외부 브라우저에서 열기
                 </button>

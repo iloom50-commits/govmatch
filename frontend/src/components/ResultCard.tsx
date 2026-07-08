@@ -86,7 +86,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
             setOpen(true);
           }
         }}
-        className="w-full py-1.5 bg-gradient-to-r from-blue-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-violet-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
+        className="w-full py-1.5 bg-gradient-to-r from-blue-50 to-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
@@ -127,8 +127,8 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
                   <span className="text-[11px] font-bold text-slate-700">더보기</span>
                 </button>
 
-                <button onClick={copyLink} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-violet-50 transition-all active:scale-95">
-                  <div className="w-14 h-14 bg-violet-500 rounded-2xl flex items-center justify-center shadow-sm">
+                <button onClick={copyLink} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
+                  <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <span className="text-2xl">🔗</span>
                   </div>
                   <span className="text-[11px] font-bold text-slate-700">링크복사</span>
@@ -349,7 +349,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-blue-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-blue-500/5 blur-[60px] group-hover:bg-blue-500/10 transition-all duration-1000 pointer-events-none" />
@@ -401,12 +401,12 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
             </span>
           ))}
           {res.department && (
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[12px] font-bold rounded-full border border-blue-100">
+            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[12px] font-bold rounded-full border border-slate-200">
               {res.department}
             </span>
           )}
           {categoryKr && (
-            <span className="px-2 py-0.5 bg-violet-50 text-violet-600 text-[12px] font-bold rounded-full border border-violet-100">
+            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[12px] font-bold rounded-full border border-blue-100">
               {categoryKr}
             </span>
           )}

@@ -643,6 +643,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
   const [showPromoModal, setShowPromoModal] = useState(false);
 
+  // 하단 pill: 스크롤 내릴 때 숨김(피드 카드 가림 최소화), 올리거나 최상단이면 표시
+  const [pillHidden, setPillHidden] = useState(false);
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y < 80) setPillHidden(false);
+      else if (y > lastY + 6) setPillHidden(true);
+      else if (y < lastY - 6) setPillHidden(false);
+      lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   // 프로필 완성도 체크 — user_type별로 분리
   const profileCity = profile?.address_city ? String(profile.address_city).split(",").filter((c: string) => c && c !== "전국")[0] : "";
   const profileUserType = profile?.user_type || "individual";
@@ -2218,7 +2233,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {isPublic && !profile ? (
         <button
           onClick={handleLoginRequired}
-          className="fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
           <span className="text-base">🚀</span>
           <span className="text-xs font-bold">무료 가입</span>
@@ -2226,7 +2241,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       ) : (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2"
+          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
           <span className="text-base">👤</span>
           <span className="text-xs font-bold">내 정보</span>

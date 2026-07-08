@@ -266,6 +266,40 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
+              "@type": "Organization",
+              "name": "지원금길잡이",
+              "alternateName": ["지원금AI", "govmatch"],
+              "url": "https://www.govmatch.kr",
+              "logo": "https://www.govmatch.kr/icon-512.png",
+              "description": "정부 지원금·보조금·정책자금을 AI가 자동 분석해 조건에 맞는 지원사업을 찾아주는 서비스",
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              "name": "지원금길잡이",
+              "url": "https://www.govmatch.kr",
+              "inLanguage": "ko",
+              "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": "https://www.govmatch.kr/?q={search_term_string}",
+                },
+                "query-input": "required name=search_term_string",
+              },
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
               "@type": "FAQPage",
               "mainEntity": [
                 {

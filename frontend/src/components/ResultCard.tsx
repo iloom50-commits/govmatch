@@ -86,7 +86,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
             setOpen(true);
           }
         }}
-        className="w-full py-1.5 bg-gradient-to-r from-blue-50 to-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
+        className="w-full h-full py-2 bg-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
@@ -250,8 +250,8 @@ const URGENCY_STYLES: Record<string, string> = {
   expired: "bg-slate-200 text-slate-500 border-slate-300",
   critical: "bg-rose-100 text-rose-700 border-rose-200 animate-pulse",
   warning: "bg-amber-50 text-amber-700 border-amber-200",
-  normal: "bg-emerald-50 text-emerald-600 border-emerald-100",
-  open: "bg-sky-50 text-sky-600 border-sky-100",
+  normal: "bg-slate-100 text-slate-600 border-slate-200",
+  open: "bg-slate-100 text-slate-600 border-slate-200",
   unknown: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
@@ -350,8 +350,10 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
 
   return (
     <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-blue-500 ring-offset-2 animate-glow-pulse" : ""}`}>
-      {/* 좌측 긴급도 컬러바 */}
-      <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
+      {/* 좌측 긴급도 바 — 임박(D-7 이하)에만 표시(전 카드 공통이면 신호가 죽음) */}
+      {(dDay.urgency === "critical" || dDay.urgency === "warning") && (
+        <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
+      )}
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-blue-500/5 blur-[60px] group-hover:bg-blue-500/10 transition-all duration-1000 pointer-events-none" />
 
       <div className="flex flex-col gap-2 h-full relative z-[1]">
@@ -423,7 +425,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               if (isNaN(d.getTime())) return dDay.text;
               const days = ["일","월","화","수","목","금","토"];
               const yearPrefix = d.getFullYear() !== new Date().getFullYear() ? `'${String(d.getFullYear()).slice(2)} ` : "";
-              return `~${yearPrefix}${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
+              return `${dDay.text} · ${yearPrefix}${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
             })() : dDay.text}
           </span>
         </div>
@@ -459,8 +461,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           </h3>
         )}
 
-        {/* Info & Buttons */}
-        <div className="relative bg-slate-50/80 p-3 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-blue-50/20 transition-all overflow-hidden">
+        {/* Info & Buttons — 중첩 박스 제거(플랫), 여백으로 구분 */}
+        <div className="relative flex-1 pt-1 overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
             <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
               <span className="w-1 h-1 bg-blue-400 rounded-full shrink-0" />
@@ -475,10 +477,11 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               </p>
             )}
           </div>
-          {/* CTA buttons */}
-          <div className="flex flex-col gap-1.5 mt-1 min-w-0">
-            {/* AI 버튼 */}
-            <div className="flex items-center gap-1.5 min-w-0">
+          {/* CTA — 일반: [나도 받을 수 있나?(넓게)][친구추천], 신청서: [나도][신청서]한줄+[친구추천] */}
+          {(() => {
+            const hasForm = res.target_type !== "individual" && res.has_application_form;
+            const lockIcon = isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨";
+            const primary = (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -489,32 +492,46 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                     window.dispatchEvent(new CustomEvent("request-ai-consult", { detail: { announcement: res } }));
                   }
                 }}
-                className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1
-                  bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md active:scale-[0.98]`}
+                className="w-full py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1 bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md active:scale-[0.98]"
               >
-                <span>{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
+                <span>{lockIcon}</span> 나도 받을 수 있나?
               </button>
-              {/* AI 신청서 — 기업 공고 + 신청서양식 첨부가 있는 공고만 (2026-07-07 스펙) */}
-              {res.target_type !== "individual" && res.has_application_form && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isPublic) { onLoginRequired?.(); return; }
-                    if (isExpired) { onUpgrade?.(); return; }
-                    if (typeof window !== "undefined") {
-                      window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
-                    }
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border
-                    bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]`}
-                >
-                  <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
-                </button>
-              )}
-            </div>
-            {/* 공유 버튼 — 토글 시 카카오톡/문자/더보기/링크복사 */}
-            <ShareMenu toast={toast} announcementId={res.announcement_id} announcementTitle={res.title} />
-          </div>
+            );
+            const formBtn = hasForm ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPublic) { onLoginRequired?.(); return; }
+                  if (isExpired) { onUpgrade?.(); return; }
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
+                  }
+                }}
+                className="w-full py-2 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1 border bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:shadow-md active:scale-[0.98]"
+              >
+                <span className="animate-ai-pulse">{isPublic ? "🔒" : isExpired ? "🔒" : "✨"}</span> AI 신청서 작성
+              </button>
+            ) : null;
+            const share = <ShareMenu toast={toast} announcementId={res.announcement_id} announcementTitle={res.title} />;
+            return (
+              <div className="flex flex-col gap-1.5 mt-1 min-w-0">
+                {hasForm ? (
+                  <>
+                    <div className="flex items-stretch gap-1.5 min-w-0">
+                      <div className="flex-1 min-w-0">{primary}</div>
+                      <div className="flex-1 min-w-0">{formBtn}</div>
+                    </div>
+                    {share}
+                  </>
+                ) : (
+                  <div className="flex items-stretch gap-1.5 min-w-0">
+                    <div className="flex-[1.7] min-w-0">{primary}</div>
+                    <div className="flex-1 min-w-0">{share}</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

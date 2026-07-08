@@ -1366,7 +1366,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const SidebarLogo = () => (
     <div className="hidden md:flex items-center justify-between mb-4 px-1">
       <div className="flex items-center gap-2">
-        <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+        <span className="brand-badge"><span className="brand-name">지원금길잡이</span></span>
         <span className="text-xs font-medium text-slate-400 tracking-normal">지원금 다나와</span>
       </div>
       {!isPwaInstalled && (
@@ -1815,7 +1815,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* 모바일 전용 로고 헤더 */}
           <div className="flex lg:hidden items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="brand-badge brand-go-hover"><span className="brand-name">지원금</span><span className="brand-go">AI</span></span>
+              <span className="brand-badge"><span className="brand-name">지원금길잡이</span></span>
               <span className="text-xs font-medium text-slate-400">지원금 다나와</span>
             </div>
             <div className="flex items-center gap-2">

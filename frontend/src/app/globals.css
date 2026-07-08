@@ -231,34 +231,6 @@ h1, h2, h3, h4 {
   position: relative;
 }
 
-.brand-go {
-  display: inline-block;
-  background: linear-gradient(180deg, #D4A853 0%, #F5D78E 30%, #FFF1C9 50%, #F5D78E 70%, #B8862D 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-weight: 900;
-  filter: drop-shadow(0 1px 3px rgba(184, 134, 45, 0.4));
-  position: relative;
-}
-
-.brand-go::after {
-  content: "GO";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 20%, rgba(255,241,201,0.8) 50%, transparent 80%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gold-shine 3s ease-in-out infinite;
-}
-
-@keyframes gold-shine {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 /* Dark navy badge behind gold text */
 .brand-badge {
   display: inline-block;
@@ -279,14 +251,6 @@ h1, h2, h3, h4 {
 .brand-badge-lg {
   padding: 6px 20px 7px;
   border-radius: 10px;
-}
-
-.brand-go-hover {
-  transition: transform 0.3s ease;
-}
-.brand-go-hover:hover .brand-go {
-  transform: translateX(3px);
-  transition: transform 0.3s ease;
 }
 
 /* AI Bot Animation — 브랜드 알에서 출발 → 오른쪽 걸어감 → 작업 → 복귀 */

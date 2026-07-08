@@ -1926,7 +1926,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
                 className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  showMatchedMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  showMatchedMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"
                 }`}
               >
                 <span className="leading-none">⭐</span>
@@ -1936,7 +1936,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <button
                 onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
                 className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"
                 }`}
               >
                 <span className="leading-none">📍</span>
@@ -1948,7 +1948,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200"}`}
                   >
                     {chip.label}
                   </button>

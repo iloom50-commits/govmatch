@@ -521,9 +521,9 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
             setOpen(true);
           }
         }}
-        className="relative z-10 w-full py-2 bg-gradient-to-r from-blue-50 to-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-blue-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
+        className="relative z-10 w-full py-2.5 bg-blue-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100/60 active:scale-95 text-[13px]"
       >
-        <span className="text-sm">📢</span>
+        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
         <span className="tracking-tight">{label}</span>
       </button>
 
@@ -1558,7 +1558,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         return (
           <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">🏢</div>
+              <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center shadow text-white"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h.01M11 7h.01M15 7h.01M11 11h.01M15 11h.01M11 15h.01M15 15h.01" /></svg></div>
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || "기업명 미등록"}</p>
                 <span className="px-1.5 py-px bg-emerald-50 text-emerald-600 text-[11px] font-bold rounded flex items-center gap-1 border border-emerald-100/50 mt-0.5 w-fit">
@@ -1591,7 +1591,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       })()}
 
       {planStatus && (
-        <div className={`relative z-10 p-3 rounded-lg border ${
+        <div className={`relative z-10 p-4 rounded-xl border ${
           planStatus.plan === "pro" || planStatus.plan === "biz"
             ? "bg-blue-50 border-blue-200"
             : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
@@ -1621,7 +1621,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* 기능별 상태 요약 */}
           <div className="space-y-1.5 mb-2">
             {/* 공고AI 상담 */}
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-[12px]">
               <span className="text-slate-500 font-medium">공고AI 상담</span>
               <span className={`font-bold ${
                 (planStatus.consult_limit || 0) >= 999999 ? "text-emerald-600" :
@@ -1631,7 +1631,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </span>
             </div>
             {/* 저장/알림 */}
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-[12px]">
               <span className="text-slate-500 font-medium">저장 · 알림</span>
               <span className={`font-bold ${isFree ? "text-slate-400" : "text-emerald-600"}`}>
                 {isFree ? "LITE부터" : "사용 가능"}
@@ -1641,7 +1641,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {!["pro", "biz"].includes(planStatus.plan) && onUpgrade && (
             <button
               onClick={onUpgrade}
-              className="w-full py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold hover:bg-amber-600 transition-all active:scale-95"
+              className="w-full py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
             >
               {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
             </button>

@@ -1857,24 +1857,22 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
           <header className="sticky top-0 z-20 bg-white">
 
-            {/* 대분류 탭 — 토글 버튼 그룹 */}
-            <div className="flex w-full border border-slate-300">
+            {/* 대분류 탭 — Toss식 하단 언더라인 탭(다크 블록 대신 가벼운 밑줄) */}
+            <div className="flex border-b border-slate-200">
               {([
                 { key: "business" as MajorTab, label: "기업 지원금", icon: "🏢", show: showBusinessTab },
                 { key: "individual" as MajorTab, label: "개인 지원금", icon: "👤", show: showIndividualTab },
-              ]).map((tab, idx) => {
+              ]).map((tab) => {
                 if (!tab.show) return null;
                 const isActive = majorTab === tab.key;
                 return (
                   <button
                     key={tab.key}
                     onClick={() => switchMajorTab(tab.key)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-bold transition-all duration-150 ${
-                      idx === 0 ? "" : "border-l border-slate-300"
-                    } ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[15px] font-bold border-b-2 -mb-px transition-colors ${
                       isActive
-                        ? "bg-slate-900 text-white"
-                        : "bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                        ? "border-blue-600 text-blue-600"
+                        : "border-transparent text-slate-400 hover:text-slate-600"
                     }`}
                   >
                     <span>{tab.icon}</span>

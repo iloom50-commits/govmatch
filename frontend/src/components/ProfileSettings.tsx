@@ -106,10 +106,10 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
       disabled={!onClick}
       className={`w-full flex items-center justify-between py-3.5 ${onClick ? "cursor-pointer active:bg-slate-50" : "cursor-default"} transition-colors`}
     >
-      <span className="text-[13px] text-slate-500">{label}</span>
-      <span className={`text-[13px] font-semibold ${accent ? "text-indigo-600" : "text-slate-900"} flex items-center gap-1`}>
+      <span className="text-[15px] text-slate-500">{label}</span>
+      <span className={`text-[15px] font-semibold ${accent ? "text-blue-600" : "text-slate-900"} flex items-center gap-1`}>
         {value}
-        {onClick && <span className="text-slate-300 text-[11px] ml-0.5">{">"}</span>}
+        {onClick && <span className="text-slate-300 text-[13px] ml-0.5">{">"}</span>}
       </span>
     </button>
   );
@@ -121,7 +121,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
       <div className="bg-white w-full h-full md:h-auto md:max-w-md md:max-h-[95vh] md:rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 flex flex-col">
         {/* Header */}
         <div className="px-5 pt-4 pb-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
-          <h2 className="text-[17px] font-bold text-slate-900">마이페이지</h2>
+          <h2 className="text-[19px] font-bold text-slate-900">마이페이지</h2>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
@@ -132,7 +132,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
 
           {/* ── 내 정보 ── */}
           <div className="px-5 pt-5 pb-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">내 정보</p>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-2">내 정보</p>
           </div>
           <div className="px-5">
             <Row label="이메일" value={profile?.email || "미등록"} />
@@ -146,7 +146,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
 
           {/* ── 구독 정보 ── */}
           <div className="px-5 pt-4 pb-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">구독 정보</p>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-2">구독 정보</p>
           </div>
           <div className="px-5">
             <Row
@@ -171,7 +171,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
 
           {/* ── 계정 관리 ── */}
           <div className="px-5 pt-4 pb-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">계정 관리</p>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-2">계정 관리</p>
           </div>
           <div className="px-5 pb-4">
             {/* 비밀번호 변경 */}
@@ -251,7 +251,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
             )}
 
             <Row
-              label="📋 내 상담 이력"
+              label="내 상담 이력"
               value=""
               onClick={() => { onClose(); window.location.href = "/my/consults"; }}
             />

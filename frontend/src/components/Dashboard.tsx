@@ -1886,8 +1886,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
           </header>
 
-          {/* 키워드 검색 — 회색 채움 필드(탭·필터와 형태 구분) */}
-          <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5 mt-3">
+          {/* 키워드 검색 — 흰색 입력 박스(배경 대비 확보, 탭·칩과 형태·색 구분) */}
+          <div className="flex items-center gap-2 bg-white ring-1 ring-slate-200 shadow-sm rounded-xl px-3 py-2.5 mt-3">
               <div className="flex items-center gap-1.5 px-1 text-slate-400 flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1928,7 +1928,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <button
                 onClick={() => { setActiveChips(new Set()); setCurrentPage(1); toggleMatchedMode(); }}
                 className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  showMatchedMode ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"
+                  showMatchedMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
                 <span className="leading-none">⭐</span>
@@ -1938,7 +1938,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               <button
                 onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has("내 지역") ? n.delete("내 지역") : n.add("내 지역"); return n; }); setCurrentPage(1); }}
                 className={`flex items-center gap-1 px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${
-                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"
+                  activeChips.has("내 지역") ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
                 <span className="leading-none">📍</span>
@@ -1950,7 +1950,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                   <button
                     key={chip.key}
                     onClick={() => { setShowMatchedMode(false); setActiveChips(prev => { const n = new Set(prev); n.has(chip.key) ? n.delete(chip.key) : n.add(chip.key); return n; }); setCurrentPage(1); }}
-                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-gray-100 text-slate-600 hover:bg-gray-200"}`}
+                    className={`px-3.5 py-2 rounded-full text-[13px] font-bold whitespace-nowrap transition-all active:scale-95 ${isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
                   >
                     {chip.label}
                   </button>

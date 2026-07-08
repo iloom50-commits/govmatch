@@ -330,7 +330,7 @@ export default function RootLayout({
                 정부 지원금·보조금, AI가 30초 만에 찾아드립니다
               </h1>
               <p className="text-[13px] md:text-sm text-slate-500 leading-relaxed max-w-2xl mx-auto">
-                <strong className="text-slate-700">지원금길잡이(govmatch.kr)</strong>는 중앙부처·지자체 공고 15,000건 이상을 매시간 수집해
+                <strong className="text-slate-700">지원금길잡이(govmatch.kr)</strong>는 중앙부처·지자체 공고 17,000건 이상을 매시간 수집해
                 업종·지역·매출·연령 조건에 꼭 맞는 지원사업을 자동으로 매칭합니다.
               </p>
             </div>
@@ -363,7 +363,7 @@ export default function RootLayout({
                 <div className="text-2xl mb-2">🤖</div>
                 <h2 className="text-[13px] font-bold text-slate-800 mb-3">AI 서비스 특징</h2>
                 <ul className="text-[12px] text-slate-600 space-y-1.5">
-                  <li>✓ 15,000건+ 공고 실시간 분석</li>
+                  <li>✓ 17,000건+ 공고 실시간 분석</li>
                   <li>✓ 조건 입력 후 30초 내 맞춤 매칭</li>
                   <li>✓ AI 자금 상담 (LITE)</li>
                   <li>✓ 마감 임박 공고 자동 알림</li>

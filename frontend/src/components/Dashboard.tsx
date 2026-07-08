@@ -1534,16 +1534,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         if (!hasProfile) return null;
         // 개인 사용자: 개인 정보 카드
         if (ut === "individual") return (
-          <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
-            <div className="flex items-center gap-2.5 mb-4">
+          <div className="relative z-10 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-3">
               <div className="w-10 h-10 bg-blue-100 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">👤</div>
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || profile?.email?.split("@")[0] || "회원"}</p>
                 <span className="px-1.5 py-px bg-blue-50 text-blue-600 text-[11px] font-bold rounded border border-blue-100/50 mt-0.5 w-fit">개인</span>
               </div>
             </div>
-            <div className="h-px bg-slate-100 mb-4" />
-            <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
+            <div className="h-px bg-slate-100 mb-3" />
+            <div className="grid grid-cols-[56px_1fr] gap-y-2.5 text-[13px]">
               <span className="text-slate-400">연령대</span>
               <span className="font-semibold text-slate-800">{profile?.age_range || "미설정"}</span>
               <span className="text-slate-400">지역</span>
@@ -1555,8 +1555,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         );
         // 기업/both 사용자: 기업 정보 카드
         return (
-          <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
-            <div className="flex items-center gap-2.5 mb-4">
+          <div className="relative z-10 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-3">
               <div className="w-10 h-10 bg-slate-950 rounded-lg flex-shrink-0 flex items-center justify-center shadow text-white"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h.01M11 7h.01M15 7h.01M11 11h.01M15 11h.01M11 15h.01M15 15h.01" /></svg></div>
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || "기업명 미등록"}</p>
@@ -1572,8 +1572,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 </span>
               </div>
             </div>
-            <div className="h-px bg-slate-100 mb-4" />
-            <div className="grid grid-cols-[56px_1fr] gap-y-3.5 text-[13px]">
+            <div className="h-px bg-slate-100 mb-3" />
+            <div className="grid grid-cols-[56px_1fr] gap-y-2.5 text-[13px]">
               <span className="text-slate-400">설립</span>
               <span className="font-semibold text-slate-800">{profile?.founded_date || profile?.establishment_date ? String(profile.founded_date || profile.establishment_date).slice(0, 10) : (profile?.is_pre_founder ? "예비창업자" : "미설정")}</span>
               <span className="text-slate-400">소재지</span>
@@ -1802,7 +1802,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {/* 데스크탑 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
         {/* 데스크탑 사이드바 */}
-        <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto scrollbar-hide">
+        <aside className="hidden lg:block lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           <SidebarLogo />
           {isPublic && !profile ? <PublicSidebarContent /> : <SidebarContent />}
         </aside>

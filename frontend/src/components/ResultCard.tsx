@@ -86,7 +86,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
             setOpen(true);
           }
         }}
-        className="w-full py-1.5 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
+        className="w-full py-1.5 bg-gradient-to-r from-blue-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-violet-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span> 친구에게 추천하기
       </button>
@@ -349,10 +349,10 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
   const amountIsAmount = !!amountLabel && /[0-9]/.test(amountLabel) && /(원|억|만)/.test(amountLabel);
 
   return (
-    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-indigo-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
+    <div data-urgency={dDay.urgency} data-aid={res.announcement_id} className={`group relative glass-card pt-2 pb-[4px] px-3 md:pt-3 md:pb-[4px] md:px-4 rounded-xl transition-all duration-300 flex flex-col h-full overflow-hidden pl-4 ${saved ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${selected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${highlight ? "ring-2 ring-violet-500 ring-offset-2 animate-glow-pulse" : ""}`}>
       {/* 좌측 긴급도 컬러바 */}
       <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${URGENCY_BAR[dDay.urgency]}`} />
-      <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/5 blur-[60px] group-hover:bg-indigo-500/10 transition-all duration-1000 pointer-events-none" />
+      <div className="absolute -top-16 -right-16 w-40 h-40 bg-blue-500/5 blur-[60px] group-hover:bg-blue-500/10 transition-all duration-1000 pointer-events-none" />
 
       <div className="flex flex-col gap-2 h-full relative z-[1]">
 
@@ -366,10 +366,10 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               disabled={saving}
               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
                 saved
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
                   : saving
                   ? "bg-slate-100 border-slate-200 text-transparent cursor-wait"
-                  : "bg-indigo-50/50 border-indigo-300 text-transparent hover:border-indigo-500 hover:bg-indigo-100"
+                  : "bg-blue-50/50 border-blue-300 text-transparent hover:border-blue-500 hover:bg-blue-100"
               }`}
               aria-label={saved ? "저장 취소" : "일정 저장"}
             >
@@ -384,8 +384,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
               onClick={(e) => { e.stopPropagation(); onToggle(); }}
               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
                 selected
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
-                  : "bg-indigo-50/50 border-indigo-300 text-transparent hover:border-indigo-500 hover:bg-indigo-100"
+                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                  : "bg-blue-50/50 border-blue-300 text-transparent hover:border-blue-500 hover:bg-blue-100"
               }`}
               aria-label={selected ? "선택 해제" : "선택"}
             >
@@ -434,7 +434,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
             href={bestExternalUrl(res.final_url, res.origin_url, res.url)}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight hover:text-indigo-600 hover:underline underline-offset-2 transition-colors line-clamp-2 min-h-[2lh] cursor-pointer"
+            className="font-bold text-slate-900 text-base md:text-lg leading-snug tracking-tight hover:text-blue-600 hover:underline underline-offset-2 transition-colors line-clamp-2 min-h-[2lh] cursor-pointer"
             title={res.title}
             onClick={(e) => e.stopPropagation()}
           >
@@ -443,7 +443,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 {amountLabel}
               </span>
             )}
-            {regionTag && <span className="text-indigo-500 font-black">{regionTag}</span>}{res.title}
+            {regionTag && <span className="text-blue-500 font-black">{regionTag}</span>}{res.title}
           </a>
         ) : (
           <h3
@@ -455,15 +455,15 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 {amountLabel}
               </span>
             )}
-            {regionTag && <span className="text-indigo-500 font-black">{regionTag}</span>}{res.title}
+            {regionTag && <span className="text-blue-500 font-black">{regionTag}</span>}{res.title}
           </h3>
         )}
 
         {/* Info & Buttons */}
-        <div className="relative bg-slate-50/80 p-3 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-indigo-50/20 transition-all overflow-hidden">
+        <div className="relative bg-slate-50/80 p-3 rounded-lg flex-1 border border-slate-100/50 group-hover:bg-blue-50/20 transition-all overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
             <p className="text-[12px] font-bold flex items-center gap-1 whitespace-nowrap">
-              <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
+              <span className="w-1 h-1 bg-blue-400 rounded-full shrink-0" />
               <span className="text-slate-400">대상 :</span>
               <span className="text-slate-900">{targetText}{res.established_years_limit ? ` · ${res.established_years_limit}년 이내` : ""}</span>
             </p>
@@ -490,7 +490,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                   }
                 }}
                 className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1
-                  bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md active:scale-[0.98]`}
+                  bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md active:scale-[0.98]`}
               >
                 <span>{isPublic ? "🔒" : isExpired ? "🔒" : isConsultBlocked ? "🔒" : "✨"}</span> 나도 받을 수 있나?
               </button>

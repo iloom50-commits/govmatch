@@ -39,14 +39,14 @@ function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => 
   return (
     <div className="relative z-10">
       {showBubble && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-blue-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
           맞춤 설정하면 AI가 자동 추천!
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-700 rotate-45" />
         </div>
       )}
       <button
         onClick={onClick}
-        className="w-full py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all border border-indigo-100 active:scale-95 text-xs"
+        className="w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
       >
         <span className="text-sm">🔔</span>
         <span className="tracking-tight">맞춤형 알림 요청</span>
@@ -75,14 +75,14 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
   return (
     <div className="relative z-10">
       {showBubble && (
-        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-blue-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
           가입 즉시 7일 무료체험!
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-700 rotate-45" />
         </div>
       )}
       <button
         onClick={onClick}
-        className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all active:scale-95 text-xs shadow-md"
+        className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all active:scale-95 text-xs shadow-md"
       >
         <span className="text-sm">🔔</span>
         <span className="tracking-tight">(무료가입) AI맞춤 알림</span>
@@ -244,27 +244,27 @@ function HotIssueTicker() {
               {modal.linked_announcement_id && (
                 <a
                   href={`/announcements/${modal.linked_announcement_id}`}
-                  className="mt-4 flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 hover:bg-indigo-100 transition-colors group"
+                  className="mt-4 flex items-center justify-between gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 hover:bg-blue-100 transition-colors group"
                 >
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wide">공고 바로보기</span>
-                    <span className="text-sm font-semibold text-indigo-800 group-hover:underline leading-snug">
+                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide">공고 바로보기</span>
+                    <span className="text-sm font-semibold text-blue-800 group-hover:underline leading-snug">
                       {modal.linked_title || "관련 공고 확인"}
                     </span>
                     {modal.linked_deadline && (
-                      <span className="text-[11px] text-indigo-400">
+                      <span className="text-[11px] text-blue-400">
                         마감: {modal.linked_deadline}
                       </span>
                     )}
                   </div>
-                  <span className="text-indigo-400 text-lg shrink-0">→</span>
+                  <span className="text-blue-400 text-lg shrink-0">→</span>
                 </a>
               )}
               {modal.source_name && (
                 <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-1">
                   <span>📌 출처: {modal.source_name}</span>
                   {modal.source_url && !modal.linked_announcement_id && (
-                    <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-indigo-500 underline">원문 보기 →</a>
+                    <a href={modal.source_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-500 underline">원문 보기 →</a>
                   )}
                 </p>
               )}
@@ -333,14 +333,14 @@ function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { p
   return (
     <div className="relative">
       {showBubble && bubbleMsg && (
-        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-blue-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
           {bubbleMsg}
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-indigo-700 rotate-45" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-700 rotate-45" />
         </div>
       )}
       <button
         onClick={onClick}
-        className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-xs"
+        className="w-full py-2 bg-slate-950 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-600 transition-all shadow-lg active:scale-95 text-xs"
       >
         <span className="text-sm">⚙️</span>
         <span className="tracking-tight">마이페이지</span>
@@ -521,7 +521,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
             setOpen(true);
           }
         }}
-        className="relative z-10 w-full py-2 bg-gradient-to-r from-indigo-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-indigo-100 hover:to-violet-100 transition-all border border-indigo-100/60 active:scale-95 text-xs"
+        className="relative z-10 w-full py-2 bg-gradient-to-r from-blue-50 to-violet-50 text-slate-700 rounded-lg font-bold flex items-center justify-center gap-2 hover:from-blue-100 hover:to-violet-100 transition-all border border-blue-100/60 active:scale-95 text-xs"
       >
         <span className="text-sm">📢</span>
         <span className="tracking-tight">{label}</span>
@@ -1387,7 +1387,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {!isPwaInstalled && (
         <button
           onClick={() => { if (deferredPrompt) handlePwaInstall(); else setShowInstallGuide(true); }}
-          className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all active:scale-95"
+          className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 border border-blue-200 rounded-full transition-all active:scale-95"
         >
           <span>⬇️</span><span>설치</span>
         </button>
@@ -1398,7 +1398,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 비로그인 사이드바 (프로그램 소개 + CTA)
   const PublicSidebarContent = () => (
     <div className="glass p-5 rounded-2xl space-y-4 shadow-xl border border-white/40 overflow-hidden w-full max-w-full box-border relative">
-      <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
+      <div className="absolute -top-16 -right-16 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-violet-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       {/* 핵심 기능 소개 */}
@@ -1420,9 +1420,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       </div>
 
       {/* 통계 */}
-      <div className="relative z-10 px-4 py-3 bg-indigo-50/80 rounded-xl border border-indigo-100/60 text-center">
-        <p className="text-[11px] text-indigo-500 font-bold uppercase tracking-widest mb-1">AI가 분석한 지원사업</p>
-        <p className="text-xl font-black text-indigo-700">{(totalAnnouncementCount > 0 ? totalAnnouncementCount : 14000).toLocaleString()}건+</p>
+      <div className="relative z-10 px-4 py-3 bg-blue-50/80 rounded-xl border border-blue-100/60 text-center">
+        <p className="text-[11px] text-blue-500 font-bold uppercase tracking-widest mb-1">AI가 분석한 지원사업</p>
+        <p className="text-xl font-black text-blue-700">{(totalAnnouncementCount > 0 ? totalAnnouncementCount : 14000).toLocaleString()}건+</p>
       </div>
 
       {/* CTA 버튼 */}
@@ -1446,7 +1446,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       <a
         href="/api-partnership"
-        className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
+        className="relative z-10 w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-100 active:scale-95 text-xs"
       >
         <span className="text-sm">🤝</span>
         <span className="tracking-tight">API 제공 · 협업 제안 하기</span>
@@ -1457,7 +1457,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   // 사이드바 내용 (모바일 드로어 + 데스크탑 공용)
   const SidebarContent = () => (
     <div className="glass p-4 md:p-5 rounded-2xl space-y-3 shadow-xl border border-white/40 overflow-x-hidden w-full max-w-full box-border">
-      <div className="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 blur-[50px] rounded-full pointer-events-none" />
+      <div className="absolute -top-16 -right-16 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
 
       {/* 🔔 맞춤 알림 카드 — 프로필+알림 둘 다 완료 시 녹색, 하나라도 미완성 시 핑크 CTA */}
       {(() => {
@@ -1537,7 +1537,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         if (ut === "individual") return (
           <div className="relative z-10 p-5 bg-white/60 rounded-xl border border-slate-100/80 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">👤</div>
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex-shrink-0 flex items-center justify-center text-lg shadow">👤</div>
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-bold text-slate-900 tracking-tight truncate">{profile?.company_name || profile?.email?.split("@")[0] || "회원"}</p>
                 <span className="px-1.5 py-px bg-blue-50 text-blue-600 text-[11px] font-bold rounded border border-blue-100/50 mt-0.5 w-fit">개인</span>
@@ -1595,7 +1595,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           planStatus.plan === "pro" || planStatus.plan === "biz"
             ? "bg-violet-50 border-violet-200"
             : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
-            ? "bg-indigo-50 border-indigo-200"
+            ? "bg-blue-50 border-blue-200"
             : planStatus.plan === "expired"
             ? "bg-rose-50 border-rose-200"
             : "bg-slate-50 border-slate-200"
@@ -1605,7 +1605,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               planStatus.plan === "pro" || planStatus.plan === "biz"
                 ? "text-violet-600"
                 : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
-                ? "text-indigo-600"
+                ? "text-blue-600"
                 : planStatus.plan === "expired"
                 ? "text-rose-600"
                 : "text-slate-500"
@@ -1676,7 +1676,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <div className="h-px bg-slate-200/60" />
           <div className="flex items-center justify-between px-1 pt-1">
             <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">다가오는 일정</h4>
-            <a href="/calendar" className="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">
+            <a href="/calendar" className="text-[11px] font-bold text-blue-500 hover:text-blue-700 transition-colors">
               전체 보기 →
             </a>
           </div>
@@ -1687,7 +1687,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 const diff = d ? Math.ceil((d.getTime() - Date.now()) / 86400000) : null;
                 return (
                   <div key={s.id} className="flex items-center gap-2.5 p-3 bg-white/50 rounded-lg border border-white/60 text-[11px]">
-                    <span className={`px-2 py-0.5 rounded-md font-bold flex-shrink-0 ${diff !== null && diff <= 3 ? "bg-rose-100 text-rose-700" : "bg-indigo-50 text-indigo-600"}`}>
+                    <span className={`px-2 py-0.5 rounded-md font-bold flex-shrink-0 ${diff !== null && diff <= 3 ? "bg-rose-100 text-rose-700" : "bg-blue-50 text-blue-600"}`}>
                       {diff !== null ? `D-${diff}` : "상시"}
                     </span>
                     <span className="font-bold text-slate-700 truncate flex-1">{s.title}</span>
@@ -1711,7 +1711,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           />
           <a
             href="/calendar"
-            className="py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-100 transition-all border border-indigo-100 active:scale-95 text-xs"
+            className="py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
           >
             <span className="text-sm">📅</span>
             <span className="tracking-tight">일정 관리</span>
@@ -1737,7 +1737,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <a
           href="/api-partnership"
           onClick={() => setSidebarOpen(false)}
-          className="w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 active:scale-95 text-xs"
+          className="w-full py-2 bg-slate-50 text-slate-500 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-100 active:scale-95 text-xs"
         >
           <span className="text-sm">🤝</span>
           <span className="tracking-tight">API 제공 · 협업 제안 하기</span>
@@ -1753,7 +1753,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (
         <button
           onClick={() => setShowPromoModal(true)}
-          className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
+          className="w-full mb-3 rounded-xl bg-gradient-to-r from-violet-600 via-blue-600 to-purple-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
         >
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1846,7 +1846,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {!isPwaInstalled && (
                 <button
                   onClick={() => { if (deferredPrompt) handlePwaInstall(); else setShowInstallGuide(true); }}
-                  className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-indigo-600 hover:text-white hover:bg-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full transition-all active:scale-95"
+                  className="flex items-center gap-1 py-1 px-2.5 text-[11px] font-bold text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 border border-blue-200 rounded-full transition-all active:scale-95"
                 >
                   <span>⬇️</span><span>설치</span>
                 </button>
@@ -1905,7 +1905,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 className="flex-1 bg-transparent border-none px-1 py-0.5 text-sm text-slate-800 placeholder-slate-400 outline-none"
               />
               {publicLoading && searchQuery && (
-                <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
               )}
               {searchQuery && !publicLoading && (
                 <button
@@ -1964,20 +1964,20 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {profile && !profile.interests && activeChips.size === 0 && !searchQuery.trim() && (
             <button
               onClick={() => { setIsNotifyOpen(true); setNotifyShortcut(false); }}
-              className="w-full flex items-center gap-2.5 px-4 py-3 mb-2 bg-indigo-50 border border-indigo-100 rounded-xl text-left hover:bg-indigo-100 transition-colors"
+              className="w-full flex items-center gap-2.5 px-4 py-3 mb-2 bg-blue-50 border border-blue-100 rounded-xl text-left hover:bg-blue-100 transition-colors"
             >
               <span className="text-lg shrink-0">🎯</span>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-indigo-700">관심분야를 설정하면 맞춤 공고가 먼저 보여요</p>
-                <p className="text-[11px] text-indigo-400 mt-0.5">프로필에서 관심분야를 입력하면 칩이 자동 선택됩니다</p>
+                <p className="text-[13px] font-bold text-blue-700">관심분야를 설정하면 맞춤 공고가 먼저 보여요</p>
+                <p className="text-[11px] text-blue-400 mt-0.5">프로필에서 관심분야를 입력하면 칩이 자동 선택됩니다</p>
               </div>
-              <span className="text-indigo-300 text-xs shrink-0">설정 →</span>
+              <span className="text-blue-300 text-xs shrink-0">설정 →</span>
             </button>
           )}
 
           {searchQuery.trim() && !publicLoading && publicData.length > 0 && (
             <p className="text-xs text-slate-500 font-medium mb-2 px-1">
-              &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-indigo-600">{filteredMatches.length}건</span>
+              &quot;{searchQuery.trim()}&quot; 검색 결과 <span className="font-bold text-blue-600">{filteredMatches.length}건</span>
             </p>
           )}
 
@@ -2070,21 +2070,21 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               {searchQuery.trim() ? (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-blue-600 transition-all shadow-lg active:scale-95 text-sm"
                 >
                   검색어 초기화
                 </button>
               ) : matches.length === 0 ? (
                 <button
                   onClick={() => setIsNotifyOpen(true)}
-                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-blue-600 transition-all shadow-lg active:scale-95 text-sm"
                 >
                   알림 받기 설정
                 </button>
               ) : (
                 <button
                   onClick={() => setActiveTab("all")}
-                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-indigo-600 transition-all shadow-lg active:scale-95 text-sm"
+                  className="px-6 py-3 bg-slate-950 text-white rounded-lg font-bold hover:bg-blue-600 transition-all shadow-lg active:scale-95 text-sm"
                 >
                   전체 보기
                 </button>
@@ -2097,7 +2097,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             {/* 이메일 ?aid= 접속 시 해당 공고 최상단 고정 */}
             {pinnedAnnouncement && highlightAid && (
               <div className="mb-3 animate-in fade-in slide-in-from-top-4 duration-500">
-                <p className="text-[11px] text-indigo-500 font-bold mb-2 flex items-center gap-1">
+                <p className="text-[11px] text-blue-500 font-bold mb-2 flex items-center gap-1">
                   <span>📌</span> 이메일에서 선택한 공고
                 </p>
                 <ResultCard
@@ -2169,7 +2169,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {publicLoading && currentPage > 1 && (
                   // 추가 페이지 로딩 중: 하단 스피너만 표시 (기존 아이템 유지)
                   <div className="flex justify-center py-4">
-                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
                 <div className="pb-20" />
@@ -2194,7 +2194,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     </button>
                     {pages.map(p => (
                       <button key={p} onClick={() => goTo(p)}
-                        className={`w-9 h-9 text-sm font-bold rounded-lg transition-all ${p === currentPage ? "bg-indigo-600 text-white shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"}`}>
+                        className={`w-9 h-9 text-sm font-bold rounded-lg transition-all ${p === currentPage ? "bg-blue-600 text-white shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"}`}>
                         {p}
                       </button>
                     ))}
@@ -2217,7 +2217,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {isPublic && !profile ? (
         <button
           onClick={handleLoginRequired}
-          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-indigo-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-indigo-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
+          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-blue-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-blue-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
           <span className="text-base">🚀</span>
           <span className="text-xs font-bold">무료 가입</span>
@@ -2290,7 +2290,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">체험 기간 종료 후 자동으로 무료 플랜(공고AI 상담 월 3회)으로 전환됩니다. 별도 해지 불필요.</p>
             </div>
-            <button onClick={() => setShowPromoModal(false)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-[14px] hover:bg-indigo-700 transition-all active:scale-[0.98]">
+            <button onClick={() => setShowPromoModal(false)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-[14px] hover:bg-blue-700 transition-all active:scale-[0.98]">
               확인
             </button>
           </div>
@@ -2323,7 +2323,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
 
             <div className="space-y-2.5 mb-5">
-              <div className="flex items-start gap-2.5 p-2.5 bg-indigo-50 rounded-lg">
+              <div className="flex items-start gap-2.5 p-2.5 bg-blue-50 rounded-lg">
                 <span className="text-lg mt-0.5">🔔</span>
                 <div>
                   <p className="text-[12px] font-bold text-slate-800">맞춤 알림 수신</p>
@@ -2366,15 +2366,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                       alert("화면 우측 상단 ⋮(또는 ⋯) 메뉴를 누르고\n'다른 브라우저로 열기' 또는 'Safari로 열기'를 선택해주세요.");
                     }
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:opacity-90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-[13px] font-bold rounded-xl hover:opacity-90 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
                   🌐 외부 브라우저에서 열기
                 </button>
                 <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <p className="text-[11px] font-bold text-slate-700 mb-2">또는 수동으로:</p>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    화면 우측 상단 <span className="font-bold text-indigo-600">⋮ 메뉴</span> →<br/>
-                    <span className="font-bold text-indigo-600">&quot;다른 브라우저로 열기&quot;</span> 선택<br/>
+                    화면 우측 상단 <span className="font-bold text-blue-600">⋮ 메뉴</span> →<br/>
+                    <span className="font-bold text-blue-600">&quot;다른 브라우저로 열기&quot;</span> 선택<br/>
                     → Chrome/Safari에서 설치하기
                   </p>
                 </div>
@@ -2415,9 +2415,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {browserType === "chrome_android" && (
                   <>
                     <div className="flex items-start gap-2.5 mb-2">
-                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-lg font-black">⋮</div>
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg shrink-0 text-lg font-black">⋮</div>
                       <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
-                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">우측 상단 ⋮ 메뉴</span> 탭
+                        <span className="font-black">1단계:</span> <span className="font-bold text-blue-700">우측 상단 ⋮ 메뉴</span> 탭
                       </p>
                     </div>
                     <div className="flex items-start gap-2.5">
@@ -2469,11 +2469,11 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {(browserType === "safari_ios" || browserType === "chrome_ios") && (
                   <>
                     <div className="flex items-start gap-2.5 mb-2">
-                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-base">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg shrink-0 text-base">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                       </div>
                       <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
-                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">하단 공유 버튼</span> (□↑) 탭
+                        <span className="font-black">1단계:</span> <span className="font-bold text-blue-700">하단 공유 버튼</span> (□↑) 탭
                         {browserType === "chrome_ios" && (
                           <span className="block text-[10px] text-amber-700 mt-1">
                             ⚠ iPhone은 Safari로 열어야 설치 가능합니다.
@@ -2494,9 +2494,9 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                 {(browserType === "chrome_desktop" || browserType === "edge_desktop") && (
                   <>
                     <div className="flex items-start gap-2.5 mb-2">
-                      <div className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 text-base">🔗</div>
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg shrink-0 text-base">🔗</div>
                       <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
-                        <span className="font-black">1단계:</span> <span className="font-bold text-indigo-700">주소창 오른쪽</span>의 설치 아이콘 클릭
+                        <span className="font-black">1단계:</span> <span className="font-bold text-blue-700">주소창 오른쪽</span>의 설치 아이콘 클릭
                       </p>
                     </div>
                     <div className="flex items-start gap-2.5">
@@ -2514,7 +2514,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <div className="flex items-center justify-center w-10 h-10 bg-amber-50 border border-amber-200 rounded-lg shrink-0 text-base">💡</div>
                     <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
                       이 브라우저는 PWA 설치 지원이 제한적입니다.<br/>
-                      <span className="font-bold text-indigo-700">Chrome, Edge</span> 또는 <span className="font-bold text-indigo-700">Safari(iOS)</span>에서 열면 설치 가능합니다.
+                      <span className="font-bold text-blue-700">Chrome, Edge</span> 또는 <span className="font-bold text-blue-700">Safari(iOS)</span>에서 열면 설치 가능합니다.
                     </p>
                   </div>
                 )}

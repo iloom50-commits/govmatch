@@ -1852,11 +1852,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
             </div>
           </div>
 
-          {/* 슬림 히어로 — 가치 제안 1줄(데스크톱·모바일 공통, 탭 위 헤드라인) */}
-          <p className="text-[13px] md:text-[15px] text-slate-500 font-medium leading-snug mb-3 px-1">
-            정부 지원금·정책자금, <span className="text-slate-800 font-bold">AI가 30초</span> 만에 찾아드려요
-          </p>
-
           <div style={{ viewTransitionName: "major-tab" } as React.CSSProperties}>
           <header className="sticky top-0 z-20 bg-white">
 

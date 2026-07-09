@@ -514,20 +514,13 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
             const share = <ShareMenu toast={toast} announcementId={res.announcement_id} announcementTitle={res.title} />;
             return (
               <div className="flex flex-col gap-1.5 mt-1 min-w-0">
-                {hasForm ? (
-                  <>
-                    <div className="flex items-stretch gap-1.5 min-w-0">
-                      <div className="flex-1 min-w-0">{primary}</div>
-                      <div className="flex-1 min-w-0">{formBtn}</div>
-                    </div>
-                    {share}
-                  </>
-                ) : (
-                  <div className="flex items-stretch gap-1.5 min-w-0">
-                    <div className="flex-[1.7] min-w-0">{primary}</div>
-                    <div className="flex-1 min-w-0">{share}</div>
-                  </div>
-                )}
+                {/* 1행 — 모든 카드 동일: 나도 받을 수 있나?(넓게) + 친구추천(좁게) */}
+                <div className="flex items-stretch gap-1.5 min-w-0">
+                  <div className="flex-[1.7] min-w-0">{primary}</div>
+                  <div className="flex-1 min-w-0">{share}</div>
+                </div>
+                {/* 신청서 있는 카드만 2행에 전체폭으로 */}
+                {hasForm && formBtn}
               </div>
             );
           })()}

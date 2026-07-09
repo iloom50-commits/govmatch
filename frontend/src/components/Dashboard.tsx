@@ -499,7 +499,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
   const shareKakao = () => {
     if (typeof window === "undefined") return;
     if (navigator.share) {
-      navigator.share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
+      navigator.share({ text: shareText, url }).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(
         () => toast("링크가 복사되었습니다!", "success"),
@@ -515,7 +515,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
         onClick={() => {
           // 모바일·태블릿: OS 네이티브 공유 시트 즉시 호출 (인기공고 추천하기와 동일 UX)
           if (typeof navigator !== "undefined" && (navigator as any).share) {
-            (navigator as any).share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
+            (navigator as any).share({ text: shareText, url }).catch(() => {});
           } else {
             // 데스크톱 PC 등 미지원 환경: 커스텀 모달 표시
             setOpen(true);
@@ -552,7 +552,7 @@ function ShareToggle({ label, getUrl, shareText, toast }: { label: string; getUr
                   </div>
                   <span className="text-[11px] font-bold text-slate-700">문자</span>
                 </button>
-                <button onClick={() => { if (navigator.share) navigator.share({ title: "지원금길잡이", text: shareText, url }); else navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
+                <button onClick={() => { if (navigator.share) navigator.share({ text: shareText, url }); else navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사됨!", "success")); setOpen(false); }} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-blue-50 transition-all active:scale-95">
                   <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <span className="text-2xl">📤</span>
                   </div>

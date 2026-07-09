@@ -45,7 +45,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
   const shareKakao = () => {
     if (typeof window === "undefined") return;
     if (navigator.share) {
-      navigator.share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
+      navigator.share({ text: shareText, url }).catch(() => {});
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(
         () => toast("링크가 복사되었습니다!", "success"),
@@ -62,7 +62,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
 
   const shareMore = () => {
     if (navigator.share) {
-      navigator.share({ title: "지원금길잡이 — AI 맞춤 지원금 매칭", text: shareText, url });
+      navigator.share({ text: shareText, url });
     } else {
       navigator.clipboard.writeText(`${shareText} ${url}`).then(() => toast("복사되었습니다!", "success"));
     }
@@ -81,7 +81,7 @@ function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: 
           e.stopPropagation();
           // 모바일·태블릿: OS 네이티브 공유 시트 즉시 호출
           if (typeof navigator !== "undefined" && (navigator as any).share) {
-            (navigator as any).share({ title: "지원금길잡이", text: shareText, url }).catch(() => {});
+            (navigator as any).share({ text: shareText, url }).catch(() => {});
           } else {
             setOpen(true);
           }

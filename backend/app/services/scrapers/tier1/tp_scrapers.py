@@ -18,7 +18,16 @@ _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,ko;q=0.9"}
 
 
 def _get(url: str, **kwargs) -> str:
-    resp = requests.get(url, headers=_HEADERS, timeout=15, **kwargs)
+    kwargs.setdefault("timeout", 20)
+    try:
+        resp = requests.get(url, headers=_HEADERS, **kwargs)
+    except requests.exceptions.SSLError:
+        # 일부 정부사이트 SSL 체인이 특정 환경(예: Railway)에서 거부됨 → verify=False 재시도
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            kwargs["verify"] = False
+            resp = requests.get(url, headers=_HEADERS, **kwargs)
     resp.raise_for_status()
     return resp.text
 

@@ -14,7 +14,13 @@ from .base import BaseScraper, SCRAPER_REGISTRY
 logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})")
-_HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "ko-KR,ko;q=0.9"}
+# 일부 정부사이트 WAF가 최소 UA를 차단 → 실제 브라우저 UA(프로덕션 fetch 성공률 개선 시도)
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 def _get(url: str, **kwargs) -> str:

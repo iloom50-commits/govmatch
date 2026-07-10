@@ -40,6 +40,31 @@ def test_returns_suggested_action():
     assert isinstance(r["suggested_action"], str) and len(r["suggested_action"]) > 3
 
 
+from bs4 import BeautifulSoup
+
+_FIX_MANY = """<table><tbody>
+  <tr><td><a href="/board/view.do?no=1&idx=10">지원사업 A 모집</a></td></tr>
+  <tr><td><a href="/board/view.do?no=1&idx=11">지원사업 B 공고</a></td></tr>
+  <tr><td><a href="/board/view.do?no=1&idx=12">지원사업 C 모집</a></td></tr>
+  <tr><td><a href="/board/view.do?no=1&idx=13">지원사업 D 공고</a></td></tr>
+  <tr><td><a href="/board/view.do?no=1&idx=14">지원사업 E 모집</a></td></tr>
+  <tr><td><a href="/about">기관소개</a></td></tr>
+</tbody></table>"""
+
+_FIX_NONE = """<div><a href="/about">기관소개</a><a href="/login">로그인</a></div>"""
+
+def test_count_article_links_counts_only_detail_links():
+    from app.services.orchestrator.source_diagnoser import count_article_links
+    assert count_article_links(BeautifulSoup(_FIX_MANY, "html.parser")) == 5
+    assert count_article_links(BeautifulSoup(_FIX_NONE, "html.parser")) == 0
+
+def test_visible_text_len_excludes_scripts():
+    from app.services.orchestrator.source_diagnoser import visible_text_len
+    html = "<html><script>var x=123456789012345;</script><body>짧은본문</body></html>"
+    n = visible_text_len(BeautifulSoup(html, "html.parser"))
+    assert n == len("짧은본문")
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

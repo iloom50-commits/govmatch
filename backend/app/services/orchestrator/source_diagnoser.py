@@ -39,3 +39,38 @@ def classify_diagnosis(http_status: Optional[int], link_count: int, body_len: in
     else:
         t = "wrong_or_empty"
     return {"diag_type": t, "suggested_action": _SUGGEST[t]}
+
+
+def count_article_links(soup) -> int:
+    """공고 상세 링크로 볼 <a href> 개수."""
+    n = 0
+    for a in soup.select("a[href]"):
+        if _DETAIL_URL_RE.search(a.get("href", "")):
+            n += 1
+    return n
+
+
+def visible_text_len(soup) -> int:
+    """script/style 제외 가시 텍스트 길이."""
+    for tag in soup(["script", "style"]):
+        tag.extract()
+    return len(soup.get_text(strip=True))
+
+
+def _fetch_and_measure(url: str) -> tuple:
+    """(http_status, link_count, body_len). 실패 시 (None, 0, 0). SSL 실패면 verify=False 재시도."""
+    import requests
+    from bs4 import BeautifulSoup
+    def _do(verify):
+        return requests.get(url, headers=_HEADERS, timeout=15, verify=verify)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            try:
+                resp = _do(True)
+            except requests.exceptions.SSLError:
+                resp = _do(False)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            return resp.status_code, count_article_links(soup), visible_text_len(soup)
+        except Exception:
+            return None, 0, 0

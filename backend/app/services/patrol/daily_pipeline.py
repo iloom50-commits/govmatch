@@ -352,14 +352,9 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
 
     _run_step("⑥-2 카테고리 정규화", step_6c_normalize_categories)
 
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # ⑦ 오케스트레이터 (품질 체크 + 보고서)
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def step_7_orchestrator():
-        from app.services.orchestrator.supervisor import run_daily_supervision
-        return run_daily_supervision(db_conn)
-
-    _run_step("⑦ 오케스트레이터", step_7_orchestrator)
+    # ⑦ 오케스트레이터(AI COO 운영현황 메일)는 APScheduler(main.py, 09:30 KST)가 단독 담당
+    # — 이 파이프라인에서도 호출하면 KST 03:00(파이프라인) + 09:30(APScheduler) 이중 발송 발생하므로 제거
+    # (다이제스트와 동일한 이중 발송 구조였음)
 
     # ⑧ 다이제스트 발송은 run_digest_cron.py (UTC 00:00 평일)가 단독 담당
     # — 이 파이프라인에서 호출하면 KST 03:00 + 09:00 이중 발송 발생하므로 제거

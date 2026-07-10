@@ -239,7 +239,8 @@ class CwipScraper(BaseScraper):
     origin_url_prefix = "https://www.cwip.or.kr"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
-        return _gnuboard_fetch("https://www.cwip.or.kr", "b0504", "창원시", verify=False)
+        # b0504(고시/공고)는 2023년 死板 → b0501(공지사항)에 현재 지원사업 모집공고가 올라옴
+        return _gnuboard_fetch("https://www.cwip.or.kr", "b0501", "창원시", verify=False)
 
 
 @register

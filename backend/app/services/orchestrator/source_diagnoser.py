@@ -74,3 +74,62 @@ def _fetch_and_measure(url: str) -> tuple:
             return resp.status_code, count_article_links(soup), visible_text_len(soup)
         except Exception:
             return None, 0, 0
+
+
+def _admin_source_name(origin_source: str) -> Optional[str]:
+    """origin_source 'admin-manual:X' → admin_urls.source_name 'X'. 그 외 접두는 None(진단 대상 아님)."""
+    if origin_source and origin_source.startswith("admin-manual:"):
+        return origin_source[len("admin-manual:"):]
+    return None
+
+
+def diagnose_silent_sources(conn, silent_origin_sources: List[str]) -> int:
+    """주1회. 조용한 admin-manual 소스의 admin_urls URL을 재fetch·분류해 coverage_targets diag_* 갱신.
+    반환: 진단한 소스 수."""
+    cur = conn.cursor()
+    diagnosed = 0
+    for origin in silent_origin_sources or []:
+        name = _admin_source_name(origin)
+        if not name:
+            continue  # scraper:*/*-api 는 admin_urls에 없음 → 대상 아님
+        try:
+            cur.execute("SELECT url FROM admin_urls WHERE source_name = %s AND is_active = 1 LIMIT 1", (name,))
+            row = cur.fetchone()
+            if not row or not row.get("url"):
+                continue
+            status, links, body = _fetch_and_measure(row["url"])
+            d = classify_diagnosis(status, links, body)
+            cur.execute("""
+                UPDATE coverage_targets
+                   SET diag_type=%s, diag_detail=%s, diag_link_count=%s,
+                       diag_http_status=%s, diag_at=NOW()
+                 WHERE source_name = %s
+            """, (d["diag_type"], d["suggested_action"], links, status, origin))
+            conn.commit()
+            diagnosed += 1
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+    return diagnosed
+
+
+def build_repair_list(conn, silent_origin_sources: List[str]) -> List[Dict[str, Any]]:
+    """매일. 현재 조용한 소스들의 저장된 diag_* 스냅샷을 읽어 수리 목록 구성."""
+    if not silent_origin_sources:
+        return []
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT source_name, diag_type, diag_detail, diag_at
+            FROM coverage_targets
+            WHERE source_name = ANY(%s) AND diag_type IS NOT NULL
+            ORDER BY diag_at DESC NULLS LAST
+        """, (list(silent_origin_sources),))
+        return [{"source": r["source_name"], "diag_type": r["diag_type"],
+                 "suggested_action": r["diag_detail"],
+                 "diag_at": r["diag_at"].strftime("%Y-%m-%d") if r.get("diag_at") else None}
+                for r in cur.fetchall()]
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+        return []

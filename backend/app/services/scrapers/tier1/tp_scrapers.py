@@ -371,61 +371,59 @@ SCRAPER_REGISTRY.append(CtpScraper())
 
 
 # ─────────────────────────────────────────────────
-# 6. 울산테크노파크 (utp.or.kr)
+# 6. 울산테크노파크 — 신 플랫폼 platform.utp.or.kr (기업지원사업 관리시스템)
+#    구 board.php(sub0203_02)는 2024년 死板 → 공고가 이 시스템으로 이전.
+#    공고: <a onclick="goViewGonggo('<id>')">공고명</a>, 상세는 biz_gonggo_detail.php.
 # ─────────────────────────────────────────────────
-_UTP_BASE = "https://www.utp.or.kr"
-_UTP_LIST = (
-    f"{_UTP_BASE}/board/board.php"
-    "?bo_table=sub0203_02&mnuno=M0000019&menu_group=1&sno=&page={page}"
-)
-_UTP_RE = re.compile(
-    r"""href=['"]([^'"]*wr_id=(\d+)[^'"]*)['"]\s*[^>]*>(.*?)</a>""",
-    re.DOTALL,
-)
+_UTP_BASE = "https://platform.utp.or.kr"
+_UTP_LIST = f"{_UTP_BASE}/com/biz_gonggo_all.php?page={{page}}"
+_UTP_RE = re.compile(r"goViewGonggo\('(\d+)'\)[^>]*>(.*?)</a>", re.DOTALL)
+_UTP_EXCLUDE = re.compile(r"채용|입찰|구매|계약|낙찰|사칭")
 
 
 class UtpScraper(BaseScraper):
     name = "ulsan_tp"
     display_name = "울산테크노파크"
-    origin_url_prefix = f"{_UTP_BASE}/board/board.php"
+    origin_url_prefix = f"{_UTP_BASE}/com/biz_gonggo_detail.php"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         seen: set = set()
-        for page in range(1, 11):
+        for page in range(1, 6):
             try:
-                html = _get(_UTP_LIST.format(page=page))
+                html = _get(_UTP_LIST.format(page=page), verify=False)
             except Exception:
                 break
-            found_new = False
-            for m in _UTP_RE.finditer(html):
-                wid = m.group(2)
-                if wid in seen:
-                    continue
-                seen.add(wid)
-                found_new = True
-                title = _clean_title(m.group(3))
-                if not title or len(title) < 5:
-                    continue
-                ctx = html[max(0, m.start()-300): m.end()+300]
-                if not title.startswith("["):
-                    title = f"[울산] {title}"
-                items.append({
-                    "title": title[:400],
-                    "origin_url": (
-                        f"{_UTP_BASE}/board/board.php"
-                        f"?bo_table=sub0203_02&wr_id={wid}&mnuno=M0000019&menu_group=1"
-                    ),
-                    "region": "울산",
-                    "target_type": "business",
-                    "category": None,
-                    "summary_text": None,
-                    "deadline_date": _parse_deadline(ctx),
-                    "support_amount": None,
-                })
-            if not found_new:
+            new = self._parse_list(html, seen)
+            if not new:
                 break
+            items.extend(new)
         return items
+
+    def _parse_list(self, html: str, seen: set) -> List[Dict[str, Any]]:
+        """목록 HTML에서 공고(goViewGonggo id) 추출 — 픽스처 단위테스트 대상 순수 파서."""
+        out: List[Dict[str, Any]] = []
+        for m in _UTP_RE.finditer(html):
+            gid = m.group(1)
+            if gid in seen:
+                continue
+            title = _clean_title(m.group(2))
+            if not title or len(title) < 5 or _UTP_EXCLUDE.search(title):
+                continue
+            seen.add(gid)
+            if not title.startswith("["):
+                title = f"[울산] {title}"
+            out.append({
+                "title": title[:400],
+                "origin_url": f"{_UTP_BASE}/com/biz_gonggo_detail.php?rq_gonggopgrm={gid}&cmd=detail",
+                "region": "울산",
+                "target_type": "business",
+                "category": None,
+                "summary_text": None,
+                "deadline_date": None,  # 목록은 대부분 상시 — 마감 미상(None)으로 저장, enricher가 보강
+                "support_amount": None,
+            })
+        return out
 
 
 SCRAPER_REGISTRY.append(UtpScraper())

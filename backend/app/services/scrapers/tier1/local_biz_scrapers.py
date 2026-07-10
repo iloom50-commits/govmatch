@@ -439,30 +439,50 @@ class YangsanBizScraper(BaseScraper):
 class AsanBizScraper(BaseScraper):
     name = "asan_biz"
     display_name = "아산시기업지원"
-    origin_url_prefix = "https://www.asan.go.kr"
+    origin_url_prefix = "http://biz.asancef.or.kr/main/index.php"
+
+    # 구 asan.go.kr/giup .../tbl_notice(2021 死板) → biz.asancef.or.kr 이전.
+    # AngularJS가 정적 JSON(data/bbs_list_<pm>.json)에서 목록 로드. pm_id=2(사업공고 통합).
+    _JSON = "http://biz.asancef.or.kr/data/bbs_list_{pm}.json"
+    _PMS = [(2, 2), (11, 11)]  # (pm_id, m_cd)
+
+    def _parse_asan(self, rows, m_cd, cutoff: str):
+        """JSON 행 → item. b_id 앞 8자리=게시일(YYYYMMDD), cutoff 이전은 제외(순수)."""
+        out = []
+        for x in rows or []:
+            subj = (x.get("b_subj") or "").strip()
+            bid = str(x.get("b_id") or "")
+            if not subj or len(bid) < 8 or not bid[:8].isdigit():
+                continue
+            if bid[:8] < cutoff:
+                continue  # 오래된 아카이브 제외
+            if _EXCLUDE_KW.search(subj):
+                continue
+            out.append(_item(
+                subj[:400],
+                f"http://biz.asancef.or.kr/main/index.php?m_cd={m_cd}&b_id={bid}",
+                None,  # 목록엔 마감일 없음 → 상세/enricher가 보강
+                region="아산시",
+            ))
+        return out
 
     def fetch_items(self) -> List[Dict[str, Any]]:
-        base = "https://www.asan.go.kr/giup/developer/m_board/m_board.php"
-        results = []
-        for page in range(1, 4):
-            soup = _get(f"{base}?tb_nm=tbl_notice&m_mode=list&PageNo={page}")
-            rows = soup.select("table tbody tr")
-            if not rows:
-                break
-            found = False
-            for tr in rows:
-                a = tr.find("a")
-                if not a:
+        import datetime, requests
+        # asancef는 외부공고 재게시가 많은 집계 포털 → 최근 30일만(과다·중복 유입 억제)
+        cutoff = (datetime.date.today() - datetime.timedelta(days=30)).strftime("%Y%m%d")
+        out: List[Dict[str, Any]] = []
+        seen: set = set()
+        for pm, m_cd in self._PMS:
+            try:
+                r = requests.get(self._JSON.format(pm=pm),
+                                 headers={"User-Agent": "Mozilla/5.0"}, timeout=15, verify=False)
+                r.encoding = "utf-8"
+                rows = r.json()
+            except Exception:
+                continue
+            for it in self._parse_asan(rows, m_cd, cutoff):
+                if it["origin_url"] in seen:
                     continue
-                title = _clean(a.get_text())
-                if not title or _EXCLUDE_KW.search(title):
-                    continue
-                href = a.get("href", "")
-                url = href if href.startswith("http") else f"{base.rsplit('/', 1)[0]}/{href.lstrip('/')}"
-                tds = tr.find_all("td")
-                date = _parse_date(tds[2].get_text() if len(tds) > 2 else "")
-                results.append(_item(title, url, date, region="아산시"))
-                found = True
-            if not found:
-                break
-        return results
+                seen.add(it["origin_url"])
+                out.append(it)
+        return out

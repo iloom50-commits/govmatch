@@ -614,6 +614,13 @@ def init_database():
             """)
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_targets_name ON coverage_targets(source_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_coverage_targets_status ON coverage_targets(status)")
+            # Phase 1: origin_source 기반 자동 회귀감지용 컬럼 (추가만 — 기존 컬럼 불변)
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS origin_source     VARCHAR(300)")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS detection         VARCHAR(20) DEFAULT 'manual'")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS active_weeks_90d  INTEGER")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS expected_gap_days INTEGER")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS days_quiet        NUMERIC(7,1)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_announcements_origin_source ON announcements(origin_source, created_at)")
 
             conn.commit()
         except Exception:
@@ -1830,14 +1837,9 @@ async def run_digest_endpoint(request: Request):
             except Exception as e:
                 result["errors"].append(f"prematch: {e}")
 
-            try:
-                from app.services.coverage_checker import run_coverage_check, seed_coverage_targets
-                conn = get_db_connection()
-                seed_coverage_targets(conn)
-                result["coverage"] = run_coverage_check(conn)
-                conn.close()
-            except Exception as e:
-                result["errors"].append(f"coverage: {e}")
+            # 커버리지 감시는 오케스트레이터(AI COO, 09:30) 단독 소유로 이관 —
+            # check_source_coverage가 origin_source 기반으로 매일 판정·메일 노출.
+            # 다이제스트에서 중복 계산하면 coverage_targets 이중 갱신되므로 제거.
 
             print(f"[Digest] 완료: users={result['users']}, email={result['email_sent']}, push={result['push_sent']}, prematch={result['prematch']}, errors={result['errors']}")
 

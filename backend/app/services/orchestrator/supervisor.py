@@ -120,8 +120,23 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 건강/경보 수집 오류: {e}")
             traceback.print_exc()
 
-        # ── 6. 보고서 발송 ──
-        print("[AI COO] Step 6/6: 보고서 생성 + 발송 중...")
+        # ── 6. 소스 커버리지 감시 (origin_source 기반 자동 회귀감지) ──
+        print("[AI COO] Step 6/7: 소스 커버리지 감시 중...")
+        try:
+            from app.services.coverage_checker import check_source_coverage
+            coverage = check_source_coverage(db_conn)
+            results["coverage"] = coverage
+            if coverage.get("red") or coverage.get("yellow"):
+                print(f"  → 🚨 회귀 {coverage.get('red',0)}건 / 주의 {coverage.get('yellow',0)}건")
+            else:
+                print(f"  → ✅ {coverage.get('total_sources',0)}개 소스 회귀 없음")
+        except Exception as e:
+            results["coverage"] = {"error": str(e)}
+            print(f"  → 커버리지 감시 오류: {e}")
+            traceback.print_exc()
+
+        # ── 7. 보고서 발송 ──
+        print("[AI COO] Step 7/7: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
             report_result = send_report(
@@ -130,6 +145,7 @@ def run_daily_supervision(db_conn=None) -> dict:
                 quality=results.get("quality", {}),
                 seo=results.get("seo", {}),
                 health=results.get("health", {}),
+                coverage=results.get("coverage", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

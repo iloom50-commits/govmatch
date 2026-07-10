@@ -112,7 +112,37 @@ def _build_dq_text(health: dict) -> str:
     )
 
 
-def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None, health: dict = None) -> str:
+def _build_coverage_text(coverage: dict) -> str:
+    """📡 수집 소스 커버리지 (텍스트). coverage 없거나 error면 빈 문자열."""
+    if not coverage or coverage.get("error"):
+        return ""
+    red = coverage.get("red_list", []) or []
+    yellow = coverage.get("yellow_list", []) or []
+    sa = coverage.get("scraper_alerts", []) or []
+    lines = "▌ 📡 수집 소스 커버리지\n"
+    lines += (f"  소스 {coverage.get('total_sources',0)}개: "
+              f"정상 {coverage.get('green',0)} | 주의 {coverage.get('yellow',0)} | "
+              f"회귀 {coverage.get('red',0)} | 보류 {coverage.get('na',0)}"
+              + (f" | 뮤트 {coverage.get('muted',0)}" if coverage.get('muted') else "") + "\n")
+    if red:
+        lines += "  🚨 회귀(RED) — 즉시 확인 필요:\n"
+        for r in red[:8]:
+            lines += (f"    · {r['source']} — {(r.get('days_quiet') or 0):.0f}일째 신규 0건 "
+                      f"(평시 ~{r.get('expected_gap_days')}일, 마지막 {str(r.get('last_seen'))[:10]})\n")
+    if yellow:
+        lines += "  🟡 주의(YELLOW):\n"
+        for y in yellow[:8]:
+            lines += f"    · {y['source']} — {(y.get('days_quiet') or 0):.0f}일째 0건 ({y.get('reason')})\n"
+    for a in sa[:5]:
+        icon = "🔴" if a.get("level") == "critical" else "🟡"
+        lines += f"  {icon} [조기경보] {a['source']}: {a['msg']}\n"
+    if not red and not yellow and not sa:
+        lines += "  ✅ 회귀 없음 — 전 소스 평시 주기 내 수집 중\n"
+    return lines
+
+
+def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None,
+                       health: dict = None, coverage: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -170,6 +200,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
 
     seo_lines = _build_seo_text(seo or {})
     alert_block = _build_alert_text(health)
+    coverage_block = _build_coverage_text(coverage or {})
     sales_block = _build_sales_text(health)
     dq_block = _build_dq_text(health)
 
@@ -177,6 +208,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
 {'─' * 38}
 
 {alert_block}
+{coverage_block}
 ▌ 구글 검색 유입
 {seo_lines}
 ▌ 회원 현황
@@ -247,7 +279,40 @@ def _build_alert_html(health: dict) -> str:
     return box
 
 
-def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None, health: dict = None) -> str:
+def _build_coverage_html(coverage: dict) -> str:
+    """📡 수집 소스 커버리지 박스 (HTML). red>0 빨강 / yellow·조기경보 호박 / 정상 초록."""
+    if not coverage or coverage.get("error"):
+        return ""
+    red = coverage.get("red_list", []) or []
+    yellow = coverage.get("yellow_list", []) or []
+    sa = coverage.get("scraper_alerts", []) or []
+    summary = (f"소스 {coverage.get('total_sources',0)}개 — 정상 {coverage.get('green',0)} · "
+               f"주의 {coverage.get('yellow',0)} · 회귀 {coverage.get('red',0)}")
+    if red:
+        items = "".join(
+            f'<li style="margin-bottom:4px">{r["source"]} — <b>{(r.get("days_quiet") or 0):.0f}일째 신규 0건</b> '
+            f'(평시 ~{r.get("expected_gap_days")}일, 마지막 {str(r.get("last_seen"))[:10]})</li>' for r in red[:8])
+        box = ('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin:12px 0">'
+               f'<div style="font-weight:bold;color:#dc2626;font-size:15px;margin-bottom:6px">&#128225; 수집 커버리지 — 회귀 {len(red)}건</div>'
+               f'<ul style="margin:0;padding-left:18px;color:#b91c1c;font-size:13px">{items}</ul>')
+    elif yellow or sa:
+        box = ('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:12px 0">'
+               f'<div style="font-weight:bold;color:#b45309;font-size:15px;margin-bottom:6px">&#128225; 수집 커버리지 — 주의 {len(yellow) + len(sa)}건</div>')
+    else:
+        box = ('<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:12px 0">'
+               '<span style="font-weight:bold;color:#16a34a;font-size:14px">&#128225; 수집 커버리지 정상</span>')
+    if yellow or sa:
+        y_items = "".join(
+            f'<li style="margin-bottom:2px">{y["source"]} — {(y.get("days_quiet") or 0):.0f}일째 0건 ({y.get("reason")})</li>'
+            for y in yellow[:8]) + "".join(
+            f'<li style="margin-bottom:2px">[조기경보] {a["source"]}: {a["msg"]}</li>' for a in sa[:5])
+        box += f'<ul style="margin:6px 0 0;padding-left:18px;color:#b45309;font-size:12px">{y_items}</ul>'
+    box += f'<p style="color:#6b7280;font-size:12px;margin:6px 0 0">{summary}</p></div>'
+    return box
+
+
+def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None,
+                       health: dict = None, coverage: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -318,6 +383,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
 
     # 🚦 경보 + 💰 매출 HTML
     alert_html = _build_alert_html(health)
+    coverage_html = _build_coverage_html(coverage or {})
     _s = (health or {}).get("sales", {}) or {}
     sales_html = ""
     if _s and not _s.get("error"):
@@ -399,6 +465,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
   <p style="color:#6b7280;font-size:13px;margin-top:0">{today} 보고</p>
   <hr style="border-color:#e5e7eb">
   {alert_html}
+  {coverage_html}
   {seo_html}
 
   <h3 style="color:#111;font-size:15px">&#128101; 회원</h3>
@@ -550,15 +617,18 @@ def _send_kakao(metrics: dict) -> bool:
 
 
 # ── 발송 ──────────────────────────────────────────────────────
-def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None, health: dict = None) -> dict:
+def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None,
+                health: dict = None, coverage: dict = None) -> dict:
     if quality is None:
         quality = {}
     if seo is None:
         seo = {}
     if health is None:
         health = {}
-    report_text = _build_report_text(metrics, learning, quality, seo, health)
-    report_html = _build_report_html(metrics, learning, quality, seo, health)
+    if coverage is None:
+        coverage = {}
+    report_text = _build_report_text(metrics, learning, quality, seo, health, coverage)
+    report_html = _build_report_html(metrics, learning, quality, seo, health, coverage)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──

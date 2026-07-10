@@ -10,6 +10,7 @@
   전남도청  jeonnam.go.kr        기업지원 자금지원
   경남도청  gyeongnam.go.kr      고시공고
   서울시청  seoulboard.seoul.go.kr RSS feed (bbsNo=277)
+  부산경제진흥원 bepa.kr          사업공고(no=1502)·중소기업공고(no=1505), verify=False
 
 Playwright 필요 (로컬 전용 — 향후 agency_scrapers_pw.py에 추가):
   대구시청  JS 렌더링
@@ -17,7 +18,6 @@ Playwright 필요 (로컬 전용 — 향후 agency_scrapers_pw.py에 추가):
   경북도청  JS 렌더링
   인천시청  bizok.incheon.go.kr  JS 렌더링 (rows=0)
   세종시청  sejong.go.kr         JS 링크 (nttId HTML 미포함)
-  부산시청  bepa.kr              SSL+JS (list URL 미확인)
   광주시청  gwangju.go.kr        JS 렌더링 (테이블 없음, requests 불가)
 """
 from __future__ import annotations
@@ -762,80 +762,74 @@ SCRAPER_REGISTRY.append(GyeongnamScraper())
 
 
 # ─────────────────────────────────────────────────────────────
-# 11. 부산광역시 — 부산경제진흥원(BEPA) 소상공인 지원
-#     SSL 인증서 불완전 → verify=False
+# 11. 부산경제진흥원(BEPA) — 사업공고(no=1502)·중소기업 공고(no=1505)
+#     SSL 인증서 불완전 → verify=False. 글 고유ID는 idx(no는 게시판ID),
+#     state=end(마감) 제외. origin_url은 가변 state 파라미터를 빼 정규화(재저장 방지).
+#     ※ 부산'시청'(busan_city, agency_scrapers10.py)과는 별개 기관 — 혼동 금지.
 # ─────────────────────────────────────────────────────────────
-_BUSAN_BASE = "https://www.bepa.kr"
-_BUSAN_LIST = f"{_BUSAN_BASE}/kor/list.do?mno=19&pageIndex={{page}}"
-_BUSAN_ID_RE = re.compile(r"[?&](?:no|seq|nttId)=(\d+)")
+_BEPA_BASE = "https://www.bepa.kr"
+_BEPA_BOARDS = (1502, 1505)
+_BEPA_LIST = f"{_BEPA_BASE}/kor/view.do?no={{board}}&pageIndex={{page}}"
+_BEPA_IDX_RE = re.compile(r"[?&]idx=(\d+)")
+_BEPA_STATE_RE = re.compile(r"[?&]state=(\w+)")
 
 
-class BusanScraper(BaseScraper):
-    name = "busan_sido"
+class BepaScraper(BaseScraper):
+    name = "busan_bepa"
     display_name = "부산경제진흥원(BEPA)"
-    origin_url_prefix = f"{_BUSAN_BASE}/kor/view.do"
+    origin_url_prefix = f"{_BEPA_BASE}/kor/view.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
-        seen: set = set()
-
+        seen: set = set()  # 게시판 간 idx 공유 dedup
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # InsecureRequestWarning 억제
-
-            for page in range(1, 6):
-                try:
-                    resp = requests.get(
-                        _BUSAN_LIST.format(page=page),
-                        headers=_HEADERS,
-                        timeout=20,
-                        verify=False,
-                    )
-                    resp.raise_for_status()
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                except Exception:
-                    break
-
-                found_new = False
-                for row in _extract_rows(soup):
-                    link = row.select_one("a[href]")
-                    if not link:
-                        continue
-                    href = link.get("href", "")
-                    m = _BUSAN_ID_RE.search(href)
-                    if not m:
-                        continue
-                    bid = m.group(1)
-                    if bid in seen:
-                        continue
-
-                    title = _clean(link.get_text())
-                    if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
-                        continue
-
-                    seen.add(bid)
-                    found_new = True
-                    row_text = row.get_text(" ")
-                    detail_url = href if href.startswith("http") else f"{_BUSAN_BASE}{href}"
-
-                    items.append({
-                        "title": title[:400],
-                        "origin_url": detail_url,
-                        "region": "부산",
-                        "target_type": None,
-                        "category": None,
-                        "summary_text": None,
-                        "deadline_date": _parse_date(row_text),
-                        "support_amount": None,
-                    })
-
-                if not found_new:
-                    break
-
+            for board in _BEPA_BOARDS:
+                for page in range(1, 4):
+                    try:
+                        soup = _get(_BEPA_LIST.format(board=board, page=page), verify=False)
+                    except Exception:
+                        break
+                    new_items = self._parse_board(soup, board, seen)
+                    if not new_items:
+                        break  # 페이지네이션 미지원/끝 — 반복 시 자동 종료
+                    items.extend(new_items)
         return items
 
+    def _parse_board(self, soup, board: int, seen: set) -> List[Dict[str, Any]]:
+        """게시판 뷰 HTML에서 글 링크(idx) 추출 — 순수 파서(픽스처 단위테스트 대상)."""
+        out: List[Dict[str, Any]] = []
+        for link in soup.select("a[href*='idx=']"):
+            href = link.get("href", "")
+            m = _BEPA_IDX_RE.search(href)
+            if not m:
+                continue
+            idx = m.group(1)
+            if idx in seen:
+                continue
+            sm = _BEPA_STATE_RE.search(href)
+            if sm and sm.group(1) == "end":
+                continue  # 마감 공고 제외
+            title = _clean(link.get_text())
+            if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
+                continue
+            seen.add(idx)
+            row = link.find_parent("tr") or link.find_parent("li") or link
+            row_text = row.get_text(" ")
+            out.append({
+                "title": title[:400],
+                "origin_url": f"{_BEPA_BASE}/kor/view.do?no={board}&idx={idx}&view=view",
+                "region": "부산",
+                "target_type": None,
+                "category": None,
+                "summary_text": None,
+                "deadline_date": _parse_date(row_text),
+                "support_amount": None,
+            })
+        return out
 
-# BusanScraper: SSL + list URL 미확인 → 비활성
-# SCRAPER_REGISTRY.append(BusanScraper())
+
+SCRAPER_REGISTRY.append(BepaScraper())
 
 
 # ─────────────────────────────────────────────────────────────

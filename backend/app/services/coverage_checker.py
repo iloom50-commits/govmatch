@@ -5,6 +5,7 @@ RED/YELLOW/GREEN 상태를 업데이트한다.
 """
 from __future__ import annotations
 import datetime
+import math
 from typing import List, Dict, Any
 
 
@@ -29,6 +30,7 @@ COVERAGE_MASTER: List[Dict[str, Any]] = [
     {"source_name": "창조경제혁신센터(경남)",    "url": "https://ccei.creativekorea.or.kr/gyeongnam/","tier": 1, "scraper_name": "ccei_gyeongnam"},
     {"source_name": "창조경제혁신센터(제주)",    "url": "https://ccei.creativekorea.or.kr/jeju/",     "tier": 1, "scraper_name": "ccei_jeju"},
     {"source_name": "경남테크노파크",             "url": "https://www.gntp.or.kr/biz/apply",           "tier": 1, "scraper_name": "gntp"},
+    {"source_name": "부산경제진흥원(BEPA)",       "url": "https://www.bepa.kr/kor/view.do?no=1502",    "tier": 1, "scraper_name": "busan_bepa"},
 
     # ── Tier 3: API 연동 ──
     {"source_name": "기업마당(bizinfo)",  "url": None, "tier": 3, "scraper_name": "bizinfo_api"},
@@ -165,3 +167,223 @@ def run_coverage_check(conn) -> Dict[str, Any]:
         "total": len(targets),
         "checked_at": now.isoformat(),
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+# 자동 회귀감지 (self-maintaining watchlist) — announcements.origin_source 기반
+# 하드코딩 목록(COVERAGE_MASTER)의 사각지대를 제거. 오케스트레이터 일일 스텝에서 호출.
+# ══════════════════════════════════════════════════════════════════
+
+MIN_ACTIVE_WEEKS  = 4     # 정규성 게이트: 90일 중 활동주 4개(≈월1회+) 이상이어야 자기교정 판정
+YELLOW_MULT       = 1.5   # 평시 주기의 1.5배 침묵 → 주의
+RED_MULT          = 3.0   # 평시 주기의 3배 침묵 → 회귀
+YELLOW_FLOOR_DAYS = 7     # 7일 미만 침묵은 절대 경보 안 함(조기경보 레인이 담당)
+RED_FLOOR_DAYS    = 14
+DORMANT_DAYS      = 60    # 불규칙 소스: 60일 이상 무소식이면 휴면 주의
+DORMANT_MIN_ITEMS = 3     # 1~2건은 테스트·일회성 가능성 → 제외
+
+
+def _tier_from_prefix(origin_source: str) -> int:
+    """origin_source 접두로 수집 채널 tier 추정. scraper:→1, admin-manual:→2, *-api→3, 그 외→0."""
+    s = origin_source or ""
+    if s.startswith("scraper:"):
+        return 1
+    if s.startswith("admin-manual:"):
+        return 2
+    if s.endswith("-api"):
+        return 3
+    return 0
+
+
+def classify_source_row(row: dict) -> dict:
+    """순수함수. 소스별 수집 통계 → 상태 판정.
+
+    row: {origin_source, last_seen, total_items, active_weeks_90d, days_quiet}
+    반환: {status: green|yellow|red|na, expected_gap_days: int|None, reason: str}
+    """
+    aw = int(row.get("active_weeks_90d") or 0)
+    dq = float(row.get("days_quiet") or 0)
+    total = int(row.get("total_items") or 0)
+    gap = math.ceil(90 / aw) if aw > 0 else None
+
+    # ① 정규 소스: 소스별 평시 주기 자기교정
+    if aw >= MIN_ACTIVE_WEEKS:
+        red_t = max(RED_MULT * gap, RED_FLOOR_DAYS)
+        yellow_t = max(YELLOW_MULT * gap, YELLOW_FLOOR_DAYS)
+        if dq >= red_t:
+            return {"status": "red", "expected_gap_days": gap,
+                    "reason": f"평시 ~{gap}일 주기의 3배({red_t:.0f}일) 넘게 신규 없음"}
+        if dq >= yellow_t:
+            return {"status": "yellow", "expected_gap_days": gap,
+                    "reason": f"평시 ~{gap}일 주기의 1.5배({yellow_t:.0f}일) 넘게 신규 없음"}
+        return {"status": "green", "expected_gap_days": gap, "reason": ""}
+
+    # ② 불규칙 소스: 휴면 감지만 (오탐 비용 최소화)
+    if total >= DORMANT_MIN_ITEMS and dq >= DORMANT_DAYS:
+        return {"status": "yellow", "expected_gap_days": gap,
+                "reason": f"불규칙 소스 {dq:.0f}일째 휴면"}
+    return {"status": "na", "expected_gap_days": gap, "reason": "판정보류(수집 이력 부족)"}
+
+
+def _early_warnings_from_rows(rows_24h: list) -> List[Dict[str, Any]]:
+    """scraper_runs 기반 조기경보 — 진짜 실패 신호만(순수함수).
+
+    rows_24h: [{source, runs, ok, err, saved_24h}]  (직전 24h 집계)
+    반환: [{level, source, msg}]
+
+    ※ status=error 급증(≥3회)만 경보한다. "items_saved=0 연속"은 신규 공고가
+      없는 정상 상태(월간 게시판 등)이므로 경보하지 않는다 — 소스 침묵은
+      announcements 기반 자기교정 회귀감지(classify_source_row)가 정확히 담당.
+    """
+    alerts: List[Dict[str, Any]] = []
+    for r in rows_24h or []:
+        if (r.get("err") or 0) >= 3:
+            alerts.append({"level": "critical", "source": r["source"],
+                           "msg": f"24h 내 에러 {r['err']}회 — 스크래퍼 점검 필요"})
+    return alerts
+
+
+def _assemble_coverage(classified: list, muted_set: set) -> Dict[str, Any]:
+    """순수함수. 분류된 소스 목록 + 뮤트셋 → 집계/경보 목록."""
+    muted_set = muted_set or set()
+    green = yellow = red = na = muted = 0
+    red_list: list = []
+    yellow_list: list = []
+    for c in classified:
+        src = c.get("origin_source")
+        if src in muted_set:
+            muted += 1
+            continue
+        st = c.get("status")
+        entry = {"source": src, "days_quiet": c.get("days_quiet"),
+                 "expected_gap_days": c.get("expected_gap_days"),
+                 "last_seen": c.get("last_seen"), "reason": c.get("reason")}
+        if st == "green":
+            green += 1
+        elif st == "yellow":
+            yellow += 1
+            yellow_list.append(entry)
+        elif st == "red":
+            red += 1
+            red_list.append(entry)
+        else:
+            na += 1
+    red_list.sort(key=lambda x: x["days_quiet"] or 0, reverse=True)
+    yellow_list.sort(key=lambda x: x["days_quiet"] or 0, reverse=True)
+    return {"total_sources": len(classified), "green": green, "yellow": yellow,
+            "red": red, "na": na, "muted": muted,
+            "red_list": red_list, "yellow_list": yellow_list}
+
+
+# ── DB SQL: 소스별 요약 + last_seen 기준 90일 활동주 ──
+_COVERAGE_SQL = """
+WITH src AS (
+    SELECT origin_source,
+           MAX(created_at) AS last_seen,
+           COUNT(*)        AS total_items
+    FROM announcements
+    WHERE origin_source IS NOT NULL AND origin_source <> ''
+    GROUP BY origin_source
+)
+SELECT s.origin_source,
+       s.last_seen,
+       s.total_items,
+       (SELECT COUNT(DISTINCT DATE_TRUNC('week', a.created_at))
+          FROM announcements a
+         WHERE a.origin_source = s.origin_source
+           AND a.created_at >  s.last_seen - INTERVAL '90 days'
+           AND a.created_at <= s.last_seen)                AS active_weeks_90d,
+       EXTRACT(EPOCH FROM (NOW() - s.last_seen)) / 86400.0 AS days_quiet
+FROM src s
+ORDER BY days_quiet DESC
+"""
+
+_EARLY_24H_SQL = """
+    SELECT source,
+           COUNT(*) AS runs,
+           COUNT(CASE WHEN status='ok' THEN 1 END) AS ok,
+           COUNT(CASE WHEN status='error' THEN 1 END) AS err,
+           SUM(items_saved) AS saved_24h
+    FROM scraper_runs
+    WHERE started_at > NOW() - INTERVAL '24 hours'
+    GROUP BY source
+"""
+
+def _collect_early_warnings(conn) -> List[Dict[str, Any]]:
+    """scraper_runs에서 조기경보 입력을 조회해 _early_warnings_from_rows 적용."""
+    try:
+        cur = conn.cursor()
+        cur.execute(_EARLY_24H_SQL)
+        rows_24h = [dict(r) for r in cur.fetchall()]
+        return _early_warnings_from_rows(rows_24h)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return []
+
+
+def check_source_coverage(conn) -> Dict[str, Any]:
+    """일일 진입점(오케스트레이터 Step). origin_source 회귀감지 + 조기경보.
+
+    반환: {checked_at, total_sources, green, yellow, red, na, muted,
+           red_list[], yellow_list[], scraper_alerts[]}
+    """
+    cur = conn.cursor()
+    cur.execute(_COVERAGE_SQL)
+    raw_rows = [dict(r) for r in cur.fetchall()]
+
+    # 뮤트 셋 (auto 소스 중 is_active=FALSE) — 컬럼 없으면 빈 셋
+    muted_set: set = set()
+    try:
+        cur.execute("SELECT source_name FROM coverage_targets "
+                    "WHERE detection = 'auto' AND is_active = FALSE")
+        muted_set = {r["source_name"] for r in cur.fetchall()}
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+    classified = []
+    for raw in raw_rows:
+        c = dict(raw)
+        c.update(classify_source_row(raw))
+        classified.append(c)
+
+    result = _assemble_coverage(classified, muted_set)
+
+    # 스냅샷 upsert (best-effort — 컬럼 미비/권한 문제 시 결과에 영향 없이 스킵)
+    try:
+        for c in classified:
+            src = c["origin_source"]
+            cur.execute("""
+                INSERT INTO coverage_targets
+                    (source_name, origin_source, tier, detection, status,
+                     last_collected_at, last_count, active_weeks_90d,
+                     expected_gap_days, days_quiet)
+                VALUES (%(src)s, %(src)s, %(tier)s, 'auto', %(status)s,
+                        %(last_seen)s, %(total)s, %(aw)s, %(gap)s, %(dq)s)
+                ON CONFLICT (source_name) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    last_collected_at = EXCLUDED.last_collected_at,
+                    last_count = EXCLUDED.last_count,
+                    active_weeks_90d = EXCLUDED.active_weeks_90d,
+                    expected_gap_days = EXCLUDED.expected_gap_days,
+                    days_quiet = EXCLUDED.days_quiet
+            """, {"src": src, "tier": _tier_from_prefix(src), "status": c["status"],
+                  "last_seen": c.get("last_seen"), "total": c.get("total_items"),
+                  "aw": c.get("active_weeks_90d"), "gap": c.get("expected_gap_days"),
+                  "dq": round(float(c.get("days_quiet") or 0), 1)})
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        result["persist_error"] = str(e)[:200]
+
+    result["scraper_alerts"] = _collect_early_warnings(conn)
+    result["checked_at"] = datetime.datetime.now().isoformat()
+    return result

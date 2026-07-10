@@ -621,6 +621,12 @@ def init_database():
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS expected_gap_days INTEGER")
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS days_quiet        NUMERIC(7,1)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_announcements_origin_source ON announcements(origin_source, created_at)")
+            # 진단자(Diagnoser): 조용한 소스 URL 재fetch 진단 스냅샷 (추가만)
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_type        VARCHAR(30)")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_detail      TEXT")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_link_count  INTEGER")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_http_status INTEGER")
+            cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_at          TIMESTAMP")
 
             conn.commit()
         except Exception:

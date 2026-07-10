@@ -98,6 +98,35 @@ def test_report_text_includes_coverage_after_alert():
     assert txt.index("수집 소스 커버리지") < txt.index("구글 검색 유입")
 
 
+_REPAIR_COV = {
+    "total_sources": 30, "green": 27, "yellow": 3, "red": 0, "na": 0, "muted": 0,
+    "red_list": [], "yellow_list": [], "scraper_alerts": [],
+    "repair_list": [
+        {"source": "admin-manual:부산경제진흥원(BEPA)", "diag_type": "wrong_or_empty",
+         "suggested_action": "엉뚱한 URL/빈 게시판 — 올바른 게시판 URL 확인", "diag_at": "2026-07-13"},
+    ],
+}
+
+def test_coverage_text_shows_repair():
+    from app.services.orchestrator.reporter import _build_coverage_text
+    txt = _build_coverage_text(_REPAIR_COV)
+    assert "수리 필요" in txt
+    assert "부산경제진흥원" in txt
+    assert "올바른 게시판" in txt
+
+def test_coverage_html_shows_repair():
+    from app.services.orchestrator.reporter import _build_coverage_html
+    html = _build_coverage_html(_REPAIR_COV)
+    assert "수리 필요" in html and "부산경제진흥원" in html
+
+def test_coverage_text_no_repair_key_ok():
+    # repair_list 없어도 기존 동작(회귀 없음) 유지
+    from app.services.orchestrator.reporter import _build_coverage_text
+    cov = {"total_sources": 10, "green": 10, "yellow": 0, "red": 0, "na": 0,
+           "muted": 0, "red_list": [], "yellow_list": [], "scraper_alerts": []}
+    assert "회귀 없음" in _build_coverage_text(cov)
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

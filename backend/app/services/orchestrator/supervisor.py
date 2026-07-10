@@ -126,6 +126,20 @@ def run_daily_supervision(db_conn=None) -> dict:
             from app.services.coverage_checker import check_source_coverage
             coverage = check_source_coverage(db_conn)
             results["coverage"] = coverage
+            # 주1회(월요일 KST) 조용한 소스 진단 갱신 + 매일 수리목록 부착
+            try:
+                from app.services.orchestrator.source_diagnoser import (
+                    diagnose_silent_sources, build_repair_list)
+                import datetime as _dt
+                silent = [x["source"] for x in
+                          (coverage.get("yellow_list", []) + coverage.get("red_list", []))]
+                kst_weekday = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).weekday()
+                if kst_weekday == 0 and silent:   # 월요일
+                    n = diagnose_silent_sources(db_conn, silent)
+                    print(f"  → 진단 갱신 {n}건")
+                coverage["repair_list"] = build_repair_list(db_conn, silent)
+            except Exception as _de:
+                print(f"  → 진단 스텝 오류(무시): {_de}")
             if coverage.get("red") or coverage.get("yellow"):
                 print(f"  → 🚨 회귀 {coverage.get('red',0)}건 / 주의 {coverage.get('yellow',0)}건")
             else:

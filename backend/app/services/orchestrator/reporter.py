@@ -136,7 +136,12 @@ def _build_coverage_text(coverage: dict) -> str:
     for a in sa[:5]:
         icon = "🔴" if a.get("level") == "critical" else "🟡"
         lines += f"  {icon} [조기경보] {a['source']}: {a['msg']}\n"
-    if not red and not yellow and not sa:
+    repair = coverage.get("repair_list", []) or []
+    if repair:
+        lines += f"  🔧 수리 필요 (진단 {len(repair)}건):\n"
+        for x in repair[:8]:
+            lines += f"    · {x['source']} — {x['diag_type']}: {x.get('suggested_action')}\n"
+    if not red and not yellow and not sa and not repair:
         lines += "  ✅ 회귀 없음 — 전 소스 평시 주기 내 수집 중\n"
     return lines
 
@@ -307,6 +312,14 @@ def _build_coverage_html(coverage: dict) -> str:
             for y in yellow[:8]) + "".join(
             f'<li style="margin-bottom:2px">[조기경보] {a["source"]}: {a["msg"]}</li>' for a in sa[:5])
         box += f'<ul style="margin:6px 0 0;padding-left:18px;color:#b45309;font-size:12px">{y_items}</ul>'
+    repair = coverage.get("repair_list", []) or []
+    if repair:
+        r_items = "".join(
+            f'<li style="margin-bottom:2px">{x["source"]} — <b>{x["diag_type"]}</b>: {x.get("suggested_action")}</li>'
+            for x in repair[:8])
+        box += ('<div style="margin-top:8px"><div style="font-weight:bold;color:#b45309;font-size:13px">'
+                f'&#128295; 수리 필요 {len(repair)}건</div>'
+                f'<ul style="margin:2px 0 0;padding-left:18px;color:#b45309;font-size:12px">{r_items}</ul></div>')
     box += f'<p style="color:#6b7280;font-size:12px;margin:6px 0 0">{summary}</p></div>'
     return box
 

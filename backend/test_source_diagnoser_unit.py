@@ -65,6 +65,15 @@ def test_visible_text_len_excludes_scripts():
     assert n == len("짧은본문")
 
 
+def test_search_keys_extracts_institution_names():
+    from app.services.orchestrator.source_diagnoser import _search_keys
+    assert _search_keys("admin-manual:부산경제진흥원(BEPA)") == ["부산경제진흥원", "BEPA"]
+    assert _search_keys("admin-manual:안양시 기업지원") == ["안양시"]
+    assert _search_keys("admin-manual:고용24(고용노동부)") == ["고용24", "고용노동부"]
+    # 접두 scraper: 도 벗김
+    assert _search_keys("scraper:jejutp") == ["jejutp"]
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

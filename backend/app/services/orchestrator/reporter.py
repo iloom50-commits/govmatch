@@ -141,7 +141,12 @@ def _build_coverage_text(coverage: dict) -> str:
         lines += f"  🔧 수리 필요 (진단 {len(repair)}건):\n"
         for x in repair[:8]:
             lines += f"    · {x['source']} — {x['diag_type']}: {x.get('suggested_action')}\n"
-    if not red and not yellow and not sa and not repair:
+    redundant = coverage.get("redundant_list", []) or []
+    if redundant:
+        lines += f"  🔁 중복 — 뮤트 후보 (다른 소스가 이미 커버, {len(redundant)}건):\n"
+        for x in redundant[:8]:
+            lines += f"    · {x['source']} ← {', '.join(x.get('covered_by', [])[:2])}\n"
+    if not red and not yellow and not sa and not repair and not redundant:
         lines += "  ✅ 회귀 없음 — 전 소스 평시 주기 내 수집 중\n"
     return lines
 
@@ -320,6 +325,14 @@ def _build_coverage_html(coverage: dict) -> str:
         box += ('<div style="margin-top:8px"><div style="font-weight:bold;color:#b45309;font-size:13px">'
                 f'&#128295; 수리 필요 {len(repair)}건</div>'
                 f'<ul style="margin:2px 0 0;padding-left:18px;color:#b45309;font-size:12px">{r_items}</ul></div>')
+    redundant = coverage.get("redundant_list", []) or []
+    if redundant:
+        d_items = "".join(
+            f'<li style="margin-bottom:2px">{x["source"]} &larr; {", ".join(x.get("covered_by", [])[:2])}</li>'
+            for x in redundant[:8])
+        box += ('<div style="margin-top:8px"><div style="font-weight:bold;color:#6b7280;font-size:13px">'
+                f'&#128257; 중복 &mdash; 뮤트 후보 {len(redundant)}건 (다른 소스가 커버)</div>'
+                f'<ul style="margin:2px 0 0;padding-left:18px;color:#6b7280;font-size:12px">{d_items}</ul></div>')
     box += f'<p style="color:#6b7280;font-size:12px;margin:6px 0 0">{summary}</p></div>'
     return box
 

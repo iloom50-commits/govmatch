@@ -119,6 +119,26 @@ def test_coverage_html_shows_repair():
     html = _build_coverage_html(_REPAIR_COV)
     assert "수리 필요" in html and "부산경제진흥원" in html
 
+_REDUNDANT_COV = {
+    "total_sources": 30, "green": 27, "yellow": 0, "red": 0, "na": 0, "muted": 0,
+    "red_list": [], "yellow_list": [], "scraper_alerts": [], "repair_list": [],
+    "redundant_list": [
+        {"source": "admin-manual:제주테크노파크", "covered_by": ["scraper:jejutp"]},
+    ],
+}
+
+def test_coverage_text_shows_redundant_mute_candidates():
+    from app.services.orchestrator.reporter import _build_coverage_text
+    txt = _build_coverage_text(_REDUNDANT_COV)
+    assert "뮤트 후보" in txt
+    assert "제주테크노파크" in txt and "scraper:jejutp" in txt
+
+def test_coverage_html_shows_redundant():
+    from app.services.orchestrator.reporter import _build_coverage_html
+    html = _build_coverage_html(_REDUNDANT_COV)
+    assert "뮤트 후보" in html and "제주테크노파크" in html
+
+
 def test_coverage_text_no_repair_key_ok():
     # repair_list 없어도 기존 동작(회귀 없음) 유지
     from app.services.orchestrator.reporter import _build_coverage_text

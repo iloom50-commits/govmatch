@@ -129,7 +129,7 @@ def run_daily_supervision(db_conn=None) -> dict:
             # 주1회(월요일 KST) 조용한 소스 진단 갱신 + 매일 수리목록 부착
             try:
                 from app.services.orchestrator.source_diagnoser import (
-                    diagnose_silent_sources, build_repair_list)
+                    diagnose_silent_sources, build_repair_list, find_redundant_coverage)
                 import datetime as _dt
                 silent = [x["source"] for x in
                           (coverage.get("yellow_list", []) + coverage.get("red_list", []))]
@@ -137,7 +137,19 @@ def run_daily_supervision(db_conn=None) -> dict:
                 if kst_weekday == 0 and silent:   # 월요일
                     n = diagnose_silent_sources(db_conn, silent)
                     print(f"  → 진단 갱신 {n}건")
-                coverage["repair_list"] = build_repair_list(db_conn, silent)
+                # v2: 중복(뮤트 후보) 분리 — 같은 기관을 활성 소스가 이미 커버
+                redundant = find_redundant_coverage(db_conn, silent)
+                redset = {r["source"] for r in redundant}
+                coverage["redundant_list"] = redundant
+                coverage["redundant"] = len(redundant)
+                coverage["repair_list"] = [r for r in build_repair_list(db_conn, silent)
+                                           if r["source"] not in redset]
+                coverage["yellow_list"] = [y for y in coverage.get("yellow_list", []) if y["source"] not in redset]
+                coverage["red_list"] = [r for r in coverage.get("red_list", []) if r["source"] not in redset]
+                coverage["yellow"] = len(coverage["yellow_list"])
+                coverage["red"] = len(coverage["red_list"])
+                if redundant:
+                    print(f"  → 🔁 중복(뮤트 후보) {len(redundant)}건")
             except Exception as _de:
                 print(f"  → 진단 스텝 오류(무시): {_de}")
             if coverage.get("red") or coverage.get("yellow"):

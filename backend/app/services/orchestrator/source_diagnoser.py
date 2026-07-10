@@ -113,6 +113,49 @@ def diagnose_silent_sources(conn, silent_origin_sources: List[str]) -> int:
     return diagnosed
 
 
+def _search_keys(origin_source: str) -> List[str]:
+    """origin_source에서 기관 검색키 추출(순수). 본명 + 괄호안 약칭.
+    예: 'admin-manual:부산경제진흥원(BEPA)' → ['부산경제진흥원', 'BEPA']."""
+    s = (origin_source or "").split(":", 1)[-1]
+    paren = re.findall(r"[(（]([^)）]+)[)）]", s)
+    main = re.sub(r"[(（][^)）]*[)）]", "", s)
+    main = re.sub(r"\s*(기업지원|정책|공지공고|공고)$", "", main).strip()
+    keys = [main] + [p.strip() for p in paren]
+    return [k for k in keys if len(k) >= 2]
+
+
+def find_redundant_coverage(conn, silent_origin_sources: List[str]) -> List[Dict[str, Any]]:
+    """v2. 조용한 소스 중 '같은 기관을 최근 활성 소스가 이미 커버'하는 중복(뮤트 후보) 탐지.
+    department/origin_source ILIKE 기관명 기준(신뢰도 높음). 반환: [{source, covered_by[]}]."""
+    if not silent_origin_sources:
+        return []
+    cur = conn.cursor()
+    out: List[Dict[str, Any]] = []
+    for s in silent_origin_sources:
+        keys = _search_keys(s)
+        if not keys:
+            continue
+        conds = " OR ".join(["department ILIKE %s OR origin_source ILIKE %s" for _ in keys])
+        params: list = [s]
+        for k in keys:
+            params += [f"%{k}%", f"%{k}%"]
+        try:
+            cur.execute(f"""
+                SELECT origin_source, COUNT(*) n FROM announcements
+                WHERE created_at > NOW() - INTERVAL '14 days'
+                  AND origin_source <> %s AND ({conds})
+                GROUP BY origin_source ORDER BY n DESC LIMIT 3
+            """, params)
+            rows = cur.fetchall()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+            rows = []
+        if rows:
+            out.append({"source": s, "covered_by": [r["origin_source"] for r in rows]})
+    return out
+
+
 def build_repair_list(conn, silent_origin_sources: List[str]) -> List[Dict[str, Any]]:
     """매일. 현재 조용한 소스들의 저장된 diag_* 스냅샷을 읽어 수리 목록 구성."""
     if not silent_origin_sources:

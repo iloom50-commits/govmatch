@@ -2227,25 +2227,41 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {/* 플로팅 버튼 (모바일) — 좌측 하단 */}
       {isPublic && !profile ? (
-        <button
-          onClick={handleLoginRequired}
-          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-emerald-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(5,150,105,0.4)] hover:bg-emerald-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
+        <div
+          className={`fixed bottom-6 left-4 z-50 lg:hidden flex flex-col items-start gap-2 transition-all animate-in slide-in-from-left duration-500 ${pillHidden ? "-translate-x-32 opacity-0 pointer-events-none" : ""}`}
         >
-          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18 9v6m3-3h-6M13 7a4 4 0 11-8 0 4 4 0 018 0zM2 21a7 7 0 0114 0" /></svg>
-          <span className="text-xs font-bold">무료 가입</span>
-        </button>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded-full shadow-lg">
+            <span className="text-[12px] font-bold text-emerald-700">무료 가입</span>
+          </div>
+          <button
+            onClick={handleLoginRequired}
+            className="w-14 h-14 bg-gradient-to-br from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
+            aria-label="무료 가입"
+            title="무료 가입"
+          >
+            <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M18 9v6m3-3h-6M13 7a4 4 0 11-8 0 4 4 0 018 0zM2 21a7 7 0 0114 0" /></svg>
+          </button>
+        </div>
       ) : (
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-slate-800 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(30,41,59,0.4)] hover:bg-slate-900 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
+        <div
+          className={`fixed bottom-6 left-4 z-50 lg:hidden flex flex-col items-start gap-2 transition-all animate-in slide-in-from-left duration-500 ${pillHidden ? "-translate-x-32 opacity-0 pointer-events-none" : ""}`}
         >
-          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          <span className="text-xs font-bold">내 정보</span>
-          {/* 맞춤알림 미설정 시 빨간 점 — 사이드바 열면 최상단 카드로 안내 */}
-          {profile && !hasNotificationSet && (
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" aria-label="알림 미설정" />
-          )}
-        </button>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-full shadow-lg">
+            <span className="text-[12px] font-bold text-slate-700">내 정보</span>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="relative w-14 h-14 bg-gradient-to-br from-slate-800 to-slate-700 hover:from-slate-900 hover:to-slate-800 text-white rounded-full shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
+            aria-label="내 정보"
+            title="내 정보"
+          >
+            <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            {/* 맞춤알림 미설정 시 빨간 점 — 사이드바 열면 최상단 카드로 안내 */}
+            {profile && !hasNotificationSet && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full ring-2 ring-white animate-pulse" aria-label="알림 미설정" />
+            )}
+          </button>
+        </div>
       )}
 
       <NotificationModal

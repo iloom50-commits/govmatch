@@ -2229,7 +2229,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       {isPublic && !profile ? (
         <button
           onClick={handleLoginRequired}
-          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-blue-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(79,70,229,0.4)] hover:bg-blue-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
+          className={`fixed bottom-6 left-4 z-50 lg:hidden bg-emerald-600 text-white px-4 py-3 rounded-full shadow-[0_4px_20px_rgba(5,150,105,0.4)] hover:bg-emerald-700 active:scale-95 transition-all animate-in slide-in-from-bottom duration-500 flex items-center gap-2 ${pillHidden ? "translate-y-24 opacity-0 pointer-events-none" : ""}`}
         >
           <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18 9v6m3-3h-6M13 7a4 4 0 11-8 0 4 4 0 018 0zM2 21a7 7 0 0114 0" /></svg>
           <span className="text-xs font-bold">무료 가입</span>

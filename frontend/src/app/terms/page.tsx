@@ -2,7 +2,7 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "이용약관",
-  description: "지원금길잡이 서비스 이용약관 — 서비스 이용 조건, 회원 권리와 의무, 결제 및 환불 정책",
+  description: "지원금AI 서비스 이용약관 — 서비스 이용 조건, 회원 권리와 의무, 결제 및 환불 정책",
   alternates: { canonical: "https://www.govmatch.kr/terms" },
 };
 
@@ -15,7 +15,7 @@ export default function TermsPage() {
       <section className="space-y-6 text-sm leading-relaxed">
         <div>
           <h2 className="text-lg font-bold mb-2">제1조 (목적)</h2>
-          <p>이 약관은 밸류파인더(이하 &quot;회사&quot;)가 운영하는 지원금길잡이(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+          <p>이 약관은 밸류파인더(이하 &quot;회사&quot;)가 운영하는 지원금AI(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
         </div>
 
         <div>

@@ -782,7 +782,7 @@ export default function NotificationModal({
                   <p className="text-sm font-bold text-slate-600 mb-2">기업명 (상호명) <span className="font-normal text-slate-400">(선택)</span></p>
                   <input
                     type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
-                    placeholder="예: 지원금길잡이"
+                    placeholder="예: 지원금AI"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[16px] outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>

@@ -3928,13 +3928,13 @@ def _send_reset_email(to_email: str, code: str):
         import smtplib
         from email.mime.text import MIMEText
         msg = MIMEText(
-            f"지원금길잡이 비밀번호 재설정 인증코드입니다.\n\n"
+            f"지원금AI 비밀번호 재설정 인증코드입니다.\n\n"
             f"인증코드: {code}\n\n"
             f"이 코드는 10분간 유효합니다.\n"
             f"본인이 요청하지 않았다면 이 이메일을 무시하세요.",
             "plain", "utf-8"
         )
-        msg["Subject"] = "[지원금길잡이] 비밀번호 재설정 인증코드"
+        msg["Subject"] = "[지원금AI] 비밀번호 재설정 인증코드"
         msg["From"] = smtp_from
         msg["To"] = to_email
         with smtplib.SMTP(smtp_host, smtp_port) as server:
@@ -4864,7 +4864,7 @@ def api_plan_subscribe(
         conn.close()
         raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다. 관리자에게 문의해주세요.")
     _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
-    if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금길잡이 {label} 월 구독"):
+    if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
         conn.close()
         raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
     print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
@@ -5012,12 +5012,12 @@ def _send_renew_notice(email: str, plan: str, downgraded: bool):
     try:
         import requests as _rq
         if downgraded:
-            subject = "[지원금길잡이] 결제 실패로 요금제가 FREE로 전환되었습니다"
+            subject = "[지원금AI] 결제 실패로 요금제가 FREE로 전환되었습니다"
             body = (f"{plan.upper()} 자동결제가 여러 번 실패하여 FREE로 전환되었습니다.\n"
                     f"등록하신 결제수단은 보관되어 있어, 카드 정보를 확인 후 재구독하시면 바로 복구됩니다.\n"
                     f"https://govmatch.kr")
         else:
-            subject = "[지원금길잡이] 자동결제에 실패했습니다 (서비스 유지·재시도 예정)"
+            subject = "[지원금AI] 자동결제에 실패했습니다 (서비스 유지·재시도 예정)"
             body = (f"{plan.upper()} 자동결제에 실패했습니다. 며칠간 자동 재시도하며 서비스는 유지됩니다.\n"
                     f"카드 잔액/유효기간을 확인해 주세요.\n"
                     f"https://govmatch.kr")
@@ -5171,7 +5171,7 @@ def _auto_renew_subscriptions():
             price = _plan_price(plan, user_type, bn=u["business_number"])
 
             payment_id = f"renew-{u['business_number']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M')}"
-            order_name = f"지원금길잡이 {plan.upper()} 월 구독"
+            order_name = f"지원금AI {plan.upper()} 월 구독"
             is_v1_key = stored_key.startswith("cust_")
 
             try:
@@ -10493,7 +10493,7 @@ def api_generate_strategy_report():
 
     # ── Gemini로 전략 보고서 생성 ──
     data_summary = f"""
-## 지원금길잡이 서비스 현황 데이터 (최근 30일)
+## 지원금AI 서비스 현황 데이터 (최근 30일)
 {ga4_section}
 ### 사용자 현황
 - 전체 사용자: {total_users}명
@@ -10523,7 +10523,7 @@ def api_generate_strategy_report():
 
     prompt = f"""당신은 SaaS 서비스 성장 전략 전문가입니다.
 
-아래는 "지원금길잡이" (govmatch.kr) 서비스의 실제 데이터입니다.
+아래는 "지원금AI" (govmatch.kr) 서비스의 실제 데이터입니다.
 이 서비스는 AI 기반 정부 지원금/보조금 자동 매칭 서비스입니다.
 사업자(기업)와 개인 사용자 모두를 대상으로 합니다.
 
@@ -12330,7 +12330,7 @@ def admin_push_test():
     sent = 0
     failed = 0
     payload = json.dumps({
-        "title": "지원금길잡이",
+        "title": "지원금AI",
         "body": "새로운 맞춤 공고가 등록되었습니다!",
         "url": "/",
     }, ensure_ascii=False)
@@ -14349,7 +14349,7 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
     r = dict(row)
 
-    # 화이트라벨: 발신자(전문가) 브랜딩 — 미설정 시 지원금길잡이 기본
+    # 화이트라벨: 발신자(전문가) 브랜딩 — 미설정 시 지원금AI 기본
     _b = dict(_brand) if _brand else {}
     _bc = (_b.get("brand_company") or "").strip()
     _bn = (_b.get("brand_contact") or "").strip()
@@ -14357,11 +14357,11 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
     if _bc:
         # 화이트라벨: 전문가 브랜드가 주(主). 플랫폼은 작은 크레딧만.
         _hdr_brand = " · ".join(x for x in [_bc, _bn] if x)
-        _foot_brand = " | ".join(x for x in [_bc, _bn, (f"Tel {_bp}" if _bp else "")] if x) + " &nbsp;·&nbsp; powered by 지원금길잡이"
+        _foot_brand = " | ".join(x for x in [_bc, _bn, (f"Tel {_bp}" if _bp else "")] if x) + " &nbsp;·&nbsp; powered by 지원금AI"
     else:
         # 브랜드 미설정 — 플랫폼 기본 표기만 (개발사 연락처 하드코딩 금지)
-        _hdr_brand = "지원금길잡이"
-        _foot_brand = "지원금길잡이 · govmatch.kr"
+        _hdr_brand = "지원금AI"
+        _foot_brand = "지원금AI · govmatch.kr"
 
     # summary에서 brief + AI HTML 분리
     parts = (r.get("summary") or "").split("\n\n", 1)
@@ -14992,7 +14992,7 @@ def _send_html_email(to_email: str, subject: str, html_body: str, reply_to: str 
         from email.mime.text import MIMEText
         msg = MIMEText(html_body, "html", "utf-8")
         msg["Subject"] = subject
-        display_name = f"{sender_name} (via 지원금길잡이)" if sender_name else "지원금길잡이"
+        display_name = f"{sender_name} (via 지원금AI)" if sender_name else "지원금AI"
         msg["From"] = f"{display_name} <{smtp_from}>"
         msg["To"] = to_email
         if reply_to:
@@ -15047,9 +15047,9 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
     if _ebc:
         _eparts = [_ebc, (_eb.get("brand_contact") or "").strip(),
                    (f"Tel {(_eb.get('brand_phone') or '').strip()}" if (_eb.get("brand_phone") or "").strip() else "")]
-        _email_foot = "본 메일은 " + " | ".join(x for x in _eparts if x) + " 가 발송했습니다.<br>powered by 지원금길잡이"
+        _email_foot = "본 메일은 " + " | ".join(x for x in _eparts if x) + " 가 발송했습니다.<br>powered by 지원금AI"
     else:
-        _email_foot = "본 메일은 지원금길잡이(govmatch.kr)를 통해 발송되었습니다."
+        _email_foot = "본 메일은 지원금AI(govmatch.kr)를 통해 발송되었습니다."
 
     for c in clients:
         email = c.get("contact_email")
@@ -15211,11 +15211,11 @@ def api_partnership_chat(req: dict, request: Request):
     if not _rate_limit_check(f"pchat:ip:{ip}", 10, 60):
         raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
 
-    system_prompt = """당신은 "지원금길잡이" 서비스의 API 제휴 상담 전문가입니다.
+    system_prompt = """당신은 "지원금AI" 서비스의 API 제휴 상담 전문가입니다.
 비즈니스 파트너에게 전문적이고 친절하게 응대하세요.
 
 [서비스 정보]
-- 서비스명: 지원금길잡이 (govmatch.kr)
+- 서비스명: 지원금AI (govmatch.kr)
 - 제공: 17,000+ 정부 지원금 공고 데이터 + AI 매칭 엔진
 - 운영: 밸류파인더 (대표 권오성)
 
@@ -15349,11 +15349,11 @@ def api_support_chat(req: dict, request: Request):
     if not _rate_limit_check(f"schat:ip:{ip}", 15, 60):
         raise HTTPException(status_code=429, detail="잠시 후 다시 시도해주세요.")
 
-    system_prompt = """당신은 "지원금길잡이" 고객 상담 챗봇입니다.
+    system_prompt = """당신은 "지원금AI" 고객 상담 챗봇입니다.
 친절하고 쉬운 말로 사용자를 도와주세요.
 
 [서비스 안내]
-- 지원금길잡이는 정부 지원금/보조금/정책자금을 AI가 자동 매칭해주는 무료 서비스입니다.
+- 지원금AI는 정부 지원금/보조금/정책자금을 AI가 자동 매칭해주는 무료 서비스입니다.
 - 기업(사업자)과 개인 모두 이용 가능합니다.
 - 17,000+ 공고를 실시간 분석합니다.
 
@@ -15956,7 +15956,7 @@ def api_test_renew_charge(req: TestChargeRequest):
             raise HTTPException(status_code=404, detail="해당 사용자의 빌링키가 없습니다(먼저 실 카드로 구독 필요).")
         key = u["billing_key"].strip()
         payment_id = f"testrenew-{req.business_number}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-        ok = _charge_billing_key(key, payment_id, amount, "지원금길잡이 자동갱신 테스트")
+        ok = _charge_billing_key(key, payment_id, amount, "지원금AI 자동갱신 테스트")
         return {
             "status": "SUCCESS" if ok else "FAILED",
             "charged": ok,

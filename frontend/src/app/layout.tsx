@@ -24,12 +24,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "지원금길잡이 — 정부지원금·정책자금 AI 매칭",
-    template: "%s | 지원금길잡이",
+    default: "지원금AI — 정부지원금·정책자금 AI 매칭",
+    template: "%s | 지원금AI",
   },
-  description: "지원금길잡이 — 내게 맞는 정부 지원금·보조금·정책자금을 AI가 30초 만에 찾아드립니다. 무료로 시작하세요. 중소기업·소상공인·청년·개인 맞춤, 전국 중앙부처·지자체 공고 실시간 분석.",
+  description: "지원금AI — 내게 맞는 정부 지원금·보조금·정책자금을 AI가 30초 만에 찾아드립니다. 무료로 시작하세요. 중소기업·소상공인·청년·개인 맞춤, 전국 중앙부처·지자체 공고 실시간 분석.",
   keywords: [
-    "지원금길잡이", "정부지원금", "정부보조금", "정책자금", "지원금찾기", "AI매칭",
+    "지원금AI", "정부지원금", "정부보조금", "정책자금", "지원금찾기", "AI매칭",
     "중소기업지원금", "소상공인지원금", "창업지원금", "청년지원금", "R&D지원",
     "소상공인정책자금", "사업화지원금", "스타트업지원", "바우처사업",
     "청년창업", "예비창업패키지", "초기창업패키지",
@@ -46,23 +46,23 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ko_KR",
     url: "https://www.govmatch.kr",
-    siteName: "지원금길잡이",
-    title: "지원금길잡이 — 내 지원금 찾기 30초",
+    siteName: "지원금AI",
+    title: "지원금AI — 내 지원금 찾기 30초",
     description: "내게 맞는 정부 지원금·보조금·정책자금을 AI가 30초 만에 찾아드립니다. 중소기업·소상공인·청년·개인 맞춤, 전국 중앙부처·지자체 공고 실시간 분석. 무료로 시작하세요.",
     images: [
       {
-        url: "/og-image-wide-v3.png",
+        url: "/og-image-wide-v2.png",
         width: 1200,
         height: 630,
-        alt: "지원금길잡이 — AI 정부 지원금 자동 매칭",
+        alt: "지원금AI — AI 정부 지원금 자동 매칭",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "지원금길잡이 — 내 지원금 찾기 30초",
+    title: "지원금AI — 내 지원금 찾기 30초",
     description: "내게 맞는 정부 지원금·보조금·정책자금을 AI가 30초 만에 찾아드립니다. 중소기업·소상공인·청년·개인 맞춤, 전국 중앙부처·지자체 공고 실시간 분석. 무료로 시작하세요.",
-    images: ["/og-image-wide-v3.png"],
+    images: ["/og-image-wide-v2.png"],
   },
   robots: {
     index: true,
@@ -84,7 +84,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "지원금길잡이",
+    title: "지원금AI",
   },
   other: {
     "mobile-web-app-capable": "yes",
@@ -227,7 +227,7 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "WebApplication",
-              "name": "지원금길잡이",
+              "name": "지원금AI",
               "alternateName": ["지원금AI", "govmatch"],
               "url": "https://www.govmatch.kr",
               "description": "정부 지원금·보조금·정책자금 공고를 AI가 실시간 분석하여 중소기업·소상공인·청년·개인 조건에 맞는 지원사업을 자동 매칭해드리는 서비스. 17,000건 이상 공고 보유.",
@@ -267,7 +267,7 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "Organization",
-              "name": "지원금길잡이",
+              "name": "지원금AI",
               "alternateName": ["지원금AI", "govmatch"],
               "url": "https://www.govmatch.kr",
               "logo": "https://www.govmatch.kr/icon-512.png",
@@ -281,7 +281,7 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "WebSite",
-              "name": "지원금길잡이",
+              "name": "지원금AI",
               "url": "https://www.govmatch.kr",
               "inLanguage": "ko",
               "potentialAction": {
@@ -304,10 +304,10 @@ export default function RootLayout({
               "mainEntity": [
                 {
                   "@type": "Question",
-                  "name": "지원금길잡이란 무엇인가요?",
+                  "name": "지원금AI란 무엇인가요?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "지원금길잡이(govmatch.kr)는 중앙부처와 전국 지자체의 정부 지원금·보조금·정책자금 공고 17,000건 이상을 AI가 실시간 분석하여, 기업과 개인 조건에 꼭 맞는 지원사업을 자동으로 찾아드리는 AI 매칭 서비스입니다."
+                    "text": "지원금AI(govmatch.kr)는 중앙부처와 전국 지자체의 정부 지원금·보조금·정책자금 공고 17,000건 이상을 AI가 실시간 분석하여, 기업과 개인 조건에 꼭 맞는 지원사업을 자동으로 찾아드리는 AI 매칭 서비스입니다."
                   }
                 },
                 {
@@ -320,7 +320,7 @@ export default function RootLayout({
                 },
                 {
                   "@type": "Question",
-                  "name": "지원금길잡이는 무료인가요?",
+                  "name": "지원금AI는 무료인가요?",
                   "acceptedAnswer": {
                     "@type": "Answer",
                     "text": "네, 기본 기능은 무료입니다. 회원가입 후 업종·지역·매출 정보를 입력하면 맞춤 지원금 공고를 무제한으로 받아볼 수 있으며, AI 상담은 월 3회 무료로 이용 가능합니다."
@@ -364,7 +364,7 @@ export default function RootLayout({
                 정부 지원금·보조금, AI가 30초 만에 찾아드립니다
               </h1>
               <p className="text-[13px] md:text-sm text-slate-500 leading-relaxed max-w-2xl mx-auto">
-                <strong className="text-slate-700">지원금길잡이(govmatch.kr)</strong>는 중앙부처·지자체 공고 17,000건 이상을 매시간 수집해
+                <strong className="text-slate-700">지원금AI(govmatch.kr)</strong>는 중앙부처·지자체 공고 17,000건 이상을 매시간 수집해
                 업종·지역·매출·연령 조건에 꼭 맞는 지원사업을 자동으로 매칭합니다.
               </p>
             </div>
@@ -442,7 +442,7 @@ export default function RootLayout({
 
             {/* 검색 키워드 — 봇 전용, 사람 눈에는 숨김 */}
             <p className="sr-only">
-              지원금길잡이, 정부지원금, 정부보조금, 중소기업지원금, 소상공인지원금, 창업지원금, 정책자금신청, 청년지원금, 지자체지원사업, 바우처사업, R&D과제, 지원금찾기, AI보조금매칭
+              지원금AI, 정부지원금, 정부보조금, 중소기업지원금, 소상공인지원금, 창업지원금, 정책자금신청, 청년지원금, 지자체지원사업, 바우처사업, R&D과제, 지원금찾기, AI보조금매칭
             </p>
 
           </div>

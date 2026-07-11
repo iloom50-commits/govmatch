@@ -660,8 +660,8 @@ export default function Home() {
       {(step === "LOGIN" || step === "ONBOARDING") && (
         <div className="text-center mb-6 md:mb-8 animate-in fade-in duration-500">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-slate-900 mb-2 tracking-tighter">
-            <span className="brand-badge brand-badge-lg"><span className="brand-name">지원금</span><span className="brand-guide">길잡이</span></span>
-            <span className="sr-only">지원금길잡이 - AI 정부 지원금 자동 매칭</span>
+            <span className="brand-badge brand-badge-lg"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
+            <span className="sr-only">지원금AI - AI 정부 지원금 자동 매칭</span>
           </h1>
           <p className="text-slate-500 text-xs md:text-sm max-w-md mx-auto font-medium leading-relaxed px-4 opacity-80">
             AI가 매시간 5,000개 이상의 정부 공고를 분석하여

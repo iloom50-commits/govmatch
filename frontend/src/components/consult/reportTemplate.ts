@@ -286,7 +286,7 @@ export function generateConsultReportHTML(input: ReportInput): string {
     <div class="header-sub">정부 지원금 자격 상담 결과</div>
   </div>
   <div class="header-logo">
-    <strong style="color:#4f46e5;">지원금길잡이</strong><br/>
+    <strong style="color:#4f46e5;">지원금AI</strong><br/>
     govmatch.kr
   </div>
 </div>
@@ -343,7 +343,7 @@ ${docsSection}
 ${conversationSection}
 
 <div class="footer">
-  <div>본 보고서는 <strong>지원금길잡이</strong>가 AI 기반으로 생성한 참고 자료입니다.</div>
+  <div>본 보고서는 <strong>지원금AI</strong>가 AI 기반으로 생성한 참고 자료입니다.</div>
   <div>최종 선정 결과는 주관 기관의 심사에 따르며, 본 자료는 법적 효력이 없습니다.</div>
   <div style="margin-top:6px;">발행일시: ${now} · govmatch.kr</div>
 </div>

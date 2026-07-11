@@ -14,13 +14,13 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: '지원금길잡이', body: '새로운 알림이 있습니다.', url: '/' };
+  let data = { title: '지원금AI', body: '새로운 알림이 있습니다.', url: '/' };
   try {
     data = event.data.json();
   } catch (e) { /* use defaults */ }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || '지원금길잡이', {
+    self.registration.showNotification(data.title || '지원금AI', {
       body: data.body,
       icon: data.icon || 'https://www.govmatch.kr/icon-192-maskable.png',
       badge: 'https://www.govmatch.kr/icon-128.png',

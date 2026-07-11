@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
   const isThinContent = !ann.summary_text || ann.summary_text.length < 100;
 
-  const title = `${ann.title} | 지원금길잡이`;
+  const title = `${ann.title} | 지원금AI`;
   const description = ann.summary_text
     ? ann.summary_text.slice(0, 150)
     : `${ann.department || "정부"} ${ann.title} - 자격요건, 지원금액, 신청방법을 AI가 분석해드립니다.`;
@@ -68,7 +68,7 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "지원금길잡이", "item": "https://www.govmatch.kr" },
+      { "@type": "ListItem", "position": 1, "name": "지원금AI", "item": "https://www.govmatch.kr" },
       { "@type": "ListItem", "position": 2, "name": ann.category || "지원사업", "item": `https://www.govmatch.kr/search?q=${encodeURIComponent(ann.category || "")}` },
       { "@type": "ListItem", "position": 3, "name": ann.title, "item": `https://www.govmatch.kr/announcements/${id}` },
     ],
@@ -82,7 +82,7 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
     "url": `https://www.govmatch.kr/announcements/${id}`,
     "publisher": {
       "@type": "Organization",
-      "name": "지원금길잡이",
+      "name": "지원금AI",
       "url": "https://www.govmatch.kr",
     },
     "dateModified": new Date().toISOString(),
@@ -96,7 +96,7 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* SEO 정적 콘텐츠 — 네이버 봇이 읽음 */}
         <nav className="text-sm text-slate-400 mb-4" aria-label="breadcrumb">
-          <a href="/" className="hover:text-indigo-600">지원금길잡이</a>
+          <a href="/" className="hover:text-indigo-600">지원금AI</a>
           <span className="mx-2">/</span>
           <a href={`/search?q=${encodeURIComponent(ann.category || "")}`} className="hover:text-indigo-600">{ann.category || "지원사업"}</a>
           <span className="mx-2">/</span>
@@ -173,7 +173,7 @@ export default async function AnnouncementPage({ params }: { params: Promise<{ i
 
         {/* SEO 푸터 */}
         <footer className="mt-12 pt-6 border-t border-slate-100 text-xs text-slate-400">
-          <p>지원금길잡이는 정부 지원금, 보조금, 정책자금 공고를 AI가 분석하여 맞춤 매칭해주는 서비스입니다.</p>
+          <p>지원금AI는 정부 지원금, 보조금, 정책자금 공고를 AI가 분석하여 맞춤 매칭해주는 서비스입니다.</p>
           <p className="mt-1">이 페이지의 정보는 공식 공고를 기반으로 하며, 최종 확인은 주관기관에서 해주세요.</p>
         </footer>
       </div>

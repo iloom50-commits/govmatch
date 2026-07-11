@@ -1079,7 +1079,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
                         <a href="/" target="_blank" rel="noopener noreferrer"
                           className={`block text-left rounded-2xl border-2 p-5 transition-all active:scale-[0.98] hover:shadow-lg ${dark ? `${t.cardBorder} border ${t.card} hover:border-violet-500/60 hover:bg-violet-500/10` : "border-slate-200 hover:border-violet-500 hover:bg-violet-50 bg-white"}`}>
                           <span className="text-3xl">🔎</span>
-                          <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원금길잡이 — 모든 지원금 찾기</p>
+                          <p className={`text-[13px] font-bold mt-2.5 mb-0.5 ${dark ? "text-slate-100" : "text-slate-800"}`}>지원금AI — 모든 지원금 찾기</p>
                           <p className={`text-[11px] ${t.muted}`}>내 기업·상황에 맞는 정부지원금·정책자금을 AI가 한 번에</p>
                         </a>
                       )}

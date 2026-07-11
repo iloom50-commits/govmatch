@@ -268,7 +268,7 @@ def build_fund_section_html(reply_text, announcements, fund_details=None) -> str
                 deadline, _dcolor = "상시", "#64748b"
             else:
                 deadline, _dcolor = "확인 필요", "#ea580c"
-            # 정책자금명 → 지원금길잡이 공고 상세(절대경로). id 없으면 텍스트만.
+            # 정책자금명 → 지원금AI 공고 상세(절대경로). id 없으면 텍스트만.
             _aid = a.get("id")
             if _aid is not None and str(_aid).strip().lstrip("-").isdigit():
                 title = (

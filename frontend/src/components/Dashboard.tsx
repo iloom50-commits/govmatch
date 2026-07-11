@@ -1381,7 +1381,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const SidebarLogo = () => (
     <div className="hidden md:flex items-center justify-between mb-4 px-1">
       <div className="flex items-center gap-2">
-        <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">길잡이</span></span>
+        <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
       </div>
       {!isPwaInstalled && (
         <button
@@ -1431,7 +1431,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       <ShareToggle
         label="친구에게 알려주기"
         getUrl={() => `${window.location.origin}?v=2`}
-        shareText="지원금길잡이 — 내 지원금 찾기 30초. 찾지말고, 받으세요."
+        shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
         toast={toast}
       />
 
@@ -1657,7 +1657,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           <ShareToggle
             label="친구에게 추천하기"
             getUrl={() => `${window.location.origin}?ref=${profile.referral_code}&v=2`}
-            shareText="지원금길잡이 — 내 지원금 찾기 30초. 찾지말고, 받으세요."
+            shareText="지원금AI — 내 지원금 찾기 30초. 찾지말고, 받으세요."
             toast={toast}
           />
           {(profile?.merit_months || 0) > 0 && (
@@ -1773,7 +1773,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </button>
       )}
 
-      {/* 모바일 상단 지원금길잡이 로고 제거 — 검색창 위 로고와 중복 */}
+      {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
       {/* 모바일 드로어 오버레이 */}
       {(profile || !isPublic) && sidebarOpen && (
@@ -1831,7 +1831,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* 모바일 전용 로고 헤더 */}
           <div className="flex lg:hidden items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">길잡이</span></span>
+              <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
             </div>
             <div className="flex items-center gap-2">
               {profile && !hasNotificationSet && (
@@ -2530,7 +2530,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
                     <div className="flex items-start gap-2.5">
                       <div className="flex items-center justify-center w-10 h-10 bg-emerald-50 border border-emerald-200 rounded-lg shrink-0 text-base">📲</div>
                       <p className="text-[11px] text-slate-700 leading-relaxed pt-1">
-                        <span className="font-black">대안:</span> <span className="font-bold text-emerald-700">⋮ 메뉴 → &quot;지원금길잡이 앱 설치&quot;</span>
+                        <span className="font-black">대안:</span> <span className="font-bold text-emerald-700">⋮ 메뉴 → &quot;지원금AI 앱 설치&quot;</span>
                       </p>
                     </div>
                   </>

@@ -7399,63 +7399,6 @@ def api_sbiz24_scan(req: AdminAuthRequest):
         except: pass
 
 
-@app.post("/api/admin/diag-source-fetch")
-def api_diag_source_fetch(req: AdminAuthRequest):
-    """[임시 진단] IP차단 의심 3개 소스를 프로덕션에서 직접 fetch해 실패 원인 반환.
-    로컬은 되는데 프로덕션 found=0인 원인(403 WAF / 연결리셋 / 타임아웃 / 빈응답)을
-    프로덕션 송신 IP·국가와 함께 확인. 원인 확정 후 제거 예정."""
-    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
-        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
-    import requests as _rq
-    import time as _t
-    import warnings as _w
-    ua = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "ko-KR,ko;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-    targets = [
-        ("gwangju_tp", "https://www.gjtp.or.kr/home/business.cs?pageIndex=1"),
-        ("jeonbuk_tp", "https://www.jbtp.or.kr/board/list.jbtp?boardId=BBS_0000006&menuCd=DOM_000000102001000000&pageNo=1"),
-        ("jeju_sido", "https://www.jeju.go.kr/news/news/law.htm?curPage=1"),
-    ]
-
-    def _try(url, verify):
-        try:
-            t0 = _t.time()
-            with _w.catch_warnings():
-                _w.simplefilter("ignore")
-                r = _rq.get(url, headers=ua, timeout=20, verify=verify)
-            body = r.text or ""
-            return {"status": r.status_code, "elapsed": round(_t.time() - t0, 2),
-                    "len": len(body), "server": r.headers.get("Server"),
-                    "via": r.headers.get("Via"), "cf_ray": r.headers.get("CF-RAY"),
-                    "snippet": body[:300]}
-        except Exception as e:
-            return {"error": f"{type(e).__name__}: {str(e)[:250]}"}
-
-    results = []
-    for name, url in targets:
-        entry = {"source": name, "url": url, "verify_true": _try(url, True)}
-        if "error" in entry["verify_true"]:
-            entry["verify_false"] = _try(url, False)
-        results.append(entry)
-    egress = {}
-    try:
-        egress["ip"] = _rq.get("https://api.ipify.org?format=json", timeout=10).json().get("ip")
-    except Exception as e:
-        egress["ip_error"] = str(e)[:120]
-    try:
-        g = _rq.get(f"http://ip-api.com/json/{egress.get('ip', '')}", timeout=10).json()
-        egress["country"] = g.get("country")
-        egress["isp"] = g.get("isp")
-        egress["org"] = g.get("org")
-    except Exception as e:
-        egress["geo_error"] = str(e)[:120]
-    return {"egress": egress, "results": results}
-
-
 @app.post("/api/admin/sbiz24-purge")
 def api_sbiz24_purge(req: AdminAuthRequest):
     """sbiz24.kr 구 스크래핑 공고 전체 삭제 — OLS API 데이터로 교체됐으므로 안전."""

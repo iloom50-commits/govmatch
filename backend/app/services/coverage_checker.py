@@ -324,6 +324,37 @@ _EARLY_24H_SQL = """
     GROUP BY source
 """
 
+# 국내 IP 전용 로컬 수집기(지오펜스 소스 gwangju_tp·jeonbuk_tp·jeju_sido) 정체 임계
+LOCAL_COLLECTOR_STALE_DAYS = 3
+
+
+def check_local_collector(conn) -> Dict[str, Any]:
+    """국내 IP 로컬 수집기 하트비트 확인. 셋업돼 있고(행 존재) N일 이상 정체면 stale.
+
+    행이 없으면(미셋업) None 반환 — 안 쓰는 환경에서 오탐 방지.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT last_ran_at, last_saved, detail FROM local_collector_heartbeat "
+                    "WHERE collector = 'giljabi_geoblocked'")
+        row = cur.fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    if not row or not row.get("last_ran_at"):
+        return None
+    now = datetime.datetime.now(datetime.timezone.utc)
+    last = row["last_ran_at"]
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=datetime.timezone.utc)
+    days = (now - last).days
+    return {"stale": days >= LOCAL_COLLECTOR_STALE_DAYS, "days_quiet": days,
+            "last_ran_at": last.isoformat(), "last_saved": row.get("last_saved")}
+
+
 def _collect_early_warnings(conn) -> List[Dict[str, Any]]:
     """scraper_runs에서 조기경보 입력을 조회해 _early_warnings_from_rows 적용."""
     try:
@@ -400,5 +431,6 @@ def check_source_coverage(conn) -> Dict[str, Any]:
         result["persist_error"] = str(e)[:200]
 
     result["scraper_alerts"] = _collect_early_warnings(conn)
+    result["local_collector"] = check_local_collector(conn)
     result["checked_at"] = datetime.datetime.now().isoformat()
     return result

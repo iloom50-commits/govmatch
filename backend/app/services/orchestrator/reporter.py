@@ -136,6 +136,10 @@ def _build_coverage_text(coverage: dict) -> str:
     for a in sa[:5]:
         icon = "🔴" if a.get("level") == "critical" else "🟡"
         lines += f"  {icon} [조기경보] {a['source']}: {a['msg']}\n"
+    lc = coverage.get("local_collector")
+    if lc and lc.get("stale"):
+        lines += (f"  🔴 [로컬 수집기] 광주·전북·제주 공고가 {lc.get('days_quiet')}일째 미수집 "
+                  f"— 해당 소스는 해외 IP 차단이라 PC(국내)에서만 수집됩니다. PC를 켜주세요(켜면 자동 수집).\n")
     repair = coverage.get("repair_list", []) or []
     if repair:
         lines += f"  🔧 수리 필요 (진단 {len(repair)}건):\n"
@@ -317,6 +321,13 @@ def _build_coverage_html(coverage: dict) -> str:
             for y in yellow[:8]) + "".join(
             f'<li style="margin-bottom:2px">[조기경보] {a["source"]}: {a["msg"]}</li>' for a in sa[:5])
         box += f'<ul style="margin:6px 0 0;padding-left:18px;color:#b45309;font-size:12px">{y_items}</ul>'
+    lc = coverage.get("local_collector")
+    if lc and lc.get("stale"):
+        box += ('<div style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;'
+                'border-radius:6px;padding:8px 12px;color:#b91c1c;font-size:13px">'
+                f'&#128225; <b>로컬 수집기 {lc.get("days_quiet")}일째 미수집</b> — '
+                '광주·전북·제주 공고는 해외 IP 차단이라 PC(국내)에서만 수집됩니다. '
+                'PC를 켜주세요(켜면 자동 수집).</div>')
     repair = coverage.get("repair_list", []) or []
     if repair:
         r_items = "".join(

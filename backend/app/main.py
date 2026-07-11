@@ -629,6 +629,15 @@ def init_database():
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_at          TIMESTAMP")
             # 재발방지 가드: base.run()의 마감스킵 건수 영속화 → 'found>0인데 전부 expired'(BEPA류) 조기경보 (추가만)
             cursor.execute("ALTER TABLE scraper_runs ADD COLUMN IF NOT EXISTS items_expired INTEGER DEFAULT 0")
+            # 국내 IP 전용 로컬 수집기(해외 IP 차단 소스) 하트비트 — 정체 시 COO메일 경보
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS local_collector_heartbeat (
+                    collector    VARCHAR(60) PRIMARY KEY,
+                    last_ran_at  TIMESTAMPTZ NOT NULL,
+                    last_saved   INTEGER DEFAULT 0,
+                    detail       TEXT
+                )
+            """)
 
             conn.commit()
         except Exception:

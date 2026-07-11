@@ -15920,6 +15920,46 @@ def api_ai_coo_run(req: AdminAuthRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class TestChargeRequest(BaseModel):
+    password: str
+    business_number: str
+    amount: int = 1000
+
+
+@app.post("/api/admin/test-renew-charge")
+def api_test_renew_charge(req: TestChargeRequest):
+    """[임시·검증용] 특정 사용자 빌링키로 소액 재청구 — 자동갱신(빌링키 재청구) 실동작 확인.
+    자동갱신과 동일한 _charge_billing_key 경로. 검증 후 이 엔드포인트는 제거 예정."""
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+    # 안전장치: 오청구 방지 — 소액만 허용
+    amount = int(req.amount or 1000)
+    if amount < 100 or amount > 5000:
+        raise HTTPException(status_code=400, detail="테스트 금액은 100~5000원만 허용됩니다.")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT email, plan, billing_key FROM users WHERE business_number = %s", (req.business_number,))
+        u = cur.fetchone()
+        if not u or not (u.get("billing_key") or "").strip():
+            raise HTTPException(status_code=404, detail="해당 사용자의 빌링키가 없습니다(먼저 실 카드로 구독 필요).")
+        key = u["billing_key"].strip()
+        payment_id = f"testrenew-{req.business_number}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        ok = _charge_billing_key(key, payment_id, amount, "지원금길잡이 자동갱신 테스트")
+        return {
+            "status": "SUCCESS" if ok else "FAILED",
+            "charged": ok,
+            "amount": amount,
+            "payment_id": payment_id,
+            "email": u.get("email"),
+            "key_type": "v1" if key.startswith("cust_") else "v2",
+            "note": "PortOne 대시보드에서 결제 확인·환불 가능. 검증 후 이 엔드포인트는 제거하세요.",
+        }
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+
 # ══════════════════════════════════════════════════════════
 #  Hot이슈 티커 API
 # ══════════════════════════════════════════════════════════

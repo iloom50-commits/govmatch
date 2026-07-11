@@ -260,6 +260,9 @@ class GbsaScraper(BaseScraper):
     name = "gbsa"
     display_name = "경기도경제과학진흥원(GBSA)"
     origin_url_prefix = f"{_GBSA_BASE}/board/notice.do"
+    # 목록이 최신순 아님(기존 공고가 상단, 신규가 하단에 섞임) → 연속 기존건 조기종료
+    # 시 신규를 놓침. 전체 순회 필요.
+    skip_consecutive_break = True
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []

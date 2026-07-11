@@ -45,9 +45,16 @@ _NON_SUPPORT_TITLE_KW = (
 )
 
 
+# 정부 표창/포상 후보 모집 — '모집'이 붙어도 지원금(자금·바우처)이 아니므로 hard-제외
+_AWARD_TITLE_KW = ("유공 포상", "유공자 포상", "포상 후보자", "포상 후보", "포상계획", "표창 후보", "표창계획")
+
+
 def _is_non_support_title(title: str) -> bool:
     """지원사업이 아닌 행정/공지/명단 공고 판별. 단, 지원사업 신호가 있으면 차단 안 함(오탐 방지)."""
     t = title or ""
+    # 표창/포상 후보 모집은 '모집' 신호보다 우선해 제외(지원사업 아님)
+    if any(kw in t for kw in _AWARD_TITLE_KW):
+        return True
     if any(s in t for s in ("모집", "지원사업", "지원금", "바우처", "공모", "지원 사업")):
         return False
     return any(kw in t for kw in _NON_SUPPORT_TITLE_KW)

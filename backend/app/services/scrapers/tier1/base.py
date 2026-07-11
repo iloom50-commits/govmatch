@@ -158,10 +158,11 @@ class BaseScraper:
             cur.execute(
                 """UPDATE scraper_runs
                    SET ended_at = %s, status = %s, items_found = %s,
-                       items_saved = %s, error_message = %s, elapsed_sec = %s
+                       items_saved = %s, items_expired = %s,
+                       error_message = %s, elapsed_sec = %s
                    WHERE id = %s""",
                 (datetime.datetime.now(), status, items_found, items_saved,
-                 error_message, elapsed, run_id),
+                 items_expired, error_message, elapsed, run_id),
             )
             db_conn.commit()
         except Exception as e:

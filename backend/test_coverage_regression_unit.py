@@ -110,6 +110,34 @@ def test_early_warnings_zero_saved_is_not_an_alert():
     assert _early_warnings_from_rows(rows) == []
 
 
+def test_early_warnings_all_expired_skip_signature():
+    # BEPA류 재발 탐지: 24h 내 found>0인데 saved=0이고 expired가 found를 거의 다 차지
+    # → 등록일을 마감일로 오인해 진행중 공고를 전부 '마감'으로 스킵했을 가능성.
+    from app.services.coverage_checker import _early_warnings_from_rows
+    rows = [{"source": "bepa", "runs": 1, "ok": 1, "err": 0,
+             "saved_24h": 0, "found_24h": 8, "expired_24h": 8}]
+    alerts = _early_warnings_from_rows(rows)
+    assert len(alerts) == 1
+    assert alerts[0]["source"] == "bepa"
+    assert "마감" in alerts[0]["msg"]
+
+
+def test_early_warnings_normal_no_new_not_flagged():
+    # 정상 '신규 없음': found>0이나 expired 낮음(대부분 이미 DB에 존재) → 경보 없음.
+    from app.services.coverage_checker import _early_warnings_from_rows
+    rows = [{"source": "monthly", "runs": 1, "ok": 1, "err": 0,
+             "saved_24h": 0, "found_24h": 10, "expired_24h": 1}]
+    assert _early_warnings_from_rows(rows) == []
+
+
+def test_early_warnings_expired_but_some_saved_not_flagged():
+    # 일부라도 저장됐으면(saved>0) 스크래퍼가 정상 동작 중 → 경보 없음.
+    from app.services.coverage_checker import _early_warnings_from_rows
+    rows = [{"source": "ok_src", "runs": 1, "ok": 1, "err": 0,
+             "saved_24h": 3, "found_24h": 10, "expired_24h": 7}]
+    assert _early_warnings_from_rows(rows) == []
+
+
 # ── 뮤트 / 집계 ──
 def test_muted_source_excluded_from_lists():
     from app.services.coverage_checker import _assemble_coverage

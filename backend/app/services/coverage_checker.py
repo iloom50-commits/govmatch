@@ -228,18 +228,31 @@ def classify_source_row(row: dict) -> dict:
 def _early_warnings_from_rows(rows_24h: list) -> List[Dict[str, Any]]:
     """scraper_runs 기반 조기경보 — 진짜 실패 신호만(순수함수).
 
-    rows_24h: [{source, runs, ok, err, saved_24h}]  (직전 24h 집계)
+    rows_24h: [{source, runs, ok, err, saved_24h, found_24h, expired_24h}]  (직전 24h 집계)
     반환: [{level, source, msg}]
 
     ※ status=error 급증(≥3회)만 경보한다. "items_saved=0 연속"은 신규 공고가
       없는 정상 상태(월간 게시판 등)이므로 경보하지 않는다 — 소스 침묵은
       announcements 기반 자기교정 회귀감지(classify_source_row)가 정확히 담당.
+
+    ※ 단, "found>0인데 saved=0이고 expired가 found를 거의 다 차지"는 다르다.
+      공고를 찾았는데 전부 '마감'으로 스킵됐다는 뜻 — 등록일을 마감일로 오인한
+      날짜 파싱 버그(BEPA류)의 증상이므로 경보한다. 정상 '신규 없음'은 이미 DB에
+      있어(items_existing) expired가 낮으므로 구분된다.
     """
     alerts: List[Dict[str, Any]] = []
     for r in rows_24h or []:
         if (r.get("err") or 0) >= 3:
             alerts.append({"level": "critical", "source": r["source"],
                            "msg": f"24h 내 에러 {r['err']}회 — 스크래퍼 점검 필요"})
+            continue
+        found = r.get("found_24h") or 0
+        saved = r.get("saved_24h") or 0
+        expired = r.get("expired_24h") or 0
+        if found > 0 and saved == 0 and expired >= max(3, found * 0.8):
+            alerts.append({"level": "warning", "source": r["source"],
+                           "msg": (f"24h 내 {found}건 발견했으나 전부 마감 처리(저장 0) "
+                                   f"— 등록일을 마감일로 오인했을 가능성. 날짜 파싱 점검 필요")})
     return alerts
 
 
@@ -303,7 +316,9 @@ _EARLY_24H_SQL = """
            COUNT(*) AS runs,
            COUNT(CASE WHEN status='ok' THEN 1 END) AS ok,
            COUNT(CASE WHEN status='error' THEN 1 END) AS err,
-           SUM(items_saved) AS saved_24h
+           SUM(items_saved) AS saved_24h,
+           SUM(items_found) AS found_24h,
+           SUM(COALESCE(items_expired, 0)) AS expired_24h
     FROM scraper_runs
     WHERE started_at > NOW() - INTERVAL '24 hours'
     GROUP BY source

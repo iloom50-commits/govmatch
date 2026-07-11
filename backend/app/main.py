@@ -627,6 +627,8 @@ def init_database():
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_link_count  INTEGER")
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_http_status INTEGER")
             cursor.execute("ALTER TABLE coverage_targets ADD COLUMN IF NOT EXISTS diag_at          TIMESTAMP")
+            # 재발방지 가드: base.run()의 마감스킵 건수 영속화 → 'found>0인데 전부 expired'(BEPA류) 조기경보 (추가만)
+            cursor.execute("ALTER TABLE scraper_runs ADD COLUMN IF NOT EXISTS items_expired INTEGER DEFAULT 0")
 
             conn.commit()
         except Exception:

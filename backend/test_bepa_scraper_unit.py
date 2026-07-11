@@ -19,20 +19,22 @@ except Exception:
 from bs4 import BeautifulSoup
 
 # 실측 구조 기반 픽스처 — 진행중(ing) 2 · 마감(end) 1 · 예정(stay) 1 · 채용(exclude) 1
+# ※ 행의 날짜는 '등록일'(작성일)이며 마감일이 아니다. 실측처럼 과거 날짜로 둔다.
+#   (목록에는 마감일 컬럼이 없고, 개폐는 state=ing/end/stay로만 표시됨)
 _FIX_1502 = """
 <table><tbody>
-  <tr><td><a href="/kor/view.do?no=1502&idx=19289&view=view&state=ing">2026년 소상공인 경영지원 사업 공고</a></td><td>2026.12.11</td></tr>
-  <tr><td><a href="/kor/view.do?no=1502&idx=19285&view=view&state=ing">부산 창업기업 성장지원 모집</a></td><td>2026.11.30</td></tr>
-  <tr><td><a href="/kor/view.do?no=1502&idx=19245&view=view&state=end">마감된 지원사업 공고</a></td><td>2025.11.13</td></tr>
-  <tr><td><a href="/kor/view.do?no=1502&idx=19000&view=view&state=ing">경영지원단 직원 채용 공고</a></td><td>2026.10.01</td></tr>
+  <tr><td>2936</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1502&idx=19289&view=view&state=ing">2026년 소상공인 경영지원 사업 공고</a></td><td>2026-07-09</td><td>231</td><td>진행중</td></tr>
+  <tr><td>2935</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1502&idx=19285&view=view&state=ing">부산 창업기업 성장지원 모집</a></td><td>2026-07-08</td><td>120</td><td>진행중</td></tr>
+  <tr><td>2900</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1502&idx=19245&view=view&state=end">마감된 지원사업 공고</a></td><td>2025-11-13</td><td>500</td><td>마감</td></tr>
+  <tr><td>2880</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1502&idx=19000&view=view&state=ing">경영지원단 직원 채용 공고</a></td><td>2026-07-01</td><td>80</td><td>진행중</td></tr>
 </tbody></table>
 """
 
 # 1505 게시판 — idx 19289는 1502와 중복(게시판 간 dedup 확인용) + 신규 stay 1
 _FIX_1505 = """
 <table><tbody>
-  <tr><td><a href="/kor/view.do?no=1505&idx=19289&view=view&state=ing">2026년 소상공인 경영지원 사업 공고</a></td><td>2026.12.11</td></tr>
-  <tr><td><a href="/kor/view.do?no=1505&idx=19284&view=view&state=stay">중소기업 자금지원 접수예정</a></td><td>2026.12.20</td></tr>
+  <tr><td>1200</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1505&idx=19289&view=view&state=ing">2026년 소상공인 경영지원 사업 공고</a></td><td>2026-07-09</td><td>90</td><td>진행중</td></tr>
+  <tr><td>1199</td><td>부산경제진흥원</td><td><a href="/kor/view.do?no=1505&idx=19284&view=view&state=stay">중소기업 자금지원 접수예정</a></td><td>2026-07-05</td><td>40</td><td>접수예정</td></tr>
 </tbody></table>
 """
 
@@ -83,11 +85,23 @@ def test_parse_dedups_idx_across_boards():
     assert len(out1) == 2
 
 
-def test_parse_extracts_deadline():
+def test_parse_no_deadline_from_list():
+    # 목록의 날짜는 '등록일'이지 마감일이 아니다 → deadline_date는 None이어야 한다.
+    # (등록일을 마감일로 저장하면 base.run()이 진행중 공고를 '마감 지남'으로 오판해 스킵함)
+    s = _scraper()
+    out = s._parse_board(BeautifulSoup(_FIX_1502, "html.parser"), 1502, set())
+    assert out, "파싱 결과가 비어있음"
+    assert all(o["deadline_date"] is None for o in out), \
+        [o["deadline_date"] for o in out]
+
+
+def test_open_item_with_past_posting_date_is_savable():
+    # 회귀: 등록일(2026-07-09)이 과거여도 state=ing(진행중)이면 저장 대상이어야 한다.
+    # deadline_date가 None이면 base.run()의 expired 스킵(dl truthy일 때만 발동)을 타지 않는다.
     s = _scraper()
     out = s._parse_board(BeautifulSoup(_FIX_1502, "html.parser"), 1502, set())
     hit = next(o for o in out if o["title"].startswith("2026년 소상공인"))
-    assert hit["deadline_date"] == "2026-12-11"
+    assert hit["deadline_date"] is None
 
 
 def test_fetch_stops_on_repeated_page(monkeypatch=None):

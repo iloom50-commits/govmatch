@@ -814,8 +814,9 @@ class BepaScraper(BaseScraper):
             if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
                 continue
             seen.add(idx)
-            row = link.find_parent("tr") or link.find_parent("li") or link
-            row_text = row.get_text(" ")
+            # 목록에는 마감일 컬럼이 없음(날짜열은 '등록일'). 개폐는 state로 판정하고
+            # 마감일은 미상(None)으로 둔다 — 등록일을 마감일로 저장하면 base.run()이
+            # 진행중 공고를 '마감 지남'으로 오판해 스킵함. 실제 마감일은 하위 파이프라인 보강.
             out.append({
                 "title": title[:400],
                 "origin_url": f"{_BEPA_BASE}/kor/view.do?no={board}&idx={idx}&view=view",
@@ -823,7 +824,7 @@ class BepaScraper(BaseScraper):
                 "target_type": None,
                 "category": None,
                 "summary_text": None,
-                "deadline_date": _parse_date(row_text),
+                "deadline_date": None,
                 "support_amount": None,
             })
         return out

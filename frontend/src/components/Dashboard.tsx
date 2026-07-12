@@ -1381,8 +1381,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const SidebarLogo = () => (
     <div className="hidden md:flex items-center justify-between mb-4 px-1">
       <div className="flex items-center gap-2">
-        <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
-        <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap">맞춤 지원금 30초 매칭</span>
+        <span className="brand-badge text-[1.2em]"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
+        <span className="text-[13px] font-semibold text-slate-400 whitespace-nowrap">맞춤 지원금 30초 매칭</span>
       </div>
       {!isPwaInstalled && (
         <button
@@ -1832,8 +1832,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           {/* 모바일 전용 로고 헤더 */}
           <div className="flex lg:hidden items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="brand-badge"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
-              <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">맞춤 지원금 30초 매칭</span>
+              <span className="brand-badge text-[1.2em]"><span className="brand-name">지원금</span><span className="brand-guide">AI</span></span>
+              <span className="text-[12px] font-semibold text-slate-400 whitespace-nowrap">맞춤 지원금 30초 매칭</span>
             </div>
             <div className="flex items-center gap-2">
               {profile && !hasNotificationSet && (

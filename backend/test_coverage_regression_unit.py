@@ -122,6 +122,18 @@ def test_early_warnings_all_expired_skip_signature():
     assert "마감" in alerts[0]["msg"]
 
 
+def test_early_warnings_rescued_is_info_not_warning():
+    # 배치 안전망 자동복구: saved>0·rescued>0이면 실패가 아니라 info(자동복구) 알림.
+    from app.services.coverage_checker import _early_warnings_from_rows
+    rows = [{"source": "sida", "runs": 1, "ok": 1, "err": 0,
+             "saved_24h": 86, "found_24h": 100, "expired_24h": 0, "rescued_24h": 86}]
+    alerts = _early_warnings_from_rows(rows)
+    assert len(alerts) == 1
+    assert alerts[0]["level"] == "info"
+    assert alerts[0]["source"] == "sida"
+    assert "자동복구" in alerts[0]["msg"]
+
+
 def test_early_warnings_normal_no_new_not_flagged():
     # 정상 '신규 없음': found>0이나 expired 낮음(대부분 이미 DB에 존재) → 경보 없음.
     from app.services.coverage_checker import _early_warnings_from_rows

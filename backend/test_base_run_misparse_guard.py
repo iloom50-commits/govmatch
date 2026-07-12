@@ -70,6 +70,7 @@ def test_all_expired_batch_is_rescued_with_null_deadline():
     res = s.run(_FakeConn())
     assert res["items_saved"] == 5, res
     assert res["items_expired"] == 0, res
+    assert res["items_rescued"] == 5, res  # 안전망으로 구제된 건수(관측성)
     assert len(s.saved) == 5, s.saved
     assert all(x["deadline_date"] is None for x in s.saved), \
         [x["deadline_date"] for x in s.saved]
@@ -82,6 +83,7 @@ def test_normal_batch_still_drops_genuinely_expired():
     res = s.run(_FakeConn())
     assert res["items_saved"] == 8, res
     assert res["items_expired"] == 2, res
+    assert res["items_rescued"] == 0, res  # 정상 배치는 구제 없음
     assert all(x["deadline_date"] is not None for x in s.saved), s.saved
 
 

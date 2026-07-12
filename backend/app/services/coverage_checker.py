@@ -253,6 +253,12 @@ def _early_warnings_from_rows(rows_24h: list) -> List[Dict[str, Any]]:
             alerts.append({"level": "warning", "source": r["source"],
                            "msg": (f"24h 내 {found}건 발견했으나 전부 마감 처리(저장 0) "
                                    f"— 등록일을 마감일로 오인했을 가능성. 날짜 파싱 점검 필요")})
+        # 배치 안전망이 자동복구(마감미상 저장)한 소스 — 실패는 아니나 파서 점검 대상 가시화
+        rescued = r.get("rescued_24h") or 0
+        if rescued > 0:
+            alerts.append({"level": "info", "source": r["source"],
+                           "msg": (f"24h 내 {rescued}건 자동복구(등록일→마감일 오인 → 마감미상 저장) "
+                                   f"— 파서 점검 권장(선택)")})
     return alerts
 
 
@@ -318,7 +324,8 @@ _EARLY_24H_SQL = """
            COUNT(CASE WHEN status='error' THEN 1 END) AS err,
            SUM(items_saved) AS saved_24h,
            SUM(items_found) AS found_24h,
-           SUM(COALESCE(items_expired, 0)) AS expired_24h
+           SUM(COALESCE(items_expired, 0)) AS expired_24h,
+           SUM(COALESCE(items_rescued, 0)) AS rescued_24h
     FROM scraper_runs
     WHERE started_at > NOW() - INTERVAL '24 hours'
     GROUP BY source

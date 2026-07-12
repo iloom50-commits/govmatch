@@ -133,9 +133,12 @@ def _build_coverage_text(coverage: dict) -> str:
         lines += "  🟡 주의(YELLOW):\n"
         for y in yellow[:8]:
             lines += f"    · {y['source']} — {(y.get('days_quiet') or 0):.0f}일째 0건 ({y.get('reason')})\n"
-    for a in sa[:5]:
-        icon = "🔴" if a.get("level") == "critical" else "🟡"
-        lines += f"  {icon} [조기경보] {a['source']}: {a['msg']}\n"
+    for a in sa[:8]:
+        lvl = a.get("level")
+        icon, label = (("🔴", "조기경보") if lvl == "critical"
+                       else ("🔧", "자동복구") if lvl == "info"
+                       else ("🟡", "조기경보"))
+        lines += f"  {icon} [{label}] {a['source']}: {a['msg']}\n"
     lc = coverage.get("local_collector")
     if lc and lc.get("stale"):
         lines += (f"  🔴 [로컬 수집기] 광주·전북·제주 공고가 {lc.get('days_quiet')}일째 미수집 "
@@ -311,7 +314,7 @@ def _build_coverage_html(coverage: dict) -> str:
                f'<ul style="margin:0;padding-left:18px;color:#b91c1c;font-size:13px">{items}</ul>')
     elif yellow or sa:
         box = ('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:12px 0">'
-               f'<div style="font-weight:bold;color:#b45309;font-size:15px;margin-bottom:6px">&#128225; 수집 커버리지 — 주의 {len(yellow) + len(sa)}건</div>')
+               f'<div style="font-weight:bold;color:#b45309;font-size:15px;margin-bottom:6px">&#128225; 수집 커버리지 — 주의 {len(yellow) + sum(1 for a in sa if a.get("level") != "info")}건</div>')
     else:
         box = ('<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:12px 0">'
                '<span style="font-weight:bold;color:#16a34a;font-size:14px">&#128225; 수집 커버리지 정상</span>')
@@ -319,7 +322,10 @@ def _build_coverage_html(coverage: dict) -> str:
         y_items = "".join(
             f'<li style="margin-bottom:2px">{y["source"]} — {(y.get("days_quiet") or 0):.0f}일째 0건 ({y.get("reason")})</li>'
             for y in yellow[:8]) + "".join(
-            f'<li style="margin-bottom:2px">[조기경보] {a["source"]}: {a["msg"]}</li>' for a in sa[:5])
+            (f'<li style="margin-bottom:2px">&#128295; [자동복구] {a["source"]}: {a["msg"]}</li>'
+             if a.get("level") == "info"
+             else f'<li style="margin-bottom:2px">[조기경보] {a["source"]}: {a["msg"]}</li>')
+            for a in sa[:8])
         box += f'<ul style="margin:6px 0 0;padding-left:18px;color:#b45309;font-size:12px">{y_items}</ul>'
     lc = coverage.get("local_collector")
     if lc and lc.get("stale"):

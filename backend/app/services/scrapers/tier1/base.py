@@ -109,6 +109,7 @@ class BaseScraper:
         items_saved = 0
         items_expired = 0
         items_existing = 0
+        items_rescued = 0  # 배치 안전망으로 마감미상 저장된 건수(관측성)
         status = "ok"
         error_message = None
 
@@ -159,6 +160,7 @@ class BaseScraper:
                     try:
                         if self._save_item(it2, db_conn):
                             items_saved += 1
+                            items_rescued += 1
                     except Exception as e:
                         logger.warning(f"[{self.name}] rescue save error: {e}")
                         try: db_conn.rollback()
@@ -181,11 +183,11 @@ class BaseScraper:
             cur.execute(
                 """UPDATE scraper_runs
                    SET ended_at = %s, status = %s, items_found = %s,
-                       items_saved = %s, items_expired = %s,
+                       items_saved = %s, items_expired = %s, items_rescued = %s,
                        error_message = %s, elapsed_sec = %s
                    WHERE id = %s""",
                 (datetime.datetime.now(), status, items_found, items_saved,
-                 items_expired, error_message, elapsed, run_id),
+                 items_expired, items_rescued, error_message, elapsed, run_id),
             )
             db_conn.commit()
         except Exception as e:
@@ -200,6 +202,7 @@ class BaseScraper:
             "items_saved": items_saved,
             "items_expired": items_expired,
             "items_existing": items_existing,
+            "items_rescued": items_rescued,
             "elapsed_sec": elapsed,
             "error": error_message,
         }

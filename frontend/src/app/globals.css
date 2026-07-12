@@ -205,7 +205,7 @@ h1, h2, h3, h4 {
   word-break: break-word;
 }
 
-/* Brand "지원금AI" — 투톤 플랫 워드마크(배지·골드 제거): 지원금=네이비 / AI=블루 */
+/* Brand "지원금AI" — 투톤 워드마크: 지원금=네이비 / AI=솔리드 리치 골드(눈에 띄게) */
 .brand-name {
   display: inline-block;
   color: #191F28;
@@ -214,7 +214,7 @@ h1, h2, h3, h4 {
 }
 .brand-guide {
   display: inline-block;
-  color: #2563eb;
+  color: #C9920B;
   font-weight: 800;
   letter-spacing: -0.02em;
 }

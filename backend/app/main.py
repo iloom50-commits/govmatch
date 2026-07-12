@@ -15761,10 +15761,25 @@ def api_smartdoc_handoff(req: SmartDocHandoffRequest, current_user: dict = Depen
     return {"status": "SUCCESS", "handoff_token": ht, "url": url}
 
 
+def _entitlement_response(row: dict | None) -> dict:
+    """entitlement 응답(순수). 결제는 SmartDoc이 전담(건별·첫 건 무료)하므로
+    유효 사용자면 통과시킨다. row=users.smartdoc_plan/expires_at(향후 'PRO 포함'
+    정책 대비 보존, 현재 판정엔 미사용)."""
+    return {
+        "status": "SUCCESS",
+        "has_access": True,
+        "billed_by": "smartdoc",       # SmartDoc이 건별 결제 담당(첫 건 무료)
+        "plan": (row or {}).get("smartdoc_plan"),
+        "remaining": None,
+        "expires_at": None,
+        "purchase_url": None,
+    }
+
+
 @app.get("/api/smartdoc/entitlement")
 def api_smartdoc_entitlement(authorization: Optional[str] = Header(None)):
-    """SmartDoc 사용권 확인 (별도 과금 — GovMatch 관리). SmartDoc 백엔드가 호출."""
-    u = _smartdoc_bearer(authorization)
+    """SmartDoc 사용권 — 결제는 SmartDoc 전담. 유효 사용자면 통과. SmartDoc 백엔드가 호출."""
+    u = _smartdoc_bearer(authorization)  # 토큰 검증(무효면 예외)
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -15772,16 +15787,7 @@ def api_smartdoc_entitlement(authorization: Optional[str] = Header(None)):
         row = cur.fetchone()
     finally:
         conn.close()
-    plan = (row.get("smartdoc_plan") if row else None) or None
-    exp = row.get("smartdoc_expires_at") if row else None
-    has_access = False
-    if plan:
-        has_access = (exp is None) or (exp > datetime.datetime.utcnow())
-    return {
-        "status": "SUCCESS", "has_access": has_access, "plan": plan,
-        "remaining": None, "expires_at": (str(exp)[:10] if exp else None),
-        "purchase_url": "https://govmatch.kr/pro?buy=smartdoc",
-    }
+    return _entitlement_response(row)
 
 
 @app.get("/api/smartdoc/client-profile")

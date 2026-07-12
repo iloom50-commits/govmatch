@@ -11,22 +11,22 @@ test('[SEO] 홈페이지 — SSR 공고 카드 HTML에 포함됨', async ({ page
   await page.goto(SITE, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
   // SSR 섹션이 HTML에 존재해야 함
-  const ssrSection = page.locator('.home-seo-section');
+  const ssrSection = page.locator('section[aria-label="최신 정부지원금 공고"]');
   await expect(ssrSection).toBeAttached({ timeout: 10_000 });
 
   // 공고 카드 최소 1개 이상 포함
-  const cards = page.locator('.home-seo-section article');
+  const cards = page.locator('section[aria-label="최신 정부지원금 공고"] article');
   const cardCount = await cards.count();
   console.log(`\n══ [1] SSR 공고 카드 수: ${cardCount}개`);
   expect(cardCount).toBeGreaterThan(0);
 
   // h2 태그 존재 확인
-  const h2 = page.locator('.home-seo-section h2').first();
+  const h2 = page.locator('section[aria-label="최신 정부지원금 공고"] h2').first();
   await expect(h2).toBeAttached();
   console.log(`   h2 텍스트: "${await h2.textContent()}"`);
 
   // 공고 링크 확인
-  const firstLink = page.locator('.home-seo-section article a').first();
+  const firstLink = page.locator('section[aria-label="최신 정부지원금 공고"] article a').first();
   const href = await firstLink.getAttribute('href');
   console.log(`   첫 번째 공고 링크: ${href}`);
   expect(href).toMatch(/\/announcements\/\d+/);
@@ -124,24 +124,24 @@ test('[SEO] /search 키워드 링크 클릭 → 홈 이동', async ({ page }) =>
 });
 
 // ── 6. 홈페이지 SSR 공고 링크 → 공고 상세 진입 확인 ─────────────────
+// HomeSSR은 봇 전용 sr-only(화면 숨김·DOM 존재). 숨김 링크라 클릭 대신 href로 직접 이동해
+// SSR 공고 링크가 유효한 상세 페이지로 연결되는지 검증한다.
 test('[SEO] 홈 SSR 공고 링크 → 공고 상세 페이지 진입', async ({ page }) => {
   await page.goto(SITE, { waitUntil: 'networkidle', timeout: 40_000 });
 
-  // SSR 섹션이 나타날 때까지 대기
-  const ssrSection = page.locator('.home-seo-section');
-  await expect(ssrSection).toBeVisible({ timeout: 15_000 });
+  const ssrSection = page.locator('section[aria-label="최신 정부지원금 공고"]');
+  await expect(ssrSection).toBeAttached({ timeout: 15_000 });
 
-  const firstAnnLink = page.locator('.home-seo-section article a').first();
-  await expect(firstAnnLink).toBeVisible({ timeout: 5_000 });
+  const firstAnnLink = ssrSection.locator('article a').first();
+  await expect(firstAnnLink).toBeAttached({ timeout: 5_000 });
   const annTitle = await firstAnnLink.textContent();
   const href = await firstAnnLink.getAttribute('href');
-  console.log(`\n══ [6] SSR 공고 링크 클릭 ══`);
+  console.log(`\n══ [6] SSR 공고 링크 → 상세 이동 ══`);
   console.log(`   공고: "${annTitle?.slice(0, 40)}" → ${href}`);
+  expect(href).toMatch(/\/announcements\/\d+/);
 
-  await firstAnnLink.click();
-  await page.waitForURL(`${SITE}/announcements/**`, { timeout: 15_000 });
-
-  // 상세 페이지에서 h1 확인
+  // 숨김(sr-only) 링크는 클릭 불가 — href로 직접 이동해 상세 렌더 확인
+  await page.goto(`${SITE}${href}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   const h1 = page.locator('h1').first();
   await expect(h1).toBeVisible({ timeout: 10_000 });
   console.log(`   상세 h1: "${(await h1.textContent())?.slice(0, 50)}"`);

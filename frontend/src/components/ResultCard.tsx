@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/ui/Toast";
 import { bestExternalUrl } from "@/lib/url";
+import { isKosmePolicyLoan } from "@/lib/smartdocGating";
 
 function ShareMenu({ toast, announcementId, announcementTitle }: { toast: (msg: string, type?: "success" | "error" | "info") => void; announcementId?: number; announcementTitle?: string }) {
   const [open, setOpen] = useState(false);
@@ -479,7 +480,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
           </div>
           {/* CTA — 일반: [나도 받을 수 있나?(넓게)][친구추천], 신청서: [나도][신청서]한줄+[친구추천] */}
           {(() => {
-            const hasForm = res.target_type !== "individual" && res.has_application_form;
+            const hasForm = res.target_type !== "individual"
+              && (res.has_application_form || isKosmePolicyLoan(res));
             const primary = (
               <button
                 onClick={(e) => {

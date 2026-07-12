@@ -504,6 +504,12 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                   e.stopPropagation();
                   if (isPublic) { onLoginRequired?.(); return; }
                   if (isExpired) { onUpgrade?.(); return; }
+                  // AI 신청서 작성 = LITE+ 전용 (FREE는 업그레이드 유도)
+                  if (!planStatus || planStatus.plan === "free") {
+                    toast("AI 신청서 작성은 LITE 플랜부터 이용할 수 있습니다.", "info");
+                    onUpgrade?.();
+                    return;
+                  }
                   if (process.env.NEXT_PUBLIC_SMARTDOC_READY !== "true") {
                     toast("AI 신청서 작성은 곧 시작됩니다. 조금만 기다려 주세요!", "info");
                     return;

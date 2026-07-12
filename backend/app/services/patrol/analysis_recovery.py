@@ -15,13 +15,14 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
     cur = db_conn.cursor()
 
     # extract_empty(본문 추출 불가 = PDF 파싱실패/빈 페이지)는 재시도해도 소용없다.
-    # 재시도 소진(retry_count>=5)된 것은 '분석 불가' 확정 마킹 → 백로그·재시도에서 영구 제외.
-    # (과거엔 retry<5만 재시도하고 소진분은 방치 → 357건이 백로그에 영영 남아있었음)
+    # 임계 2로 조기소진: 초기+2회 재시도 후 '분석 불가' 확정 마킹 → 백로그·재시도에서 영구 제외.
+    # (전엔 retry>=5까지 헛되이 재시도해 500+건이 복구 슬롯을 점유 → gemini_empty 회복을 지연시킴.
+    #  일시장애 대비 2회 재시도는 남기되, 그 이상 반복은 낭비이므로 조기 정리)
     resolved_unanalyzable = 0
     try:
         cur.execute("""
             UPDATE analysis_failures SET resolved_at = CURRENT_TIMESTAMP
-            WHERE resolved_at IS NULL AND retry_count >= 5 AND error_type = 'extract_empty'
+            WHERE resolved_at IS NULL AND retry_count >= 2 AND error_type = 'extract_empty'
         """)
         resolved_unanalyzable = cur.rowcount
         db_conn.commit()

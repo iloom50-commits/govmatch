@@ -500,13 +500,25 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
             );
             const formBtn = hasForm ? (
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
                   if (isPublic) { onLoginRequired?.(); return; }
                   if (isExpired) { onUpgrade?.(); return; }
-                  if (typeof window !== "undefined") {
-                    window.dispatchEvent(new CustomEvent("open-smartdoc-modal", { detail: { announcement: res } }));
+                  if (process.env.NEXT_PUBLIC_SMARTDOC_READY !== "true") {
+                    toast("AI 신청서 작성은 곧 시작됩니다. 조금만 기다려 주세요!", "info");
+                    return;
                   }
+                  try {
+                    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+                    const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/smartdoc/handoff`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ announcement_id: res.announcement_id }),
+                    });
+                    const data = await r.json();
+                    if (data?.url) window.location.href = data.url;
+                    else toast("SmartDoc 연결에 실패했습니다.", "error");
+                  } catch { toast("SmartDoc 연결에 실패했습니다.", "error"); }
                 }}
                 className="w-full py-2 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1 bg-amber-500 text-white hover:bg-amber-600 shadow-sm hover:shadow-md active:scale-[0.98]"
               >

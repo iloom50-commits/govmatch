@@ -117,14 +117,15 @@ class BaseScraper:
             items_found = len(items)
             today = datetime.date.today()
             consecutive_existing = 0
+            expired_items = []  # 즉시 드롭하지 않고 보류 — 배치 안전망 판정용
 
             for it in items:
-                # 마감일 지난 것 스킵
+                # 마감일 지난 것 — 즉시 드롭하지 않고 보류 (등록일→마감일 오인 방지)
                 dl = it.get("deadline_date")
                 if dl:
                     try:
                         if datetime.date.fromisoformat(str(dl)) < today:
-                            items_expired += 1
+                            expired_items.append(it)
                             continue
                     except Exception:
                         pass
@@ -145,6 +146,28 @@ class BaseScraper:
                     logger.warning(f"[{self.name}] save error on {it.get('title','')[:30]}: {e}")
                     try: db_conn.rollback()
                     except: pass
+
+            # ── 배치 안전망 (근본개선) ──────────────────────────────
+            # "found>0인데 저장 0 + 거의 전량 만료"는 등록일을 마감일로 오인한 신호다.
+            # 스크래퍼가 추측한 마감일로 진행중 공고를 영구 드롭하는 것을 구조적으로 막는다.
+            # 드롭 대신 마감미상(None)으로 저장 → deadline_enricher가 상세에서 실제 마감 보강.
+            # 정상 소스(신선건 사이 만료 몇 건 드롭)는 saved>0이라 발동하지 않는다.
+            if (items_found > 0 and items_saved == 0
+                    and len(expired_items) >= max(3, items_found * 0.8)):
+                for it in expired_items:
+                    it2 = dict(it); it2["deadline_date"] = None
+                    try:
+                        if self._save_item(it2, db_conn):
+                            items_saved += 1
+                    except Exception as e:
+                        logger.warning(f"[{self.name}] rescue save error: {e}")
+                        try: db_conn.rollback()
+                        except: pass
+                logger.warning(
+                    f"[{self.name}] 전량 만료({len(expired_items)}) 오인 의심 → "
+                    f"마감미상 저장 {items_saved}건 (등록일→마감일 오인 방지)")
+            else:
+                items_expired = len(expired_items)
 
             if items_found == 0:
                 status = "empty"

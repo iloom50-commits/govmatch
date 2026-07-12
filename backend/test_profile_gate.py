@@ -127,7 +127,7 @@ def setup_browser(driver, token):
         time.sleep(1)
 
     b = body(driver)
-    if "지원금길잡이" in b or "기업 지원금" in b:
+    if "지원금AI" in b or "기업 지원금" in b:
         log("대시보드", "진입 확인 (공고 미완료)", "PASS"); passed += 1
         return True
     else:

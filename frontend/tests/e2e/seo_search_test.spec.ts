@@ -43,8 +43,8 @@ test('[SEO] 홈페이지 — 메타 description 키워드 포함', async ({ page
   console.log(`   title: ${title}`);
   console.log(`   description (${description.length}자): ${description.slice(0, 80)}...`);
 
-  // 제목에 "지원금길잡이" 포함
-  expect(title).toContain('지원금길잡이');
+  // 제목에 "지원금AI" 포함
+  expect(title).toContain('지원금AI');
   // description이 충분한 길이 (20자 이상)
   expect(description.length).toBeGreaterThan(20);
   // description에 핵심 키워드 포함

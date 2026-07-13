@@ -2704,6 +2704,35 @@ def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     return _decode_jwt(token)
 
 
+def _get_consult_user(authorization: Optional[str] = Header(None)) -> dict:
+    """상담 엔드포인트 전용 인증: 정상 유저 세션 OR SmartDoc 서비스 토큰(aud=pro-consult).
+
+    SmartDoc이 GovMatch PRO 자금상담을 서버-투-서버로 호출할 때 쓰는 서비스 토큰:
+      {aud:"pro-consult", purpose:"service", sub:"smartdoc-service", bn, iat, exp(+120s)} (공유 JWT_SECRET, HS256)
+    aud를 명시 검증하므로 이 토큰은 일반 경로(_decode_jwt, aud 미검증)에선 InvalidAudienceError로
+    탈락 → 다른 사용자 엔드포인트로 재생 불가. plan은 토큰을 믿지 않고 _require_pro_or_trial이
+    DB에서 bn으로 재조회하므로 PRO 위조 불가.
+    반환: 일반 유저는 _decode_jwt 결과(user_id/bn/email/plan…), 서비스는 {bn, sub, _service:True}.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    token = authorization.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], audience="pro-consult")
+    except jwt.MissingRequiredClaimError:
+        # aud 클레임 없음 = 일반 유저 세션 토큰 → 정상 경로(서명·만료만)로 검증
+        return _decode_jwt(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다. 다시 로그인해 주세요.")
+    except jwt.InvalidTokenError:
+        # 서명 불량 · aud 불일치 등 → 거부
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    # 여기 도달 = aud=pro-consult 검증 통과(서비스 토큰). purpose·bn 필수.
+    if payload.get("purpose") != "service" or not payload.get("bn"):
+        raise HTTPException(status_code=401, detail="유효하지 않은 서비스 토큰입니다.")
+    return {"bn": payload["bn"], "sub": payload.get("sub"), "_service": True}
+
+
 # ── 플랜 v5: 상담 시작 무제한 + 세션 메시지 수로 차별화 (2026-04-28 확정) ──
 # FREE:  월 3회 상담 시작, 세션 내 메시지 10개
 # LITE:  무제한 상담 시작, 세션 내 메시지 30개
@@ -5843,7 +5872,7 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 
 
 @app.post("/api/pro/consultant/chat")
-def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_current_user)):
+def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_consult_user)):
     """PRO 전문가: 고객사 상담 채팅. PRO/biz 무제한, free는 핵심 액션 월 3회 무료 체험."""
     # 핵심 분석 액션(매칭/공고상담/자금상담/상세분석)만 무료 체험 1회 차감. 후속 chat은 무차감.
     _act = (req.action or "").strip().lower()

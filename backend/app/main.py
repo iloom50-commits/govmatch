@@ -15790,27 +15790,25 @@ def api_smartdoc_handoff(req: SmartDocHandoffRequest, current_user: dict = Depen
     return {"status": "SUCCESS", "handoff_token": ht, "url": url}
 
 
-_SMARTDOC_PAID_PLANS = {"lite", "lite_individual", "basic", "pro", "biz"}
-
-
 def _entitlement_response(plan: str | None) -> dict:
-    """entitlement 응답(순수). AI 신청서 작성 = LITE+ 전용(B안): LITE 이상 구독자면
-    통과, 아니면 업그레이드 유도. 실제 문서 과금은 SmartDoc(건별·첫 건 무료)."""
-    has = (plan or "").lower() in _SMARTDOC_PAID_PLANS
+    """entitlement 응답(순수). AI 신청서 작성 = 순수 건별 모델: 로그인 사용자면 누구나 통과
+    (구독 게이트 없음). 실제 문서 과금은 SmartDoc이 문서당 건별(9,900원)로 담당.
+    plan은 참고용 에코(접근 판정에 미사용)."""
     return {
         "status": "SUCCESS",
-        "has_access": has,
-        "billed_by": "smartdoc",       # 문서 과금은 SmartDoc이 건별로 담당(첫 건 무료)
+        "has_access": True,
+        "billed_by": "smartdoc",       # 문서 과금은 SmartDoc이 건별로 담당
         "plan": plan,
         "remaining": None,
         "expires_at": None,
-        "purchase_url": None if has else "https://govmatch.kr/pro",
+        "purchase_url": None,
     }
 
 
 @app.get("/api/smartdoc/entitlement")
 def api_smartdoc_entitlement(authorization: Optional[str] = Header(None)):
-    """SmartDoc 사용권 — AI 신청서 작성은 LITE+ 전용. SmartDoc 백엔드가 호출."""
+    """SmartDoc 사용권 — 순수 건별 모델: 로그인 사용자면 누구나 통과(구독 게이트 없음).
+    문서 과금은 SmartDoc이 건별. SmartDoc 백엔드가 호출."""
     u = _smartdoc_bearer(authorization)  # 토큰 검증(무효면 예외)
     conn = get_db_connection()
     try:

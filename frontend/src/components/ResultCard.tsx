@@ -515,7 +515,11 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                     const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/smartdoc/handoff`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                      body: JSON.stringify({ announcement_id: res.announcement_id }),
+                      body: JSON.stringify({
+                        announcement_id: res.announcement_id,
+                        // 중진공 정책자금 융자 → 표준 융자신청서 경로(fund-start). 그 외는 공고 양식 경로.
+                        ...(isKosmePolicyLoan(res) ? { product: "jungjingong" } : {}),
+                      }),
                     });
                     const data = await r.json();
                     if (data?.url) window.location.href = data.url;

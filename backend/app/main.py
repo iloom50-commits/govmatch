@@ -15776,6 +15776,7 @@ def _smartdoc_bearer(authorization: Optional[str]) -> dict:
 class SmartDocHandoffRequest(BaseModel):
     announcement_id: Optional[int] = None
     client_profile_id: Optional[int] = None
+    product: Optional[str] = None  # 'jungjingong'=중진공 정책자금 표준 융자신청서 경로(fund-start)
 
 
 @app.post("/api/smartdoc/handoff")
@@ -15786,7 +15787,11 @@ def api_smartdoc_handoff(req: SmartDocHandoffRequest, current_user: dict = Depen
         current_user.get("user_id"), current_user["bn"], current_user.get("email"),
         client_profile_id=req.client_profile_id,
     )
-    url = f"{SMARTDOC_BASE}/handoff?ht={ht}" + (f"&aid={req.announcement_id}" if req.announcement_id else "")
+    url = (
+        f"{SMARTDOC_BASE}/handoff?ht={ht}"
+        + (f"&aid={req.announcement_id}" if req.announcement_id else "")
+        + (f"&product={req.product}" if req.product else "")  # 중진공 정책자금 → jungjingong(표준 융자신청서)
+    )
     return {"status": "SUCCESS", "handoff_token": ht, "url": url}
 
 

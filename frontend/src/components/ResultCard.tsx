@@ -503,9 +503,8 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 onClick={async (e) => {
                   e.stopPropagation();
                   if (isPublic) { onLoginRequired?.(); return; }
-                  if (isExpired) { onUpgrade?.(); return; }
-                  // AI 신청서 작성 = 순수 건별(구독 게이트 없음): 로그인 사용자면 누구나.
-                  // 문서 과금은 SmartDoc이 건별(9,900원)로 담당.
+                  // AI 신청서 작성 = 순수 건별(구독 게이트 없음): 로그인 사용자면 누구나(무료·만료 무관).
+                  // 문서 과금은 SmartDoc이 건별(9,900원)로 담당. 구독 유도 안 함.
                   if (process.env.NEXT_PUBLIC_SMARTDOC_READY !== "true") {
                     toast("AI 신청서 작성은 곧 시작됩니다. 조금만 기다려 주세요!", "info");
                     return;

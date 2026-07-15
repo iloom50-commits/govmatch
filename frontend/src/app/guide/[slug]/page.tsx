@@ -5,9 +5,11 @@ export const revalidate = 3600;
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://govmatch-production.up.railway.app";
 
+function safeDecode(s: string) { try { return decodeURIComponent(s); } catch { return s; } }
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const g = getGuide(decodeURIComponent(slug));
+  const g = getGuide(safeDecode(slug));
   if (!g) return { title: "가이드를 찾을 수 없습니다", robots: { index: false } };
   return {
     title: g.title,   // 루트 layout template("%s | 지원금AI")이 접미사 부착 — 여기서 안 붙임
@@ -21,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function GuidePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const g = getGuide(decodeURIComponent(slug));
+  const g = getGuide(safeDecode(slug));
   if (!g) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -39,7 +41,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
       ? `category=${encodeURIComponent(g.liveFilter.value)}`
       : `search=${encodeURIComponent(g.liveFilter.value)}`;
     const r = await fetch(`${API}/api/announcements/public?target_type=business&size=8&${qs}`,
-      { next: { revalidate: 3600 } });
+      { next: { revalidate: 3600 }, signal: AbortSignal.timeout(3000) });
     if (r.ok) { const d = await r.json(); live = d.data ?? d.announcements ?? []; }
   } catch { live = []; }
 

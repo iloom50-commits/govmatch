@@ -4486,8 +4486,9 @@ async def api_kakao_link_save(req: KakaoLinkSaveRequest, current_user: dict = De
 
 
 @app.get("/api/auth/social/{provider}")
-def api_social_auth_redirect(provider: str):
-    """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트"""
+def api_social_auth_redirect(provider: str, alert: int = 0):
+    """소셜 로그인 시작: 각 플랫폼 OAuth URL로 리다이렉트.
+    alert=1(카카오 알림 연결)이면 카카오 authorize에 talk_message(카톡 메시지 전송) scope 요청."""
     redirect_uri = f"{FRONTEND_URL}/auth/callback/{provider}"
     state = secrets.token_urlsafe(16)
 
@@ -4498,6 +4499,8 @@ def api_social_auth_redirect(provider: str):
                f"?client_id={KAKAO_CLIENT_ID}"
                f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
                f"&response_type=code&state={state}")
+        if alert:  # 카카오 알림 연결 — '나에게 보내기' 발송에 필요한 talk_message 동의 요청(로그인은 미요청)
+            url += "&scope=talk_message"
     elif provider == "naver":
         if not NAVER_CLIENT_ID:
             raise HTTPException(status_code=501, detail="네이버 로그인이 아직 설정되지 않았습니다.")

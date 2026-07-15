@@ -237,7 +237,8 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
                   value="연결하기 →"
                   onClick={() => {
                     sessionStorage.setItem("kakao_link_mode", "1");
-                    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/social/kakao`;
+                    // alert=1 → 카톡 메시지 전송(talk_message) 동의 요청(알림 발송용)
+                    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/social/kakao?alert=1`;
                   }}
                 />
                 <Divider />

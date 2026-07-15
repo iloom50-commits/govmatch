@@ -246,7 +246,15 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
             )}
             {profile?.kakao_linked && (
               <>
-                <Row label="카카오 알림" value="연결됨 ✓" />
+                <Row
+                  label="카카오 알림"
+                  value="연결됨 ✓ · 다시 연결 →"
+                  onClick={() => {
+                    // 재연결 — 카톡 메시지 전송(talk_message) 동의를 새로 받아 실제 알림 발송 활성화
+                    sessionStorage.setItem("kakao_link_mode", "1");
+                    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/social/kakao?alert=1`;
+                  }}
+                />
                 <Divider />
               </>
             )}

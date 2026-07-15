@@ -15,7 +15,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/privacy`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
     { url: `${baseUrl}/terms`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
     { url: `${baseUrl}/refund`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
-    { url: `${baseUrl}/guide/소상공인-정책자금`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    // slug를 URL 인코딩 — 원시 한글 경로는 일부 크롤러가 raw로 요청 시 500. 인코딩 형태(canonical과 동일)로 방출해 항상 200 보장.
+    { url: `${baseUrl}/guide/${encodeURIComponent("소상공인-정책자금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
   ];
 
   // 동적 페이지 — 마감 전 + 내용 있는 공고 (최대 500건)

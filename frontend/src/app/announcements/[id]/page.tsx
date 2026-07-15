@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
   const isThinContent = !ann.summary_text || ann.summary_text.length < 100;
 
-  const title = `${ann.title} | 지원금AI`;
+  const title = ann.title;  // 루트 layout의 title.template("%s | 지원금AI")이 접미사를 붙임 — 여기서 또 붙이면 중복
   const description = ann.summary_text
     ? ann.summary_text.slice(0, 150)
     : `${ann.department || "정부"} ${ann.title} - 자격요건, 지원금액, 신청방법을 AI가 분석해드립니다.`;

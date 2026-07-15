@@ -3,6 +3,8 @@ import { getGuide } from "../content";
 
 export const revalidate = 3600;
 
+const API = process.env.NEXT_PUBLIC_API_URL || "https://govmatch-production.up.railway.app";
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const g = getGuide(decodeURIComponent(slug));
@@ -30,6 +32,16 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
       </div>
     );
   }
+
+  let live: any[] = [];
+  try {
+    const qs = g.liveFilter.param === "category"
+      ? `category=${encodeURIComponent(g.liveFilter.value)}`
+      : `search=${encodeURIComponent(g.liveFilter.value)}`;
+    const r = await fetch(`${API}/api/announcements/public?target_type=business&size=8&${qs}`,
+      { next: { revalidate: 3600 } });
+    if (r.ok) { const d = await r.json(); live = d.data ?? d.announcements ?? []; }
+  } catch { live = []; }
 
   const faqLd = {
     "@context": "https://schema.org", "@type": "FAQPage",
@@ -78,7 +90,22 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
           </section>
         ))}
 
-        {/* 라이브 공고 섹션 — Task 3에서 삽입 */}
+        {live.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-[20px] font-bold text-slate-900 mb-4">지금 신청 가능한 정책자금 공고</h2>
+            <ul className="space-y-2">
+              {live.map((a: any) => (
+                <li key={a.announcement_id}>
+                  <a href={`/announcements/${a.announcement_id}`}
+                     className="block border border-slate-200 rounded-xl px-4 py-3 hover:border-blue-400 transition-colors">
+                    <span className="text-[15px] font-semibold text-slate-900">{a.title}</span>
+                    {a.department && <span className="block text-[13px] text-slate-500 mt-0.5">{a.department}</span>}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* FAQ */}
         <section className="mb-8">

@@ -102,6 +102,11 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
                      className="block border border-slate-200 rounded-xl px-4 py-3 hover:border-blue-400 transition-colors">
                     <span className="text-[15px] font-semibold text-slate-900">{a.title}</span>
                     {a.department && <span className="block text-[13px] text-slate-500 mt-0.5">{a.department}</span>}
+                    {a.support_amount && (
+                      <span className="block text-[13px] font-medium text-blue-600 mt-1">
+                        {String(a.support_amount).length > 80 ? String(a.support_amount).slice(0, 80) + "…" : a.support_amount}
+                      </span>
+                    )}
                   </a>
                 </li>
               ))}

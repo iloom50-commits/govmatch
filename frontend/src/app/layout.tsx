@@ -433,6 +433,9 @@ export default function RootLayout({
                 <a href="/api-partnership" className="hover:text-indigo-600 hover:underline">API 제휴</a>
                 <a href="/support" className="hover:text-indigo-600 hover:underline">고객상담</a>
               </nav>
+              <nav className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-400" aria-label="지원금 가이드">
+                <a href={`/guide/${encodeURIComponent("소상공인-정책자금")}`} className="hover:text-indigo-600 hover:underline">소상공인 정책자금 가이드</a>
+              </nav>
             </div>
 
             {/* 데이터 출처 — 봇용, 시각적으로 최소화 */}

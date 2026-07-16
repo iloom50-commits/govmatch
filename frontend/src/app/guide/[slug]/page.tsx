@@ -7,6 +7,19 @@ const API = process.env.NEXT_PUBLIC_API_URL || "https://govmatch-production.up.r
 
 function safeDecode(s: string) { try { return decodeURIComponent(s); } catch { return s; } }
 
+// DB support_amount의 원시 숫자(예: "200000000000원")를 억·만원으로 포맷. 7자리 이상 숫자런만 변환.
+function formatKrwText(s: string): string {
+  return String(s).replace(/(\d{7,})원?/g, (_, d) => {
+    const n = parseInt(d, 10);
+    const eok = Math.floor(n / 1e8);
+    const man = Math.floor((n % 1e8) / 1e4);
+    let out = "";
+    if (eok > 0) out += `${eok.toLocaleString()}억`;
+    if (man > 0) out += `${man.toLocaleString()}만`;
+    return (out || n.toLocaleString()) + "원";
+  });
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const g = getGuide(safeDecode(slug));
@@ -102,11 +115,14 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
                      className="block border border-slate-200 rounded-xl px-4 py-3 hover:border-blue-400 transition-colors">
                     <span className="text-[15px] font-semibold text-slate-900">{a.title}</span>
                     {a.department && <span className="block text-[13px] text-slate-500 mt-0.5">{a.department}</span>}
-                    {a.support_amount && (
-                      <span className="block text-[13px] font-medium text-blue-600 mt-1">
-                        {String(a.support_amount).length > 80 ? String(a.support_amount).slice(0, 80) + "…" : a.support_amount}
-                      </span>
-                    )}
+                    {a.support_amount && (() => {
+                      const amt = formatKrwText(String(a.support_amount));
+                      return (
+                        <span className="block text-[13px] font-medium text-blue-600 mt-1">
+                          {amt.length > 80 ? amt.slice(0, 80) + "…" : amt}
+                        </span>
+                      );
+                    })()}
                   </a>
                 </li>
               ))}

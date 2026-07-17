@@ -7,11 +7,9 @@ import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
-// 카드 단건결제 채널키. 우선 env 채널키를 사용한다.
-// 로컬 결제창 테스트에서 "카드 단건결제"가 아니라 빌링키 등록창이 뜨면
-// SmartDoc에서 카드 단건결제가 검증된 아래 채널키로 교체할 것:
-//   channel-key-c71e2358-2832-4bb8-a66e-f688c807e87c
-const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "channel-key-c9cf78e7-bb9a-4aeb-b167-5a7273f6d8bd";
+// 충전(카드 단건결제) 전용 채널키 — SmartDoc에서 카드 단건결제가 검증된 채널(동일 PortOne 스토어).
+// 기존 NEXT_PUBLIC_PORTONE_CHANNEL_KEY(빌링 등 다른 용도일 수 있음)와 분리해, 검증된 단건결제 채널을 명시적으로 쓴다.
+const CHARGE_CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHARGE_CHANNEL_KEY || "channel-key-c71e2358-2832-4bb8-a66e-f688c807e87c";
 
 interface Pack {
   krw: number;
@@ -83,7 +81,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
       // SmartDoc 검증된 단건결제 이식 (@portone/browser-sdk/v2)
       const response = await PortOne.requestPayment({
         storeId: STORE_ID,
-        channelKey: CHANNEL_KEY,
+        channelKey: CHARGE_CHANNEL_KEY,
         paymentId: "gm-charge-" + crypto.randomUUID().replace(/-/g, ""),
         orderName: "지원금AI 크레딧 " + pack.credits.toLocaleString(),
         totalAmount: pack.krw,

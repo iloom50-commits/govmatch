@@ -25,6 +25,7 @@ from app.config import DATABASE_URL
 # Admin Scraper Import for Manual Sync
 from app.services.admin_scraper import admin_scraper
 from app.services.launch_promo import launch_promo_redeem, partner_promo_redeem
+from app.services import wallet
 
 
 def _hash_password(password: str) -> str:
@@ -5025,6 +5026,42 @@ def api_plan_refund(current_user: dict = Depends(_get_current_user)):
             "WHERE business_number = %s", (bn,))
         conn.commit()
         return {"status": "SUCCESS", "message": f"환불이 완료되었습니다 ({amount:,}원 · {policy_reason}). FREE 플랜으로 전환되었습니다."}
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════
+# 크레딧 지갑 (G1-3~G1-5): 충전팩 조회, 잔액/원장 조회, PortOne 충전 검증, 가입 보너스
+# ══════════════════════════════════════════════════════════════════
+
+CREDIT_PACKS = json.loads(os.getenv(
+    "CREDIT_PACKS",
+    '[[19000,20000],[49000,60000],[99000,150000],[199000,400000]]',
+))
+
+
+@app.get("/api/wallet/packs")
+def api_wallet_packs():
+    """충전팩 목록 조회 (인증 불필요)."""
+    return {"packs": [{"krw": krw, "credits": credits} for krw, credits in CREDIT_PACKS]}
+
+
+@app.get("/api/wallet")
+def api_wallet(current_user: dict = Depends(_get_current_user)):
+    """내 크레딧 잔액 + 최근 거래내역 50건."""
+    uid = current_user["user_id"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        credits = wallet.wallet_balance(cur, uid)
+        cur.execute(
+            """SELECT type, amount, balance_after, ref, created_at
+               FROM credit_transactions WHERE user_id = %s
+               ORDER BY created_at DESC LIMIT 50""",
+            (uid,),
+        )
+        transactions = [dict(row) for row in cur.fetchall()]
+        return {"credits": credits, "transactions": transactions}
     finally:
         conn.close()
 

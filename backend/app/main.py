@@ -9198,7 +9198,6 @@ class SectionFeedbackRequest(BaseModel):
 @app.post("/api/pro/sections/feedback")
 def api_pro_section_feedback(req: SectionFeedbackRequest, current_user: dict = Depends(_get_current_user)):
     """M: 컨설턴트가 RAG 답변 출처 섹션에 평가를 남김. 검색 가중치에 자동 반영."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -9229,7 +9228,6 @@ def api_pro_section_feedback(req: SectionFeedbackRequest, current_user: dict = D
 @app.get("/api/pro/insights/recent")
 def api_pro_insights_recent(current_user: dict = Depends(_get_current_user)):
     """L: 최근 학습된 인사이트 (knowledge_base 신규 항목) — 컨설턴트가 체감할 수 있도록."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -13193,7 +13191,6 @@ class BrandingUpdate(BaseModel):
 @app.get("/api/pro/branding")
 def api_pro_branding_get(current_user: dict = Depends(_get_current_user)):
     """PRO: 화이트라벨 발신자 브랜딩 조회 (리포트 헤더·푸터용)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT brand_company, brand_contact, brand_phone FROM users WHERE business_number=%s LIMIT 1", (current_user["bn"],))
@@ -13209,7 +13206,6 @@ def api_pro_branding_get(current_user: dict = Depends(_get_current_user)):
 @app.put("/api/pro/branding")
 def api_pro_branding_update(req: BrandingUpdate, current_user: dict = Depends(_get_current_user)):
     """PRO: 화이트라벨 발신자 브랜딩 설정 — 고객 전달 리포트에 자기 브랜드로 발행"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13247,7 +13243,6 @@ class ClientProfileCreate(BaseModel):
 @app.get("/api/pro/clients")
 def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depends(_get_current_user)):
     """PRO: 내 고객 프로필 목록 조회 (client_type 필터 가능)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     where = "owner_business_number = %s AND is_active = TRUE"
@@ -13284,7 +13279,6 @@ def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depe
 @app.get("/api/pro/clients/with-history")
 def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)):
     """PRO: 고객 목록 + 최근 상담 요약 (테이블형 리스트용)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     # consultation_history 테이블이 없을 수 있으므로 기본 쿼리 + 상담 통계는 별도 조회
@@ -13311,7 +13305,6 @@ def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)
 @app.get("/api/pro/clients/export")
 def api_pro_clients_export(current_user: dict = Depends(_get_current_user)):
     """PRO: 고객 리스트 CSV 다운로드"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13351,7 +13344,6 @@ def api_pro_clients_export(current_user: dict = Depends(_get_current_user)):
 @app.post("/api/pro/clients")
 def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 생성"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13375,7 +13367,6 @@ def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends
 @app.put("/api/pro/clients/{client_id}")
 def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 수정"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13401,7 +13392,6 @@ def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user
 @app.delete("/api/pro/clients/{client_id}")
 def api_pro_client_delete(client_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 삭제 (soft delete)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13427,7 +13417,6 @@ async def api_pro_client_upload_file(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 고객사 자료 업로드 (재무제표, 사업계획서, IR자료 등)"""
-    _require_pro(current_user)
     # 파일 크기 제한 (10MB)
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -13472,7 +13461,6 @@ async def api_pro_client_upload_file(
 @app.get("/api/pro/clients/{client_id}/files")
 def api_pro_client_files(client_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 목록 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13492,7 +13480,6 @@ def api_pro_client_files(client_id: int, current_user: dict = Depends(_get_curre
 @app.get("/api/pro/clients/{client_id}/files/{file_id}/download")
 def api_pro_client_file_download(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 다운로드"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13514,7 +13501,6 @@ def api_pro_client_file_download(client_id: int, file_id: int, current_user: dic
 @app.delete("/api/pro/clients/{client_id}/files/{file_id}")
 def api_pro_client_file_delete(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 삭제"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13539,7 +13525,6 @@ def api_pro_consult_history(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 상담 이력 조회 (고객사별 필터 가능)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -13663,7 +13648,6 @@ def api_pro_consult_history_export(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 상담 이력 엑셀(CSV) 다운로드"""
-    _require_pro(current_user)
     import csv
     import io
 
@@ -13796,7 +13780,6 @@ class ReportRequest(BaseModel):
 @app.post("/api/pro/reports/generate")
 def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 종합 리포트 생성 — 매칭 + 상담 이력 + AI 종합 요약"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -14410,6 +14393,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         raise HTTPException(status_code=500, detail=f"리포트 저장 실패: {str(db_err)[:100]}")
     conn.close()
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"report_generate:{report_id}")
+
     return {
         "status": "SUCCESS",
         "report_id": report_id,
@@ -14430,7 +14415,6 @@ def api_pro_reports(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 리포트 목록 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -14469,7 +14453,6 @@ def api_pro_reports(
 @app.get("/api/pro/reports/{report_id}")
 def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 리포트 상세 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14502,7 +14485,6 @@ def api_pro_report_edit_section(report_id: int, req: ReportEditSectionRequest, c
     선택한 텍스트 + 지시 → AI가 같은 길이/톤으로 다시 작성하여 반환.
     클라이언트가 받은 결과를 원본에서 selected_text 위치에 치환.
     """
-    _require_pro(current_user)
     if not req.selected_text or not req.selected_text.strip():
         raise HTTPException(status_code=400, detail="선택한 텍스트가 비어있습니다.")
     if not req.instruction or not req.instruction.strip():
@@ -14582,7 +14564,6 @@ class ReportSaveRequest(BaseModel):
 @app.put("/api/pro/reports/{report_id}")
 def api_pro_report_update(report_id: int, req: ReportSaveRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 보고서 summary를 통째로 업데이트 (편집 모달 최종 저장용)"""
-    _require_pro(current_user)
     if not req.summary or len(req.summary) < 10:
         raise HTTPException(status_code=400, detail="저장할 내용이 너무 짧습니다.")
     conn = get_db_connection()
@@ -14609,7 +14590,6 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
     if not _tok or not _tok.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     current_user = _decode_jwt(_tok.split(" ", 1)[1])
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14687,6 +14667,8 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         ascii_fallback = (_cli.encode("ascii", "ignore").decode("ascii").strip() or "report") + f"_report.{ext}"
         return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{_urlquote(full)}"
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"report_pdf:{report_id}")
+
     # format=html: 링크가 확실히 살아있는 HTML 산출물 (고객 전달·클릭용)
     if (format or "").lower() == "html":
         from fastapi.responses import Response
@@ -14725,10 +14707,11 @@ class FileAnalyzeRequest(BaseModel):
 @app.post("/api/pro/files/analyze")
 def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 첨부 자료 AI 요약 분석 (JSON 텍스트)"""
-    _require_pro(current_user)
     if not req.text or len(req.text.strip()) < 20:
         return {"status": "SUCCESS", "summary": "분석할 텍스트가 부족합니다."}
-    return _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
+    result = _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_analyze")
+    return result
 
 
 class BusinessPlanReviewRequest(BaseModel):
@@ -14741,7 +14724,6 @@ class BusinessPlanReviewRequest(BaseModel):
 @app.get("/api/pro/stats/announcement")
 def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depends(_get_current_user)):
     """H: 공고 통계 — 같은 부처/카테고리의 평균 지원금, 유사 공고 수, 마감일까지 D-day."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -14803,6 +14785,7 @@ def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depend
         analyzed_count = cur.fetchone()["cnt"]
 
         conn.close()
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"stats_announcement:{announcement_id}")
         return {
             "status": "SUCCESS",
             "announcement": {
@@ -14833,7 +14816,6 @@ def api_pro_clients_batch_match(current_user: dict = Depends(_get_current_user))
     """G: PRO 컨설턴트의 모든 활성 고객에 대해 일괄 매칭 → 고객별 Top 5 공고 반환.
     매일 알림용 또는 대시보드 일괄 갱신용.
     """
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14890,6 +14872,7 @@ def api_pro_clients_batch_match(current_user: dict = Depends(_get_current_user))
             "top5": top5,
         })
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="clients_batch_match")
     return {"status": "SUCCESS", "clients_processed": len(out), "data": out}
 
 
@@ -14898,7 +14881,6 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
     """F: 사업계획서 텍스트 → AI 전문가 피드백 (강화 포인트, 가점 항목, 보완 사항).
     공고가 지정되면 해당 공고 자격요건과 매칭 분석.
     """
-    _require_pro(current_user)
     if not req.file_text or len(req.file_text.strip()) < 100:
         raise HTTPException(status_code=400, detail="사업계획서 본문이 너무 짧습니다 (최소 100자).")
 
@@ -14997,6 +14979,7 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
         print(f"[business-plan review] {e}")
         raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)[:200]}")
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="business_plan_review")
     return {"status": "SUCCESS", "data": result}
 
 
@@ -15006,8 +14989,6 @@ async def api_pro_file_upload_analyze(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 파일 업로드 → 텍스트 추출/멀티모달 → AI 요약 (PDF/DOCX/이미지/음성/TXT)"""
-    _require_pro(current_user)
-
     file_name = file.filename or "unknown"
     content = await file.read()
 
@@ -15019,11 +15000,15 @@ async def api_pro_file_upload_analyze(
 
     # ─── 이미지 멀티모달 분석 (Gemini Vision) ───
     if ext in ("jpg", "jpeg", "png", "webp", "gif", "bmp"):
-        return _analyze_image_with_gemini(content, file_name, ext)
+        _img_result = _analyze_image_with_gemini(content, file_name, ext)
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:image")
+        return _img_result
 
     # ─── 음성 멀티모달 분석 (Gemini Audio) ───
     if ext in ("mp3", "wav", "m4a", "ogg", "flac", "webm", "aac"):
-        return _analyze_audio_with_gemini(content, file_name, ext)
+        _audio_result = _analyze_audio_with_gemini(content, file_name, ext)
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:audio")
+        return _audio_result
 
     try:
         if ext == "pdf":
@@ -15072,6 +15057,7 @@ async def api_pro_file_upload_analyze(
 
     result = _analyze_text_with_ai(text[:8000], file_name, ext)
     result["extracted_text"] = text[:5000]
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:text")
 
     # P1.1: client_files에 저장 (client_id=NULL, 나중에 고객 연결 가능)
     try:
@@ -15104,7 +15090,6 @@ async def api_pro_extract_profile(
 ):
     """PRO: 회사 자료(복수) → 기본정보 자동 추출 (폼 프리필용).
     자료유형 무관 추출+병합. 파일 저장은 안 함(보관은 상담 시작 후 client_files로)."""
-    _require_pro(current_user)
     from app.services.profile_extract import extract_one, merge, to_form_fields
     results, per_file = [], []
     for f in files[:8]:
@@ -15125,6 +15110,8 @@ async def api_pro_extract_profile(
             per_file.append({"filename": name, "ok": False, "reason": "판독 불가"})
     merged, sources = merge(results)
     fields = to_form_fields(merged)
+    if results:
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="extract_profile")
     return {"status": "SUCCESS", "fields": fields, "sources": sources, "per_file": per_file}
 
 
@@ -15298,7 +15285,6 @@ class BulkEmailRequest(BaseModel):
 @app.post("/api/pro/email/send")
 def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 일괄 이메일 발송"""
-    _require_pro(current_user)
     if not req.client_ids:
         raise HTTPException(status_code=400, detail="발송 대상을 선택해주세요.")
     if not req.subject or not req.body:
@@ -15398,6 +15384,9 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
 
     conn.close()
     _log_event("pro_email", current_user["bn"], f"sent={sent},failed={failed},skipped={skipped}")
+
+    if sent > 0:
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="email_send")
 
     return {
         "status": "SUCCESS",

@@ -147,10 +147,12 @@ def _restore():
 # ─────────────────────────────────────────────────────────────
 # /api/wallet/packs
 # ─────────────────────────────────────────────────────────────
-def test_packs_returns_four():
+def test_packs_returns_catalog():
+    """팩 카탈로그를 그대로 노출한다(요금 개편에 깨지지 않도록 CREDIT_PACKS 기준으로 검증)."""
     result = m.api_wallet_packs()
-    assert len(result["packs"]) == 4
-    assert result["packs"][0] == {"krw": 19000, "credits": 20000}
+    assert len(result["packs"]) == len(m.CREDIT_PACKS)
+    assert result["packs"] == [{"krw": k, "credits": c} for k, c in m.CREDIT_PACKS]
+    assert all(p["krw"] > 0 and p["credits"] > 0 for p in result["packs"])
 
 
 # ─────────────────────────────────────────────────────────────
@@ -176,11 +178,12 @@ def test_charge_verify_success_adds_credits():
     cur = FakeCursor(users={1: 0})
     try:
         _patch_db(cur)
-        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": 19000, "user_id": 1}
+        krw, credits = m.CREDIT_PACKS[0]   # 요금 개편에 깨지지 않도록 카탈로그 첫 팩 사용
+        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": krw, "user_id": 1}
         req = m.WalletChargeVerifyRequest(payment_id="pay-1")
         result = m.api_wallet_charge_verify(req, current_user={"user_id": 1})
-        assert result == {"ok": True, "credits": 20000}
-        assert cur._users[1] == 20000
+        assert result == {"ok": True, "credits": credits}
+        assert cur._users[1] == credits
     finally:
         _restore()
 
@@ -189,13 +192,14 @@ def test_charge_verify_duplicate_payment_id_no_double_credit():
     cur = FakeCursor(users={1: 0})
     try:
         _patch_db(cur)
-        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": 19000, "user_id": 1}
+        krw, credits = m.CREDIT_PACKS[0]
+        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": krw, "user_id": 1}
         req = m.WalletChargeVerifyRequest(payment_id="pay-dup")
         first = m.api_wallet_charge_verify(req, current_user={"user_id": 1})
-        assert first["credits"] == 20000
+        assert first["credits"] == credits
         second = m.api_wallet_charge_verify(req, current_user={"user_id": 1})
-        assert second == {"ok": True, "credits": 20000, "duplicate": True}
-        assert cur._users[1] == 20000, "잔액이 2배가 되면 안 됨"
+        assert second == {"ok": True, "credits": credits, "duplicate": True}
+        assert cur._users[1] == credits, "잔액이 2배가 되면 안 됨"
     finally:
         _restore()
 

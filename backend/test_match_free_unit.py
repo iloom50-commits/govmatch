@@ -2,8 +2,10 @@
 """G2-2: /api/ai/consultant/match(매칭) 무료화 검증.
 
 free 플랜 + 이번 달 사용량이 옛 한도(3회)를 이미 넘긴 사용자도 429 없이 매칭이
-성공해야 한다(사용량 게이트 제거 확인). get_matches_hybrid는 매칭엔진 자체이므로
-모킹해 이 테스트를 매칭 게이트 로직에만 집중시킨다.
+성공해야 한다(사용량 게이트 제거 확인). 만료된 유료 플랜 사용자도 매칭은
+전면 무료이므로 403 없이 200이어야 한다(리뷰 반영 — 플랜 만료 403 제거).
+get_matches_hybrid는 매칭엔진 자체이므로 모킹해 이 테스트를 매칭 게이트
+로직에만 집중시킨다.
 
 실행: cd backend && python test_match_free_unit.py
 """
@@ -25,8 +27,8 @@ class FakeCursor:
 
     def execute(self, sql, params=None):
         s = " ".join(sql.split())
-        if s.startswith("SELECT * FROM users WHERE business_number"):
-            self._result = dict(self._user_row)
+        if s.startswith("SELECT business_number FROM users WHERE business_number"):
+            self._result = {"business_number": params[0]} if self._user_row is not None else None
         else:
             raise AssertionError("예상치 못한 SQL: " + s)
 
@@ -96,6 +98,31 @@ def test_zero_credits_user_still_gets_200():
         monkeypatch.undo()
 
     assert result["status"] == "SUCCESS"
+
+
+def test_expired_paid_plan_user_still_gets_200():
+    """리뷰 반영: 만료된 lite/pro 플랜 사용자도 매칭은 전면 무료 — 403이면 안 됨."""
+    user_row = {
+        "plan": "pro",
+        "plan_expires_at": "2020-01-01T00:00:00",  # 이미 만료
+        "ai_usage_month": 0,
+        "ai_usage_reset_at": None,
+    }
+    cur = FakeCursor(user_row)
+    conn = FakeConn(cur)
+    monkeypatch = _MonkeyPatch()
+    monkeypatch.setattr(main, "get_db_connection", lambda: conn)
+    monkeypatch.setattr(main, "get_matches_hybrid", lambda profile, is_individual: [{"id": 2}])
+
+    req = main.ConsultantMatchRequest(profile={"industry_code": "01"})
+    current_user = {"user_id": 3, "bn": "333-33-33333", "plan": "pro"}
+
+    try:
+        result = main.api_ai_consultant_match(req, current_user)
+    finally:
+        monkeypatch.undo()
+
+    assert result["status"] == "SUCCESS", "만료된 플랜이어도 매칭은 403이 아니라 200이어야 함"
 
 
 class _MonkeyPatch:

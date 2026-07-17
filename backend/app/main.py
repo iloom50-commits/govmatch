@@ -6939,27 +6939,16 @@ class ConsultantMatchRequest(BaseModel):
 
 @app.post("/api/ai/consultant/match")
 def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = Depends(_get_current_user)):
-    """컨설턴트 모드: 가상 프로필로 매칭 실행 (매칭은 무료 — 사용량 게이트 없음, G2-2)"""
+    """컨설턴트 모드: 가상 프로필로 매칭 실행 (매칭은 전면 무료 — 플랜·사용량 게이트 없음, G2-2)"""
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    cur.execute("SELECT business_number FROM users WHERE business_number = %s", (bn,))
     user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    usage = u.get("ai_usage_month") or 0
-    ps = _get_plan_status(plan, plan_expires, usage)
     conn.close()
-    if not ps.get("active"):
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
     # 가상 프로필로 매칭 엔진 실행 — 프로필의 industry_code 유무로 기업/개인 분기
     virtual_profile = req.profile
@@ -12978,41 +12967,21 @@ CREDIT_COST_CONSULT = int(os.getenv("CREDIT_COST_CONSULT", "100"))
 CREDIT_COST_PRO_TOOL = int(os.getenv("CREDIT_COST_PRO_TOOL", "500"))
 CONSULT_TURN_CAP = int(os.getenv("CONSULT_TURN_CAP", "15"))
 
+# 크레딧 면제 대상 bn 허용목록(운영/관리자용). 기본 빈 값 = 아무도 면제 아님.
+CREDIT_EXEMPT_BNS = {s.strip() for s in os.getenv("CREDIT_EXEMPT_BNS", "").split(",") if s.strip()}
+
 
 def _is_credit_exempt(current_user: dict) -> bool:
-    """서비스계정·관리자는 무차감(기존 우회 관행 유지).
+    """면제 = ① SmartDoc 서비스토큰 ② CREDIT_EXEMPT_BNS 허용목록(운영/관리자용).
 
-    - SmartDoc 서비스 토큰(_get_consult_user가 발급, _service=True, user_id 없음)은
-      DB 조회 없이 즉시 면제.
-    - 그 외는 JWT의 plan을 신뢰하지 않고(_require_pro와 동일 관행) DB에서 재조회해
-      plan in ('pro','biz')이고 만료되지 않았으면 면제. 서비스계정(bn 1411702215,
-      plan='pro' 무기한)·대표 계정(plan='pro')이 여기 해당한다.
+    ★plan(구독)은 면제 근거가 아니다 — G2의 목적이 구독 폐지이므로, plan 기반
+    면제를 두면 누구든 plan='pro'가 되는 순간(프로모·수동 세팅 등) 전 기능
+    무한 무료 이용권이 부활한다. 그래서 plan/plan_expires_at은 절대 조회하지 않는다.
     """
     if current_user.get("_service"):
         return True
-    uid = current_user.get("user_id")
-    if uid is None:
-        return False
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT plan, plan_expires_at FROM users WHERE user_id = %s", (uid,))
-        u = cur.fetchone()
-    finally:
-        conn.close()
-    if not u:
-        return False
-    plan = u.get("plan") or "free"
-    if plan not in ("pro", "biz"):
-        return False
-    if u.get("plan_expires_at"):
-        try:
-            exp = datetime.datetime.fromisoformat(str(u["plan_expires_at"]))
-            if exp < datetime.datetime.utcnow():
-                return False
-        except (ValueError, TypeError):
-            pass
-    return True
+    bn = str(current_user.get("bn") or "").strip()
+    return bool(bn) and bn in CREDIT_EXEMPT_BNS
 
 
 def _charge_credits(current_user: dict, amount: int, tx_type: str, ref=None) -> None:

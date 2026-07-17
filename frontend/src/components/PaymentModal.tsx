@@ -7,57 +7,45 @@ import * as PortOne from "@portone/browser-sdk/v2";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
-const IMP_CODE = "imp85430643"; // PortOne V1 고객사 식별코드 (KCP 카드 결제용)
-const CHANNEL_KEY_KAKAO = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_KAKAO || "channel-key-0872602d-c0dc-41fb-ac7f-dc95058eba02";
+// 카드 단건결제 채널키. 우선 env 채널키를 사용한다.
+// 로컬 결제창 테스트에서 "카드 단건결제"가 아니라 빌링키 등록창이 뜨면
+// SmartDoc에서 카드 단건결제가 검증된 아래 채널키로 교체할 것:
+//   channel-key-c71e2358-2832-4bb8-a66e-f688c807e87c
+const CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY || "channel-key-c9cf78e7-bb9a-4aeb-b167-5a7273f6d8bd";
+
+interface Pack {
+  krw: number;
+  credits: number;
+}
 
 interface PaymentModalProps {
-  planStatus: { plan: string; days_left: number | null; label: string; consult_limit?: number; ai_used?: number } | null;
+  /** /api/auth/me 의 plan_status (credits 포함). 현재 잔액 표시용. */
+  planStatus?: { plan?: string; credits?: number } | null;
   userType?: string | null;
-  onSuccess: (token: string, plan: any) => void;
+  /** 충전 성공 시 갱신된 잔액(credits)을 전달. 토큰 재발급은 없음. */
+  onSuccess?: (credits: number) => void;
   onClose: () => void;
-  /** "lite": FREE+LITE만 표시 (govmatch.kr 일반사용자용) | "pro": PRO만 표시 (/pro 전문가용) */
+  /** 이전 구독 모달과의 호환용(현재는 미사용). */
   mode?: "lite" | "pro";
 }
 
-export default function PaymentModal({ planStatus, userType, onSuccess, onClose, mode }: PaymentModalProps) {
+export default function PaymentModal({ planStatus, onSuccess, onClose }: PaymentModalProps) {
   const { toast } = useToast();
   useModalBack(true, onClose);
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
+
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [payMethod, setPayMethod] = useState<"card" | "kakao" | "samsung">("card");
-  const [pendingPlan, setPendingPlan] = useState<"lite" | "pro" | null>(null);
-  const [tab, setTab] = useState<"individual" | "business">(
-    userType === "individual" ? "individual" : "business"
-  );
 
-  const currentPlan = planStatus?.plan || "free";
-  const isLite = ["lite", "lite_trial", "basic"].includes(currentPlan);
-  const isPro = ["pro", "biz"].includes(currentPlan);
-
-  const litePrice = tab === "individual" ? "2,900" : "4,900";
+  const currentCredits = typeof planStatus?.credits === "number" ? planStatus.credits : null;
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
 
-  // iamport V1 SDK 로드 (KCP 카드 결제용)
-  useEffect(() => {
-    if (typeof window !== "undefined" && !(window as any).IMP) {
-      const script = document.createElement("script");
-      script.src = "https://cdn.iamport.kr/v1/iamport.js";
-      document.head.appendChild(script);
-    }
-  }, []);
-
-  const cleanupPortone = () => {
-    document.getElementById("imp-iframe-wrapper")?.remove();
-    document.querySelectorAll("iframe[src*='portone'], iframe[src*='iamport']").forEach(el => {
-      (el as HTMLElement).closest("div[style*='z-index']")?.remove();
-    });
-  };
-
-  // JWT 페이로드에서 사용자 식별 정보 추출 (PortOne customer용)
+  // JWT 페이로드에서 user_id(정수) 추출 — 백엔드 verify 가 payment.user_id 와 대조.
   const decodeJwt = (tok: string): { bn?: string; email?: string; user_id?: string | number } => {
     try {
       const part = tok.split(".")[1];
@@ -67,385 +55,139 @@ export default function PaymentModal({ planStatus, userType, onSuccess, onClose,
     } catch { return {}; }
   };
 
-  const _submitSubscribe = async (billingKey: string, keyType: "v1" | "v2", targetPlan: "lite" | "pro", token: string) => {
-    const res = await fetch(`${API}/api/plan/subscribe`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ billing_key: billingKey, target_plan: targetPlan, key_type: keyType }),
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.detail || "구독 시작 실패", "error"); setLoading(false); return; }
-    toast(data.message || "구독이 시작되었습니다!", "success");
-    onSuccess(data.token, data.plan);
-  };
+  // 충전팩 로드 (무인증)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/wallet/packs`);
+        const data = await res.json();
+        if (alive && Array.isArray(data.packs)) {
+          setPacks(data.packs);
+          setSelected(data.packs.length > 1 ? 1 : 0); // 기본: 두번째 팩(있으면)
+        }
+      } catch { /* 팩 로드 실패 시 빈 상태 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
-  const handleSubscribe = async (targetPlan: "lite" | "pro") => {
-    if (payMethod === "samsung") {
-      toast("삼성페이는 곧 지원 예정입니다. 카드 또는 카카오페이를 이용해 주세요.", "info");
-      return;
-    }
+  const handleCharge = async () => {
+    if (selected === null || !packs[selected]) return;
+    const pack = packs[selected];
+    const token = getToken();
+    if (!token) { toast("로그인 후 이용해 주세요.", "info"); return; }
+    const userId = decodeJwt(token).user_id;
 
     setLoading(true);
-    const token = getToken();
-    const userClaims = decodeJwt(token);
-    const customerId = (userClaims.bn || String(userClaims.user_id || "")).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || `guest_${Date.now()}`;
-    const customerEmail = userClaims.email || "";
-    const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/payment/billing-redirect` : "";
-
-    // ── 카카오페이: PortOne V2 SDK ──
-    if (payMethod === "kakao") {
-      try {
-        const issueId = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
-        const billingKeyResponse = await PortOne.requestIssueBillingKey({
-          storeId: STORE_ID,
-          channelKey: CHANNEL_KEY_KAKAO,
-          billingKeyMethod: "EASY_PAY",
-          issueId,
-          issueName,
-          customer: { customerId, email: customerEmail || undefined },
-          redirectUrl,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-        const code = billingKeyResponse?.code;
-        if (code === "USER_CANCEL" || code === "FAILURE" || code === "PORTONE_ERROR") {
-          toast("결제가 취소되었습니다.", "info"); setLoading(false); return;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const billingKey = (billingKeyResponse as any)?.billingKey;
-        if (!billingKey || typeof billingKey !== "string" || billingKey.trim().length < 10) {
-          toast("카카오페이 등록에 실패했습니다. 다시 시도해 주세요.", "error"); setLoading(false); return;
-        }
-        await _submitSubscribe(billingKey, "v2", targetPlan, token);
-      } catch (err: unknown) {
-        cleanupPortone();
-        toast(err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.", "error");
-      } finally {
-        cleanupPortone();
-        setLoading(false);
-      }
-      return;
-    }
-
-    // ── 카드: iamport V1 SDK (KCP) ──
     try {
-      const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        sessionStorage.setItem("portone_billing_context", JSON.stringify({ targetPlan, payMethod, token, savedAt: Date.now() }));
+      // SmartDoc 검증된 단건결제 이식 (@portone/browser-sdk/v2)
+      const response = await PortOne.requestPayment({
+        storeId: STORE_ID,
+        channelKey: CHANNEL_KEY,
+        paymentId: "gm-charge-" + crypto.randomUUID().replace(/-/g, ""),
+        orderName: "지원금AI 크레딧 " + pack.credits.toLocaleString(),
+        totalAmount: pack.krw,
+        currency: "KRW",
+        payMethod: "CARD",
+        customData: JSON.stringify({ userId }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      if (response?.code) {
+        toast(response.message || "결제가 취소되었습니다.", "info");
+        setLoading(false);
+        return;
       }
 
-      const IMP = (typeof window !== "undefined" ? (window as any).IMP : null); // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (!IMP) { toast("결제 모듈 로딩 중입니다. 잠시 후 다시 시도해 주세요.", "info"); setLoading(false); return; }
+      const verifyRes = await fetch(`${API}/api/wallet/charge/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payment_id: response?.paymentId }),
+      });
+      const data = await verifyRes.json();
+      if (!verifyRes.ok || !data.ok) {
+        toast(data.detail || "충전 검증에 실패했습니다. 잠시 후 다시 시도해 주세요.", "error");
+        setLoading(false);
+        return;
+      }
 
-      IMP.init(IMP_CODE);
-      const customer_uid = `cust_${customerId}_${Date.now()}`;
-      const merchantUid = `billing_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const issueName = `지원금AI ${targetPlan === "pro" ? "PRO" : "LITE"} 정기구독`;
-
-      IMP.request_pay(
-        {
-          pg: "kcp_billing",
-          pay_method: "card",
-          merchant_uid: merchantUid,
-          customer_uid,
-          name: issueName,
-          amount: 0,
-          buyer_email: customerEmail || undefined,
-          m_redirect_url: redirectUrl,
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        async (rsp: any) => {
-          if (!rsp.success) {
-            const msg = rsp.error_msg || "카드 등록에 실패했습니다.";
-            if (msg.includes("취소") || rsp.error_code === "F0000") {
-              toast("결제가 취소되었습니다.", "info");
-            } else {
-              toast(msg, "error");
-            }
-            setLoading(false);
-            return;
-          }
-          try {
-            await _submitSubscribe(customer_uid, "v1", targetPlan, token);
-          } catch (err: unknown) {
-            toast(err instanceof Error ? err.message : "구독 처리 중 오류가 발생했습니다.", "error");
-          } finally {
-            setLoading(false);
-          }
-        }
-      );
+      toast(data.duplicate ? "이미 처리된 결제입니다." : "충전 완료!", "success");
+      onSuccess?.(typeof data.credits === "number" ? data.credits : 0);
     } catch (err: unknown) {
-      cleanupPortone();
       toast(err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.", "error");
       setLoading(false);
     }
   };
 
-  const Check = () => <span className="text-emerald-500">&#10003;</span>;
-  const Dash = () => <span className="text-slate-300">—</span>;
-
-  const Feature = ({ children, available }: { children: React.ReactNode; available: boolean }) => (
-    <li className={`flex items-start gap-2 text-[12px] leading-relaxed ${available ? "text-slate-700" : "text-slate-400"}`}>
-      <span className="mt-0.5 flex-shrink-0">{available ? <Check /> : <Dash />}</span>
-      <span>{children}</span>
-    </li>
-  );
+  const selectedPack = selected !== null ? packs[selected] : null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* 결제수단 선택 모달 */}
-      {pendingPlan && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setPendingPlan(null)} />
-          <div className="relative w-full max-w-xs bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-            <h3 className="text-[16px] font-bold text-slate-900 text-center mb-1">결제 수단 선택</h3>
-            <p className="text-[11px] text-slate-400 text-center mb-5">
-              {pendingPlan === "lite" ? "Lite" : "Pro"} 플랜 · 결제 즉시 시작 · 매월 자동갱신
-            </p>
-
-            <div className="flex flex-col gap-2 mb-5">
-              <button
-                onClick={() => setPayMethod("card")}
-                className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-[13px] font-bold transition-all ${
-                  payMethod === "card"
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                }`}
-              >
-                <span className="text-lg">💳</span>
-                <span>신용 · 체크카드</span>
-                {payMethod === "card" && <span className="ml-auto text-xs">✓</span>}
-              </button>
-              <button
-                onClick={() => setPayMethod("kakao")}
-                className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-[13px] font-bold transition-all ${
-                  payMethod === "kakao"
-                    ? "border-[#FEE500] bg-[#FEE500] text-[#191919]"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-[#FEE500]"
-                }`}
-              >
-                <span className="text-lg">💛</span>
-                <span>카카오페이</span>
-                {payMethod === "kakao" && <span className="ml-auto text-xs">✓</span>}
-              </button>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPendingPlan(null)}
-                className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl text-[13px] font-bold hover:bg-slate-200 transition-all"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => { const p = pendingPlan; setPendingPlan(null); handleSubscribe(p); }}
-                disabled={loading}
-                className={`flex-[2] py-3 rounded-xl text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50 ${
-                  pendingPlan === "lite"
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "bg-violet-600 hover:bg-violet-700 text-white"
-                }`}
-              >
-                {loading ? "처리 중..." : `${payMethod === "kakao" ? "카카오페이로" : "카드로"} 결제하기`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[95vh] overflow-y-auto">
-        <div className="relative z-10 p-4 sm:p-6">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[95vh] overflow-y-auto">
+        <div className="relative z-10 p-5 sm:p-6">
           {/* 닫기 */}
           <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 text-lg z-20">&#10005;</button>
 
           {/* Header */}
           <div className="text-center mb-5">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              {mode === "pro" ? "PRO 플랜" : "플랜 선택"}
-            </h2>
-            <p className="text-slate-400 text-[12px] mt-1">
-              {mode === "pro" ? "전문상담툴 전용 플랜입니다" : "내게 맞는 플랜을 선택하세요"}
-            </p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">크레딧 충전</h2>
+            <p className="text-slate-400 text-[12px] mt-1">필요한 만큼 충전하고 사용한 만큼 차감돼요</p>
+            {currentCredits !== null && (
+              <div className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100">
+                <span className="text-[11px] text-slate-500">현재 잔액</span>
+                <span className="text-[13px] font-bold text-indigo-700">{currentCredits.toLocaleString()} 크레딧</span>
+              </div>
+            )}
           </div>
 
-          {/* 개인/사업자 탭 — pro 모드에서는 숨김 (PRO는 단일 가격) */}
-          {mode !== "pro" && (
-            <div className="flex justify-center gap-1 mb-5">
-              <button
-                onClick={() => setTab("individual")}
-                className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
-                  tab === "individual"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                개인
-              </button>
-              <button
-                onClick={() => setTab("business")}
-                className={`px-5 py-2 rounded-full text-[12px] font-bold transition-all border ${
-                  tab === "business"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                사업자
-              </button>
-            </div>
-          )}
-
-          {/* 플랜 카드 */}
-          <div className={`grid grid-cols-1 gap-3 mb-5 items-stretch ${mode === "pro" ? "max-w-sm mx-auto" : "sm:grid-cols-2"}`}>
-
-            {/* FREE — lite 모드에서만 표시 */}
-            {mode !== "pro" && <div className={`rounded-xl border-2 p-4 flex flex-col ${currentPlan === "free" ? "border-slate-300 bg-slate-50" : "border-slate-200"}`}>
-              {/* 헤더 — 고정 높이 */}
-              <div className="h-[90px] mb-4">
-                <h3 className="text-[15px] font-bold text-slate-700">Free</h3>
-                <div className="mt-2">
-                  <span className="text-2xl font-black text-slate-900">₩0</span>
-                  <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">기본 공고 열람</p>
-              </div>
-
-              {/* 버튼 — 고정 높이 */}
-              <div className="h-[44px] mb-4 flex items-center">
-                {currentPlan === "free" ? (
-                  <div className="w-full py-2.5 bg-slate-200 text-slate-500 rounded-lg text-[12px] font-bold text-center">현재 플랜</div>
-                ) : (
-                  <div className="w-full" />
-                )}
-              </div>
-
-              <ul className="space-y-2 flex-1">
-                <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>3회</strong>/월</Feature>
-                <Feature available={false}>맞춤 공고 알림</Feature>
-                <Feature available={false}>마감 알림 (카톡/이메일)</Feature>
-                <Feature available={false}>공고 저장 · 일정관리</Feature>
-                <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
-                  <ul className="space-y-1.5">
-                    <Feature available={false}>지원사업 상담 AI에이전트</Feature>
-                    <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
-                  </ul>
-                </li>
-              </ul>
-
-              <div className="h-[24px]" />
-            </div>}
-
-            {/* LITE — lite 모드에서만 표시 */}
-            {mode !== "pro" && <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isLite ? "border-indigo-400 bg-indigo-50/30" : "border-indigo-300 bg-white"}`}>
-              {!isPro && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full">추천</div>
-              )}
-
-              <div className="h-[90px] mb-4">
-                <h3 className="text-[15px] font-bold text-indigo-700">Lite</h3>
-                <div className="mt-2">
-                  <span className="text-2xl font-black text-slate-900">₩{litePrice}</span>
-                  <span className="text-[11px] text-slate-400 ml-1">/ 월</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">{tab === "individual" ? "개인 맞춤 지원금" : "기업 맞춤 지원금"}</p>
-              </div>
-
-              <div className="h-[44px] mb-4 flex items-center">
-                {isLite ? (
-                  <div className="w-full py-2.5 bg-indigo-100 text-indigo-700 rounded-lg text-[12px] font-bold text-center">
-                    현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
-                  </div>
-                ) : isPro ? (
-                  <div className="w-full" />
-                ) : (
-                  <button onClick={() => { setPayMethod("card"); setPendingPlan("lite"); }} disabled={loading}
-                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    Lite 시작하기
+          {/* 충전팩 카드 */}
+          <div className="grid grid-cols-1 gap-2.5 mb-5">
+            {packs.length === 0 ? (
+              <div className="py-8 text-center text-[13px] text-slate-400">충전 상품을 불러오는 중...</div>
+            ) : (
+              packs.map((pack, i) => {
+                const active = selected === i;
+                return (
+                  <button
+                    key={pack.krw}
+                    onClick={() => setSelected(i)}
+                    className={`flex items-center justify-between w-full px-4 py-3.5 rounded-xl border-2 transition-all text-left ${
+                      active
+                        ? "border-indigo-500 bg-indigo-50/50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${active ? "border-indigo-500" : "border-slate-300"}`}>
+                        {active && <span className="w-2 h-2 rounded-full bg-indigo-500" />}
+                      </span>
+                      <div>
+                        <div className="text-[14px] font-bold text-slate-900">{pack.credits.toLocaleString()} 크레딧</div>
+                      </div>
+                    </div>
+                    <div className="text-[15px] font-black text-slate-900">₩{pack.krw.toLocaleString()}</div>
                   </button>
-                )}
-              </div>
-
-              <ul className="space-y-2 flex-1">
-                <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>무제한</strong></Feature>
-                <Feature available>맞춤 공고 알림</Feature>
-                <Feature available>마감 알림 (카톡/이메일)</Feature>
-                <Feature available>공고 저장 · 일정관리</Feature>
-                <li className="!mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
-                  <ul className="space-y-1.5">
-                    <Feature available={false}>지원사업 상담 AI에이전트</Feature>
-                    <Feature available={false}>고객사별 상담/관리 AI에이전트</Feature>
-                  </ul>
-                </li>
-              </ul>
-
-              {!isLite && !isPro ? (
-                <p className="text-[10px] text-indigo-500 text-center mt-3 font-medium">결제 즉시 시작 · 매월 자동갱신</p>
-              ) : <div className="h-[24px]" />}
-            </div>}
-
-            {/* PRO — pro 모드에서만 표시 */}
-            {mode !== "lite" && <div className={`rounded-xl border-2 p-4 flex flex-col relative ${isPro ? "border-violet-400 bg-violet-50/30" : "border-violet-200 bg-white"}`}>
-              {isPro && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-violet-600 text-white text-[10px] font-bold rounded-full">현재 플랜</div>
-              )}
-              <div className="h-[90px] mb-4">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-[15px] font-bold text-violet-700">Pro</h3>
-                </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-slate-900">₩49,000</span>
-                  <span className="text-[11px] text-slate-400">/ 월</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">전문가용 무제한 AI 상담</p>
-              </div>
-
-              <div className="h-[44px] mb-4 flex items-center">
-                {isPro ? (
-                  <div className="w-full py-2.5 bg-violet-100 text-violet-700 rounded-lg text-[12px] font-bold text-center">
-                    현재 플랜 {planStatus?.days_left != null && planStatus.days_left > 0 ? `(D-${planStatus.days_left})` : ""}
-                  </div>
-                ) : isLite ? (
-                  <button onClick={() => { setPayMethod("card"); setPendingPlan("pro"); }} disabled={loading}
-                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    Pro로 업그레이드
-                  </button>
-                ) : (
-                  <button onClick={() => { setPayMethod("card"); setPendingPlan("pro"); }} disabled={loading}
-                    className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-[12px] font-bold hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-50">
-                    Pro 시작하기
-                  </button>
-                )}
-              </div>
-
-              <ul className="space-y-2 flex-1">
-                <Feature available>공고 열람</Feature>
-                <Feature available>공고AI 상담 — <strong>무제한</strong></Feature>
-                <Feature available>맞춤 공고 알림</Feature>
-                <Feature available>마감 알림 (카톡/이메일)</Feature>
-                <Feature available>공고 저장 · 일정관리</Feature>
-                <li className="!mt-3 p-2.5 rounded-lg bg-violet-50 border border-violet-200">
-                  <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-2">전문 컨설팅 상담 도구</p>
-                  <ul className="space-y-1.5">
-                    <Feature available>지원사업 상담 AI에이전트 — <strong>무제한</strong></Feature>
-                    <Feature available>고객사별 상담/관리 AI에이전트</Feature>
-                  </ul>
-                </li>
-              </ul>
-
-              {!isPro ? (
-                <p className="text-[10px] text-violet-500 text-center mt-3 font-medium">결제 즉시 시작 · 언제든 해지 가능</p>
-              ) : <div className="h-[24px]" />}
-            </div>}
+                );
+              })
+            )}
           </div>
 
+          {/* 충전 버튼 */}
+          <button
+            onClick={handleCharge}
+            disabled={loading || selectedPack === null}
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
+          >
+            {loading
+              ? "결제창을 여는 중..."
+              : selectedPack
+                ? `₩${selectedPack.krw.toLocaleString()} 결제하기`
+                : "충전할 상품을 선택하세요"}
+          </button>
 
-          {/* 닫기 */}
-          <button onClick={onClose} className="w-full py-2 text-slate-400 text-[12px] font-medium hover:text-slate-600 transition-all">
+          <button onClick={onClose} className="w-full py-2 mt-2 text-slate-400 text-[12px] font-medium hover:text-slate-600 transition-all">
             닫기
           </button>
         </div>

@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 import IndustryPicker from "@/components/shared/IndustryPicker";
-import SubscriptionManageModal from "@/components/SubscriptionManageModal";
 import EstablishmentDateInput from "@/components/shared/EstablishmentDateInput";
 import { renderMarkdown } from "@/lib/markdown";
 import { cleanExternalUrl } from "@/lib/url";
@@ -141,7 +140,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
   const [promoInput, setPromoInput] = useState("");          // 중앙 프로모션 코드 입력 (구 랜딩에서 이관)
   const [promoMsg, setPromoMsg] = useState("");
   const [homeStage, setHomeStage] = useState<"products" | "consult">("products"); // 홈: 제품 카드 → 고객 선택
-  const [showSubManage, setShowSubManage] = useState(false); // 구독 관리(해지·환불) 모달
 
   // /pro?code= 딥링크 → 코드 자동 입력
   useEffect(() => {
@@ -935,10 +933,7 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
           {userData && (
             <div className="hidden sm:flex items-center gap-2 mr-1">
               <span className="text-[11px] font-semibold opacity-80 max-w-[140px] truncate">{userData.company_name || userData.email}</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${["pro", "biz"].includes(planStatus?.plan) ? "bg-violet-500/40 text-violet-100" : "bg-white/15 opacity-80"}`}>{planStatus?.label || "FREE"}</span>
-              {["lite", "pro", "biz", "basic"].includes(planStatus?.plan) && (
-                <button onClick={() => setShowSubManage(true)} className="text-[10px] opacity-60 hover:opacity-100 underline">구독 관리</button>
-              )}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/40 text-violet-100">{typeof planStatus?.credits === "number" ? `${planStatus.credits.toLocaleString()} 크레딧` : "크레딧"}</span>
               <button onClick={onLogout} className="text-[10px] opacity-60 hover:opacity-100 underline">로그아웃</button>
             </div>
           )}
@@ -1095,10 +1090,8 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
                     {getToken() && planStatus && !["pro", "biz"].includes(planStatus.plan) && (
                       <div className={`rounded-xl border p-4 space-y-2 ${dark ? "border-violet-500/20 bg-white/[0.02]" : "border-violet-200 bg-violet-50/50"}`}>
                         <p className={`text-center text-[12px] ${t.muted}`}>
-                          {(planStatus?.pro_trial_remaining ?? 3) > 0
-                            ? <>상담 프로그램 무료 체험 <span className="font-bold text-violet-500">{planStatus?.pro_trial_remaining ?? 3}회</span> 남음 · </>
-                            : <>이번 달 무료 체험 소진 · </>}
-                          <button onClick={onUpgrade} className="text-violet-500 underline hover:text-violet-400 font-semibold">PRO 결제</button>
+                          전문가 도구는 크레딧으로 이용해요 ·{" "}
+                          <button onClick={onUpgrade} className="text-violet-500 underline hover:text-violet-400 font-semibold">충전하기</button>
                           {" 또는 프로모션 코드"}
                         </p>
                         <div className="flex gap-2">
@@ -2064,10 +2057,6 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
         </div>
       )}
 
-      {/* 구독 관리 (해지·환불) */}
-      {showSubManage && (
-        <SubscriptionManageModal planStatus={planStatus} onClose={() => setShowSubManage(false)} />
-      )}
     </div>
   );
 }

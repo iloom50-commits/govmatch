@@ -5040,6 +5040,49 @@ CREDIT_PACKS = json.loads(os.getenv(
 ))
 
 
+def _credits_for_krw(amount_krw: int) -> int:
+    """결제 금액(원)에 해당하는 충전 크레딧을 CREDIT_PACKS에서 조회. 없으면 0."""
+    for krw, credits in CREDIT_PACKS:
+        if krw == amount_krw:
+            return credits
+    return 0
+
+
+def _verify_portone_payment(payment_id: str) -> dict:
+    """PortOne V2 결제 단건 조회. {status, amount, user_id} 반환.
+
+    user_id는 결제 시 customData에 담긴 userId(문자열/숫자)를 int로 변환한 값,
+    없으면 None. 조회 실패 시 RuntimeError를 발생시킨다(호출부가 502로 변환).
+    """
+    if not PORTONE_API_SECRET:
+        raise RuntimeError("PORTONE_API_SECRET 미설정")
+    import httpx
+    try:
+        resp = httpx.get(
+            f"https://api.portone.io/payments/{payment_id}",
+            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
+            timeout=15,
+        )
+    except httpx.RequestError as e:
+        raise RuntimeError(f"PortOne 조회 네트워크 오류: {e}")
+    if resp.status_code != 200:
+        raise RuntimeError(f"PortOne 조회 실패 status={resp.status_code}")
+    payment = resp.json()
+    amount = (payment.get("amount") or {}).get("total")
+    custom_data = payment.get("customData")
+    user_id = None
+    if custom_data:
+        try:
+            if isinstance(custom_data, str):
+                custom_data = json.loads(custom_data)
+            raw_uid = custom_data.get("userId")
+            if raw_uid is not None:
+                user_id = int(raw_uid)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            user_id = None
+    return {"status": payment.get("status"), "amount": amount, "user_id": user_id}
+
+
 @app.get("/api/wallet/packs")
 def api_wallet_packs():
     """충전팩 목록 조회 (인증 불필요)."""
@@ -5062,6 +5105,53 @@ def api_wallet(current_user: dict = Depends(_get_current_user)):
         )
         transactions = [dict(row) for row in cur.fetchall()]
         return {"credits": credits, "transactions": transactions}
+    finally:
+        conn.close()
+
+
+class WalletChargeVerifyRequest(BaseModel):
+    payment_id: str
+
+
+@app.post("/api/wallet/charge/verify")
+def api_wallet_charge_verify(
+    req: WalletChargeVerifyRequest,
+    current_user: dict = Depends(_get_current_user),
+):
+    """PortOne 단건 결제를 검증하고 크레딧을 적립한다 (멱등)."""
+    uid = current_user["user_id"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # 멱등 fast-path: 이미 처리된 결제면 재적립 없이 현재 잔액만 반환
+        cur.execute("SELECT 1 FROM payments WHERE portone_id = %s", (req.payment_id,))
+        if cur.fetchone():
+            return {"ok": True, "credits": wallet.wallet_balance(cur, uid), "duplicate": True}
+
+        try:
+            payment = _verify_portone_payment(req.payment_id)
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+        if payment["status"] != "PAID":
+            raise HTTPException(status_code=400, detail="결제가 완료되지 않았습니다.")
+
+        payment_user_id = payment.get("user_id")
+        if payment_user_id is not None and payment_user_id != uid:
+            raise HTTPException(status_code=403, detail="본인 결제가 아닙니다.")
+        if payment_user_id is None:
+            print(f"[wallet-charge] customData.userId 없음 — payment_id={req.payment_id} uid={uid}")
+
+        amount = payment.get("amount")
+        credits = _credits_for_krw(amount)
+        if not credits:
+            raise HTTPException(status_code=400, detail="유효하지 않은 충전 금액입니다.")
+
+        new_balance = wallet.wallet_record_charge(cur, uid, amount, credits, req.payment_id)
+        if new_balance is None:
+            return {"ok": True, "credits": wallet.wallet_balance(cur, uid), "duplicate": True}
+        conn.commit()
+        return {"ok": True, "credits": new_balance}
     finally:
         conn.close()
 

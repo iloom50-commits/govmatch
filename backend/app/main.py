@@ -5977,8 +5977,7 @@ class AiConsultantChatRequest(BaseModel):
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
 def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depends(_get_current_user)):
-    """PRO: 공고 분석 — DB 우선, 없으면 자동 실시간 분석 (PRO 권한)"""
-    _require_pro(current_user)
+    """공고 분석 — DB 우선, 없으면 자동 실시간 분석 (크레딧 50, 성공 이후 차감. G2-3)"""
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -6046,20 +6045,28 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
         # 분석 없음 → 기본 정보만 + AI 분석 권유
         result["message"] = "이 공고는 아직 상세 분석되지 않았습니다. 기본 정보만 제공됩니다."
 
+    # 분석 성공(위 예외 없이 도달) 이후에만 차감 — 잔액부족 시 402가 여기서 그대로 던져진다.
+    _charge_credits(current_user, CREDIT_COST_ANALYZE, "deduct", ref=f"analyze:{announcement_id}")
     return result
 
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_consult_user)):
-    """PRO 전문가: 고객사 상담 채팅. PRO/biz 무제한, free는 핵심 액션 월 3회 무료 체험."""
-    # 핵심 분석 액션(매칭/공고상담/자금상담/상세분석)만 무료 체험 1회 차감. 후속 chat은 무차감.
+    """PRO 전문가: 고객사 상담 채팅. fund_consult/detail_analysis는 크레딧 차감(G2-4/G2-3),
+    나머지(match/consult/chat)는 기존 PRO/무료체험 게이트를 유지한다."""
+    # 크레딧 과금 대상(fund_consult/detail_analysis)은 구독/체험 게이트를 타지 않는다 —
+    # 각 핸들러 내부에서 성공 이후에만 _charge_credits로 차감한다.
     _act = (req.action or "").strip().lower()
     if not _act:
         _act = "consult" if req.announcement_id else ("match" if req.explicit_match else "")
-    _counts = _act in ("match", "consult", "fund_consult", "detail_analysis")
-    _require_pro_or_trial(current_user, counting=_counts)
+    if _act not in ("fund_consult", "detail_analysis"):
+        _counts = _act in ("match", "consult")
+        _require_pro_or_trial(current_user, counting=_counts)
     try:
         return _api_pro_consultant_chat_impl(req, current_user)
+    except HTTPException:
+        # 크레딧 402 등 의도된 HTTP 오류는 그대로 전파(아래 범용 catch가 200으로 삼키면 안 됨)
+        raise
     except Exception as outer_err:
         import traceback as _tb
         _tb_str = _tb.format_exc()[-800:]
@@ -6254,6 +6261,19 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
 
     pro_ctx = "individual" if fund_mode == "individual_fund" else "business"
 
+    # 턴 캡(원가 방어): 세션 내 user 메시지 수가 CONSULT_TURN_CAP을 넘으면 응답 생성 없이
+    # 플래그만 반환 — 프론트가 "새 상담으로 이어가기"를 안내한다(새 session_id면 신규 세션이라 재과금).
+    user_msg_count = sum(1 for m in (req.messages or []) if m.get("role") == "user")
+    if user_msg_count > CONSULT_TURN_CAP:
+        return {
+            "status": "SUCCESS",
+            "reply": "이 상담 세션의 대화 한도(15턴)에 도달했습니다. 새 상담으로 이어가 주세요.",
+            "choices": ["🆕 새 상담 시작"],
+            "done": True,
+            "session_id": req.session_id,
+            "turn_cap_reached": True,
+        }
+
     db = get_db_connection()
     try:
         # 1) 프로필 우선순위: profile_override (폼) > client_profiles (CRM 선택 고객)
@@ -6296,6 +6316,21 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
         for forbidden_key in ("business_number", "email", "password_hash"):
             profile.pop(forbidden_key, None)
 
+        # 2.5) 신규 세션 판별: ai_consult_logs에 이 session_id(본인 소유)로 저장된 로그가
+        # 이미 있으면 후속 턴(무차감), 없으면 신규 세션(성공 후 100크레딧 과금 대상).
+        # AI 호출 전에 판별해야 한다 — 호출 후 저장하는 로그 자체가 "기존 존재"가 되어버리면
+        # 매 턴이 항상 신규로 오판된다.
+        import uuid as _uuid
+        sid = req.session_id or f"fund_{_uuid.uuid4()}"
+        is_new_session = True
+        if req.session_id:
+            chk_cur = db.cursor()
+            chk_cur.execute(
+                "SELECT 1 FROM ai_consult_logs WHERE session_id = %s AND business_number = %s",
+                (req.session_id, current_user["bn"]),
+            )
+            is_new_session = chk_cur.fetchone() is None
+
         # 3) AI 호출 — pro_consult_context 플래그로 3인칭 화법 강제
         result = chat_lite_fund_expert(
             messages=req.messages,
@@ -6307,8 +6342,6 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
 
         # 4) 상담 로그 저장
         try:
-            import uuid as _uuid
-            sid = req.session_id or f"fund_{_uuid.uuid4()}"
             all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
             log_cur = db.cursor()
             log_cur.execute(
@@ -6326,13 +6359,18 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
             try: db.rollback()
             except: pass
 
+        # 5) 신규 세션 + LLM 응답 성공 이후에만 과금(세션당 1회). 후속 턴은 무차감.
+        # 잔액부족이면 여기서 402가 그대로 던져진다(위 finally에서 db.close()는 보장됨).
+        if is_new_session:
+            _charge_credits(current_user, CREDIT_COST_CONSULT, "consult", ref=sid)
+
         return {
             "status": "SUCCESS",
             "reply": result.get("reply", ""),
             "choices": result.get("choices", []),
             "announcements": result.get("announcements", []),
             "done": result.get("done", False),
-            "session_id": sid if 'sid' in dir() else req.session_id,
+            "session_id": sid,
         }
     finally:
         try: db.close()
@@ -6518,6 +6556,9 @@ def _handle_pro_detail_analysis(req: AiConsultantChatRequest, current_user: dict
             "공고 카드에서 상세 판정 근거를 확인하세요."
         )
 
+        # 분석 성공(Gemini 판정까지 완료) 이후에만 차감 — 잔액부족 시 402.
+        _charge_credits(current_user, CREDIT_COST_ANALYZE, "deduct", ref=f"detail_analysis:{(session_state or {}).get('session_id')}")
+
         return {
             "status": "SUCCESS",
             "reply": reply,
@@ -6526,6 +6567,9 @@ def _handle_pro_detail_analysis(req: AiConsultantChatRequest, current_user: dict
             "done": False,
             "session_id": (session_state or {}).get("session_id"),
         }
+    except HTTPException:
+        # 크레딧 402 등은 아래 범용 오류 처리로 삼키지 않고 그대로 전파
+        raise
     except Exception as e:
         print(f"[detail_analysis] error: {e}")
         import traceback; traceback.print_exc()

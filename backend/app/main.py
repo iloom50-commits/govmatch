@@ -13001,6 +13001,71 @@ def api_delete_saved(saved_id: int, current_user: dict = Depends(_get_current_us
 # PRO 전용 API — 고객사 프로필 관리 / 상담 이력 / 종합 리포트
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# ── 크레딧 차감 게이트 (Phase G2: 구독 → 크레딧) ──
+CREDIT_COST_ANALYZE = int(os.getenv("CREDIT_COST_ANALYZE", "50"))
+CREDIT_COST_CONSULT = int(os.getenv("CREDIT_COST_CONSULT", "100"))
+CREDIT_COST_PRO_TOOL = int(os.getenv("CREDIT_COST_PRO_TOOL", "500"))
+CONSULT_TURN_CAP = int(os.getenv("CONSULT_TURN_CAP", "15"))
+
+
+def _is_credit_exempt(current_user: dict) -> bool:
+    """서비스계정·관리자는 무차감(기존 우회 관행 유지).
+
+    - SmartDoc 서비스 토큰(_get_consult_user가 발급, _service=True, user_id 없음)은
+      DB 조회 없이 즉시 면제.
+    - 그 외는 JWT의 plan을 신뢰하지 않고(_require_pro와 동일 관행) DB에서 재조회해
+      plan in ('pro','biz')이고 만료되지 않았으면 면제. 서비스계정(bn 1411702215,
+      plan='pro' 무기한)·대표 계정(plan='pro')이 여기 해당한다.
+    """
+    if current_user.get("_service"):
+        return True
+    uid = current_user.get("user_id")
+    if uid is None:
+        return False
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT plan, plan_expires_at FROM users WHERE user_id = %s", (uid,))
+        u = cur.fetchone()
+    finally:
+        conn.close()
+    if not u:
+        return False
+    plan = u.get("plan") or "free"
+    if plan not in ("pro", "biz"):
+        return False
+    if u.get("plan_expires_at"):
+        try:
+            exp = datetime.datetime.fromisoformat(str(u["plan_expires_at"]))
+            if exp < datetime.datetime.utcnow():
+                return False
+        except (ValueError, TypeError):
+            pass
+    return True
+
+
+def _charge_credits(current_user: dict, amount: int, tx_type: str, ref=None) -> None:
+    """기능 성공 이후 호출할 것. 면제 대상은 무차감 통과. 잔액부족 시 402."""
+    if _is_credit_exempt(current_user):
+        return
+    uid = current_user["user_id"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if not wallet.wallet_deduct(cur, uid, amount, tx_type, ref):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "insufficient_credits",
+                    "required": amount,
+                    "balance": wallet.wallet_balance(cur, uid),
+                },
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _require_pro(current_user: dict):
     """PRO 플랜 체크. PRO/biz가 아니면 403."""
     conn = get_db_connection()

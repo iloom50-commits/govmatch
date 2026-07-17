@@ -5321,8 +5321,22 @@ class AiChatRequest(BaseModel):
 
 @app.post("/api/ai/chat")
 def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_user)):
-    """자유 상담: 중소기업 지원사업 전반에 대한 AI 상담"""
+    """자유 상담: 중소기업 지원사업 전반에 대한 AI 상담 (자금상담 100크레딧, 세션 첫 메시지·성공 후)"""
     bn = current_user["bn"]
+
+    # 턴 캡(원가 방어): 세션 내 user 메시지 수가 CONSULT_TURN_CAP(15)을 넘으면 응답 생성 없이
+    # 플래그만 반환 — 프론트가 "새 상담으로 이어가기"를 안내한다(새 세션이면 재과금).
+    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
+    if user_msg_count > CONSULT_TURN_CAP:
+        return {
+            "status": "SUCCESS",
+            "reply": "이 상담 세션의 대화 한도(15턴)에 도달했습니다. 새 상담으로 이어가 주세요.",
+            "choices": ["🆕 새 상담 시작"],
+            "done": True,
+            "session_id": req.session_id,
+            "turn_cap_reached": True,
+        }
+
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -5334,53 +5348,17 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
 
-    # 플랜/사용량 체크
-    plan = u.get("plan") or "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
-    if plan in ("trial", "premium"):
-        plan = "free"
-    limit = PLAN_LIMITS.get(plan, 1)
-    usage = u.get("ai_usage_month") or 0
-
-    # 월간 리셋
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    # 첫 메시지일 때만 건수 차감
+    # 신규 세션(첫 메시지) = 자금상담 100크레딧 과금 단위. 후속 턴은 무차감.
+    # 잔액부족은 LLM 호출 전에 402로 차단(원가 낭비 방지) — 차감은 LLM 성공 이후.
     is_first_message = len(req.messages) <= 1
-    if is_first_message:
-        if usage >= limit:
+    if is_first_message and not _is_credit_exempt(current_user):
+        bal = wallet.wallet_balance(cur, current_user["user_id"])
+        if bal < CREDIT_COST_CONSULT:
             conn.close()
-            raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
-        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-        conn.commit()
-        usage += 1
-
-    # 세션 내 메시지 수 제한 (플랜별 차별화)
-    session_msg_limit = SESSION_MSG_LIMITS.get(plan, 10)
-    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if user_msg_count > session_msg_limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"SESSION_MSG_LIMIT:{session_msg_limit}"
-        )
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "insufficient_credits", "required": CREDIT_COST_CONSULT, "balance": bal},
+            )
 
     # 통합 AI 엔진으로 자유 상담
     # 탭(mode)에 따라 프로필 필터링 — 기업탭이면 기업 정보만, 개인탭이면 개인 정보만
@@ -5402,14 +5380,14 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=filtered_profile, mode=req.mode)
 
     # ── 대화 저장 (P0.1+B): UPSERT by session_id ──
-    # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성
+    # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성 (과금 ref로도 사용)
+    sid = req.session_id
+    if not sid:
+        import hashlib
+        first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
+        sid = "free_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
     try:
         all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
-        sid = req.session_id
-        if not sid:
-            import hashlib
-            first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
-            sid = "free_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
         cur.execute(
             """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
                VALUES (NULL, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
@@ -5444,6 +5422,11 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         except Exception as learn_err:
             print(f"[LITE learning] {learn_err}")
 
+    # 신규 세션(첫 메시지) + LLM 성공 이후에만 100크레딧 차감. 후속 턴은 무차감.
+    # 잔액부족이면 여기서 402가 그대로 던져진다(위에서 사전 차단하므로 정상 흐름에선 미발생).
+    if is_first_message:
+        _charge_credits(current_user, CREDIT_COST_CONSULT, "consult", ref=sid)
+
     conn.close()
 
     return {
@@ -5453,8 +5436,8 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         "announcements": result.get("announcements", []),
         "matched": result.get("matched", []),
         "done": result.get("done", False),
-        "ai_used": usage,
-        "ai_limit": limit,
+        "ai_used": 0,
+        "ai_limit": 0,
     }
 
 

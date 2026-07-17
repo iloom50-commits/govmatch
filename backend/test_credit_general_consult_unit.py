@@ -375,6 +375,22 @@ def test_ai_consult_exempt_no_charge(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════
+# Task G2.5-4: 저장 무료 개방 (/api/saved/bulk)
+# ═════════════════════════════════════════════════════════════
+def test_saved_bulk_free_user_can_save(monkeypatch):
+    # free 플랜(크레딧 0) 유저도 로그인만으로 저장 성공해야 함(LITE_REQUIRED 403 제거)
+    state = {"users": {1: {"credits": 0}}, "profile": _default_profile("111-11-11111")}
+    _patch_db(monkeypatch, state)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+    body = main.SavedBulk(business_number="111-11-11111", announcement_ids=[1, 2])
+
+    result = main.api_save_bulk(body, current_user)
+
+    assert result["status"] == "SUCCESS"
+    assert result["inserted"] == 2, "free 유저도 2건 저장되어야 함"
+
+
+# ═════════════════════════════════════════════════════════════
 # 러너
 # ═════════════════════════════════════════════════════════════
 if __name__ == "__main__":

@@ -12611,23 +12611,9 @@ class SavedBulk(BaseModel):
 def api_save_bulk(body: SavedBulk, current_user: dict = Depends(_get_current_user)):
     if body.business_number != current_user["bn"]:
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
-    # FREE 플랜: 저장 불가
+    # 공고 저장 = 무료 개방(로그인만 요구). 기존 free 플랜 LITE_REQUIRED 403 제거(G2.5-4).
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT plan, plan_expires_at FROM users WHERE business_number=%s", (current_user["bn"],))
-    u = cursor.fetchone()
-    if u:
-        plan = u["plan"] or "free"
-        if plan != "free" and u["plan_expires_at"]:
-            import datetime as _dt
-            try:
-                if _dt.datetime.fromisoformat(str(u["plan_expires_at"])) < _dt.datetime.utcnow():
-                    plan = "free"
-            except Exception:
-                pass
-        if plan == "free":
-            conn.close()
-            raise HTTPException(status_code=403, detail="LITE_REQUIRED")
     inserted = 0
     try:
         for aid in body.announcement_ids:

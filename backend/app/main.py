@@ -4148,6 +4148,7 @@ def api_register(req: RegisterRequest, request: Request):
                  req.referred_by or None, req.user_type or "both"),
             )
             user_id = cursor.fetchone()["user_id"]
+            _grant_signup_bonus(cursor, user_id)
             # 추천 코드 자동 생성
             ref_code = _hashlib.md5(f'{req.business_number}{user_id}'.encode()).hexdigest()[:8].upper()
             cursor.execute("UPDATE users SET referral_code=%s WHERE business_number=%s", (ref_code, req.business_number))
@@ -4457,6 +4458,7 @@ def _social_login_or_register(provider: str, social_id: str, email: str, name: s
         row = cursor.fetchone()
         ref_code = _hashlib.md5(f'{bn}{row["user_id"]}'.encode()).hexdigest()[:8].upper()
         cursor.execute("UPDATE users SET referral_code=%s WHERE user_id=%s", (ref_code, row["user_id"]))
+        _grant_signup_bonus(cursor, row["user_id"])
         conn.commit()
 
         cursor.execute("SELECT * FROM users WHERE user_id = %s", (row["user_id"],))
@@ -5038,6 +5040,22 @@ CREDIT_PACKS = json.loads(os.getenv(
     "CREDIT_PACKS",
     '[[19000,20000],[49000,60000],[99000,150000],[199000,400000]]',
 ))
+
+SIGNUP_BONUS_CREDITS = int(os.getenv("SIGNUP_BONUS_CREDITS", "500"))
+
+
+def _grant_signup_bonus(cursor, user_id: int) -> None:
+    """신규 가입 직후 호출. signup_bonus 원장이 없을 때만 1회 지급한다.
+
+    호출부의 트랜잭션을 그대로 쓴다 — 여기서 commit하지 않는다.
+    """
+    cursor.execute(
+        "SELECT 1 FROM credit_transactions WHERE user_id = %s AND type = 'signup_bonus'",
+        (user_id,),
+    )
+    if cursor.fetchone():
+        return
+    wallet.wallet_add(cursor, user_id, SIGNUP_BONUS_CREDITS, "signup_bonus")
 
 
 def _credits_for_krw(amount_krw: int) -> int:
@@ -7882,6 +7900,29 @@ def _verify_admin(authorization: Optional[str] = Header(None)):
     expected = _create_admin_token()
     if not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+
+@app.post("/api/admin/credit/backfill-signup-bonus", dependencies=[Depends(_verify_admin)])
+def api_admin_credit_backfill_signup_bonus():
+    """기존 회원 중 signup_bonus 원장이 없는 전원에게 소급 지급 (멱등)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT user_id FROM users
+               WHERE user_id NOT IN (
+                   SELECT user_id FROM credit_transactions WHERE type = 'signup_bonus'
+               )"""
+        )
+        target_ids = [row["user_id"] for row in cur.fetchall()]
+        granted = 0
+        for uid in target_ids:
+            wallet.wallet_add(cur, uid, SIGNUP_BONUS_CREDITS, "signup_bonus")
+            granted += 1
+        conn.commit()
+        return {"granted": granted}
+    finally:
+        conn.close()
 
 
 @app.post("/api/admin/promo-codes", dependencies=[Depends(_verify_admin)])

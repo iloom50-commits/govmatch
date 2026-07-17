@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""크레딧 지갑 API(G1-3·G1-4) 단위 테스트: 충전팩 조회·잔액/원장 조회 + PortOne 충전 검증.
+"""크레딧 지갑 API(G1-3~G1-5) 단위 테스트: 충전팩 조회·잔액/원장 조회 + PortOne 충전 검증 + 가입 보너스.
 
 FastAPI 라우트 함수를 데코레이터 그대로 직접 호출한다(Depends 기본값은 무시하고
 current_user를 명시적으로 전달) — GovMatch 기존 관행(FakeCursor in-memory 모킹).
@@ -22,10 +22,12 @@ import app.main as m
 class FakeCursor:
     """users.credits / credit_transactions / payments 를 in-memory로 시뮬레이션."""
 
-    def __init__(self, users=None, payments=None):
+    def __init__(self, users=None, payments=None, tx_types=None):
         self._users = users or {}  # user_id -> credits
         self.tx_log = []  # {user_id, type, amount, balance_after, ref}
         self.payments = payments or {}  # portone_id -> row
+        # user_id -> set(tx types already recorded) — signup_bonus 중복검사용 seed
+        self._seed_tx_types = tx_types or {}
         self._result = None
         self._results = []
         self.rowcount = 0
@@ -59,6 +61,7 @@ class FakeCursor:
                 "user_id": user_id, "type": tx_type, "amount": amount,
                 "balance_after": balance_after, "ref": ref,
             })
+            self._seed_tx_types.setdefault(user_id, set()).add(tx_type)
             self.rowcount = 1
 
         elif s.startswith("INSERT INTO payments"):
@@ -80,6 +83,11 @@ class FakeCursor:
             portone_id = params[0]
             self._result = {"?column?": 1} if portone_id in self.payments else None
 
+        elif s.startswith("SELECT 1 FROM credit_transactions WHERE user_id") and "signup_bonus" in s:
+            user_id = params[0]
+            has = "signup_bonus" in self._seed_tx_types.get(user_id, set())
+            self._result = {"?column?": 1} if has else None
+
         elif s.startswith("SELECT type, amount, balance_after, ref, created_at"):
             user_id = params[0]
             rows = [t for t in reversed(self.tx_log) if t["user_id"] == user_id]
@@ -87,6 +95,12 @@ class FakeCursor:
                 {"type": t["type"], "amount": t["amount"], "balance_after": t["balance_after"],
                  "ref": t["ref"], "created_at": None}
                 for t in rows[:50]
+            ]
+
+        elif "NOT IN" in s and s.startswith("SELECT user_id FROM users"):
+            self._results = [
+                {"user_id": uid} for uid in self._users
+                if "signup_bonus" not in self._seed_tx_types.get(uid, set())
             ]
 
         else:
@@ -245,6 +259,45 @@ def test_charge_verify_portone_lookup_failure_502():
             assert False, "502 예외가 발생해야 함"
         except m.HTTPException as e:
             assert e.status_code == 502
+    finally:
+        _restore()
+
+
+# ─────────────────────────────────────────────────────────────
+# 가입 보너스
+# ─────────────────────────────────────────────────────────────
+def test_grant_signup_bonus_first_time():
+    cur = FakeCursor(users={10: 0})
+    m._grant_signup_bonus(cur, 10)
+    assert cur._users[10] == 500
+    assert len(cur.tx_log) == 1
+    assert cur.tx_log[0]["type"] == "signup_bonus"
+
+
+def test_grant_signup_bonus_already_granted_is_noop():
+    cur = FakeCursor(users={10: 0})
+    m._grant_signup_bonus(cur, 10)
+    m._grant_signup_bonus(cur, 10)
+    assert cur._users[10] == 500, "두 번째 호출에서 중복 지급되면 안 됨"
+    assert len(cur.tx_log) == 1
+
+
+def test_backfill_signup_bonus_batch_idempotent():
+    # user 20: 이미 signup_bonus 있음(소급 대상 아님) / user 21: 없음(소급 대상)
+    cur = FakeCursor(
+        users={20: 500, 21: 0},
+        tx_types={20: {"signup_bonus"}},
+    )
+    try:
+        _patch_db(cur)
+        result = m.api_admin_credit_backfill_signup_bonus()
+        assert result == {"granted": 1}
+        assert cur._users[21] == 500
+        assert cur._users[20] == 500, "이미 지급된 회원은 변동 없어야 함"
+
+        # 재실행 — 멱등(전원 이미 지급됨 → 0건)
+        result2 = m.api_admin_credit_backfill_signup_bonus()
+        assert result2 == {"granted": 0}
     finally:
         _restore()
 

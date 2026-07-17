@@ -5742,16 +5742,11 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_consult_user)):
-    """PRO 전문가: 고객사 상담 채팅. fund_consult/detail_analysis는 크레딧 차감(G2-4/G2-3),
-    나머지(match/consult/chat)는 기존 PRO/무료체험 게이트를 유지한다."""
-    # 크레딧 과금 대상(fund_consult/detail_analysis)은 구독/체험 게이트를 타지 않는다 —
-    # 각 핸들러 내부에서 성공 이후에만 _charge_credits로 차감한다.
-    _act = (req.action or "").strip().lower()
-    if not _act:
-        _act = "consult" if req.announcement_id else ("match" if req.explicit_match else "")
-    if _act not in ("fund_consult", "detail_analysis"):
-        _counts = _act in ("match", "consult")
-        _require_pro_or_trial(current_user, counting=_counts)
+    """PRO 전문가: 고객사 상담 채팅. 모든 action이 크레딧/무료로 전환됨(G2.5-5):
+    fund_consult=100·consult/detail_analysis=50(성공 후 차감)·match/chat=무료."""
+    # G2.5-5: 모든 action이 크레딧/무료로 전환됨 — 구독·무료체험 게이트(_require_pro_or_trial) 제거.
+    #   match=무료 / consult=성공 후 50크레딧 / chat=무료 / fund_consult=100 / detail_analysis=50
+    #   (과금은 각 핸들러 내부에서 기능 성공 이후에만 _charge_credits로 수행).
     try:
         return _api_pro_consultant_chat_impl(req, current_user)
     except HTTPException:
@@ -6480,6 +6475,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 if last_user and last_user.get("role") == "user":
                     effective_messages = db_msgs + [last_user]
 
+        llm_ok = False
         try:
             v2_result = chat_pro_announce(
                 messages=effective_messages,
@@ -6490,6 +6486,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 collected=coll,
                 force_first_turn=bool(req.is_announcement_start),
             )
+            llm_ok = True
         except Exception as ai_err:
             import traceback as _tb
             _tb_str = _tb.format_exc()[-500:]
@@ -6570,6 +6567,13 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                         })
         except Exception as _cm_err:
             print(f"[PRO consult] mention search error: {_cm_err}")
+
+        # 공고심화상담 50크레딧 — 기능(chat_pro_announce) 성공 이후에만 차감.
+        # 이 경로는 세션 신규/기존 판별 수단이 없어 호출당 1회 과금한다(fund_consult의 세션당
+        # 과금과 달리, pro_consult_sessions는 매 턴 upsert되어 신규 여부를 안정적으로 구분할 수
+        # 없기 때문). 잔액부족이면 여기서 402가 그대로 전파된다(finally에서 db.close() 보장).
+        if llm_ok:
+            _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=f"pro_consult:{ann_id}")
 
         return {
             "status": "SUCCESS",

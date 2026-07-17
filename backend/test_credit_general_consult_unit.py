@@ -391,6 +391,105 @@ def test_saved_bulk_free_user_can_save(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════
+# Task G2.5-5: PRO 잔재 정리 — match 무료 / consult 50 / chat 무료
+# ═════════════════════════════════════════════════════════════
+import app.services.pro_announce as pro_announce
+
+
+def _gate_must_not_run(*a, **k):
+    raise AssertionError("구독/체험 게이트(_require_pro_or_trial)가 호출되면 안 됨")
+
+
+def test_pro_match_is_free_no_gate(monkeypatch):
+    monkeypatch.setattr(main, "_require_pro_or_trial", _gate_must_not_run)
+    monkeypatch.setattr(main, "_handle_pro_match", lambda req, cu: {"status": "SUCCESS", "action": "match"})
+    req = main.AiConsultantChatRequest(messages=[{"role": "user", "text": "매칭"}],
+                                       action="match", explicit_match=True,
+                                       profile_override={"industry_code": "62"})
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main.api_pro_consultant_chat(req, current_user)
+
+    assert result["status"] == "SUCCESS" and result["action"] == "match"
+
+
+def test_pro_chat_is_free_no_gate(monkeypatch):
+    monkeypatch.setattr(main, "_require_pro_or_trial", _gate_must_not_run)
+    monkeypatch.setattr(main, "_handle_pro_chat", lambda req, cu: {"status": "SUCCESS", "action": "chat"})
+    req = main.AiConsultantChatRequest(messages=[{"role": "user", "text": "후속 질문"}], action="chat")
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main.api_pro_consultant_chat(req, current_user)
+
+    assert result["status"] == "SUCCESS" and result["action"] == "chat"
+
+
+def _pro_consult_req(session_id=None, announcement_id=123):
+    return main.AiConsultantChatRequest(
+        messages=[{"role": "user", "text": "이 공고 지원 가능한가요?"}],
+        action="consult", announcement_id=announcement_id, session_id=session_id,
+    )
+
+
+def _patch_pro_consult(monkeypatch, state, announce_fn=None):
+    _patch_db(monkeypatch, state)
+    monkeypatch.setattr(main, "_load_client", lambda db, cid, bn: None)
+    monkeypatch.setattr(
+        pro_announce, "chat_pro_announce",
+        announce_fn or (lambda **k: {"reply": "지원 가능성이 있습니다", "choices": [], "done": False}),
+    )
+
+
+def test_pro_consult_charges_50_after_success(monkeypatch):
+    state = {"users": {1: {"credits": 300}}, "profile": _default_profile("111-11-11111")}
+    _patch_pro_consult(monkeypatch, state)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main._handle_pro_consult(_pro_consult_req(), current_user)
+
+    assert result["status"] == "SUCCESS"
+    assert state["users"][1]["credits"] == 250, "consult 성공 후 50크레딧 차감되어야 함"
+
+
+def test_pro_consult_insufficient_402(monkeypatch):
+    state = {"users": {1: {"credits": 30}}, "profile": _default_profile("111-11-11111")}
+    _patch_pro_consult(monkeypatch, state)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    try:
+        main._handle_pro_consult(_pro_consult_req(), current_user)
+        assert False, "402가 발생해야 함"
+    except HTTPException as e:
+        assert e.status_code == 402
+    assert state["users"][1]["credits"] == 30, "잔액부족 시 차감되면 안 됨"
+
+
+def test_pro_consult_llm_failure_no_charge(monkeypatch):
+    state = {"users": {1: {"credits": 300}}, "profile": _default_profile("111-11-11111")}
+
+    def _boom_announce(**k):
+        raise RuntimeError("chat_pro_announce 실패")
+
+    _patch_pro_consult(monkeypatch, state, announce_fn=_boom_announce)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main._handle_pro_consult(_pro_consult_req(), current_user)
+
+    assert result["status"] == "SUCCESS"  # 폴백 응답
+    assert state["users"][1]["credits"] == 300, "LLM 실패 시 차감되면 안 됨"
+
+
+def test_pro_consult_exempt_no_charge(monkeypatch):
+    state = {"users": {}, "profile": _default_profile("svc-bn")}
+    _patch_pro_consult(monkeypatch, state)
+    current_user = {"bn": "svc-bn", "sub": "smartdoc-service", "_service": True}
+
+    result = main._handle_pro_consult(_pro_consult_req(), current_user)
+
+    assert result["status"] == "SUCCESS"
+
+
+# ═════════════════════════════════════════════════════════════
 # 러너
 # ═════════════════════════════════════════════════════════════
 if __name__ == "__main__":

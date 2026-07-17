@@ -101,9 +101,9 @@ export default function ProPageClient() {
     finally { setSubmitting(false); }
   };
 
-  const handlePaymentSuccess = (token: string, plan: any) => {
-    localStorage.setItem("auth_token", token);
-    setPlanStatus(plan);
+  const handlePaymentSuccess = (credits: number) => {
+    // 충전은 토큰 재발급이 없음 — 잔액만 갱신
+    setPlanStatus((prev: any) => prev ? { ...prev, credits } : { credits });
     setShowPayment(false);
   };
 

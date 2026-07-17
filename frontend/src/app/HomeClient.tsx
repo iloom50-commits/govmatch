@@ -61,6 +61,7 @@ interface PlanStatus {
   ai_used?: number;
   ai_limit?: number;
   consult_limit?: number;
+  credits?: number;
 }
 
 // Steps:
@@ -79,6 +80,7 @@ export default function Home() {
   const [matches, setMatches] = useState<any[]>([]);
   const [updateRequired, setUpdateRequired] = useState(false);
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
@@ -177,6 +179,21 @@ export default function Home() {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     return headers;
+  }, []);
+
+  // 지갑 잔액 최신화 — 단일 소스는 /api/wallet 의 credits (충전/차감 직후 호출)
+  const refreshWallet = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API}/api/wallet`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data.credits === "number") {
+        setCredits(data.credits);
+        setPlanStatus((prev) => prev ? { ...prev, credits: data.credits } : prev);
+      }
+    } catch { /* 무시 */ }
   }, []);
 
   const handleEditProfile = () => setStep("PROFILE");
@@ -296,6 +313,7 @@ export default function Home() {
       const data = await res.json();
       const user = data.user;
       setPlanStatus(data.plan);
+      if (typeof data.plan?.credits === "number") setCredits(data.plan.credits);
       setBusinessNumber(user.business_number);
       setProfileData(user);
 
@@ -617,24 +635,6 @@ export default function Home() {
         </div>
       )}
 
-      {planStatus?.plan === "expired" && step === "RESULTS" && (
-        <div className="w-full max-w-[1600px] mx-auto mb-6 p-5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-500 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔒</span>
-            <div>
-              <p className="text-rose-900 font-bold text-sm">구독이 만료되었습니다</p>
-              <p className="text-rose-700 text-xs font-medium">플랜을 선택하면 AI 기능을 계속 이용할 수 있습니다.</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowPayment(true)}
-            className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg text-sm"
-          >
-            플랜 선택하기
-          </button>
-        </div>
-      )}
-
       {/* 프로필 미완성 유도 배너 */}
       {step === "RESULTS" && profileData && !profileData.user_type && (
         <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-top duration-500 shadow-sm">
@@ -714,7 +714,7 @@ export default function Home() {
       )}
 
       {step === "PROFILE" && (
-        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} planStatus={planStatus} onOpenNotify={() => { setOpenNotifyOnReturn(true); setStep("RESULTS"); }} />
+        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} planStatus={credits !== null ? { ...planStatus, credits } : planStatus} onCharge={() => { setStep("RESULTS"); setShowPayment(true); }} onOpenNotify={() => { setOpenNotifyOnReturn(true); setStep("RESULTS"); }} />
       )}
 
       {step === "RESULTS" && (
@@ -796,17 +796,14 @@ export default function Home() {
 
       {showPayment && (
         <PaymentModal
-          mode="lite"
-          planStatus={planStatus}
+          planStatus={credits !== null ? { ...planStatus, credits } : planStatus}
           userType={profileData?.user_type}
-          onSuccess={(newToken, newPlan) => {
-            // 새 플랜 토큰 저장 — 없으면 새로고침 시 옛 토큰(free)으로 되돌아감(구독관리·환불 숨김)
-            if (newToken) localStorage.setItem("auth_token", newToken);
-            setPlanStatus(newPlan);
+          onSuccess={(newCredits) => {
+            // 충전은 토큰 재발급이 없음 — 잔액만 갱신
+            setCredits(newCredits);
+            setPlanStatus((prev) => prev ? { ...prev, credits: newCredits } : prev);
             setShowPayment(false);
-            if (planStatus?.plan === "expired") {
-              performMatching(businessNumber);
-            }
+            refreshWallet();
           }}
           onClose={() => setShowPayment(false)}
         />

@@ -150,7 +150,7 @@ export default function LoginModal({ onLoginSuccess, onClose, onGoToRegister }: 
               </div>
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="text-indigo-500 flex-shrink-0">&#10003;</span>
-                <span className="text-slate-700 font-medium">AI 공고상담 <strong>월 3회 무료</strong></span>
+                <span className="text-slate-700 font-medium">가입 시 <strong>500 크레딧 지급</strong> (AI 상담·분석에 사용)</span>
               </div>
             </div>
           </div>

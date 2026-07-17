@@ -2,7 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
-import SubscriptionManageModal from "@/components/SubscriptionManageModal";
+
+const API = process.env.NEXT_PUBLIC_API_URL;
+
+// 지갑 거래유형 → 한글 라벨
+const TX_LABEL: Record<string, string> = {
+  charge: "충전",
+  deduct: "사용",
+  signup_bonus: "가입보너스",
+  refund: "환불",
+  pilot: "체험",
+};
+
+interface WalletTx { type: string; amount: number; balance_after?: number; ref?: string; created_at?: string }
 
 interface ProfileSettingsProps {
   profile: any;
@@ -10,23 +22,34 @@ interface ProfileSettingsProps {
   onClose: () => void;
   onLogout?: () => void;
   onOpenNotify?: () => void;
+  onCharge?: () => void;
   planStatus?: any;
 }
 
-export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, planStatus }: ProfileSettingsProps) {
+export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, onCharge, planStatus }: ProfileSettingsProps) {
   useModalBack(true, onClose);
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
   const [showPwChange, setShowPwChange] = useState(false);
-  const [showSubManage, setShowSubManage] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [wallet, setWallet] = useState<{ credits: number; transactions: WalletTx[] } | null>(null);
 
-  const plan = planStatus?.plan || "free";
-  const label = planStatus?.label || "FREE";
-  const daysLeft = planStatus?.days_left;
+  // 지갑 잔액·최근 내역 로드
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    let alive = true;
+    fetch(`${API}/api/wallet`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && typeof d.credits === "number") setWallet(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const credits = wallet?.credits ?? (typeof planStatus?.credits === "number" ? planStatus.credits : null);
 
   const userTypeLabel: Record<string, string> = { individual: "개인", business: "사업자", both: "개인+사업자" };
   const userType = profile?.user_type || "business";
@@ -144,28 +167,48 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
           {/* 구분 */}
           <div className="h-2 bg-slate-50 mt-2" />
 
-          {/* ── 구독 정보 ── */}
+          {/* ── 크레딧 ── */}
           <div className="px-5 pt-4 pb-1">
-            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-2">구독 정보</p>
+            <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest mb-2">크레딧</p>
           </div>
           <div className="px-5">
-            <Row
-              label="플랜"
-              value={`${label}${daysLeft !== undefined && daysLeft !== null && plan !== "free" && plan !== "expired" ? ` (D-${daysLeft})` : ""}`}
-              accent
-            />
-            <Divider />
-            <Row
-              label="공고AI 상담"
-              value={(planStatus?.consult_limit || 0) >= 999 ? "무제한" : `${planStatus?.ai_used || 0} / ${planStatus?.consult_limit || 0}회`}
-            />
-            <Divider />
-            <Row label="저장 · 알림" value={plan === "free" ? "불가" : "사용 가능"} />
-            {["lite", "pro", "biz", "basic"].includes(plan) && (
-              <>
-                <Divider />
-                <Row label="구독 관리 (해지·환불)" value="" onClick={() => setShowSubManage(true)} />
-              </>
+            <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-[12px] text-slate-500 mb-0.5">잔액</p>
+                <p className="text-[22px] font-black text-blue-600 leading-none">
+                  {credits !== null ? credits.toLocaleString() : "-"}
+                  <span className="text-[14px] font-bold text-slate-400 ml-1">크레딧</span>
+                </p>
+              </div>
+              {onCharge && (
+                <button
+                  onClick={onCharge}
+                  className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-[13px] font-bold hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  충전하기
+                </button>
+              )}
+            </div>
+
+            {wallet?.transactions && wallet.transactions.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-1">최근 내역</p>
+                {wallet.transactions.slice(0, 5).map((tx, i) => (
+                  <div key={i} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] text-slate-700">{TX_LABEL[tx.type] || tx.type}</span>
+                      {tx.created_at && (
+                        <span className="text-[11px] text-slate-400">
+                          {new Date(tx.created_at).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-[14px] font-bold ${tx.amount >= 0 ? "text-blue-600" : "text-slate-500"}`}>
+                      {tx.amount >= 0 ? "+" : ""}{Number(tx.amount).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -273,10 +316,6 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
           </div>
         </div>
       </div>
-
-      {showSubManage && (
-        <SubscriptionManageModal planStatus={planStatus} onClose={() => setShowSubManage(false)} />
-      )}
     </div>
   );
 }

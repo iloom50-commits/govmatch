@@ -141,11 +141,7 @@ def test_subscribe_no_undefined_trial_days():
     assert "무료 체험이 시작" not in src, "'무료 체험 시작' 메시지 잔존 (즉시 청구 정책 위반)"
 
 
-def test_subscribe_charges_immediately():
-    import inspect
-    import app.main as m
-    src = inspect.getsource(m.api_plan_subscribe)
-    assert "_charge_billing_key" in src, "subscribe가 즉시 청구를 호출하지 않음"
+# (폐기됨 2026-07-16: 구독→크레딧 전환으로 api_plan_subscribe는 410. 즉시청구 검증 무의미.)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -226,21 +222,8 @@ def test_cancel_v2_failure():
         m.PORTONE_API_SECRET = orig_secret
 
 
-def test_refund_endpoint_uses_real_cancel():
-    """환불 API가 실제 취소 호출 없이 성공 메시지만 반환하던 결함 회귀 방지."""
-    import inspect
-    import app.main as m
-    src = inspect.getsource(m.api_plan_refund)
-    assert "_cancel_payment" in src, "환불 API가 실제 취소를 호출하지 않음"
-    assert "환불이 처리되었습니다" not in src or "_cancel_payment" in src
-
-
-def test_subscribe_no_pg_fails_loud():
-    """PG 미설정 시 무료 구독으로 조용히 넘어가지 않고 명시적 오류."""
-    import inspect
-    import app.main as m
-    src = inspect.getsource(m.api_plan_subscribe)
-    assert "첫 청구 생략" not in src, "PG 미설정 시 무과금 구독 경로 잔존"
+# (폐기됨 2026-07-16: 구독→크레딧 전환으로 api_plan_refund·api_plan_subscribe는 410.
+#  구독 청구/취소/무과금 검증은 무의미해져 제거.)
 
 
 # ─────────────────────────────────────────────────────────────

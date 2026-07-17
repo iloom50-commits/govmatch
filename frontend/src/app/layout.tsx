@@ -238,7 +238,7 @@ export default function RootLayout({
                 "@type": "Offer",
                 "price": "0",
                 "priceCurrency": "KRW",
-                "description": "무료 플랜 — 맞춤 공고 알림 무제한, AI 상담 월 3회"
+                "description": "지원금 매칭·맞춤 알림 무제한 무료 + 가입 시 500 크레딧 지급. AI 상담·분석은 크레딧으로 이용."
               },
               "provider": {
                 "@type": "Organization",
@@ -323,7 +323,7 @@ export default function RootLayout({
                   "name": "지원금AI는 무료인가요?",
                   "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "네, 기본 기능은 무료입니다. 회원가입 후 업종·지역·매출 정보를 입력하면 맞춤 지원금 공고를 무제한으로 받아볼 수 있으며, AI 상담은 월 3회 무료로 이용 가능합니다."
+                    "text": "네, 지원금 매칭과 맞춤 공고 알림은 무제한 무료입니다. 회원가입 후 업종·지역·매출 정보를 입력하면 맞춤 지원금 공고를 무제한으로 받아볼 수 있습니다. AI 상담·분석 등은 크레딧으로 이용하며, 가입 시 500 크레딧을 드립니다."
                   }
                 },
                 {
@@ -399,7 +399,7 @@ export default function RootLayout({
                 <ul className="text-[12px] text-slate-600 space-y-1.5">
                   <li>✓ 17,000건+ 공고 실시간 분석</li>
                   <li>✓ 조건 입력 후 30초 내 맞춤 매칭</li>
-                  <li>✓ AI 자금 상담 (LITE)</li>
+                  <li>✓ AI 자금 상담 (크레딧)</li>
                   <li>✓ 마감 임박 공고 자동 알림</li>
                   <li>✓ 무료로 시작 가능</li>
                 </ul>

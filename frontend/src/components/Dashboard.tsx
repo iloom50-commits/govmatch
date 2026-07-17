@@ -76,7 +76,7 @@ function PublicNudgeButton({ onClick }: { onClick: () => void }) {
     <div className="relative z-10">
       {showBubble && (
         <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-blue-700 text-white text-[11px] font-bold rounded-full whitespace-nowrap shadow-lg animate-bounce z-20">
-          가입 즉시 7일 무료체험!
+          가입하고 AI 맞춤 알림 받기!
           <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-700 rotate-45" />
         </div>
       )}
@@ -288,7 +288,7 @@ function HotIssueTicker() {
 
 
 // 마이페이지 버튼 + 스마트 말풍선 (D-3 업그레이드 / 새 맞춤 공고 / 프로필 미완성)
-function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { profile: any; planStatus?: any; newMatchCount?: number; onClick: () => void }) {
+function ProfileNudgeButton({ profile, newMatchCount, onClick }: { profile: any; newMatchCount?: number; onClick: () => void }) {
   const [showBubble, setShowBubble] = useState(false);
   const [bubbleMsg, setBubbleMsg] = useState("");
 
@@ -298,13 +298,8 @@ function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { p
     )
   );
 
-  // 우선순위: D-3 > 새 공고 N건 > 프로필 미완성
+  // 우선순위: 새 공고 N건 > 프로필 미완성
   const getMsg = (): string | null => {
-    const plan = planStatus?.plan;
-    const daysLeft = planStatus?.days_left;
-    if (plan === "lite_trial" && typeof daysLeft === "number" && daysLeft <= 3) {
-      return `LITE 무료체험 D-${daysLeft}! 지금 결제하세요`;
-    }
     if (newMatchCount && newMatchCount > 0) {
       return `새 맞춤 공고 ${newMatchCount}건 업데이트됐어요`;
     }
@@ -328,7 +323,7 @@ function ProfileNudgeButton({ profile, planStatus, newMatchCount, onClick }: { p
     const timer1 = setTimeout(show, 20000);
     const timer2 = setInterval(show, 180000);
     return () => { clearTimeout(timer1); clearInterval(timer2); };
-  }, [isIncomplete, planStatus?.days_left, newMatchCount]);
+  }, [isIncomplete, newMatchCount]);
 
   return (
     <div className="relative">
@@ -486,6 +481,7 @@ interface PlanStatus {
   ai_used?: number;
   ai_limit?: number;
   consult_limit?: number;
+  credits?: number;
   guide_price?: number | null;
 }
 
@@ -641,7 +637,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const [notifyShortcut, setNotifyShortcut] = useState(false);  // true면 모달이 알림 설정만 바로 표시 (프로필 스텝 스킵)
   const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
-  const [showPromoModal, setShowPromoModal] = useState(false);
 
   // 하단 pill: 스크롤 내릴 때 숨김(피드 카드 가림 최소화), 올리거나 최상단이면 표시
   const [pillHidden, setPillHidden] = useState(false);
@@ -1173,14 +1168,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useModalBack(sidebarOpen, () => setSidebarOpen(false));
   useModalBack(showMatchedMode, () => setShowMatchedMode(false));
 
-  const isFree = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
-
   const toggleSelect = (id: number) => {
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -1192,11 +1180,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const handleInstantSave = async (announcementId: number) => {
     if (!bn) return;
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     const alreadySaved = savedItems.find(s => s.announcement_id === announcementId);
     const token = localStorage.getItem("auth_token") || "";
 
@@ -1238,11 +1221,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const handleBulkSave = async () => {
     if (!bn || selectedIds.size === 0) return;
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     setSaving(true);
     try {
       const token = localStorage.getItem("auth_token") || "";
@@ -1593,63 +1571,24 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       })()}
 
       {planStatus && (
-        <div className={`relative z-10 p-4 rounded-xl border ${
-          planStatus.plan === "pro" || planStatus.plan === "biz"
-            ? "bg-blue-50 border-blue-200"
-            : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
-            ? "bg-blue-50 border-blue-200"
-            : planStatus.plan === "expired"
-            ? "bg-rose-50 border-rose-200"
-            : "bg-slate-50 border-slate-200"
-        }`}>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-[11px] font-bold uppercase tracking-widest ${
-              planStatus.plan === "pro" || planStatus.plan === "biz"
-                ? "text-blue-600"
-                : planStatus.plan === "lite" || planStatus.plan === "lite_trial" || planStatus.plan === "basic"
-                ? "text-blue-600"
-                : planStatus.plan === "expired"
-                ? "text-rose-600"
-                : "text-slate-500"
-            }`}>
-              {planStatus.label}
+        <div className="relative z-10 p-4 rounded-xl border bg-blue-50 border-blue-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-blue-600">크레딧</span>
+          </div>
+          <div className="flex items-baseline gap-1 mb-2.5">
+            <span className="text-[22px] font-black text-blue-600 leading-none">
+              {typeof planStatus.credits === "number" ? planStatus.credits.toLocaleString() : "-"}
             </span>
-            {planStatus.days_left != null && planStatus.days_left > 0 && (
-              <span className="text-[11px] font-semibold text-slate-400">
-                {((planStatus.plan === "pro" && planStatus.days_left <= 7) || (planStatus.plan === "lite" && planStatus.days_left <= 30)) ? "무료체험 " : ""}D-{planStatus.days_left}
-              </span>
-            )}
+            <span className="text-[12px] font-bold text-slate-400">크레딧</span>
           </div>
-          {/* 기능별 상태 요약 */}
-          <div className="space-y-1.5 mb-2">
-            {/* 공고AI 상담 */}
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-slate-500 font-medium">공고AI 상담</span>
-              <span className={`font-bold ${
-                (planStatus.consult_limit || 0) >= 999999 ? "text-emerald-600" :
-                (planStatus.consult_limit || 0) > 0 ? "text-amber-600" : "text-slate-400"
-              }`}>
-                {(planStatus.consult_limit || 0) >= 999999 ? "무제한" : (planStatus.consult_limit || 0) > 0 ? `${planStatus.ai_used || 0}/${planStatus.consult_limit}회` : "LITE부터"}
-              </span>
-            </div>
-            {/* 저장/알림 */}
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-slate-500 font-medium">저장 · 알림</span>
-              <span className={`font-bold ${isFree ? "text-slate-400" : "text-emerald-600"}`}>
-                {isFree ? "LITE부터" : "사용 가능"}
-              </span>
-            </div>
-          </div>
-          {!["pro", "biz"].includes(planStatus.plan) && onUpgrade && (
+          {onUpgrade && (
             <button
               onClick={onUpgrade}
-              className="w-full py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold hover:bg-amber-600 transition-all active:scale-95"
+              className="w-full py-2 bg-blue-600 text-white rounded-lg text-[12px] font-bold hover:bg-blue-700 transition-all active:scale-95"
             >
-              {planStatus.plan === "expired" ? "플랜 시작하기" : "업그레이드"}
+              충전하기
             </button>
           )}
-          {/* PRO 고객사 관리 AI → FAB의 "전문가 상담 에이전트"로 통합 */}
-          {/* 구독 해지 → 마이페이지로 이동 */}
         </div>
       )}
 
@@ -1707,7 +1646,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         <div className="grid grid-cols-2 gap-2">
           <ProfileNudgeButton
             profile={profile}
-            planStatus={planStatus}
             newMatchCount={newMatchCount}
             onClick={() => { onEditProfile(); setSidebarOpen(false); }}
           />
@@ -1750,29 +1688,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   return (
     <div className="w-full max-w-[1280px] mx-auto animate-in fade-in duration-700 px-1 sm:px-2 lg:px-0 overflow-x-clip">
-
-      {/* LITE 7일 무료체험 배너 */}
-      {planStatus && planStatus.plan === "lite" && typeof planStatus.days_left === "number" && planStatus.days_left >= 0 && planStatus.days_left <= 7 && (
-        <button
-          onClick={() => setShowPromoModal(true)}
-          className="w-full mb-3 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-blue-600 text-white px-4 py-3 shadow-md text-left active:scale-[0.99] transition-transform"
-        >
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-lg">🎁</span>
-              <div className="min-w-0">
-                <div className="text-[13px] font-bold truncate">
-                  LITE 7일 무료체험 중 · D-{planStatus.days_left}
-                </div>
-                <div className="text-[11px] opacity-90 truncate">
-                  가입 후 7일간 모든 기능 무료 · 공고AI 상담 · 맞춤 공고 알림
-                </div>
-              </div>
-            </div>
-            <span className="text-[11px] opacity-70 flex-shrink-0">자세히 ›</span>
-          </div>
-        </button>
-      )}
 
       {/* 모바일 상단 지원금AI 로고 제거 — 검색창 위 로고와 중복 */}
 
@@ -2287,45 +2202,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         shortcutMode={notifyShortcut}
       />
       <SmartDocModal />
-
-      {/* LITE 프로모션 공지 모달 */}
-      {showPromoModal && (
-        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPromoModal(false)}>
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-          <div className="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 pb-8 sm:pb-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🎁</span>
-                <h3 className="text-[16px] font-black text-slate-900">LITE 7일 무료체험</h3>
-              </div>
-              <button onClick={() => setShowPromoModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all text-sm">✕</button>
-            </div>
-            <div className="space-y-3 mb-5">
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                <p className="text-[13px] font-bold text-blue-700 mb-1">🗓 체험 기간</p>
-                <p className="text-[13px] text-slate-700">가입일로부터 <strong>7일간</strong> 무료</p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[12px] font-bold text-slate-500 uppercase tracking-wide">무료 제공 기능</p>
-                {[
-                  ["✅", "공고AI 상담 월 50회"],
-                  ["✅", "맞춤 공고 알림 (이메일·푸시)"],
-                  ["✅", "관심 공고 저장 · 일정 관리"],
-                  ["✅", "AI 스마트 매칭 (전체 공고)"],
-                ].map(([icon, text]) => (
-                  <div key={text} className="flex items-center gap-2 text-[13px] text-slate-700">
-                    <span>{icon}</span><span>{text}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">체험 기간 종료 후 자동으로 무료 플랜(공고AI 상담 월 3회)으로 전환됩니다. 별도 해지 불필요.</p>
-            </div>
-            <button onClick={() => setShowPromoModal(false)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-[14px] hover:bg-blue-700 transition-all active:scale-[0.98]">
-              확인
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* PRO 고객사 관리 AI */}
       {showProDashboard && (

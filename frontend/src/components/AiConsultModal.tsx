@@ -154,7 +154,7 @@ interface AiConsultModalProps {
   onPlanUpdate?: (updated: any) => void;
 }
 
-export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: AiConsultModalProps) {
+export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModalProps) {
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -166,7 +166,6 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [isDone, setIsDone] = useState(false);
-  const [limitReached, setLimitReached] = useState(false);
   const [sessionMsgLimitReached, setSessionMsgLimitReached] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [originUrl, setOriginUrl] = useState<string | null>(null);
@@ -219,7 +218,7 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         setMessages([]);
         setInput("");
         setIsDone(false);
-        setLimitReached(false);
+        setSessionMsgLimitReached(false);
         setFeedbackSent(false);
         setConsultLogId(null);
         setDragPos(null);
@@ -368,32 +367,53 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
         signal: controller.signal,
       });
 
-      if (res.status === 429) {
+      if (res.status === 402) {
+        // 크레딧 부족 → 충전 모달 오픈
         const errData = await res.json().catch(() => ({}));
-        const detail = errData.detail || "";
-        if (detail.startsWith("SESSION_MSG_LIMIT:")) {
-          setSessionMsgLimitReached(true);
-        } else {
-          setLimitReached(true);
-        }
+        const d = errData.detail || {};
+        const msg = (d && typeof d === "object" && d.required !== undefined)
+          ? `크레딧이 부족합니다 (필요 ${Number(d.required).toLocaleString()} · 보유 ${Number(d.balance ?? 0).toLocaleString()})`
+          : "크레딧이 부족합니다. 충전 후 이용해 주세요.";
+        toast(msg, "info");
+        onUpgrade?.();
         setLoading(false);
         return;
       }
-      if (res.status === 403) {
-        toast("결제 서비스가 곧 시작됩니다. 조금만 기다려 주세요!", "info");
-        setOpen(false);
+      if (res.status === 429) {
+        // 세션 메시지 한도 → 새 상담 유도
+        setSessionMsgLimitReached(true);
         setLoading(false);
         return;
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast(err.detail || "AI 응답 오류가 발생했습니다.", "error");
+        toast(typeof err.detail === "string" ? err.detail : "AI 응답 오류가 발생했습니다.", "error");
         setLoading(false);
         return;
       }
 
       const data = await res.json();
       if (data.origin_url && !originUrl) setOriginUrl(data.origin_url);
+      // 세션ID 저장 (turn_cap 응답 포함 — 다음 턴 호출 시 최신값 사용)
+      if (data.session_id && announcement) {
+        sessionIdRef.current = data.session_id;
+        setSessionId(data.session_id);
+        localStorage.setItem(
+          `consult_session_${announcement.announcement_id}`,
+          JSON.stringify({ id: data.session_id, ts: Date.now() })
+        );
+      }
+      // 대화 턴 한도 초과 → 새 상담 유도
+      if (data.turn_cap_reached) {
+        setMessages([...chatHistory, {
+          role: "assistant",
+          text: data.reply || "상담이 길어졌어요. 새 상담으로 이어가시겠어요?",
+          done: true,
+        }]);
+        setSessionMsgLimitReached(true);
+        setLoading(false);
+        return;
+      }
       const aiMsg: ChatMessage = {
         role: "assistant",
         text: data.reply || "분석 중 오류가 발생했습니다. 다시 시도해 주세요.",
@@ -402,19 +422,6 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
       };
 
       setMessages([...chatHistory, aiMsg]);
-      // 세션ID 저장 (서버에서 발급 또는 기존 반환)
-      if (data.session_id && announcement) {
-        sessionIdRef.current = data.session_id;  // 즉시 반영 — 다음 턴 호출 시 최신값 사용
-        setSessionId(data.session_id);
-        localStorage.setItem(
-          `consult_session_${announcement.announcement_id}`,
-          JSON.stringify({ id: data.session_id, ts: Date.now() })
-        );
-      }
-      // 사용량 갱신
-      if (data.ai_used !== undefined) {
-        onPlanUpdate?.({ ai_used: data.ai_used, consult_limit: data.ai_limit });
-      }
       // AI가 done=true를 반환해도 자동 종료하지 않음 — 사용자가 직접 "상담 종료" 클릭
       if (data.consult_log_id) setConsultLogId(data.consult_log_id);
     } catch (err: unknown) {
@@ -461,13 +468,25 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
     setMessages([]);
     setAnnouncement(null);
     setIsDone(false);
-    setLimitReached(false);
+    setSessionMsgLimitReached(false);
     setFeedbackSent(false);
     setConsultLogId(null);
     setShowSaveDialog(false);
     setOriginUrl(null);
     // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
   }, []);
+
+  // 새 상담 시작 — 세션 초기화 후 첫 메시지 재요청 (재과금 50)
+  const startNewConsultSession = useCallback(() => {
+    setSessionMsgLimitReached(false);
+    if (announcement) localStorage.removeItem(`consult_session_${announcement.announcement_id}`);
+    sessionIdRef.current = null;
+    setSessionId(null);
+    setMessages([]);
+    setIsDone(false);
+    sendToAI([{ role: "user", text: "이 공고에 대해 상담을 시작합니다." }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [announcement]);
 
   const handleBackPress = useCallback(() => {
     if (messages.some(m => m.role === "user") && !isDone) {
@@ -688,65 +707,20 @@ export default function AiConsultModal({ planStatus, onUpgrade, onPlanUpdate }: 
             </div>
           ))}
 
-          {/* 세션 메시지 한도 초과 안내 */}
+          {/* 대화 턴 한도 초과 → 새 상담 유도 */}
           {sessionMsgLimitReached && (
             <div className="flex justify-center my-4">
               <div className="w-full max-w-[300px] p-5 bg-gradient-to-b from-amber-50 to-white rounded-2xl border border-amber-100 text-center space-y-3">
                 <div className="w-12 h-12 mx-auto bg-amber-100 rounded-full flex items-center justify-center">
                   <span className="text-2xl">💬</span>
                 </div>
-                <p className="text-[14px] font-bold text-slate-800">이 상담의 메시지 한도에 도달했어요</p>
-                <p className="text-[12px] text-slate-500">새 상담을 시작하면 이어서 질문할 수 있어요.</p>
+                <p className="text-[14px] font-bold text-slate-800">상담이 길어졌어요</p>
+                <p className="text-[12px] text-slate-500">새 상담으로 이어가시겠어요?</p>
                 <button
-                  onClick={() => {
-                    setSessionMsgLimitReached(false);
-                    setMessages([]);
-                    setOpen(false);
-                  }}
+                  onClick={startNewConsultSession}
                   className="w-full py-2.5 bg-amber-500 text-white rounded-xl font-bold text-[13px] hover:bg-amber-600 transition-all active:scale-[0.98]"
                 >
-                  새 상담 시작하기
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* 무료 상담 소진 안내 */}
-          {limitReached && (
-            <div className="flex justify-center my-4">
-              <div className="w-full max-w-[300px] p-5 bg-gradient-to-b from-indigo-50 to-white rounded-2xl border border-indigo-100 text-center space-y-3">
-                <div className="w-12 h-12 mx-auto bg-indigo-100 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">💬</span>
-                </div>
-                <p className="text-[14px] font-bold text-slate-800">무료 상담 3회를 모두 사용했어요</p>
-                <div className="space-y-2 text-[12px]">
-                  <div className="p-3 bg-white rounded-xl border border-indigo-100 text-left space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-indigo-700">LITE</span>
-                      <span className="font-bold text-indigo-600 text-[11px]">4,900원/월</span>
-                    </div>
-                    <div className="space-y-0.5 text-[11px] text-slate-600">
-                      <p>· AI 상담 <strong>무제한</strong></p>
-                      <p>· 맞춤 공고 알림 무제한</p>
-                      <p>· 카카오톡/이메일 알림</p>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    setLimitReached(false);
-                    onUpgrade?.();
-                  }}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-[13px] hover:bg-indigo-700 transition-all active:scale-[0.98]"
-                >
-                  플랜 보기
-                </button>
-                <button
-                  onClick={() => { setOpen(false); setLimitReached(false); }}
-                  className="text-[11px] text-slate-400 hover:text-slate-600 font-medium transition-all"
-                >
-                  나중에 하기
+                  🆕 새 상담 시작
                 </button>
               </div>
             </div>

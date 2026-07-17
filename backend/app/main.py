@@ -820,9 +820,8 @@ async def _daily_sync_loop():
             _discover_new_sources()
             _deactivate_dead_urls()
 
-            # Step 0-B: 구독 자동 갱신 (만료된 빌링키 결제)
-            print("[Scheduler] Step 0-B: 구독 자동 갱신...")
-            _auto_renew_subscriptions()
+            # Step 0-B: 구독 자동 갱신 — G2-6: 구독 결제 종료로 비활성화(호출 해제).
+            # _auto_renew_subscriptions 함수 정의는 남겨둔다(ADD-only).
 
             # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
             print("[Scheduler] Step 1/3: 공고 수집 시작...")
@@ -2903,6 +2902,16 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "consult_limit": CONSULT_LIMITS["free"]}
 
 
+def _get_wallet_status(current_user: dict) -> dict:
+    """G2-6: 구독 폐지 이후 잔액 표시용. {"credits": N} 반환."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        return {"credits": wallet.wallet_balance(cur, current_user["user_id"])}
+    finally:
+        conn.close()
+
+
 # ─── 응답 캐시 (동시접속 대응) ───────────────────────────────────────
 _response_cache: dict = {}
 _CACHE_TTL = 3600  # 60분 (카테고리 카운트/공개 목록은 자주 안 바뀜)
@@ -4700,6 +4709,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
     plan_status = _get_plan_status(u.get("plan") or "free", plan_expires, u.get("ai_usage_month") or 0)
     plan_status["pro_trial_remaining"] = _pro_trial_remaining(u)
     plan_status["pro_trial_limit"] = PRO_TRIAL_LIMIT
+    plan_status["credits"] = u.get("credits") or 0  # G2-6: 구독 폐지 → 크레딧 잔액 노출
     result = {
         "status": "SUCCESS",
         "user": {
@@ -4755,96 +4765,8 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """포트원 V2 결제 확인 후 플랜 업그레이드"""
-    bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
-
-    # 사용자 정보 조회
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT user_type, plan, plan_expires_at FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    user_type = u.get("user_type") or "both"
-
-    # 가격 결정 (user_type별)
-    if target == "lite":
-        price = PLAN_PRICES.get("lite_individual" if user_type == "individual" else "lite", 4900)
-    else:
-        price = PLAN_PRICES.get("pro", 49000)
-
-    # 사업자 LITE 1개월 무료 체험
-    if req.free_trial and target == "lite" and user_type != "individual":
-        # 이미 체험한 적 있는지 확인
-        cur.execute(
-            "SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'lite_trial', 'pro')",
-            (bn,),
-        )
-        if cur.fetchone():
-            conn.close()
-            raise HTTPException(status_code=400, detail="무료 체험은 1회만 가능합니다.")
-        # 무료 체험: 결제 없이 30일 부여
-        target = "lite"
-    elif req.payment_id and PORTONE_API_SECRET:
-        # 포트원 V2 결제 검증
-        import httpx
-        verify_res = httpx.get(
-            f"https://api.portone.io/payments/{req.payment_id}",
-            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
-            timeout=15,
-        )
-        if verify_res.status_code != 200:
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제 정보를 확인할 수 없습니다.")
-        payment = verify_res.json()
-        if payment.get("status") != "PAID":
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제가 완료되지 않았습니다.")
-        if payment.get("amount", {}).get("total") != price:
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
-    else:
-        # 무료 체험도 아니고 결제도 안 됨 → 플랜 변경 차단
-        conn.close()
-        raise HTTPException(status_code=400, detail="결제가 필요합니다.")
-
-    # 빌링키 저장 (정기결제용)
-    billing_update = ""
-    billing_params = []
-    if req.billing_key:
-        billing_update = ", billing_key = %s"
-        billing_params = [req.billing_key]
-
-    now = datetime.datetime.utcnow()
-    expires_at = (now + datetime.timedelta(days=30)).isoformat()
-
-    cur.execute(
-        f"""UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s{billing_update}
-           WHERE business_number = %s""",
-        [target, now.isoformat(), expires_at, now.isoformat()] + billing_params + [bn],
-    )
-    conn.commit()
-    conn.close()
-
-    plan_status = _get_plan_status(target, expires_at, 0)
-    label_map = {"lite": "LITE", "lite_trial": "LITE 체험", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
-    label = label_map.get(target, target.upper())
-    new_token = _create_jwt(
-        current_user["user_id"], bn, current_user["email"], target, expires_at
-    )
-
-    _log_event("upgrade", current_user["bn"], f"plan={target_plan},price={price},trial={req.free_trial}")
-    return {
-        "status": "SUCCESS",
-        "token": new_token,
-        "plan": plan_status,
-        "message": f"{label} 플랜으로 업그레이드되었습니다. ({'무료 체험 시작' if req.free_trial else f'{price:,}원 결제 완료'})",
-        "price": price,
-    }
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 class SubscribeRequest(BaseModel):
@@ -4858,178 +4780,20 @@ def api_plan_subscribe(
     req: SubscribeRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """빌링키 등록 + 무료 체험 시작 (LITE/PRO 공통 30일)"""
-    # 1차: 형식 검증
-    if not req.billing_key or not isinstance(req.billing_key, str) or len(req.billing_key.strip()) < 10:
-        raise HTTPException(status_code=400, detail="유효하지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
-
-    bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
-    is_v1 = req.key_type == "v1" or req.billing_key.startswith("cust_")
-
-    # 2차: billing_key 검증 (V2만 — V1 customer_uid는 iamport 콜백이 신뢰 기반)
-    if not is_v1 and PORTONE_API_SECRET:
-        import httpx as _httpx
-        try:
-            verify_res = _httpx.get(
-                f"https://api.portone.io/billing-keys/{req.billing_key.strip()}",
-                headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
-                timeout=10,
-            )
-            if verify_res.status_code == 404:
-                raise HTTPException(status_code=400, detail="등록되지 않은 빌링키입니다. 결제를 다시 시도해 주세요.")
-            if verify_res.status_code != 200:
-                raise HTTPException(status_code=502, detail="결제 검증 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.")
-            bk = verify_res.json()
-            if bk.get("status") != "ISSUED":
-                raise HTTPException(status_code=400, detail="결제가 완료되지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
-            expected_cid = "".join(c if (c.isalnum() or c in "_-") else "_" for c in (bn or ""))[:40]
-            bk_customer_id = ((bk.get("customer") or {}).get("id") or "").strip()
-            if expected_cid and bk_customer_id and bk_customer_id != expected_cid:
-                print(f"[subscribe] customerId mismatch: expected={expected_cid} got={bk_customer_id}")
-                raise HTTPException(status_code=403, detail="본인 계정으로 결제된 빌링키가 아닙니다.")
-        except HTTPException:
-            raise
-        except _httpx.RequestError as e:
-            print(f"[subscribe] PortOne verify network error (허용): {e}")
-        except Exception as e:
-            print(f"[subscribe] PortOne verify unexpected error: {e}")
-            raise HTTPException(status_code=502, detail="결제 검증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
-    elif is_v1:
-        print(f"[subscribe] V1 customer_uid 등록: {req.billing_key[:20]}...")
-    else:
-        print("[subscribe] PORTONE_API_SECRET 미설정 — 빌링키 검증 건너뜀 (테스트 환경)")
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # 사용자 조회
-    cur.execute("SELECT plan, billing_key, user_type FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    current_plan = u.get("plan") or "free"
-
-    # 동일 플랜 재구독 차단 (상위 플랜 업그레이드는 허용)
-    if u.get("billing_key") and current_plan == target:
-        conn.close()
-        raise HTTPException(status_code=400, detail="이미 동일한 플랜을 구독 중입니다.")
-    # 하위 플랜으로 변경 차단 (PRO → LITE)
-    if current_plan == "pro" and target == "lite":
-        conn.close()
-        raise HTTPException(status_code=400, detail="PRO에서 LITE로 변경은 구독 해지 후 재가입해주세요.")
-
-    # ── 즉시 첫 청구 (2026-07-04 정책: 사용량 체험이 무료체험 — 결제 시점부터 유료) ──
-    # LITE→PRO 업그레이드 시 LITE 월정가만큼 차감 (2026-07-08 정책)
-    label = "LITE" if target == "lite" else "PRO"
-    price, upgrade_credit = _subscribe_charge(current_plan, target, u.get("user_type"), bn)
-    now = datetime.datetime.utcnow()
-    if not (bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)):
-        # 무과금 구독이 조용히 생기지 않도록 명시적 실패
-        conn.close()
-        raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다. 관리자에게 문의해주세요.")
-    _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
-    if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
-        conn.close()
-        raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
-    print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
-
-    # 결제 성공 → 30일 이용권 시작 (다음 청구는 만료일에 자동갱신)
-    expires_at = (now + datetime.timedelta(days=30)).isoformat()
-
-    cur.execute(
-        """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s, renew_fail_count = 0,
-           last_payment_id = %s
-           WHERE business_number = %s""",
-        (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, _payment_id, bn),
-    )
-    conn.commit()
-    conn.close()
-
-    plan_status = _get_plan_status(target, expires_at, 0)
-    new_token = _create_jwt(
-        current_user["user_id"], bn, current_user["email"], target, expires_at
-    )
-
-    _credit_msg = f"잔여 LITE {upgrade_credit:,}원 차감, " if upgrade_credit else ""
-    return {
-        "status": "SUCCESS",
-        "token": new_token,
-        "plan": plan_status,
-        "message": f"{label} 구독이 시작되었습니다 ({_credit_msg}{price:,}원 결제 완료). 다음 결제일: {expires_at[:10]}",
-    }
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 @app.post("/api/plan/cancel")
 def api_plan_cancel(current_user: dict = Depends(_get_current_user)):
-    """구독 해지 — 빌링키 삭제, 만료일까지는 이용 가능"""
-    bn = current_user["bn"]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE users SET billing_key = NULL WHERE business_number = %s",
-        (bn,),
-    )
-    conn.commit()
-    conn.close()
-    return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 현재 플랜 만료일까지는 이용 가능합니다."}
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 @app.post("/api/plan/refund")
 def api_plan_refund(current_user: dict = Depends(_get_current_user)):
-    """구독 환불 — 공개 정책(/refund 페이지) 그대로 실환불:
-    7일 이내·미사용 전액 / 7일 이내·사용 일할 공제 / 7일 경과 불가(해지만 가능).
-    실제 취소는 last_payment_id로 포트원(V2)/아임포트(V1) 취소 API 호출."""
-    bn = current_user["bn"]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT plan, billing_key, user_type, plan_started_at, ai_usage_month, last_payment_id "
-            "FROM users WHERE business_number = %s", (bn,))
-        user = cur.fetchone()
-        if not user:
-            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-        u = dict(user)
-        plan = u.get("plan") or "free"
-        if plan == "free":
-            raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
-
-        payment_id = (u.get("last_payment_id") or "").strip()
-        if not payment_id:
-            # 결제 이력 없음(레거시 무료기간 등) — 해지만 처리, 환불 사칭 금지
-            cur.execute(
-                "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
-                (bn,))
-            conn.commit()
-            return {"status": "SUCCESS", "message": "결제 이력이 없어 해지만 처리되었습니다. FREE 플랜으로 전환되었습니다."}
-
-        started = u.get("plan_started_at")
-        try:
-            started_dt = started if isinstance(started, datetime.datetime) else datetime.datetime.fromisoformat(str(started))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="결제 시점을 확인할 수 없습니다. 고객센터로 문의해주세요.")
-
-        now = datetime.datetime.utcnow()
-        price = _plan_price("lite" if plan in ("lite", "basic") else "pro", u.get("user_type"), bn=bn)
-        used = (u.get("ai_usage_month") or 0) > 0
-        refundable, amount, policy_reason = _refund_amount_policy(price, started_dt, now, used)
-        if not refundable:
-            raise HTTPException(status_code=400, detail=f"{policy_reason}. 구독 해지는 언제든 가능하며 잔여 기간까지 이용할 수 있습니다.")
-
-        if amount > 0 and not _cancel_payment(payment_id, amount, u.get("billing_key") or ""):
-            raise HTTPException(status_code=502, detail="환불 처리에 실패했습니다. 고객센터로 문의해주시면 수동 처리해드립니다.")
-
-        cur.execute(
-            "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL, last_payment_id = NULL "
-            "WHERE business_number = %s", (bn,))
-        conn.commit()
-        return {"status": "SUCCESS", "message": f"환불이 완료되었습니다 ({amount:,}원 · {policy_reason}). FREE 플랜으로 전환되었습니다."}
-    finally:
-        conn.close()
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -5531,13 +5295,7 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
         except Exception:
             pass
 
-    if usage >= limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"이번 달 AI 상담 한도({limit}건)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 건수를 이용할 수 있습니다."
-        )
-
+    # (dead 경로: 프론트 진입로 없음 G2.5-3) 구독/사용량 429 게이팅 제거 — 막다른 길 소거.
     cur.execute(
         "UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s",
         (bn,)
@@ -5557,8 +5315,22 @@ class AiChatRequest(BaseModel):
 
 @app.post("/api/ai/chat")
 def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_user)):
-    """자유 상담: 중소기업 지원사업 전반에 대한 AI 상담"""
+    """자유 상담: 중소기업 지원사업 전반에 대한 AI 상담 (자금상담 100크레딧, 세션 첫 메시지·성공 후)"""
     bn = current_user["bn"]
+
+    # 턴 캡(원가 방어): 세션 내 user 메시지 수가 CONSULT_TURN_CAP(15)을 넘으면 응답 생성 없이
+    # 플래그만 반환 — 프론트가 "새 상담으로 이어가기"를 안내한다(새 세션이면 재과금).
+    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
+    if user_msg_count > CONSULT_TURN_CAP:
+        return {
+            "status": "SUCCESS",
+            "reply": "이 상담 세션의 대화 한도(15턴)에 도달했습니다. 새 상담으로 이어가 주세요.",
+            "choices": ["🆕 새 상담 시작"],
+            "done": True,
+            "session_id": req.session_id,
+            "turn_cap_reached": True,
+        }
+
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -5570,53 +5342,17 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
 
-    # 플랜/사용량 체크
-    plan = u.get("plan") or "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
-    if plan in ("trial", "premium"):
-        plan = "free"
-    limit = PLAN_LIMITS.get(plan, 1)
-    usage = u.get("ai_usage_month") or 0
-
-    # 월간 리셋
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    # 첫 메시지일 때만 건수 차감
+    # 신규 세션(첫 메시지) = 자금상담 100크레딧 과금 단위. 후속 턴은 무차감.
+    # 잔액부족은 LLM 호출 전에 402로 차단(원가 낭비 방지) — 차감은 LLM 성공 이후.
     is_first_message = len(req.messages) <= 1
-    if is_first_message:
-        if usage >= limit:
+    if is_first_message and not _is_credit_exempt(current_user):
+        bal = wallet.wallet_balance(cur, current_user["user_id"])
+        if bal < CREDIT_COST_CONSULT:
             conn.close()
-            raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
-        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-        conn.commit()
-        usage += 1
-
-    # 세션 내 메시지 수 제한 (플랜별 차별화)
-    session_msg_limit = SESSION_MSG_LIMITS.get(plan, 10)
-    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if user_msg_count > session_msg_limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"SESSION_MSG_LIMIT:{session_msg_limit}"
-        )
+            raise HTTPException(
+                status_code=402,
+                detail={"error": "insufficient_credits", "required": CREDIT_COST_CONSULT, "balance": bal},
+            )
 
     # 통합 AI 엔진으로 자유 상담
     # 탭(mode)에 따라 프로필 필터링 — 기업탭이면 기업 정보만, 개인탭이면 개인 정보만
@@ -5638,14 +5374,14 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
     result = chat_lite_fund_expert(req.messages, db_conn=conn, user_profile=filtered_profile, mode=req.mode)
 
     # ── 대화 저장 (P0.1+B): UPSERT by session_id ──
-    # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성
+    # session_id: 클라이언트 제공 우선, 없으면 첫 user 메시지 해시로 생성 (과금 ref로도 사용)
+    sid = req.session_id
+    if not sid:
+        import hashlib
+        first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
+        sid = "free_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
     try:
         all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
-        sid = req.session_id
-        if not sid:
-            import hashlib
-            first_user = next((m.get("text","")[:200] for m in req.messages if m.get("role")=="user"), "")
-            sid = "free_" + hashlib.sha256((bn + first_user).encode()).hexdigest()[:16]
         cur.execute(
             """INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
                VALUES (NULL, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
@@ -5680,6 +5416,11 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         except Exception as learn_err:
             print(f"[LITE learning] {learn_err}")
 
+    # 신규 세션(첫 메시지) + LLM 성공 이후에만 100크레딧 차감. 후속 턴은 무차감.
+    # 잔액부족이면 여기서 402가 그대로 던져진다(위에서 사전 차단하므로 정상 흐름에선 미발생).
+    if is_first_message:
+        _charge_credits(current_user, CREDIT_COST_CONSULT, "consult", ref=sid)
+
     conn.close()
 
     return {
@@ -5689,8 +5430,8 @@ def api_ai_chat(req: AiChatRequest, current_user: dict = Depends(_get_current_us
         "announcements": result.get("announcements", []),
         "matched": result.get("matched", []),
         "done": result.get("done", False),
-        "ai_used": usage,
-        "ai_limit": limit,
+        "ai_used": 0,
+        "ai_limit": 0,
     }
 
 
@@ -5733,49 +5474,12 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         if u.get(k) is None:
             u[k] = ""
 
-    # 플랜/사용량 체크
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.")
-
-    # 공고별 지원대상 상담 제한 체크
-    consult_limit = CONSULT_LIMITS.get(plan, 0)
-    ai_usage = u.get("ai_usage_month") or 0
-
-    # 월간 리셋 체크
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                ai_usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    if consult_limit == 0:
-        conn.close()
-        raise HTTPException(
-            status_code=403,
-            detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
-        )
-
-    # 세션ID 기반 차감: 기존 세션이면 차감 스킵
+    # 신규 세션(공고당 첫 상담) = 공고상담 50크레딧 과금 단위. 후속 질문(기존 세션)은 무차감.
+    # 세션 유효성(24시간 이내)으로 기존/신규를 판별한다.
     import uuid as _uuid
     session_id = req.session_id
     is_existing_session = False
-
     if session_id:
-        # 세션 유효성 확인 (24시간 이내)
         try:
             cur.execute("""
                 SELECT id FROM consult_sessions
@@ -5787,29 +5491,19 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         except Exception:
             pass
 
-    # 건수 제한 (PRO/무제한 제외)
-    if consult_limit < 999999 and not is_existing_session:
-        # consult 사용량은 ai_usage_month로 추적
-        if ai_usage >= consult_limit:
-            conn.close()
-            if plan == "free":
-                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
-            else:
-                msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
-            raise HTTPException(status_code=429, detail=msg)
-        # 새 세션: 1회 차감 + 세션ID 발급
-        session_id = str(_uuid.uuid4())
-        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-        try:
-            cur.execute("""
-                INSERT INTO consult_sessions (session_id, business_number, announcement_id)
-                VALUES (%s, %s, %s)
-            """, (session_id, bn, req.announcement_id))
-        except Exception:
-            pass
-        conn.commit()
-    elif not is_existing_session and not session_id:
-        # PRO/무제한: 차감 없이 session_id만 발급 (매 턴 별도 행 생성 방지)
+    is_new_session = not is_existing_session
+
+    # 신규 세션이면 잔액부족은 LLM 호출 전 402(원가 낭비 방지) + 새 session_id 발급.
+    # 차감은 LLM 성공 이후(아래). 면제 대상은 사전 확인·차감 모두 스킵.
+    if is_new_session:
+        if not _is_credit_exempt(current_user):
+            bal = wallet.wallet_balance(cur, current_user["user_id"])
+            if bal < CREDIT_COST_ANALYZE:
+                conn.close()
+                raise HTTPException(
+                    status_code=402,
+                    detail={"error": "insufficient_credits", "required": CREDIT_COST_ANALYZE, "balance": bal},
+                )
         session_id = str(_uuid.uuid4())
         try:
             cur.execute("""
@@ -5819,17 +5513,6 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             conn.commit()
         except Exception:
             pass
-        ai_usage += 1
-
-    # 1-1) 세션 내 메시지 수 제한 (플랜별 차별화)
-    session_msg_limit = SESSION_MSG_LIMITS.get(plan, 10)
-    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if user_msg_count > session_msg_limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"SESSION_MSG_LIMIT:{session_msg_limit}"
-        )
 
     # 2) 공고 정보 조회
     cur.execute(
@@ -5873,6 +5556,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         consult_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
 
     consult_conn = None
+    llm_ok = False
     try:
         from app.services.ai_consultant import chat_consult
         consult_conn = get_db_connection()
@@ -5884,6 +5568,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             user_profile=consult_profile,
             db_conn=consult_conn,
         )
+        llm_ok = True
     except Exception as e:
         print(f"[Consult] chat_consult error: {e}")
         import traceback; traceback.print_exc()
@@ -5936,6 +5621,11 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         consult_log_id = None
         print(f"[ConsultLog] Save error: {log_err}")
 
+    # 신규 세션 + LLM(chat_consult) 성공 이후에만 50크레딧 차감. 후속 질문(기존 세션)·LLM 실패는 무차감.
+    # (엔드포인트는 chat_consult 예외를 내부에서 폴백 응답으로 삼키므로 llm_ok 플래그로 성공을 판정한다.)
+    if is_new_session and llm_ok:
+        _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=session_id)
+
     # 최종 방어선: reply가 비어있으면 공고 제목 기반 안내 메시지로 대체
     final_reply = result.get("reply", "")
     if not final_reply or not final_reply.strip():
@@ -5948,8 +5638,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         "done": is_done,
         "conclusion": result.get("conclusion") if is_done else None,
         "consult_log_id": consult_log_id if is_done else None,
-        "ai_used": ai_usage,
-        "ai_limit": consult_limit,
+        "ai_used": 0,
+        "ai_limit": 0,
         "session_id": session_id,
         "origin_url": a.get("origin_url", ""),
     }
@@ -5977,8 +5667,7 @@ class AiConsultantChatRequest(BaseModel):
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
 def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depends(_get_current_user)):
-    """PRO: 공고 분석 — DB 우선, 없으면 자동 실시간 분석 (PRO 권한)"""
-    _require_pro(current_user)
+    """공고 분석 — DB 우선, 없으면 자동 실시간 분석 (크레딧 50, 성공 이후 차감. G2-3)"""
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -6046,20 +5735,23 @@ def api_pro_announcement_analyze(announcement_id: int, current_user: dict = Depe
         # 분석 없음 → 기본 정보만 + AI 분석 권유
         result["message"] = "이 공고는 아직 상세 분석되지 않았습니다. 기본 정보만 제공됩니다."
 
+    # 분석 성공(위 예외 없이 도달) 이후에만 차감 — 잔액부족 시 402가 여기서 그대로 던져진다.
+    _charge_credits(current_user, CREDIT_COST_ANALYZE, "deduct", ref=f"analyze:{announcement_id}")
     return result
 
 
 @app.post("/api/pro/consultant/chat")
 def api_pro_consultant_chat(req: AiConsultantChatRequest, current_user: dict = Depends(_get_consult_user)):
-    """PRO 전문가: 고객사 상담 채팅. PRO/biz 무제한, free는 핵심 액션 월 3회 무료 체험."""
-    # 핵심 분석 액션(매칭/공고상담/자금상담/상세분석)만 무료 체험 1회 차감. 후속 chat은 무차감.
-    _act = (req.action or "").strip().lower()
-    if not _act:
-        _act = "consult" if req.announcement_id else ("match" if req.explicit_match else "")
-    _counts = _act in ("match", "consult", "fund_consult", "detail_analysis")
-    _require_pro_or_trial(current_user, counting=_counts)
+    """PRO 전문가: 고객사 상담 채팅. 모든 action이 크레딧/무료로 전환됨(G2.5-5):
+    fund_consult=100·consult/detail_analysis=50(성공 후 차감)·match/chat=무료."""
+    # G2.5-5: 모든 action이 크레딧/무료로 전환됨 — 구독·무료체험 게이트(_require_pro_or_trial) 제거.
+    #   match=무료 / consult=성공 후 50크레딧 / chat=무료 / fund_consult=100 / detail_analysis=50
+    #   (과금은 각 핸들러 내부에서 기능 성공 이후에만 _charge_credits로 수행).
     try:
         return _api_pro_consultant_chat_impl(req, current_user)
+    except HTTPException:
+        # 크레딧 402 등 의도된 HTTP 오류는 그대로 전파(아래 범용 catch가 200으로 삼키면 안 됨)
+        raise
     except Exception as outer_err:
         import traceback as _tb
         _tb_str = _tb.format_exc()[-800:]
@@ -6254,6 +5946,19 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
 
     pro_ctx = "individual" if fund_mode == "individual_fund" else "business"
 
+    # 턴 캡(원가 방어): 세션 내 user 메시지 수가 CONSULT_TURN_CAP을 넘으면 응답 생성 없이
+    # 플래그만 반환 — 프론트가 "새 상담으로 이어가기"를 안내한다(새 session_id면 신규 세션이라 재과금).
+    user_msg_count = sum(1 for m in (req.messages or []) if m.get("role") == "user")
+    if user_msg_count > CONSULT_TURN_CAP:
+        return {
+            "status": "SUCCESS",
+            "reply": "이 상담 세션의 대화 한도(15턴)에 도달했습니다. 새 상담으로 이어가 주세요.",
+            "choices": ["🆕 새 상담 시작"],
+            "done": True,
+            "session_id": req.session_id,
+            "turn_cap_reached": True,
+        }
+
     db = get_db_connection()
     try:
         # 1) 프로필 우선순위: profile_override (폼) > client_profiles (CRM 선택 고객)
@@ -6296,6 +6001,21 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
         for forbidden_key in ("business_number", "email", "password_hash"):
             profile.pop(forbidden_key, None)
 
+        # 2.5) 신규 세션 판별: ai_consult_logs에 이 session_id(본인 소유)로 저장된 로그가
+        # 이미 있으면 후속 턴(무차감), 없으면 신규 세션(성공 후 100크레딧 과금 대상).
+        # AI 호출 전에 판별해야 한다 — 호출 후 저장하는 로그 자체가 "기존 존재"가 되어버리면
+        # 매 턴이 항상 신규로 오판된다.
+        import uuid as _uuid
+        sid = req.session_id or f"fund_{_uuid.uuid4()}"
+        is_new_session = True
+        if req.session_id:
+            chk_cur = db.cursor()
+            chk_cur.execute(
+                "SELECT 1 FROM ai_consult_logs WHERE session_id = %s AND business_number = %s",
+                (req.session_id, current_user["bn"]),
+            )
+            is_new_session = chk_cur.fetchone() is None
+
         # 3) AI 호출 — pro_consult_context 플래그로 3인칭 화법 강제
         result = chat_lite_fund_expert(
             messages=req.messages,
@@ -6307,8 +6027,6 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
 
         # 4) 상담 로그 저장
         try:
-            import uuid as _uuid
-            sid = req.session_id or f"fund_{_uuid.uuid4()}"
             all_msgs = list(req.messages) + [{"role": "assistant", "text": result.get("reply", "")}]
             log_cur = db.cursor()
             log_cur.execute(
@@ -6326,13 +6044,18 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
             try: db.rollback()
             except: pass
 
+        # 5) 신규 세션 + LLM 응답 성공 이후에만 과금(세션당 1회). 후속 턴은 무차감.
+        # 잔액부족이면 여기서 402가 그대로 던져진다(위 finally에서 db.close()는 보장됨).
+        if is_new_session:
+            _charge_credits(current_user, CREDIT_COST_CONSULT, "consult", ref=sid)
+
         return {
             "status": "SUCCESS",
             "reply": result.get("reply", ""),
             "choices": result.get("choices", []),
             "announcements": result.get("announcements", []),
             "done": result.get("done", False),
-            "session_id": sid if 'sid' in dir() else req.session_id,
+            "session_id": sid,
         }
     finally:
         try: db.close()
@@ -6518,6 +6241,9 @@ def _handle_pro_detail_analysis(req: AiConsultantChatRequest, current_user: dict
             "공고 카드에서 상세 판정 근거를 확인하세요."
         )
 
+        # 분석 성공(Gemini 판정까지 완료) 이후에만 차감 — 잔액부족 시 402.
+        _charge_credits(current_user, CREDIT_COST_ANALYZE, "deduct", ref=f"detail_analysis:{(session_state or {}).get('session_id')}")
+
         return {
             "status": "SUCCESS",
             "reply": reply,
@@ -6526,6 +6252,9 @@ def _handle_pro_detail_analysis(req: AiConsultantChatRequest, current_user: dict
             "done": False,
             "session_id": (session_state or {}).get("session_id"),
         }
+    except HTTPException:
+        # 크레딧 402 등은 아래 범용 오류 처리로 삼키지 않고 그대로 전파
+        raise
     except Exception as e:
         print(f"[detail_analysis] error: {e}")
         import traceback; traceback.print_exc()
@@ -6746,6 +6475,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 if last_user and last_user.get("role") == "user":
                     effective_messages = db_msgs + [last_user]
 
+        llm_ok = False
         try:
             v2_result = chat_pro_announce(
                 messages=effective_messages,
@@ -6756,6 +6486,7 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
                 collected=coll,
                 force_first_turn=bool(req.is_announcement_start),
             )
+            llm_ok = True
         except Exception as ai_err:
             import traceback as _tb
             _tb_str = _tb.format_exc()[-500:]
@@ -6837,6 +6568,13 @@ def _handle_pro_consult(req: AiConsultantChatRequest, current_user: dict):
         except Exception as _cm_err:
             print(f"[PRO consult] mention search error: {_cm_err}")
 
+        # 공고심화상담 50크레딧 — 기능(chat_pro_announce) 성공 이후에만 차감.
+        # 이 경로는 세션 신규/기존 판별 수단이 없어 호출당 1회 과금한다(fund_consult의 세션당
+        # 과금과 달리, pro_consult_sessions는 매 턴 upsert되어 신규 여부를 안정적으로 구분할 수
+        # 없기 때문). 잔액부족이면 여기서 402가 그대로 전파된다(finally에서 db.close() 보장).
+        if llm_ok:
+            _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=f"pro_consult:{ann_id}")
+
         return {
             "status": "SUCCESS",
             "action": "consult",
@@ -6874,15 +6612,7 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
 
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
+    # (dead 경로: 프론트 진입로 없음 G2.5-3) 구독 만료 403 게이팅 제거 — 로그인만 요구.
     # LITE 자금 전문 상담으로 통합 (chat_consultant 대체)
     from app.services.ai_consultant import chat_lite_fund_expert
     # 탭(mode)에 따라 프로필 필터링
@@ -6939,54 +6669,16 @@ class ConsultantMatchRequest(BaseModel):
 
 @app.post("/api/ai/consultant/match")
 def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = Depends(_get_current_user)):
-    """컨설턴트 모드: 가상 프로필로 매칭 실행 (AI 1건 차감)"""
+    """컨설턴트 모드: 가상 프로필로 매칭 실행 (매칭은 전면 무료 — 플랜·사용량 게이트 없음, G2-2)"""
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM users WHERE business_number = %s", (bn,))
+    cur.execute("SELECT business_number FROM users WHERE business_number = %s", (bn,))
     user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    usage = u.get("ai_usage_month") or 0
-    ps = _get_plan_status(plan, plan_expires, usage)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
-    limit = PLAN_LIMITS.get(plan, 1)
-
-    # 월간 리셋
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    # AI 1건 차감
-    if usage >= limit:
-        conn.close()
-        raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
-
-    cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-    conn.commit()
     conn.close()
-    usage += 1
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
     # 가상 프로필로 매칭 엔진 실행 — 프로필의 industry_code 유무로 기업/개인 분기
     virtual_profile = req.profile
@@ -7003,8 +6695,6 @@ def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = De
         "status": "SUCCESS",
         "matches": matches,
         "profile_used": virtual_profile,
-        "ai_used": usage,
-        "ai_limit": limit,
     }
 
 
@@ -9194,7 +8884,6 @@ class SectionFeedbackRequest(BaseModel):
 @app.post("/api/pro/sections/feedback")
 def api_pro_section_feedback(req: SectionFeedbackRequest, current_user: dict = Depends(_get_current_user)):
     """M: 컨설턴트가 RAG 답변 출처 섹션에 평가를 남김. 검색 가중치에 자동 반영."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -9225,7 +8914,6 @@ def api_pro_section_feedback(req: SectionFeedbackRequest, current_user: dict = D
 @app.get("/api/pro/insights/recent")
 def api_pro_insights_recent(current_user: dict = Depends(_get_current_user)):
     """L: 최근 학습된 인사이트 (knowledge_base 신규 항목) — 컨설턴트가 체감할 수 있도록."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -12927,23 +12615,9 @@ class SavedBulk(BaseModel):
 def api_save_bulk(body: SavedBulk, current_user: dict = Depends(_get_current_user)):
     if body.business_number != current_user["bn"]:
         raise HTTPException(status_code=403, detail="권한이 없습니다.")
-    # FREE 플랜: 저장 불가
+    # 공고 저장 = 무료 개방(로그인만 요구). 기존 free 플랜 LITE_REQUIRED 403 제거(G2.5-4).
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT plan, plan_expires_at FROM users WHERE business_number=%s", (current_user["bn"],))
-    u = cursor.fetchone()
-    if u:
-        plan = u["plan"] or "free"
-        if plan != "free" and u["plan_expires_at"]:
-            import datetime as _dt
-            try:
-                if _dt.datetime.fromisoformat(str(u["plan_expires_at"])) < _dt.datetime.utcnow():
-                    plan = "free"
-            except Exception:
-                pass
-        if plan == "free":
-            conn.close()
-            raise HTTPException(status_code=403, detail="LITE_REQUIRED")
     inserted = 0
     try:
         for aid in body.announcement_ids:
@@ -13000,6 +12674,51 @@ def api_delete_saved(saved_id: int, current_user: dict = Depends(_get_current_us
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PRO 전용 API — 고객사 프로필 관리 / 상담 이력 / 종합 리포트
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── 크레딧 차감 게이트 (Phase G2: 구독 → 크레딧) ──
+CREDIT_COST_ANALYZE = int(os.getenv("CREDIT_COST_ANALYZE", "50"))
+CREDIT_COST_CONSULT = int(os.getenv("CREDIT_COST_CONSULT", "100"))
+CREDIT_COST_PRO_TOOL = int(os.getenv("CREDIT_COST_PRO_TOOL", "500"))
+CONSULT_TURN_CAP = int(os.getenv("CONSULT_TURN_CAP", "15"))
+
+# 크레딧 면제 대상 bn 허용목록(운영/관리자용). 기본 빈 값 = 아무도 면제 아님.
+CREDIT_EXEMPT_BNS = {s.strip() for s in os.getenv("CREDIT_EXEMPT_BNS", "").split(",") if s.strip()}
+
+
+def _is_credit_exempt(current_user: dict) -> bool:
+    """면제 = ① SmartDoc 서비스토큰 ② CREDIT_EXEMPT_BNS 허용목록(운영/관리자용).
+
+    ★plan(구독)은 면제 근거가 아니다 — G2의 목적이 구독 폐지이므로, plan 기반
+    면제를 두면 누구든 plan='pro'가 되는 순간(프로모·수동 세팅 등) 전 기능
+    무한 무료 이용권이 부활한다. 그래서 plan/plan_expires_at은 절대 조회하지 않는다.
+    """
+    if current_user.get("_service"):
+        return True
+    bn = str(current_user.get("bn") or "").strip()
+    return bool(bn) and bn in CREDIT_EXEMPT_BNS
+
+
+def _charge_credits(current_user: dict, amount: int, tx_type: str, ref=None) -> None:
+    """기능 성공 이후 호출할 것. 면제 대상은 무차감 통과. 잔액부족 시 402."""
+    if _is_credit_exempt(current_user):
+        return
+    uid = current_user["user_id"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if not wallet.wallet_deduct(cur, uid, amount, tx_type, ref):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "insufficient_credits",
+                    "required": amount,
+                    "balance": wallet.wallet_balance(cur, uid),
+                },
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
 
 def _require_pro(current_user: dict):
     """PRO 플랜 체크. PRO/biz가 아니면 403."""
@@ -13144,7 +12863,6 @@ class BrandingUpdate(BaseModel):
 @app.get("/api/pro/branding")
 def api_pro_branding_get(current_user: dict = Depends(_get_current_user)):
     """PRO: 화이트라벨 발신자 브랜딩 조회 (리포트 헤더·푸터용)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT brand_company, brand_contact, brand_phone FROM users WHERE business_number=%s LIMIT 1", (current_user["bn"],))
@@ -13160,7 +12878,6 @@ def api_pro_branding_get(current_user: dict = Depends(_get_current_user)):
 @app.put("/api/pro/branding")
 def api_pro_branding_update(req: BrandingUpdate, current_user: dict = Depends(_get_current_user)):
     """PRO: 화이트라벨 발신자 브랜딩 설정 — 고객 전달 리포트에 자기 브랜드로 발행"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13198,7 +12915,6 @@ class ClientProfileCreate(BaseModel):
 @app.get("/api/pro/clients")
 def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depends(_get_current_user)):
     """PRO: 내 고객 프로필 목록 조회 (client_type 필터 가능)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     where = "owner_business_number = %s AND is_active = TRUE"
@@ -13235,7 +12951,6 @@ def api_pro_clients(client_type: Optional[str] = None, current_user: dict = Depe
 @app.get("/api/pro/clients/with-history")
 def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)):
     """PRO: 고객 목록 + 최근 상담 요약 (테이블형 리스트용)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     # consultation_history 테이블이 없을 수 있으므로 기본 쿼리 + 상담 통계는 별도 조회
@@ -13262,7 +12977,6 @@ def api_pro_clients_with_history(current_user: dict = Depends(_get_current_user)
 @app.get("/api/pro/clients/export")
 def api_pro_clients_export(current_user: dict = Depends(_get_current_user)):
     """PRO: 고객 리스트 CSV 다운로드"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13302,7 +13016,6 @@ def api_pro_clients_export(current_user: dict = Depends(_get_current_user)):
 @app.post("/api/pro/clients")
 def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 생성"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13326,7 +13039,6 @@ def api_pro_client_create(req: ClientProfileCreate, current_user: dict = Depends
 @app.put("/api/pro/clients/{client_id}")
 def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 수정"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13352,7 +13064,6 @@ def api_pro_client_update(client_id: int, req: ClientProfileCreate, current_user
 @app.delete("/api/pro/clients/{client_id}")
 def api_pro_client_delete(client_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 프로필 삭제 (soft delete)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13378,7 +13089,6 @@ async def api_pro_client_upload_file(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 고객사 자료 업로드 (재무제표, 사업계획서, IR자료 등)"""
-    _require_pro(current_user)
     # 파일 크기 제한 (10MB)
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -13423,7 +13133,6 @@ async def api_pro_client_upload_file(
 @app.get("/api/pro/clients/{client_id}/files")
 def api_pro_client_files(client_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 목록 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13443,7 +13152,6 @@ def api_pro_client_files(client_id: int, current_user: dict = Depends(_get_curre
 @app.get("/api/pro/clients/{client_id}/files/{file_id}/download")
 def api_pro_client_file_download(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 다운로드"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13465,7 +13173,6 @@ def api_pro_client_file_download(client_id: int, file_id: int, current_user: dic
 @app.delete("/api/pro/clients/{client_id}/files/{file_id}")
 def api_pro_client_file_delete(client_id: int, file_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 첨부 자료 삭제"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -13490,7 +13197,6 @@ def api_pro_consult_history(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 상담 이력 조회 (고객사별 필터 가능)"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -13614,7 +13320,6 @@ def api_pro_consult_history_export(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 상담 이력 엑셀(CSV) 다운로드"""
-    _require_pro(current_user)
     import csv
     import io
 
@@ -13747,7 +13452,6 @@ class ReportRequest(BaseModel):
 @app.post("/api/pro/reports/generate")
 def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 종합 리포트 생성 — 매칭 + 상담 이력 + AI 종합 요약"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -14361,6 +14065,8 @@ def api_pro_report_generate(req: ReportRequest, current_user: dict = Depends(_ge
         raise HTTPException(status_code=500, detail=f"리포트 저장 실패: {str(db_err)[:100]}")
     conn.close()
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"report_generate:{report_id}")
+
     return {
         "status": "SUCCESS",
         "report_id": report_id,
@@ -14381,7 +14087,6 @@ def api_pro_reports(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 리포트 목록 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -14420,7 +14125,6 @@ def api_pro_reports(
 @app.get("/api/pro/reports/{report_id}")
 def api_pro_report_detail(report_id: int, current_user: dict = Depends(_get_current_user)):
     """PRO: 리포트 상세 조회"""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14453,7 +14157,6 @@ def api_pro_report_edit_section(report_id: int, req: ReportEditSectionRequest, c
     선택한 텍스트 + 지시 → AI가 같은 길이/톤으로 다시 작성하여 반환.
     클라이언트가 받은 결과를 원본에서 selected_text 위치에 치환.
     """
-    _require_pro(current_user)
     if not req.selected_text or not req.selected_text.strip():
         raise HTTPException(status_code=400, detail="선택한 텍스트가 비어있습니다.")
     if not req.instruction or not req.instruction.strip():
@@ -14533,7 +14236,6 @@ class ReportSaveRequest(BaseModel):
 @app.put("/api/pro/reports/{report_id}")
 def api_pro_report_update(report_id: int, req: ReportSaveRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 보고서 summary를 통째로 업데이트 (편집 모달 최종 저장용)"""
-    _require_pro(current_user)
     if not req.summary or len(req.summary) < 10:
         raise HTTPException(status_code=400, detail="저장할 내용이 너무 짧습니다.")
     conn = get_db_connection()
@@ -14560,7 +14262,6 @@ def api_pro_report_pdf(report_id: int, format: str = "pdf",
     if not _tok or not _tok.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     current_user = _decode_jwt(_tok.split(" ", 1)[1])
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14638,6 +14339,8 @@ td {{ padding: 8px 10px; border: 1px solid #e5e7eb; }}
         ascii_fallback = (_cli.encode("ascii", "ignore").decode("ascii").strip() or "report") + f"_report.{ext}"
         return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{_urlquote(full)}"
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"report_pdf:{report_id}")
+
     # format=html: 링크가 확실히 살아있는 HTML 산출물 (고객 전달·클릭용)
     if (format or "").lower() == "html":
         from fastapi.responses import Response
@@ -14676,10 +14379,11 @@ class FileAnalyzeRequest(BaseModel):
 @app.post("/api/pro/files/analyze")
 def api_pro_file_analyze(req: FileAnalyzeRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 첨부 자료 AI 요약 분석 (JSON 텍스트)"""
-    _require_pro(current_user)
     if not req.text or len(req.text.strip()) < 20:
         return {"status": "SUCCESS", "summary": "분석할 텍스트가 부족합니다."}
-    return _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
+    result = _analyze_text_with_ai(req.text[:8000], req.file_name or "파일", req.file_type or "자료")
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_analyze")
+    return result
 
 
 class BusinessPlanReviewRequest(BaseModel):
@@ -14692,7 +14396,6 @@ class BusinessPlanReviewRequest(BaseModel):
 @app.get("/api/pro/stats/announcement")
 def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depends(_get_current_user)):
     """H: 공고 통계 — 같은 부처/카테고리의 평균 지원금, 유사 공고 수, 마감일까지 D-day."""
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -14754,6 +14457,7 @@ def api_pro_announcement_stats(announcement_id: int, current_user: dict = Depend
         analyzed_count = cur.fetchone()["cnt"]
 
         conn.close()
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref=f"stats_announcement:{announcement_id}")
         return {
             "status": "SUCCESS",
             "announcement": {
@@ -14784,7 +14488,6 @@ def api_pro_clients_batch_match(current_user: dict = Depends(_get_current_user))
     """G: PRO 컨설턴트의 모든 활성 고객에 대해 일괄 매칭 → 고객별 Top 5 공고 반환.
     매일 알림용 또는 대시보드 일괄 갱신용.
     """
-    _require_pro(current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -14841,6 +14544,7 @@ def api_pro_clients_batch_match(current_user: dict = Depends(_get_current_user))
             "top5": top5,
         })
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="clients_batch_match")
     return {"status": "SUCCESS", "clients_processed": len(out), "data": out}
 
 
@@ -14849,7 +14553,6 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
     """F: 사업계획서 텍스트 → AI 전문가 피드백 (강화 포인트, 가점 항목, 보완 사항).
     공고가 지정되면 해당 공고 자격요건과 매칭 분석.
     """
-    _require_pro(current_user)
     if not req.file_text or len(req.file_text.strip()) < 100:
         raise HTTPException(status_code=400, detail="사업계획서 본문이 너무 짧습니다 (최소 100자).")
 
@@ -14948,6 +14651,7 @@ def api_pro_business_plan_review(req: BusinessPlanReviewRequest, current_user: d
         print(f"[business-plan review] {e}")
         raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)[:200]}")
 
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="business_plan_review")
     return {"status": "SUCCESS", "data": result}
 
 
@@ -14957,8 +14661,6 @@ async def api_pro_file_upload_analyze(
     current_user: dict = Depends(_get_current_user),
 ):
     """PRO: 파일 업로드 → 텍스트 추출/멀티모달 → AI 요약 (PDF/DOCX/이미지/음성/TXT)"""
-    _require_pro(current_user)
-
     file_name = file.filename or "unknown"
     content = await file.read()
 
@@ -14970,11 +14672,15 @@ async def api_pro_file_upload_analyze(
 
     # ─── 이미지 멀티모달 분석 (Gemini Vision) ───
     if ext in ("jpg", "jpeg", "png", "webp", "gif", "bmp"):
-        return _analyze_image_with_gemini(content, file_name, ext)
+        _img_result = _analyze_image_with_gemini(content, file_name, ext)
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:image")
+        return _img_result
 
     # ─── 음성 멀티모달 분석 (Gemini Audio) ───
     if ext in ("mp3", "wav", "m4a", "ogg", "flac", "webm", "aac"):
-        return _analyze_audio_with_gemini(content, file_name, ext)
+        _audio_result = _analyze_audio_with_gemini(content, file_name, ext)
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:audio")
+        return _audio_result
 
     try:
         if ext == "pdf":
@@ -15023,6 +14729,7 @@ async def api_pro_file_upload_analyze(
 
     result = _analyze_text_with_ai(text[:8000], file_name, ext)
     result["extracted_text"] = text[:5000]
+    _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="files_upload_analyze:text")
 
     # P1.1: client_files에 저장 (client_id=NULL, 나중에 고객 연결 가능)
     try:
@@ -15055,7 +14762,6 @@ async def api_pro_extract_profile(
 ):
     """PRO: 회사 자료(복수) → 기본정보 자동 추출 (폼 프리필용).
     자료유형 무관 추출+병합. 파일 저장은 안 함(보관은 상담 시작 후 client_files로)."""
-    _require_pro(current_user)
     from app.services.profile_extract import extract_one, merge, to_form_fields
     results, per_file = [], []
     for f in files[:8]:
@@ -15076,6 +14782,8 @@ async def api_pro_extract_profile(
             per_file.append({"filename": name, "ok": False, "reason": "판독 불가"})
     merged, sources = merge(results)
     fields = to_form_fields(merged)
+    if results:
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="extract_profile")
     return {"status": "SUCCESS", "fields": fields, "sources": sources, "per_file": per_file}
 
 
@@ -15249,7 +14957,6 @@ class BulkEmailRequest(BaseModel):
 @app.post("/api/pro/email/send")
 def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_current_user)):
     """PRO: 고객사 일괄 이메일 발송"""
-    _require_pro(current_user)
     if not req.client_ids:
         raise HTTPException(status_code=400, detail="발송 대상을 선택해주세요.")
     if not req.subject or not req.body:
@@ -15349,6 +15056,9 @@ def api_pro_email_send(req: BulkEmailRequest, current_user: dict = Depends(_get_
 
     conn.close()
     _log_event("pro_email", current_user["bn"], f"sent={sent},failed={failed},skipped={skipped}")
+
+    if sent > 0:
+        _charge_credits(current_user, CREDIT_COST_PRO_TOOL, "deduct", ref="email_send")
 
     return {
         "status": "SUCCESS",

@@ -448,11 +448,15 @@ export default function ProSecretary({ onClose, planStatus, onUpgrade, userType,
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         if (res.status === 402) {
-          // 무료 체험 소진 → 결제 유도
-          toast(err.detail || "이번 달 무료 체험을 모두 사용했어요.", "info");
+          // 크레딧 부족 → 충전 모달 오픈
+          const d = err.detail || {};
+          const msg = (d && typeof d === "object" && d.required !== undefined)
+            ? `크레딧이 부족합니다 (필요 ${Number(d.required).toLocaleString()} · 보유 ${Number(d.balance ?? 0).toLocaleString()})`
+            : (typeof d === "string" ? d : "크레딧이 부족합니다. 충전 후 이용해 주세요.");
+          toast(msg, "info");
           onUpgrade?.();
         } else {
-          toast(err.detail || "AI 응답 오류", "error");
+          toast(typeof err.detail === "string" ? err.detail : "AI 응답 오류", "error");
         }
         setLoading(false);
         return;

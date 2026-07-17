@@ -435,31 +435,42 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         }),
       });
 
-      if (res.status === 429) {
+      if (res.status === 402) {
+        // 크레딧 부족 → 충전 모달 오픈
         const errData = await res.json().catch(() => ({}));
-        const detail = errData.detail || "";
-        if (detail.startsWith("SESSION_MSG_LIMIT:")) {
-          toast(`이 상담의 메시지 한도(${CONSULT_MSG_LIMIT}개)에 도달했습니다. 새 상담을 시작해주세요.`, "info");
-        } else {
-          toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
-        }
+        const d = errData.detail || {};
+        const msg = (d && typeof d === "object" && d.required !== undefined)
+          ? `크레딧이 부족합니다 (필요 ${Number(d.required).toLocaleString()} · 보유 ${Number(d.balance ?? 0).toLocaleString()})`
+          : "크레딧이 부족합니다. 충전 후 이용해 주세요.";
+        toast(msg, "info");
+        onUpgrade?.();
         setLoading(false);
         return;
       }
-      if (res.status === 403) {
-        toast("현재 플랜에서는 이용할 수 없습니다.", "info");
-        setOpen(false);
+      if (res.status === 429) {
+        toast(`이 상담의 메시지 한도(${CONSULT_MSG_LIMIT}개)에 도달했습니다. 새 상담을 시작해주세요.`, "info");
         setLoading(false);
         return;
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast(err.detail || "AI 응답 오류가 발생했습니다.", "error");
+        toast(typeof err.detail === "string" ? err.detail : "AI 응답 오류가 발생했습니다.", "error");
         setLoading(false);
         return;
       }
 
       const data = await res.json();
+      // 대화 턴 한도 초과 → 새 상담 유도
+      if (data.turn_cap_reached) {
+        setMessages([...chatHistory, {
+          role: "assistant",
+          text: data.reply || "상담이 길어졌어요. 새 상담으로 이어가시겠어요?",
+          choices: data.choices && data.choices.length ? data.choices : ["🆕 새 상담 시작"],
+          done: true,
+        }]);
+        setLoading(false);
+        return;
+      }
       const announcements = data.announcements || [];
       const matched = data.matched || [];
       const aiMsg: ChatMessage = {
@@ -506,19 +517,25 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         }),
       });
 
-      if (res.status === 429) {
-        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
+      if (res.status === 402) {
+        const errData = await res.json().catch(() => ({}));
+        const d = errData.detail || {};
+        const msg = (d && typeof d === "object" && d.required !== undefined)
+          ? `크레딧이 부족합니다 (필요 ${Number(d.required).toLocaleString()} · 보유 ${Number(d.balance ?? 0).toLocaleString()})`
+          : "크레딧이 부족합니다. 충전 후 이용해 주세요.";
+        toast(msg, "info");
+        onUpgrade?.();
         setLoading(false);
         return;
       }
-      if (res.status === 403) {
-        toast("현재 플랜에서는 이용할 수 없습니다.", "info");
+      if (res.status === 429) {
+        toast("요청이 많아요. 잠시 후 다시 시도해 주세요.", "info");
         setLoading(false);
         return;
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast(err.detail || "AI 응답 오류가 발생했습니다.", "error");
+        toast(typeof err.detail === "string" ? err.detail : "AI 응답 오류가 발생했습니다.", "error");
         setLoading(false);
         return;
       }
@@ -570,8 +587,19 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
         body: JSON.stringify({ profile }),
       });
 
+      if (res.status === 402) {
+        const errData = await res.json().catch(() => ({}));
+        const d = errData.detail || {};
+        const msg = (d && typeof d === "object" && d.required !== undefined)
+          ? `크레딧이 부족합니다 (필요 ${Number(d.required).toLocaleString()} · 보유 ${Number(d.balance ?? 0).toLocaleString()})`
+          : "크레딧이 부족합니다. 충전 후 이용해 주세요.";
+        toast(msg, "info");
+        onUpgrade?.();
+        setMatchingInProgress(false);
+        return;
+      }
       if (res.status === 429) {
-        toast("이번 달 무료 상담 횟수를 모두 사용했어요. 업그레이드하면 더 많이 이용할 수 있습니다!", "info");
+        toast("요청이 많아요. 잠시 후 다시 시도해 주세요.", "info");
         setMatchingInProgress(false);
         return;
       }
@@ -656,6 +684,12 @@ export default function AiChatBot({ planStatus, onUpgrade, userType, currentTab,
 
   const handleSend = (text: string) => {
     if (!text.trim() || loading || matchingInProgress) return;
+
+    // 턴 한도 초과 후 새 상담 시작 (새 세션 → 재과금 100)
+    if (mode === "free" && text === "🆕 새 상담 시작") {
+      startMode("free");
+      return;
+    }
 
     // 특수 선택지 처리
     if (mode === "consultant" && text === "대시보드에서 결과 확인") {
@@ -1211,9 +1245,9 @@ ${convHtml}
                 </div>
                 <button onClick={() => { handleClose(); window.dispatchEvent(new CustomEvent("open-login-modal")); }}
                   className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold text-[14px] hover:from-indigo-700 hover:to-violet-700 transition-all active:scale-[0.98]">
-                  무료 상담 시작하기 (로그인)
+                  상담 시작하기 (로그인)
                 </button>
-                <p className="text-[11px] text-slate-400 text-center mt-2">가입 시 월 3회 무료 상담</p>
+                <p className="text-[11px] text-slate-400 text-center mt-2">로그인하면 바로 이용할 수 있어요</p>
               </div>
             </div>
           </div>

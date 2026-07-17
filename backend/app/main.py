@@ -5295,13 +5295,7 @@ def api_ai_use(current_user: dict = Depends(_get_current_user)):
         except Exception:
             pass
 
-    if usage >= limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"이번 달 AI 상담 한도({limit}건)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 건수를 이용할 수 있습니다."
-        )
-
+    # (dead 경로: 프론트 진입로 없음 G2.5-3) 구독/사용량 429 게이팅 제거 — 막다른 길 소거.
     cur.execute(
         "UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s",
         (bn,)
@@ -6614,15 +6608,7 @@ def api_ai_consultant_chat(req: AiConsultantChatRequest, current_user: dict = De
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     u = dict(user)
 
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
+    # (dead 경로: 프론트 진입로 없음 G2.5-3) 구독 만료 403 게이팅 제거 — 로그인만 요구.
     # LITE 자금 전문 상담으로 통합 (chat_consultant 대체)
     from app.services.ai_consultant import chat_lite_fund_expert
     # 탭(mode)에 따라 프로필 필터링

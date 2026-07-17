@@ -635,24 +635,6 @@ export default function Home() {
         </div>
       )}
 
-      {planStatus?.plan === "expired" && step === "RESULTS" && (
-        <div className="w-full max-w-[1600px] mx-auto mb-6 p-5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top duration-500 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔒</span>
-            <div>
-              <p className="text-rose-900 font-bold text-sm">구독이 만료되었습니다</p>
-              <p className="text-rose-700 text-xs font-medium">플랜을 선택하면 AI 기능을 계속 이용할 수 있습니다.</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowPayment(true)}
-            className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg text-sm"
-          >
-            플랜 선택하기
-          </button>
-        </div>
-      )}
-
       {/* 프로필 미완성 유도 배너 */}
       {step === "RESULTS" && profileData && !profileData.user_type && (
         <div className="w-full max-w-[1600px] mx-auto mb-4 p-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-top duration-500 shadow-sm">
@@ -732,7 +714,7 @@ export default function Home() {
       )}
 
       {step === "PROFILE" && (
-        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} planStatus={planStatus} onOpenNotify={() => { setOpenNotifyOnReturn(true); setStep("RESULTS"); }} />
+        <ProfileSettings profile={profileData} onSave={handleConfirm} onClose={() => setStep("RESULTS")} onLogout={handleLogout} planStatus={credits !== null ? { ...planStatus, credits } : planStatus} onCharge={() => { setStep("RESULTS"); setShowPayment(true); }} onOpenNotify={() => { setOpenNotifyOnReturn(true); setStep("RESULTS"); }} />
       )}
 
       {step === "RESULTS" && (
@@ -814,7 +796,6 @@ export default function Home() {
 
       {showPayment && (
         <PaymentModal
-          mode="lite"
           planStatus={credits !== null ? { ...planStatus, credits } : planStatus}
           userType={profileData?.user_type}
           onSuccess={(newCredits) => {

@@ -337,6 +337,36 @@ def init_database():
         except Exception:
             conn.rollback()
 
+        # 크레딧 지갑 인프라 (구독→크레딧 전환 G1: 잔액 컬럼 + 원장 + 결제 기록, ADD-only)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS credit_transactions (
+                    id            BIGSERIAL PRIMARY KEY,
+                    user_id       INTEGER NOT NULL,
+                    type          VARCHAR(20) NOT NULL,
+                    amount        INTEGER NOT NULL,
+                    balance_after INTEGER NOT NULL,
+                    ref           TEXT,
+                    created_at    TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id, created_at DESC)")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payments (
+                    id          BIGSERIAL PRIMARY KEY,
+                    user_id     INTEGER NOT NULL,
+                    portone_id  TEXT NOT NULL UNIQUE,
+                    amount_krw  INTEGER NOT NULL,
+                    credits     INTEGER NOT NULL,
+                    status      VARCHAR(20) DEFAULT 'paid',
+                    created_at  TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # 공고 첨부(양식) 메타 캐시 (SmartDoc 연동 — 파일 바이트 아닌 메타만)
         try:
             cursor.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT NULL")

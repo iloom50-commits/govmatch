@@ -6939,7 +6939,7 @@ class ConsultantMatchRequest(BaseModel):
 
 @app.post("/api/ai/consultant/match")
 def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = Depends(_get_current_user)):
-    """컨설턴트 모드: 가상 프로필로 매칭 실행 (AI 1건 차감)"""
+    """컨설턴트 모드: 가상 프로필로 매칭 실행 (매칭은 무료 — 사용량 게이트 없음, G2-2)"""
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()
@@ -6957,36 +6957,9 @@ def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = De
     plan_expires = u.get("plan_expires_at")
     usage = u.get("ai_usage_month") or 0
     ps = _get_plan_status(plan, plan_expires, usage)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
-
-    limit = PLAN_LIMITS.get(plan, 1)
-
-    # 월간 리셋
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    # AI 1건 차감
-    if usage >= limit:
-        conn.close()
-        raise HTTPException(status_code=429, detail=f"이번 달 AI 상담 한도({limit}회)를 모두 사용했습니다. 플랜을 업그레이드하면 더 많은 상담을 이용할 수 있습니다.")
-
-    cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-    conn.commit()
     conn.close()
-    usage += 1
+    if not ps.get("active"):
+        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다.")
 
     # 가상 프로필로 매칭 엔진 실행 — 프로필의 industry_code 유무로 기업/개인 분기
     virtual_profile = req.profile
@@ -7003,8 +6976,6 @@ def api_ai_consultant_match(req: ConsultantMatchRequest, current_user: dict = De
         "status": "SUCCESS",
         "matches": matches,
         "profile_used": virtual_profile,
-        "ai_used": usage,
-        "ai_limit": limit,
     }
 
 

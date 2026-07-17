@@ -5480,49 +5480,12 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         if u.get(k) is None:
             u[k] = ""
 
-    # 플랜/사용량 체크
-    plan = u.get("plan") or "free"
-    if plan in ("trial", "premium"):
-        plan = "free"
-    plan_expires = u.get("plan_expires_at")
-    ps = _get_plan_status(plan, plan_expires, u.get("ai_usage_month") or 0)
-    if not ps.get("active"):
-        conn.close()
-        raise HTTPException(status_code=403, detail="플랜이 만료되었습니다. 업그레이드 후 이용해 주세요.")
-
-    # 공고별 지원대상 상담 제한 체크
-    consult_limit = CONSULT_LIMITS.get(plan, 0)
-    ai_usage = u.get("ai_usage_month") or 0
-
-    # 월간 리셋 체크
-    now = datetime.datetime.utcnow()
-    reset_at = u.get("ai_usage_reset_at")
-    if reset_at:
-        try:
-            reset_dt = datetime.datetime.fromisoformat(str(reset_at))
-            if now.month != reset_dt.month or now.year != reset_dt.year:
-                ai_usage = 0
-                cur.execute(
-                    "UPDATE users SET ai_usage_month=0, ai_usage_reset_at=%s WHERE business_number=%s",
-                    (now.isoformat(), bn)
-                )
-        except Exception:
-            pass
-
-    if consult_limit == 0:
-        conn.close()
-        raise HTTPException(
-            status_code=403,
-            detail="공고별 지원대상 상담은 LITE 플랜부터 이용할 수 있습니다."
-        )
-
-    # 세션ID 기반 차감: 기존 세션이면 차감 스킵
+    # 신규 세션(공고당 첫 상담) = 공고상담 50크레딧 과금 단위. 후속 질문(기존 세션)은 무차감.
+    # 세션 유효성(24시간 이내)으로 기존/신규를 판별한다.
     import uuid as _uuid
     session_id = req.session_id
     is_existing_session = False
-
     if session_id:
-        # 세션 유효성 확인 (24시간 이내)
         try:
             cur.execute("""
                 SELECT id FROM consult_sessions
@@ -5534,29 +5497,19 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         except Exception:
             pass
 
-    # 건수 제한 (PRO/무제한 제외)
-    if consult_limit < 999999 and not is_existing_session:
-        # consult 사용량은 ai_usage_month로 추적
-        if ai_usage >= consult_limit:
-            conn.close()
-            if plan == "free":
-                msg = f"무료 상담({consult_limit}회)을 모두 사용했습니다. LITE 플랜으로 업그레이드하면 무제한으로 이용할 수 있습니다."
-            else:
-                msg = f"이번 달 AI 상담 한도({consult_limit}회)를 모두 사용했습니다. PRO 플랜으로 업그레이드하면 무제한 이용할 수 있습니다."
-            raise HTTPException(status_code=429, detail=msg)
-        # 새 세션: 1회 차감 + 세션ID 발급
-        session_id = str(_uuid.uuid4())
-        cur.execute("UPDATE users SET ai_usage_month = ai_usage_month + 1 WHERE business_number = %s", (bn,))
-        try:
-            cur.execute("""
-                INSERT INTO consult_sessions (session_id, business_number, announcement_id)
-                VALUES (%s, %s, %s)
-            """, (session_id, bn, req.announcement_id))
-        except Exception:
-            pass
-        conn.commit()
-    elif not is_existing_session and not session_id:
-        # PRO/무제한: 차감 없이 session_id만 발급 (매 턴 별도 행 생성 방지)
+    is_new_session = not is_existing_session
+
+    # 신규 세션이면 잔액부족은 LLM 호출 전 402(원가 낭비 방지) + 새 session_id 발급.
+    # 차감은 LLM 성공 이후(아래). 면제 대상은 사전 확인·차감 모두 스킵.
+    if is_new_session:
+        if not _is_credit_exempt(current_user):
+            bal = wallet.wallet_balance(cur, current_user["user_id"])
+            if bal < CREDIT_COST_ANALYZE:
+                conn.close()
+                raise HTTPException(
+                    status_code=402,
+                    detail={"error": "insufficient_credits", "required": CREDIT_COST_ANALYZE, "balance": bal},
+                )
         session_id = str(_uuid.uuid4())
         try:
             cur.execute("""
@@ -5566,17 +5519,6 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             conn.commit()
         except Exception:
             pass
-        ai_usage += 1
-
-    # 1-1) 세션 내 메시지 수 제한 (플랜별 차별화)
-    session_msg_limit = SESSION_MSG_LIMITS.get(plan, 10)
-    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if user_msg_count > session_msg_limit:
-        conn.close()
-        raise HTTPException(
-            status_code=429,
-            detail=f"SESSION_MSG_LIMIT:{session_msg_limit}"
-        )
 
     # 2) 공고 정보 조회
     cur.execute(
@@ -5620,6 +5562,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         consult_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
 
     consult_conn = None
+    llm_ok = False
     try:
         from app.services.ai_consultant import chat_consult
         consult_conn = get_db_connection()
@@ -5631,6 +5574,7 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             user_profile=consult_profile,
             db_conn=consult_conn,
         )
+        llm_ok = True
     except Exception as e:
         print(f"[Consult] chat_consult error: {e}")
         import traceback; traceback.print_exc()
@@ -5683,6 +5627,11 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         consult_log_id = None
         print(f"[ConsultLog] Save error: {log_err}")
 
+    # 신규 세션 + LLM(chat_consult) 성공 이후에만 50크레딧 차감. 후속 질문(기존 세션)·LLM 실패는 무차감.
+    # (엔드포인트는 chat_consult 예외를 내부에서 폴백 응답으로 삼키므로 llm_ok 플래그로 성공을 판정한다.)
+    if is_new_session and llm_ok:
+        _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=session_id)
+
     # 최종 방어선: reply가 비어있으면 공고 제목 기반 안내 메시지로 대체
     final_reply = result.get("reply", "")
     if not final_reply or not final_reply.strip():
@@ -5695,8 +5644,8 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
         "done": is_done,
         "conclusion": result.get("conclusion") if is_done else None,
         "consult_log_id": consult_log_id if is_done else None,
-        "ai_used": ai_usage,
-        "ai_limit": consult_limit,
+        "ai_used": 0,
+        "ai_limit": 0,
         "session_id": session_id,
         "origin_url": a.get("origin_url", ""),
     }

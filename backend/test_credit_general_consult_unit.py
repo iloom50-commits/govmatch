@@ -283,6 +283,98 @@ def test_ai_chat_exempt_account_no_charge(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════
+# Task G2.5-2: /api/ai/consult 공고상담 → 50크레딧
+# ═════════════════════════════════════════════════════════════
+import app.services.doc_analysis_service as doc_analysis_service
+
+
+def _consult_req(messages, session_id=None, announcement_id=123):
+    return main.AiConsultRequest(announcement_id=announcement_id, messages=messages, session_id=session_id)
+
+
+def _patch_consult_llm(monkeypatch, fn=None):
+    monkeypatch.setattr(doc_analysis_service, "ensure_analysis", lambda *a, **k: {})
+    monkeypatch.setattr(
+        ai_consultant, "chat_consult",
+        fn or (lambda **k: {"reply": "지원 가능성이 있습니다", "choices": [], "done": False, "conclusion": None}),
+    )
+
+
+def test_ai_consult_new_session_charges_50(monkeypatch):
+    state = {"users": {1: {"credits": 300}}, "profile": _default_profile("111-11-11111"), "existing_sessions": set()}
+    _patch_db(monkeypatch, state)
+    _patch_consult_llm(monkeypatch)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+
+    assert result["status"] == "SUCCESS"
+    assert state["users"][1]["credits"] == 250, "신규 세션·성공 후 50크레딧 차감되어야 함"
+
+
+def test_ai_consult_existing_session_no_charge(monkeypatch):
+    sid = "sess-existing"
+    state = {"users": {1: {"credits": 300}}, "profile": _default_profile("111-11-11111"),
+             "existing_sessions": {sid}}
+    _patch_db(monkeypatch, state)
+    _patch_consult_llm(monkeypatch)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+    msgs = _one_user() + [{"role": "assistant", "text": "..."}] + [{"role": "user", "text": "추가 질문"}]
+
+    result = main.api_ai_consult(_consult_req(msgs, session_id=sid), current_user)
+
+    assert result["status"] == "SUCCESS"
+    assert state["users"][1]["credits"] == 300, "기존 세션(추가 질문)은 무차감이어야 함"
+
+
+def test_ai_consult_insufficient_402_before_llm(monkeypatch):
+    state = {"users": {1: {"credits": 30}}, "profile": _default_profile("111-11-11111"), "existing_sessions": set()}
+    _patch_db(monkeypatch, state)
+
+    def _must_not_call(**k):
+        raise AssertionError("잔액부족 시 chat_consult를 호출하면 안 됨")
+
+    _patch_consult_llm(monkeypatch, fn=_must_not_call)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    try:
+        main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+        assert False, "402가 발생해야 함"
+    except HTTPException as e:
+        assert e.status_code == 402
+
+    assert state["users"][1]["credits"] == 30, "잔액부족 시 차감되면 안 됨"
+
+
+def test_ai_consult_llm_failure_no_charge(monkeypatch):
+    state = {"users": {1: {"credits": 300}}, "profile": _default_profile("111-11-11111"), "existing_sessions": set()}
+    _patch_db(monkeypatch, state)
+
+    def _boom_consult(**k):
+        raise RuntimeError("chat_consult 실패")
+
+    _patch_consult_llm(monkeypatch, fn=_boom_consult)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+
+    # 엔드포인트는 예외를 내부에서 삼키고 폴백 응답을 반환하지만 과금은 하지 않아야 함
+    assert result["status"] == "SUCCESS"
+    assert state["users"][1]["credits"] == 300, "LLM 실패 시 차감되면 안 됨"
+
+
+def test_ai_consult_exempt_no_charge(monkeypatch):
+    state = {"users": {}, "profile": _default_profile("svc-bn"), "existing_sessions": set()}
+    _patch_db(monkeypatch, state)
+    _patch_consult_llm(monkeypatch)
+    current_user = {"bn": "svc-bn", "sub": "smartdoc-service", "_service": True}
+
+    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+
+    assert result["status"] == "SUCCESS"
+
+
+# ═════════════════════════════════════════════════════════════
 # 러너
 # ═════════════════════════════════════════════════════════════
 if __name__ == "__main__":

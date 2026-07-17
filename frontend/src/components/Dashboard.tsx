@@ -1168,14 +1168,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   useModalBack(sidebarOpen, () => setSidebarOpen(false));
   useModalBack(showMatchedMode, () => setShowMatchedMode(false));
 
-  const isFree = !planStatus || planStatus.plan === "free" || planStatus.plan === "expired";
-
   const toggleSelect = (id: number) => {
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -1187,11 +1180,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const handleInstantSave = async (announcementId: number) => {
     if (!bn) return;
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     const alreadySaved = savedItems.find(s => s.announcement_id === announcementId);
     const token = localStorage.getItem("auth_token") || "";
 
@@ -1233,11 +1221,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
   const handleBulkSave = async () => {
     if (!bn || selectedIds.size === 0) return;
-    if (isFree) {
-      toast("공고 저장은 LITE 플랜부터 이용 가능합니다.", "info");
-      onUpgrade?.();
-      return;
-    }
     setSaving(true);
     try {
       const token = localStorage.getItem("auth_token") || "";

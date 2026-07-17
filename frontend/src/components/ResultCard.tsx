@@ -278,10 +278,8 @@ interface CardProps {
   onLoginRequired?: () => void;
 }
 
-export default function ResultCard({ res, selected, onToggle, saved, saving, onSave, planStatus, onUpgrade, onLoginRequired, highlight }: CardProps & { highlight?: boolean }) {
+export default function ResultCard({ res, selected, onToggle, saved, saving, onSave, onLoginRequired, highlight }: CardProps & { highlight?: boolean }) {
   const isPublic = !!onLoginRequired;
-  const isExpired = !isPublic && planStatus?.plan === "expired";
-  const isConsultBlocked = !isPublic && planStatus?.consult_limit === 0;  // FREE 플랜: 공고별 상담/신청서 차단
   const { toast } = useToast();
   const dDay = getDDayInfo(res.deadline_date, res.deadline_type);
   // 매핑에 있으면 국문, 없고 영문이면 숨김(한/영 혼용 방지), 없고 국문이면 원본 유지
@@ -487,8 +485,7 @@ export default function ResultCard({ res, selected, onToggle, saved, saving, onS
                 onClick={(e) => {
                   e.stopPropagation();
                   if (isPublic) { onLoginRequired?.(); return; }
-                  if (isExpired) { onUpgrade?.(); return; }
-                  if (isConsultBlocked) { toast("AI 상담은 곧 유료 서비스로 제공될 예정입니다. 조금만 기다려 주세요!", "info"); onUpgrade?.(); return; }
+                  // 로그인 사용자는 누구나 상담 진입 — 과금은 백엔드가 크레딧으로 처리(부족 시 402 → 충전 모달)
                   if (typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("request-ai-consult", { detail: { announcement: res } }));
                   }

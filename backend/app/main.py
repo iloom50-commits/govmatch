@@ -820,9 +820,8 @@ async def _daily_sync_loop():
             _discover_new_sources()
             _deactivate_dead_urls()
 
-            # Step 0-B: 구독 자동 갱신 (만료된 빌링키 결제)
-            print("[Scheduler] Step 0-B: 구독 자동 갱신...")
-            _auto_renew_subscriptions()
+            # Step 0-B: 구독 자동 갱신 — G2-6: 구독 결제 종료로 비활성화(호출 해제).
+            # _auto_renew_subscriptions 함수 정의는 남겨둔다(ADD-only).
 
             # Step 1: 기업 API 수집 + (월요일만) 개인 복지 전체 동기화
             print("[Scheduler] Step 1/3: 공고 수집 시작...")
@@ -2903,6 +2902,16 @@ def _get_plan_status(plan: str, plan_expires_at: str | None, ai_usage_month: int
             "ai_used": 0, "ai_limit": PLAN_LIMITS["free"], "consult_limit": CONSULT_LIMITS["free"]}
 
 
+def _get_wallet_status(current_user: dict) -> dict:
+    """G2-6: 구독 폐지 이후 잔액 표시용. {"credits": N} 반환."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        return {"credits": wallet.wallet_balance(cur, current_user["user_id"])}
+    finally:
+        conn.close()
+
+
 # ─── 응답 캐시 (동시접속 대응) ───────────────────────────────────────
 _response_cache: dict = {}
 _CACHE_TTL = 3600  # 60분 (카테고리 카운트/공개 목록은 자주 안 바뀜)
@@ -4700,6 +4709,7 @@ def api_auth_me(current_user: dict = Depends(_get_current_user)):
     plan_status = _get_plan_status(u.get("plan") or "free", plan_expires, u.get("ai_usage_month") or 0)
     plan_status["pro_trial_remaining"] = _pro_trial_remaining(u)
     plan_status["pro_trial_limit"] = PRO_TRIAL_LIMIT
+    plan_status["credits"] = u.get("credits") or 0  # G2-6: 구독 폐지 → 크레딧 잔액 노출
     result = {
         "status": "SUCCESS",
         "user": {
@@ -4755,96 +4765,8 @@ def api_plan_upgrade(
     req: UpgradePlanRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """포트원 V2 결제 확인 후 플랜 업그레이드"""
-    bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
-
-    # 사용자 정보 조회
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT user_type, plan, plan_expires_at FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    user_type = u.get("user_type") or "both"
-
-    # 가격 결정 (user_type별)
-    if target == "lite":
-        price = PLAN_PRICES.get("lite_individual" if user_type == "individual" else "lite", 4900)
-    else:
-        price = PLAN_PRICES.get("pro", 49000)
-
-    # 사업자 LITE 1개월 무료 체험
-    if req.free_trial and target == "lite" and user_type != "individual":
-        # 이미 체험한 적 있는지 확인
-        cur.execute(
-            "SELECT plan_expires_at FROM users WHERE business_number = %s AND plan IN ('lite', 'lite_trial', 'pro')",
-            (bn,),
-        )
-        if cur.fetchone():
-            conn.close()
-            raise HTTPException(status_code=400, detail="무료 체험은 1회만 가능합니다.")
-        # 무료 체험: 결제 없이 30일 부여
-        target = "lite"
-    elif req.payment_id and PORTONE_API_SECRET:
-        # 포트원 V2 결제 검증
-        import httpx
-        verify_res = httpx.get(
-            f"https://api.portone.io/payments/{req.payment_id}",
-            headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
-            timeout=15,
-        )
-        if verify_res.status_code != 200:
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제 정보를 확인할 수 없습니다.")
-        payment = verify_res.json()
-        if payment.get("status") != "PAID":
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제가 완료되지 않았습니다.")
-        if payment.get("amount", {}).get("total") != price:
-            conn.close()
-            raise HTTPException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
-    else:
-        # 무료 체험도 아니고 결제도 안 됨 → 플랜 변경 차단
-        conn.close()
-        raise HTTPException(status_code=400, detail="결제가 필요합니다.")
-
-    # 빌링키 저장 (정기결제용)
-    billing_update = ""
-    billing_params = []
-    if req.billing_key:
-        billing_update = ", billing_key = %s"
-        billing_params = [req.billing_key]
-
-    now = datetime.datetime.utcnow()
-    expires_at = (now + datetime.timedelta(days=30)).isoformat()
-
-    cur.execute(
-        f"""UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s{billing_update}
-           WHERE business_number = %s""",
-        [target, now.isoformat(), expires_at, now.isoformat()] + billing_params + [bn],
-    )
-    conn.commit()
-    conn.close()
-
-    plan_status = _get_plan_status(target, expires_at, 0)
-    label_map = {"lite": "LITE", "lite_trial": "LITE 체험", "basic": "LITE", "biz": "PRO", "pro": "PRO"}
-    label = label_map.get(target, target.upper())
-    new_token = _create_jwt(
-        current_user["user_id"], bn, current_user["email"], target, expires_at
-    )
-
-    _log_event("upgrade", current_user["bn"], f"plan={target_plan},price={price},trial={req.free_trial}")
-    return {
-        "status": "SUCCESS",
-        "token": new_token,
-        "plan": plan_status,
-        "message": f"{label} 플랜으로 업그레이드되었습니다. ({'무료 체험 시작' if req.free_trial else f'{price:,}원 결제 완료'})",
-        "price": price,
-    }
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 class SubscribeRequest(BaseModel):
@@ -4858,178 +4780,20 @@ def api_plan_subscribe(
     req: SubscribeRequest,
     current_user: dict = Depends(_get_current_user),
 ):
-    """빌링키 등록 + 무료 체험 시작 (LITE/PRO 공통 30일)"""
-    # 1차: 형식 검증
-    if not req.billing_key or not isinstance(req.billing_key, str) or len(req.billing_key.strip()) < 10:
-        raise HTTPException(status_code=400, detail="유효하지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
-
-    bn = current_user["bn"]
-    target = req.target_plan if req.target_plan in ("lite", "pro") else "lite"
-    is_v1 = req.key_type == "v1" or req.billing_key.startswith("cust_")
-
-    # 2차: billing_key 검증 (V2만 — V1 customer_uid는 iamport 콜백이 신뢰 기반)
-    if not is_v1 and PORTONE_API_SECRET:
-        import httpx as _httpx
-        try:
-            verify_res = _httpx.get(
-                f"https://api.portone.io/billing-keys/{req.billing_key.strip()}",
-                headers={"Authorization": f"PortOne {PORTONE_API_SECRET}"},
-                timeout=10,
-            )
-            if verify_res.status_code == 404:
-                raise HTTPException(status_code=400, detail="등록되지 않은 빌링키입니다. 결제를 다시 시도해 주세요.")
-            if verify_res.status_code != 200:
-                raise HTTPException(status_code=502, detail="결제 검증 서비스에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.")
-            bk = verify_res.json()
-            if bk.get("status") != "ISSUED":
-                raise HTTPException(status_code=400, detail="결제가 완료되지 않은 빌링키입니다. 카드 등록을 다시 시도해 주세요.")
-            expected_cid = "".join(c if (c.isalnum() or c in "_-") else "_" for c in (bn or ""))[:40]
-            bk_customer_id = ((bk.get("customer") or {}).get("id") or "").strip()
-            if expected_cid and bk_customer_id and bk_customer_id != expected_cid:
-                print(f"[subscribe] customerId mismatch: expected={expected_cid} got={bk_customer_id}")
-                raise HTTPException(status_code=403, detail="본인 계정으로 결제된 빌링키가 아닙니다.")
-        except HTTPException:
-            raise
-        except _httpx.RequestError as e:
-            print(f"[subscribe] PortOne verify network error (허용): {e}")
-        except Exception as e:
-            print(f"[subscribe] PortOne verify unexpected error: {e}")
-            raise HTTPException(status_code=502, detail="결제 검증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
-    elif is_v1:
-        print(f"[subscribe] V1 customer_uid 등록: {req.billing_key[:20]}...")
-    else:
-        print("[subscribe] PORTONE_API_SECRET 미설정 — 빌링키 검증 건너뜀 (테스트 환경)")
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # 사용자 조회
-    cur.execute("SELECT plan, billing_key, user_type FROM users WHERE business_number = %s", (bn,))
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    current_plan = u.get("plan") or "free"
-
-    # 동일 플랜 재구독 차단 (상위 플랜 업그레이드는 허용)
-    if u.get("billing_key") and current_plan == target:
-        conn.close()
-        raise HTTPException(status_code=400, detail="이미 동일한 플랜을 구독 중입니다.")
-    # 하위 플랜으로 변경 차단 (PRO → LITE)
-    if current_plan == "pro" and target == "lite":
-        conn.close()
-        raise HTTPException(status_code=400, detail="PRO에서 LITE로 변경은 구독 해지 후 재가입해주세요.")
-
-    # ── 즉시 첫 청구 (2026-07-04 정책: 사용량 체험이 무료체험 — 결제 시점부터 유료) ──
-    # LITE→PRO 업그레이드 시 LITE 월정가만큼 차감 (2026-07-08 정책)
-    label = "LITE" if target == "lite" else "PRO"
-    price, upgrade_credit = _subscribe_charge(current_plan, target, u.get("user_type"), bn)
-    now = datetime.datetime.utcnow()
-    if not (bool(PORTONE_API_SECRET) or bool(PORTONE_V1_API_KEY and PORTONE_V1_API_SECRET)):
-        # 무과금 구독이 조용히 생기지 않도록 명시적 실패
-        conn.close()
-        raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다. 관리자에게 문의해주세요.")
-    _payment_id = f"first-{bn}-{now.strftime('%Y%m%d%H%M%S')}"
-    if not _charge_billing_key(req.billing_key.strip(), _payment_id, price, f"지원금AI {label} 월 구독"):
-        conn.close()
-        raise HTTPException(status_code=402, detail="결제가 승인되지 않았습니다. 카드/카카오페이 한도·상태 확인 후 다시 시도해주세요.")
-    print(f"[subscribe] {bn} {label} 첫 결제 {price:,}원 완료 ({_payment_id})")
-
-    # 결제 성공 → 30일 이용권 시작 (다음 청구는 만료일에 자동갱신)
-    expires_at = (now + datetime.timedelta(days=30)).isoformat()
-
-    cur.execute(
-        """UPDATE users SET plan = %s, plan_started_at = %s, plan_expires_at = %s,
-           ai_usage_month = 0, ai_usage_reset_at = %s, billing_key = %s, renew_fail_count = 0,
-           last_payment_id = %s
-           WHERE business_number = %s""",
-        (target, now.isoformat(), expires_at, now.isoformat(), req.billing_key, _payment_id, bn),
-    )
-    conn.commit()
-    conn.close()
-
-    plan_status = _get_plan_status(target, expires_at, 0)
-    new_token = _create_jwt(
-        current_user["user_id"], bn, current_user["email"], target, expires_at
-    )
-
-    _credit_msg = f"잔여 LITE {upgrade_credit:,}원 차감, " if upgrade_credit else ""
-    return {
-        "status": "SUCCESS",
-        "token": new_token,
-        "plan": plan_status,
-        "message": f"{label} 구독이 시작되었습니다 ({_credit_msg}{price:,}원 결제 완료). 다음 결제일: {expires_at[:10]}",
-    }
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 @app.post("/api/plan/cancel")
 def api_plan_cancel(current_user: dict = Depends(_get_current_user)):
-    """구독 해지 — 빌링키 삭제, 만료일까지는 이용 가능"""
-    bn = current_user["bn"]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE users SET billing_key = NULL WHERE business_number = %s",
-        (bn,),
-    )
-    conn.commit()
-    conn.close()
-    return {"status": "SUCCESS", "message": "구독이 해지되었습니다. 현재 플랜 만료일까지는 이용 가능합니다."}
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 @app.post("/api/plan/refund")
 def api_plan_refund(current_user: dict = Depends(_get_current_user)):
-    """구독 환불 — 공개 정책(/refund 페이지) 그대로 실환불:
-    7일 이내·미사용 전액 / 7일 이내·사용 일할 공제 / 7일 경과 불가(해지만 가능).
-    실제 취소는 last_payment_id로 포트원(V2)/아임포트(V1) 취소 API 호출."""
-    bn = current_user["bn"]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT plan, billing_key, user_type, plan_started_at, ai_usage_month, last_payment_id "
-            "FROM users WHERE business_number = %s", (bn,))
-        user = cur.fetchone()
-        if not user:
-            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-        u = dict(user)
-        plan = u.get("plan") or "free"
-        if plan == "free":
-            raise HTTPException(status_code=400, detail="무료 플랜은 환불 대상이 아닙니다.")
-
-        payment_id = (u.get("last_payment_id") or "").strip()
-        if not payment_id:
-            # 결제 이력 없음(레거시 무료기간 등) — 해지만 처리, 환불 사칭 금지
-            cur.execute(
-                "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL WHERE business_number = %s",
-                (bn,))
-            conn.commit()
-            return {"status": "SUCCESS", "message": "결제 이력이 없어 해지만 처리되었습니다. FREE 플랜으로 전환되었습니다."}
-
-        started = u.get("plan_started_at")
-        try:
-            started_dt = started if isinstance(started, datetime.datetime) else datetime.datetime.fromisoformat(str(started))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="결제 시점을 확인할 수 없습니다. 고객센터로 문의해주세요.")
-
-        now = datetime.datetime.utcnow()
-        price = _plan_price("lite" if plan in ("lite", "basic") else "pro", u.get("user_type"), bn=bn)
-        used = (u.get("ai_usage_month") or 0) > 0
-        refundable, amount, policy_reason = _refund_amount_policy(price, started_dt, now, used)
-        if not refundable:
-            raise HTTPException(status_code=400, detail=f"{policy_reason}. 구독 해지는 언제든 가능하며 잔여 기간까지 이용할 수 있습니다.")
-
-        if amount > 0 and not _cancel_payment(payment_id, amount, u.get("billing_key") or ""):
-            raise HTTPException(status_code=502, detail="환불 처리에 실패했습니다. 고객센터로 문의해주시면 수동 처리해드립니다.")
-
-        cur.execute(
-            "UPDATE users SET plan = 'free', billing_key = NULL, plan_expires_at = NULL, last_payment_id = NULL "
-            "WHERE business_number = %s", (bn,))
-        conn.commit()
-        return {"status": "SUCCESS", "message": f"환불이 완료되었습니다 ({amount:,}원 · {policy_reason}). FREE 플랜으로 전환되었습니다."}
-    finally:
-        conn.close()
+    """G2-6: 구독 결제 종료. 크레딧 결제로 대체되었다."""
+    raise HTTPException(status_code=410, detail="구독 결제는 종료되었습니다. 크레딧을 이용해 주세요.")
 
 
 # ══════════════════════════════════════════════════════════════════

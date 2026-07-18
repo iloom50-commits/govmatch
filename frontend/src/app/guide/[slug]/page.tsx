@@ -53,7 +53,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
     const qs = g.liveFilter.param === "category"
       ? `category=${encodeURIComponent(g.liveFilter.value)}`
       : `search=${encodeURIComponent(g.liveFilter.value)}`;
-    const r = await fetch(`${API}/api/announcements/public?target_type=business&size=8&${qs}`,
+    const r = await fetch(`${API}/api/announcements/public?target_type=${g.targetType || "business"}&size=8&${qs}`,
       { next: { revalidate: 3600 }, signal: AbortSignal.timeout(3000) });
     if (r.ok) { const d = await r.json(); live = d.data ?? d.announcements ?? []; }
   } catch { live = []; }

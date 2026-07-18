@@ -1982,17 +1982,61 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
     return final
 
 
+def _run_embedding_shadow(user_profile: dict, is_individual: bool, rule_results: list) -> None:
+    """섀도우 관측 — 임베딩을 병행 실행해 규칙 결과와 비교 지표를 [emb_shadow] 로그로 남긴다.
+
+    반환값에 영향 없음(호출측이 규칙 결과를 그대로 반환). 임계값 보정·비용/지연 실측용.
+    """
+    import time as _time, json as _json
+    t0 = _time.time()
+    tt = "individual" if is_individual else "business"
+    emb = get_matches_by_embedding(user_profile, top_k=50, target_type_filter=tt) or []
+    ms = round((_time.time() - t0) * 1000)
+
+    sims = sorted(float(c.get("similarity") or 0.0) for c in emb)
+    def _pct(frac: float) -> float:
+        if not sims:
+            return 0.0
+        return round(sims[min(len(sims) - 1, int(frac * (len(sims) - 1)))], 4)
+
+    rule_titles = [(r.get("title") or "") for r in rule_results]
+    emb_titles = [(c.get("title") or "") for c in emb]
+    rule_all = set(rule_titles)
+    payload = {
+        "tt": tt,
+        "rule_n": len(rule_results),
+        "emb_n": len(emb),
+        "top20_overlap": len(set(rule_titles[:20]) & set(emb_titles[:20])),
+        "sim_p50": _pct(0.5),
+        "sim_p90": _pct(0.9),
+        "emb_only_top5": [t for t in emb_titles if t not in rule_all][:5],
+        "ms": ms,
+    }
+    print("[emb_shadow] " + _json.dumps(payload, ensure_ascii=False, default=str))
+
+
 def get_matches_hybrid(user_profile: dict, is_individual: bool = False, skip_bucket: bool = False) -> list:
-    """하이브리드 매칭 — USE_EMBEDDING_MATCHING 환경변수 ON일 때만 임베딩 사용.
-    OFF 또는 실패 시 기존 rule-based 함수로 자동 fallback.
+    """하이브리드 매칭 — EMBEDDING_MATCHING_MODE(off/shadow/on)로 임베딩 사용 제어.
+    off(기본): rule-based. shadow: 규칙 반환 + 임베딩 병행 관측 로그. on: 임베딩 대체.
+    구 USE_EMBEDDING_MATCHING=true는 on 별칭(하위호환).
     skip_bucket=True면 버킷 레이어를 건너뜀 (both 모드에서 합산 후 1회 적용 용도).
     """
     import os as _os
-    use_emb = _os.environ.get("USE_EMBEDDING_MATCHING", "false").lower() == "true"
+    # 모드: off(기본) | shadow(규칙 반환 + 임베딩 병행 관측 로그) | on(임베딩 대체)
+    # 하위호환: 구 USE_EMBEDDING_MATCHING=true → on 별칭
+    mode = _os.environ.get("EMBEDDING_MATCHING_MODE", "").strip().lower()
+    if mode not in ("off", "shadow", "on"):
+        mode = "on" if _os.environ.get("USE_EMBEDDING_MATCHING", "false").lower() == "true" else "off"
 
-    # 기본: rule-based 사용
-    if not use_emb:
+    if mode != "on":
+        # off/shadow 공통: 규칙 경로 (반환 동일)
         results = get_individual_matches_for_user(user_profile) if is_individual else get_matches_for_user(user_profile)
+        if mode == "shadow":
+            # 임베딩을 병행 실행해 비교 로그만 — 실패해도 규칙 결과 불변
+            try:
+                _run_embedding_shadow(user_profile, is_individual, results)
+            except Exception as _e:
+                print(f"[emb_shadow] error(관측 실패, 규칙 결과 영향 없음): {_e}")
     else:
         # 임베딩 검색으로 상위 50개 후보 추출
         tt = "individual" if is_individual else "business"

@@ -1223,71 +1223,52 @@ def _discover_new_sources():
         return 0
 
 
-def _cleanup_non_support_announcements() -> int:
-    """DB에서 지원사업이 아닌 공고 제거. 반환: 삭제 건수."""
-    # 제목 키워드 — 이 단어가 제목에 있으면 비지원사업
-    NON_SUPPORT_PATTERNS = [
-        # 기존
-        "업무추진비", "사용내역", "사용 내역", "회의록", "의사록",
-        "결산", "예산서", "감사결과", "인사발령",
-        "입찰결과", "낙찰자", "계약현황", "계약체결", "개찰결과",
-        "채용결과", "합격자 발표", "선정결과 발표",
-        "행사 후기", "수료식", "시상식",
-        "취소공고", "취소 공고", "철회",
-        # 추가 — 크롤러에서 유입된 비지원사업 패턴
-        "포럼 개최", "포럼개최", "세미나 개최", "간담회 개최", "행사 개최",
-        "직원 채용", "직원채용", "채용 공고", "채용공고",
-        "합격자 공고", "서류전형 합격", "최종합격자",
-        "당첨자 명단", "당첨자명단",
-        "기관 소개", "원장 인사말", "인사말",
-        "민원 안내", "민원안내", "정보공개 안내",
-        "통근버스", "수기 공모전", "수기공모전",
-        "컴퓨터 교육", "정보화교육",
-        "보도자료", "언론보도",
-    ]
-    # 이 단어가 있으면 예외 (지원사업일 가능성)
-    EXCEPTIONS = ["모집", "참여기업", "참여자", "신청", "접수", "공모", "지원사업", "지원금"]
+def _cleanup_non_support_announcements(dry_run: bool = False) -> int:
+    """지원사업이 아닌 공고(행정처분·검사결과 등)를 소프트아카이브. 반환: 처리 건수.
 
-    # 비지원사업 카테고리 — category 컬럼이 이 값이면 삭제
+    판정은 app.services.content_filter.is_non_support_title(순수함수, 단위테스트 존재).
+    구 버전은 하드 DELETE라 ai_consult_logs FK(ON DELETE CASCADE 없음)에 걸려 조용히
+    실패했고 삭제금지 정책에도 어긋나 is_archived=TRUE 소프트아카이브로 전환.
+    dry_run=True면 변경 없이 대상 건수만 반환.
+    """
+    from app.services.content_filter import is_non_support_title
+
+    # 비지원사업 카테고리 — category 컬럼이 이 값이면 비지원
     NON_SUPPORT_CATEGORIES = [
         "Forum", "행사", "채용", "민원", "정보공개", "기관소개",
         "정보화교육", "교통", "보도자료",
     ]
-
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        deleted = 0
 
-        # ① 제목 키워드 기반 삭제
-        for pattern in NON_SUPPORT_PATTERNS:
-            cur.execute(
-                "SELECT announcement_id, title FROM announcements WHERE title ILIKE %s",
-                (f"%{pattern}%",)
-            )
-            for row in cur.fetchall():
-                title = row["title"]
-                if any(exc in title for exc in EXCEPTIONS):
-                    continue
-                cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (row["announcement_id"],))
-                deleted += 1
+        # ① 제목 기반 (순수함수 판정 — EXCEPTIONS 보호 포함)
+        cur.execute("SELECT announcement_id, title FROM announcements WHERE is_archived = FALSE")
+        title_ids = [r["announcement_id"] for r in cur.fetchall() if is_non_support_title(r["title"])]
+
+        # ② category 기반
+        placeholders = ",".join(["%s"] * len(NON_SUPPORT_CATEGORIES))
+        cur.execute(
+            f"SELECT announcement_id FROM announcements WHERE is_archived = FALSE AND category IN ({placeholders})",
+            NON_SUPPORT_CATEGORIES,
+        )
+        cat_ids = [r["announcement_id"] for r in cur.fetchall()]
+        ids = list(set(title_ids) | set(cat_ids))
+
+        if dry_run:
+            conn.close()
+            print(f"[cleanup] (dry-run) 비지원 아카이브 대상 {len(ids)}건 (제목 {len(title_ids)}/카테고리 {len(cat_ids)})")
+            return len(ids)
+
+        archived = 0
+        if ids:
+            cur.execute("UPDATE announcements SET is_archived = TRUE WHERE announcement_id = ANY(%s)", (ids,))
+            archived = cur.rowcount
             conn.commit()
-
-        # ② category 기반 삭제
-        if NON_SUPPORT_CATEGORIES:
-            placeholders = ",".join(["%s"] * len(NON_SUPPORT_CATEGORIES))
-            cur.execute(
-                f"DELETE FROM announcements WHERE category IN ({placeholders}) RETURNING announcement_id",
-                NON_SUPPORT_CATEGORIES
-            )
-            cat_deleted = cur.rowcount or 0
-            conn.commit()
-            deleted += cat_deleted
-
         conn.close()
-        if deleted > 0:
-            print(f"[cleanup] 비지원사업 공고 {deleted}건 삭제")
-        return deleted
+        if archived > 0:
+            print(f"[cleanup] 비지원사업 공고 {archived}건 소프트아카이브")
+        return archived
     except Exception as e:
         print(f"[cleanup] 오류: {e}")
         return 0

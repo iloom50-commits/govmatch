@@ -20,6 +20,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/guide/${encodeURIComponent("청년창업지원금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
     { url: `${baseUrl}/guide/${encodeURIComponent("다자녀-지원금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
     { url: `${baseUrl}/guide/${encodeURIComponent("중소기업-수출지원")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/guide/${encodeURIComponent("소상공인-지원금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/guide/${encodeURIComponent("중소기업-정책자금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/guide/${encodeURIComponent("창업지원금")}`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
   ];
 
   // 동적 페이지 — 마감 전 + 내용 있는 공고 (최대 500건)

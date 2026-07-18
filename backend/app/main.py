@@ -954,7 +954,7 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     cur = conn.cursor()
     cur.execute(
         f"""SELECT announcement_id, title, region, category,
-                   support_amount, support_amount_max, target_type, deadline_date,
+                   support_amount, support_amount_max, target_type, deadline_date, deadline_type,
                    eligibility_logic
             FROM announcements
             WHERE {valid_announcement_where()}
@@ -1092,11 +1092,14 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         # 전국: 지역명이 특정되지 않은 공고 (null/전국/빈값)
         is_national = not _db_is_regional and not _title_region
 
+        # 확정 마감(fixed·상시) 우선 — 관심 다음 2순위, unknown(마감 확인 필요)은 뒤로
+        _dl_confirmed = 1 if (ann.get("deadline_type") or "") in ("fixed", "ongoing") else 0
+        _rank = (1 if interest_hit else 0, _dl_confirmed, score)
         eligible_ids.append(ann_id)
         if in_my_region:
-            local_scored.append((score, ann_id))
+            local_scored.append((_rank, ann_id))
         elif is_national:
-            national_scored.append((score, ann_id))
+            national_scored.append((_rank, ann_id))
         # else: 다른 지역 공고 — 두 탭 모두 제외, 전체 탭(eligible_ids)에만 포함
 
     # 점수 내림차순 정렬
@@ -3312,6 +3315,7 @@ def api_announcements_public(
                                               ELSE 5 END
                                      ELSE (bucket - %s + 3) %% 3
                                 END,
+                                CASE WHEN deadline_type IN ('fixed','ongoing') THEN 0 ELSE 1 END,
                                 deadline_date ASC NULLS LAST,
                                 created_at DESC
                             LIMIT %s OFFSET %s""",
@@ -3332,6 +3336,7 @@ def api_announcements_public(
                                 ORDER BY CASE WHEN bucket=5 THEN 12 WHEN bucket=4 THEN 11 WHEN bucket=3 THEN 10
                                      WHEN %s='individual' THEN CASE WHEN bucket=0 THEN 0 WHEN bucket=2 THEN 1 WHEN bucket=1 THEN 2 ELSE 5 END
                                      ELSE (bucket-%s+3)%%3 END,
+                                CASE WHEN deadline_type IN ('fixed','ongoing') THEN 0 ELSE 1 END,
                                 deadline_date ASC NULLS LAST, created_at DESC""",
                                 _tp + _bp + [_tt or "business", _tb]
                             )
@@ -3848,6 +3853,7 @@ def api_announcements_public(
             ORDER BY
                 {relevance_order}
                 {interest_order}
+                CASE WHEN deadline_type IN ('fixed','ongoing') THEN 0 ELSE 1 END,
                 CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 9
                      ELSE 0 END,
                 CASE

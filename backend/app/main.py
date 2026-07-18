@@ -1326,53 +1326,47 @@ def _auto_classify_target_type():
         print(f"[classify] 오류: {e}")
 
 
-def _deduplicate_announcements():
-    """DB에서 중복 공고 제거 — 제목 정규화 기준으로 최신 1건만 유지"""
-    import re as _re
+def _deduplicate_announcements(dry_run: bool = False):
+    """활성 공고의 이중수집 중복을 소프트아카이브 — 공식 API 우선, scraper/구본 정리.
+
+    구 버전(하드DELETE·지역무시·소스우선순위없음)을 대체. 판정 로직은
+    app.services.dedup.select_archive_ids(순수함수, 단위테스트 존재).
+    - 대상: 마감 안 지난(활성) 공고만. 하드삭제 없이 is_archived=TRUE 소프트아카이브.
+    - dry_run=True면 변경 없이 대상 건수만 반환.
+    """
+    from app.services.dedup import select_archive_ids
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # 제목 정규화 후 중복 찾기 (공백/괄호/특수문자 제거)
         cur.execute("""
-            WITH normalized AS (
-                SELECT announcement_id, title, created_at,
-                       LOWER(REGEXP_REPLACE(REGEXP_REPLACE(title, '[\s\[\]()（）【】]', '', 'g'), '년도', '년', 'g')) AS norm_title
-                FROM announcements
-                WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
-            ),
-            duplicates AS (
-                SELECT norm_title, COUNT(*) as cnt,
-                       ARRAY_AGG(announcement_id ORDER BY created_at DESC) as ids
-                FROM normalized
-                GROUP BY norm_title
-                HAVING COUNT(*) > 1
-            )
-            SELECT norm_title, cnt, ids FROM duplicates
+            SELECT announcement_id, title, region, origin_source, target_type,
+                   EXTRACT(EPOCH FROM created_at) AS created_at
+            FROM announcements
+            WHERE is_archived = FALSE
+              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
         """)
-        dup_groups = cur.fetchall()
+        rows = cur.fetchall()
+        archive_ids = select_archive_ids(rows)
 
-        deleted = 0
-        for row in dup_groups:
-            ids = row["ids"]
-            # 첫 번째(최신)는 유지, 나머지 삭제
-            to_delete = ids[1:]
-            for del_id in to_delete:
-                try:
-                    cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (del_id,))
-                    deleted += 1
-                except Exception:
-                    conn.rollback()
-                    continue
+        if dry_run:
+            conn.close()
+            print(f"[dedup] (dry-run) 아카이브 대상 {len(archive_ids)}건 / 활성 {len(rows)}건")
+            return {"count": len(archive_ids), "dry_run": True, "active": len(rows)}
+
+        archived = 0
+        if archive_ids:
+            cur.execute(
+                "UPDATE announcements SET is_archived = TRUE WHERE announcement_id = ANY(%s)",
+                (archive_ids,),
+            )
+            archived = cur.rowcount
             conn.commit()
-
         conn.close()
-        if deleted > 0:
-            print(f"[dedup] {deleted}건 중복 공고 삭제 ({len(dup_groups)}개 그룹)")
-        else:
-            print(f"[dedup] 중복 없음")
+        print(f"[dedup] {archived}건 소프트아카이브 (활성 {len(rows)}건 중)")
+        return {"count": archived, "archived": archived, "active": len(rows)}
     except Exception as e:
         print(f"[dedup] 오류: {e}")
+        return {"count": 0, "error": str(e)[:200]}
 
 
 def _deactivate_dead_urls():

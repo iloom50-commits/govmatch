@@ -1572,9 +1572,6 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
 
       {planStatus && (
         <div className="relative z-10 p-4 rounded-xl border bg-blue-50 border-blue-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-blue-600">크레딧</span>
-          </div>
           <div className="flex items-baseline gap-1 mb-2.5">
             <span className="text-[22px] font-black text-blue-600 leading-none">
               {typeof planStatus.credits === "number" ? planStatus.credits.toLocaleString() : "-"}

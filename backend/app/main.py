@@ -3822,6 +3822,20 @@ def api_announcements_public(
         relevance_order = ""
         relevance_params = []
 
+    # 로그인 사용자: 관심분야 매칭 공고를 마감 tier보다 먼저 (필터/검색 걸어도 개인화 유지)
+    interest_order = ""
+    interest_params: list = []
+    if _is_logged_in and _auth_bn:
+        try:
+            cursor.execute("SELECT interests FROM users WHERE business_number = %s", (_auth_bn,))
+            _io_row = cursor.fetchone()
+            if _io_row and _io_row.get("interests"):
+                from app.services.list_ordering import interest_priority_order
+                _io_ints = [i.strip() for i in str(_io_row["interests"]).split(",") if i.strip()]
+                interest_order, interest_params = interest_priority_order(_io_ints)
+        except Exception:
+            interest_order, interest_params = "", []
+
     cursor.execute(
         f"""SELECT announcement_id, title, region, category, department,
                    support_amount, support_amount_max, support_amount_min, support_amount_type,
@@ -3833,6 +3847,7 @@ def api_announcements_public(
             WHERE {where_sql}
             ORDER BY
                 {relevance_order}
+                {interest_order}
                 CASE WHEN deadline_date IS NOT NULL AND deadline_date < CURRENT_DATE THEN 9
                      ELSE 0 END,
                 CASE
@@ -3847,7 +3862,7 @@ def api_announcements_public(
                 deadline_date ASC NULLS LAST,
                 created_at DESC
             LIMIT %s OFFSET %s""",
-        params + relevance_params + [size, offset],
+        params + relevance_params + interest_params + [size, offset],
     )
     rows = cursor.fetchall()
 

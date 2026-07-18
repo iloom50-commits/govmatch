@@ -325,6 +325,29 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
     _run_step("⑤-B 공고 품질 정리", step_5b_data_cleanup)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑤-C IndexNow — 신규 색인가능 공고 URL을 네이버·빙에 즉시 통지(수동 수집요청 대체)
+    #   최근 2일 수집 + 활성 + 색인가능(요약 100자+, 개별페이지 noindex 규칙과 일치)만.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def step_5c_indexnow():
+        from app.services.indexnow import submit_urls
+        cur = db_conn.cursor()
+        cur.execute("""
+            SELECT announcement_id FROM announcements
+            WHERE created_at >= CURRENT_DATE - INTERVAL '2 days'
+              AND is_archived = FALSE
+              AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+              AND summary_text IS NOT NULL AND LENGTH(summary_text) >= 100
+            ORDER BY announcement_id DESC LIMIT 5000
+        """)
+        ids = [r["announcement_id"] for r in cur.fetchall()]
+        urls = [f"https://www.govmatch.kr/announcements/{i}" for i in ids]
+        res = submit_urls(urls)
+        res["count"] = res.get("submitted", 0)
+        return res
+
+    _run_step("⑤-C IndexNow 색인통지", step_5c_indexnow)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑥ 사전매칭 캐시 갱신
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def step_6_prematch():

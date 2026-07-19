@@ -10,6 +10,9 @@ const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
 // 충전(카드 단건결제) 전용 채널키 — SmartDoc에서 카드 단건결제가 검증된 채널(동일 PortOne 스토어).
 // 기존 NEXT_PUBLIC_PORTONE_CHANNEL_KEY(빌링 등 다른 용도일 수 있음)와 분리해, 검증된 단건결제 채널을 명시적으로 쓴다.
 const CHARGE_CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHARGE_CHANNEL_KEY || "channel-key-c71e2358-2832-4bb8-a66e-f688c807e87c";
+// 결제 승인(KCP 실채널) 연동 완료 전까지는 실제 결제창을 열지 않고 "준비 중" 안내만 띄운다.
+// 연동 완료 시 Vercel 환경변수 NEXT_PUBLIC_CHARGE_READY=true 만 설정하면 코드 수정 없이 실결제가 열린다.
+const CHARGE_READY = process.env.NEXT_PUBLIC_CHARGE_READY === "true";
 
 interface Pack {
   krw: number;
@@ -38,6 +41,7 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
   const [packs, setPacks] = useState<Pack[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
 
   const currentCredits = typeof planStatus?.credits === "number" ? planStatus.credits : null;
 
@@ -71,6 +75,8 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
 
   const handleCharge = async () => {
     if (selected === null || !packs[selected]) return;
+    // 결제 승인 연동 완료 전 — 실제 결제창 대신 "준비 중" 안내를 띄운다.
+    if (!CHARGE_READY) { setShowComingSoon(true); return; }
     const pack = packs[selected];
     const token = getToken();
     if (!token) { toast("로그인 후 이용해 주세요.", "info"); return; }
@@ -122,6 +128,28 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* 결제 준비 중 안내 — KCP 실결제 연동 완료 전까지 표시 */}
+      {showComingSoon && (
+        <div className="absolute inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowComingSoon(false)} />
+          <div className="relative w-full max-w-xs bg-white rounded-2xl shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-2xl">🚧</div>
+            <h3 className="text-[16px] font-bold text-slate-900 mb-1.5">결제 기능 준비 중이에요</h3>
+            <p className="text-[12.5px] text-slate-500 leading-relaxed mb-5">
+              카드 결제 연동을 마무리하고 있어요.<br />
+              오픈되면 가입하신 연락처로 가장 먼저 알려드릴게요.<br />
+              지금은 <strong className="text-indigo-600">가입 크레딧으로 상담·분석</strong>을 이용해 보세요!
+            </p>
+            <button
+              onClick={() => setShowComingSoon(false)}
+              className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[13px] font-bold hover:bg-indigo-700 transition-all active:scale-[0.98]"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-white/60 overflow-hidden animate-in zoom-in-95 duration-300 max-h-[95vh] overflow-y-auto">
         <div className="relative z-10 p-5 sm:p-6">

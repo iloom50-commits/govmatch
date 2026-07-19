@@ -149,10 +149,24 @@ def _extract_detail_links(soup: BeautifulSoup, base_url: str) -> list[str]:
 _REMOVE_TAGS = {"script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"}
 
 
+async def _goto_ready(page, url: str, timeout: int = 45000) -> None:
+    """networkidle 대신 domcontentloaded + best-effort 정착 대기.
+
+    networkidle은 백그라운드 연결(추적·채팅위젯 등)이 하나라도 지속되면 영원히 안
+    끝나 60초 타임아웃(Playwright 공식 비권장). DOM 로드 후 최대 5초만 정착을 기다리고,
+    안 끝나도 진행 → 정적 HTML 사이트가 멈추지 않는다.
+    """
+    await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=5000)
+    except Exception:
+        pass  # 백그라운드 연결이 안 끝나도 DOM은 이미 로드됨 → 그대로 진행
+
+
 async def _fetch_page_text(page, url: str) -> str:
     """Playwright 페이지로 URL 접속 후 본문 텍스트 반환"""
     try:
-        await page.goto(url, wait_until="networkidle", timeout=45000)
+        await _goto_ready(page, url, timeout=45000)
         content = await page.content()
         soup = BeautifulSoup(content, "html.parser")
         for tag in soup.find_all(_REMOVE_TAGS):
@@ -270,7 +284,7 @@ class AdminScraper:
         try:
             page = await browser.new_page()
             try:
-                await page.goto(root_url, wait_until="networkidle", timeout=60000)
+                await _goto_ready(page, root_url, timeout=60000)
                 content = await page.content()
             finally:
                 await page.close()
@@ -300,7 +314,7 @@ class AdminScraper:
                 try:
                     test_page = await browser.new_page()
                     try:
-                        await test_page.goto(candidate_url, wait_until="networkidle", timeout=30000)
+                        await _goto_ready(test_page, candidate_url, timeout=30000)
                         test_content = await test_page.content()
                     finally:
                         await test_page.close()
@@ -362,7 +376,7 @@ class AdminScraper:
         """목록 페이지이면 개별 링크를 수집하고, 단일 공고이면 직접 분석"""
         list_page = await browser.new_page()
         try:
-            await list_page.goto(url, wait_until="networkidle", timeout=60000)
+            await _goto_ready(list_page, url, timeout=60000)
             content = await list_page.content()
         finally:
             await list_page.close()

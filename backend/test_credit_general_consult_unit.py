@@ -21,7 +21,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("GEMINI_API_KEY", "")  # 실제 네트워크 호출 방지
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 import app.main as main
 import app.services.ai_consultant as ai_consultant
@@ -305,10 +305,15 @@ def test_ai_consult_new_session_charges_50(monkeypatch):
     _patch_db(monkeypatch, state)
     _patch_consult_llm(monkeypatch)
     current_user = {"user_id": 1, "bn": "111-11-11111"}
+    bt = BackgroundTasks()
 
-    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+    resp = main.api_ai_consult(_consult_req(_one_user(), session_id=None), bt, current_user)
 
-    assert result["status"] == "SUCCESS"
+    assert resp["status"] == "PROCESSING"
+    assert state["users"][1]["credits"] == 300, "제출 시점엔 무차감"
+    # 워커 실행 → 신규 세션 성공 시 50 차감
+    main._run_consult_job(resp["job_id"], _consult_req(_one_user(), session_id=resp["session_id"]),
+                          current_user, resp["session_id"], resp["is_new_session"])
     assert state["users"][1]["credits"] == 250, "신규 세션·성공 후 50크레딧 차감되어야 함"
 
 
@@ -319,11 +324,13 @@ def test_ai_consult_existing_session_no_charge(monkeypatch):
     _patch_db(monkeypatch, state)
     _patch_consult_llm(monkeypatch)
     current_user = {"user_id": 1, "bn": "111-11-11111"}
+    bt = BackgroundTasks()
     msgs = _one_user() + [{"role": "assistant", "text": "..."}] + [{"role": "user", "text": "추가 질문"}]
 
-    result = main.api_ai_consult(_consult_req(msgs, session_id=sid), current_user)
-
-    assert result["status"] == "SUCCESS"
+    resp = main.api_ai_consult(_consult_req(msgs, session_id=sid), bt, current_user)
+    assert resp["status"] == "PROCESSING"
+    assert resp["is_new_session"] is False
+    main._run_consult_job(resp["job_id"], _consult_req(msgs, session_id=sid), current_user, sid, resp["is_new_session"])
     assert state["users"][1]["credits"] == 300, "기존 세션(추가 질문)은 무차감이어야 함"
 
 
@@ -336,14 +343,16 @@ def test_ai_consult_insufficient_402_before_llm(monkeypatch):
 
     _patch_consult_llm(monkeypatch, fn=_must_not_call)
     current_user = {"user_id": 1, "bn": "111-11-11111"}
+    bt = BackgroundTasks()
 
     try:
-        main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
+        main.api_ai_consult(_consult_req(_one_user(), session_id=None), bt, current_user)
         assert False, "402가 발생해야 함"
     except HTTPException as e:
         assert e.status_code == 402
 
     assert state["users"][1]["credits"] == 30, "잔액부족 시 차감되면 안 됨"
+    assert len(bt.tasks) == 0, "402 시 워커가 예약되면 안 됨"
 
 
 def test_ai_consult_llm_failure_no_charge(monkeypatch):
@@ -355,11 +364,12 @@ def test_ai_consult_llm_failure_no_charge(monkeypatch):
 
     _patch_consult_llm(monkeypatch, fn=_boom_consult)
     current_user = {"user_id": 1, "bn": "111-11-11111"}
+    bt = BackgroundTasks()
 
-    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
-
-    # 엔드포인트는 예외를 내부에서 삼키고 폴백 응답을 반환하지만 과금은 하지 않아야 함
-    assert result["status"] == "SUCCESS"
+    resp = main.api_ai_consult(_consult_req(_one_user(), session_id=None), bt, current_user)
+    assert resp["status"] == "PROCESSING"
+    main._run_consult_job(resp["job_id"], _consult_req(_one_user(), session_id=resp["session_id"]),
+                          current_user, resp["session_id"], resp["is_new_session"])
     assert state["users"][1]["credits"] == 300, "LLM 실패 시 차감되면 안 됨"
 
 
@@ -368,10 +378,13 @@ def test_ai_consult_exempt_no_charge(monkeypatch):
     _patch_db(monkeypatch, state)
     _patch_consult_llm(monkeypatch)
     current_user = {"bn": "svc-bn", "sub": "smartdoc-service", "_service": True}
+    bt = BackgroundTasks()
 
-    result = main.api_ai_consult(_consult_req(_one_user(), session_id=None), current_user)
-
-    assert result["status"] == "SUCCESS"
+    resp = main.api_ai_consult(_consult_req(_one_user(), session_id=None), bt, current_user)
+    assert resp["status"] == "PROCESSING"
+    main._run_consult_job(resp["job_id"], _consult_req(_one_user(), session_id=resp["session_id"]),
+                          current_user, resp["session_id"], resp["is_new_session"])
+    # 면제 계정: users 비어도 예외 없이 통과, 무차감
 
 
 # ═════════════════════════════════════════════════════════════

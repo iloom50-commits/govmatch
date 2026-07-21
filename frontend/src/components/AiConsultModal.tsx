@@ -364,6 +364,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       if (jd.status === "processing") continue;
       if (jd.status === "failed") {
         toast(jd.reply || "분석 중 오류가 발생했어요. 다시 시도해 주세요.", "error");
+        setShowLeaveNotifyDialog(false); // 안내창 열린 채 실패해도 stale 문구 방지
         jobIdRef.current = null;
         setLoading(false);
         return;
@@ -378,11 +379,13 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       };
       setMessages([...chatHistory, aiMsg]);
       if (jd.consult_log_id) setConsultLogId(jd.consult_log_id);
+      setShowLeaveNotifyDialog(false); // 안내창 열린 채 완료되면 stale 문구·무력 버튼 방지(결과 노출)
       jobIdRef.current = null;
       setLoading(false);
       return;
     }
     toast("분석이 지연되고 있어요. 잠시 후 상담이력에서 확인해 주세요.", "info");
+    setShowLeaveNotifyDialog(false);
     jobIdRef.current = null;
     setLoading(false);
   }, [originUrl, toast]);
@@ -513,26 +516,36 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
         return data?.user?.business_number || "";
       } catch { return ""; }
     };
-    if (typeof Notification === "undefined") { await callNotify(); return; }
+    const PUSH_OK = "완료되면 알림을 보내드릴게요 ✓";
+    const PUSH_FALLBACK = "알림이 꺼져 있어요 — 재접속하면 상담이력에서 확인할 수 있어요";
+    if (typeof Notification === "undefined") {
+      await callNotify();
+      toast(PUSH_FALLBACK, "info");
+      return;
+    }
     if (Notification.permission === "granted") {
       try {
         const bn = await getBusinessNumber();
         if (bn) await ensurePushSubscribed(bn);
       } catch {}
       await callNotify();
+      toast(PUSH_OK, "success");
     } else if (Notification.permission === "default") {
+      let perm: NotificationPermission = "default";
       try {
-        const perm = await Notification.requestPermission();
+        perm = await Notification.requestPermission();
         if (perm === "granted") {
           const bn = await getBusinessNumber();
           if (bn) await ensurePushSubscribed(bn);
         }
       } catch {}
       await callNotify();
+      toast(perm === "granted" ? PUSH_OK : PUSH_FALLBACK, perm === "granted" ? "success" : "info");
     } else {
       await callNotify();
+      toast(PUSH_FALLBACK, "info");
     }
-  }, []);
+  }, [toast]);
 
   // 순수 닫기 — 처리 중 알림 요청은 requestClose/전용 안내창이 담당한다
   const handleClose = useCallback(() => {
@@ -972,7 +985,10 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
                 onClick={async () => {
                   setShowLeaveNotifyDialog(false);
                   const jid = jobIdRef.current;
-                  if (jid) await notifyServer(jid);
+                  if (jid) {
+                    await notifyServer(jid);
+                    toast("백그라운드에서 계속 분석 중이에요 — 완료되면 상담이력에서 확인할 수 있어요", "info");
+                  }
                   handleClose();
                 }}
                 className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"

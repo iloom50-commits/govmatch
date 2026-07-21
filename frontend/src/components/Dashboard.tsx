@@ -843,6 +843,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
       .catch(() => {});
   }, []);
 
+  // 재접속 배너/배지 클릭 시 전체 pending 상담을 일괄 seen 처리
+  const markAllPendingSeen = useCallback(() => {
+    pendingConsults.items.forEach((it: { job_id?: string }) => markConsultJobSeen(it.job_id));
+    setPendingConsults({ count: 0, items: [] });
+  }, [pendingConsults, markConsultJobSeen]);
+
   // 딥링크 진입(웹푸시 클릭) — /?consult=<session_id>&aid=<announcement_id> → 완료된 상담 자동 오픈 + seen 처리 + URL 정리
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -875,14 +881,10 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 배지 클릭 — 가장 먼저 완료된 상담을 오픈하고 seen 처리
-  const handlePendingBadgeClick = useCallback((e: React.MouseEvent) => {
-    if (pendingConsults.items.length === 0) return;
-    e.preventDefault();
-    const item = pendingConsults.items[0];
-    openConsultForSession(item.announcement_id, item.session_id, item.job_id);
-    setPendingConsults(prev => ({ count: Math.max(0, prev.count - 1), items: prev.items.slice(1) }));
-  }, [pendingConsults, openConsultForSession]);
+  // 배지 클릭 — 상담이력 목록으로 이동(기본 <a> 네비게이션 유지), 완료된 상담은 전부 seen 처리
+  const handlePendingBadgeClick = useCallback(() => {
+    if (pendingConsults.items.length > 0) markAllPendingSeen();
+  }, [pendingConsults, markAllPendingSeen]);
 
   // 오늘의 인기 공고 state/fetch 제거 (사장님 요청)
 
@@ -1732,7 +1734,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </div>
         <a
           href="/my/consults"
-          onClick={(e) => { handlePendingBadgeClick(e); setSidebarOpen(false); }}
+          onClick={() => { handlePendingBadgeClick(); setSidebarOpen(false); }}
           className="relative w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
         >
           <span className="text-sm">💬</span>
@@ -1808,6 +1810,29 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           onTouchStart={handleTabSwipeStart}
           onTouchEnd={handleTabSwipeEnd}
         >
+          {/* 재접속 시 완료된 비동기 상담 안내 배너 — 항상 노출되는 메인 콘텐츠 최상단 */}
+          {pendingConsults.count > 0 && (
+            <a
+              href="/my/consults"
+              onClick={() => markAllPendingSeen()}
+              className="relative flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-all"
+            >
+              <span className="text-xl">🔔</span>
+              <span className="flex-1 text-[13px] font-semibold text-indigo-800">
+                완료된 상담 {pendingConsults.count}건이 있어요 — 눌러서 상담이력에서 확인하세요
+              </span>
+              <span className="text-indigo-400 text-lg leading-none">›</span>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); markAllPendingSeen(); }}
+                aria-label="닫기"
+                className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-indigo-300 hover:text-indigo-500 text-sm"
+              >
+                ✕
+              </button>
+            </a>
+          )}
+
           {/* 모바일 비로그인 하단 플로팅 CTA (lg 미만) */}
 
           {/* 컨설턴트 매칭 → 내 매칭 복원 버튼 */}

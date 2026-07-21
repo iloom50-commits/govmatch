@@ -175,6 +175,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
   const sessionIdRef = useRef<string | null>(null);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const jobIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -338,6 +339,52 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     return () => timers.forEach(clearTimeout);
   }, [loading, messages.length]);
 
+  // 제출 후 결과 폴링 — job_id로 상태를 확인해 완료되면 메시지를 렌더링
+  const pollJob = useCallback(async (jobId: string, chatHistory: ChatMessage[], controller: AbortController) => {
+    const token = localStorage.getItem("auth_token");
+    const started = Date.now();
+    const MAX = 180000; // 3분
+    while (Date.now() - started < MAX) {
+      if (controller.signal.aborted) return;
+      await new Promise((r) => setTimeout(r, 2000));
+      let jr: Response;
+      try {
+        jr = await fetch(`${API}/api/ai/consult/job/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+        continue;
+      }
+      if (!jr.ok) continue;
+      const jd = await jr.json();
+      if (jd.status === "processing") continue;
+      if (jd.status === "failed") {
+        toast(jd.reply || "분석 중 오류가 발생했어요. 다시 시도해 주세요.", "error");
+        jobIdRef.current = null;
+        setLoading(false);
+        return;
+      }
+      // done
+      if (jd.origin_url && !originUrl) setOriginUrl(jd.origin_url);
+      const aiMsg: ChatMessage = {
+        role: "assistant",
+        text: jd.reply || "분석 중 오류가 발생했습니다.",
+        choices: jd.choices || [],
+        done: jd.done || false,
+      };
+      setMessages([...chatHistory, aiMsg]);
+      if (jd.consult_log_id) setConsultLogId(jd.consult_log_id);
+      jobIdRef.current = null;
+      setLoading(false);
+      return;
+    }
+    toast("분석이 지연되고 있어요. 잠시 후 상담이력에서 확인해 주세요.", "info");
+    jobIdRef.current = null;
+    setLoading(false);
+  }, [originUrl, toast]);
+
   const sendToAI = useCallback(async (chatHistory: ChatMessage[]) => {
     if (!announcement) return;
 
@@ -393,8 +440,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       }
 
       const data = await res.json();
-      if (data.origin_url && !originUrl) setOriginUrl(data.origin_url);
-      // 세션ID 저장 (turn_cap 응답 포함 — 다음 턴 호출 시 최신값 사용)
+      // 세션ID 저장 — 다음 턴 호출 시 최신값 사용
       if (data.session_id && announcement) {
         sessionIdRef.current = data.session_id;
         setSessionId(data.session_id);
@@ -403,34 +449,21 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
           JSON.stringify({ id: data.session_id, ts: Date.now() })
         );
       }
-      // 대화 턴 한도 초과 → 새 상담 유도
-      if (data.turn_cap_reached) {
-        setMessages([...chatHistory, {
-          role: "assistant",
-          text: data.reply || "상담이 길어졌어요. 새 상담으로 이어가시겠어요?",
-          done: true,
-        }]);
-        setSessionMsgLimitReached(true);
-        setLoading(false);
+      if (data.status === "PROCESSING" && data.job_id) {
+        jobIdRef.current = data.job_id;
+        await pollJob(data.job_id, chatHistory, controller);
         return;
       }
-      const aiMsg: ChatMessage = {
-        role: "assistant",
-        text: data.reply || "분석 중 오류가 발생했습니다. 다시 시도해 주세요.",
-        choices: data.choices || [],
-        done: data.done || false,
-      };
-
-      setMessages([...chatHistory, aiMsg]);
-      // AI가 done=true를 반환해도 자동 종료하지 않음 — 사용자가 직접 "상담 종료" 클릭
-      if (data.consult_log_id) setConsultLogId(data.consult_log_id);
+      // 예상치 못한 응답 형태 — 방어적으로 오류 처리
+      toast("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요.", "error");
+      setLoading(false);
     } catch (err: unknown) {
       // AbortError는 의도적 취소 — 에러 toast 없이 조용히 종료
       if (err instanceof Error && err.name === "AbortError") return;
       toast("서버 연결에 실패했습니다.", "error");
     }
     setLoading(false);
-  }, [announcement, toast]);
+  }, [announcement, toast, pollJob]);
 
   const handleSend = (text: string) => {
     if (!text.trim() || loading || isDone) return;

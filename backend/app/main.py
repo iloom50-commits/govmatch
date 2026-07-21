@@ -147,7 +147,9 @@ def init_database():
             pass
 
         # 비동기 AI 상담 작업 테이블 (턴별 백그라운드 처리 상태/결과 추적)
-        cursor.execute("""
+        # _safe_exec로 즉시 커밋·격리 — 직접 execute만 하면 커밋 전 뒤 statement 실패 시
+        # rollback에 휩쓸려 프로덕션에 생성 안 되는 문제가 있어 안전 실행으로 감싼다.
+        _safe_exec("""
             CREATE TABLE IF NOT EXISTS consult_jobs (
                 job_id UUID PRIMARY KEY,
                 session_id VARCHAR(64),
@@ -162,11 +164,11 @@ def init_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        try:
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_consult_jobs_bn_status ON consult_jobs(business_number, status)")
-        except Exception:
-            pass
+        """, "consult_jobs")
+        _safe_exec(
+            "CREATE INDEX IF NOT EXISTS idx_consult_jobs_bn_status ON consult_jobs(business_number, status)",
+            "idx_consult_jobs_bn_status",
+        )
 
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""

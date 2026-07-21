@@ -63,7 +63,13 @@ class FakeCursor:
         elif q.startswith("UPDATE consult_jobs SET notify_requested = TRUE"):
             jid = p[0]; self.s["jobs"].setdefault(jid, {})["notify_requested"] = True
         elif q.startswith("UPDATE consult_jobs SET notified = TRUE"):
-            jid = p[0]; self.s["jobs"].setdefault(jid, {})["notified"] = True
+            jid = p[0]
+            j = self.s["jobs"].setdefault(jid, {})
+            if not j.get("notified", False):
+                j["notified"] = True
+                self.rowcount = 1
+            else:
+                self.rowcount = 0
         elif q.startswith("SELECT title FROM announcements"):
             self._r = {"title": "테스트공고"}
         elif "SELECT announcement_id, title" in q:

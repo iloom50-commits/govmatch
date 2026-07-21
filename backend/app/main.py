@@ -5666,14 +5666,16 @@ def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, s
 
 
 def _maybe_send_consult_push(job_id, bn, session_id, announcement_id, title, cur, conn):
-    """consult 완료 푸시 발송 + notified=true. cur/conn은 열린 상태로 전달받는다."""
+    """consult 완료 푸시 — notified를 원자적으로 선점한 경우에만 발송(중복 방지)."""
     try:
+        # 원자적 claim: 아직 안 보낸 경우에만 이 호출이 승자가 된다
+        cur.execute("UPDATE consult_jobs SET notified = TRUE, updated_at = CURRENT_TIMESTAMP WHERE job_id = %s AND notified = FALSE", (job_id,))
+        conn.commit()
+        if cur.rowcount != 1:
+            return 0  # 다른 경로가 이미 발송함
         from app.services.notification_service import notification_service
         url = f"/?consult={session_id}&aid={announcement_id}"
-        sent = notification_service.send_transactional_push(bn, "상담 분석이 완료됐어요", str(title)[:60], url)
-        cur.execute("UPDATE consult_jobs SET notified = TRUE, updated_at = CURRENT_TIMESTAMP WHERE job_id = %s", (job_id,))
-        conn.commit()
-        return sent
+        return notification_service.send_transactional_push(bn, "상담 분석이 완료됐어요", str(title)[:60], url)
     except Exception as e:
         print(f"[ConsultJob] push error {job_id}: {e}")
         return 0

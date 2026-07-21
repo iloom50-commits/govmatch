@@ -5465,166 +5465,135 @@ class AiConsultRequest(BaseModel):
 
 
 @app.post("/api/ai/consult")
-def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_current_user)):
-    """AI 지원대상 여부 상담 — 대화형 (Gemini)"""
-    import google.generativeai as genai
-
+def api_ai_consult(req: AiConsultRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(_get_current_user)):
+    """AI 상담 제출 — job 생성 후 즉시 반환, 실제 분석은 백그라운드 워커에서."""
+    import uuid as _uuid
     bn = current_user["bn"]
     conn = get_db_connection()
     cur = conn.cursor()
-
-    # 1) 사용자 프로필 + 플랜 체크
-    cur.execute(
-        """SELECT plan, ai_usage_month, ai_usage_reset_at, plan_expires_at,
-                  company_name, establishment_date, address_city, industry_code,
-                  revenue_bracket, employee_count_bracket, interests, user_type,
-                  age_range, business_number, gender,
-                  income_level, family_type, employment_status, housing_status
-           FROM users WHERE business_number = %s""",
-        (bn,)
-    )
-    user = cur.fetchone()
-    if not user:
-        conn.close()
-        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
-    u = dict(user)
-    # NULL 프로필 필드 → 빈 문자열 (AI 프롬프트 호환)
-    for k in ("company_name", "establishment_date", "address_city", "industry_code",
-              "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range",
-              "gender", "income_level", "family_type", "employment_status", "housing_status"):
-        if u.get(k) is None:
-            u[k] = ""
-
-    # 신규 세션(공고당 첫 상담) = 공고상담 50크레딧 과금 단위. 후속 질문(기존 세션)은 무차감.
-    # 세션 유효성(24시간 이내)으로 기존/신규를 판별한다.
-    import uuid as _uuid
-    session_id = req.session_id
-    is_existing_session = False
-    if session_id:
-        try:
-            cur.execute("""
-                SELECT id FROM consult_sessions
-                WHERE session_id = %s AND business_number = %s AND announcement_id = %s
-                  AND created_at > NOW() - INTERVAL '24 hours'
-            """, (session_id, bn, req.announcement_id))
-            if cur.fetchone():
-                is_existing_session = True
-        except Exception:
-            pass
-
-    is_new_session = not is_existing_session
-
-    # 신규 세션이면 잔액부족은 LLM 호출 전 402(원가 낭비 방지) + 새 session_id 발급.
-    # 차감은 LLM 성공 이후(아래). 면제 대상은 사전 확인·차감 모두 스킵.
-    if is_new_session:
-        if not _is_credit_exempt(current_user):
-            bal = wallet.wallet_balance(cur, current_user["user_id"])
-            if bal < CREDIT_COST_ANALYZE:
-                conn.close()
-                raise HTTPException(
-                    status_code=402,
-                    detail={"error": "insufficient_credits", "required": CREDIT_COST_ANALYZE, "balance": bal},
-                )
-        session_id = str(_uuid.uuid4())
-        try:
-            cur.execute("""
-                INSERT INTO consult_sessions (session_id, business_number, announcement_id)
-                VALUES (%s, %s, %s)
-            """, (session_id, bn, req.announcement_id))
-            conn.commit()
-        except Exception:
-            pass
-
-    # 2) 공고 정보 조회
-    cur.execute(
-        """SELECT announcement_id, title, department, category, support_amount, deadline_date,
-                  summary_text, region, eligibility_logic, origin_url, target_type
-           FROM announcements WHERE announcement_id = %s""",
-        (req.announcement_id,)
-    )
-    ann = cur.fetchone()
-    if not ann:
-        conn.close()
-        raise HTTPException(status_code=404, detail="공고를 찾을 수 없습니다.")
-    a = dict(ann)
-
-    # 2-1) 정밀 분석 데이터 보장 (없으면 실시간 분석)
-    deep = {}
     try:
-        from app.services.doc_analysis_service import ensure_analysis
-        analysis_conn = get_db_connection()
-        deep = ensure_analysis(req.announcement_id, analysis_conn) or {}
-        analysis_conn.close()
-        if deep:
-            ps = deep.get("parsed_sections", {}) or {}
-            filled = [k for k, v in ps.items() if v]
-            print(f"[Consult] Analysis OK for #{req.announcement_id}: source={deep.get('source_type')}, filled_sections={filled}")
-    except Exception as e:
-        print(f"[Consult] ensure_analysis error for #{req.announcement_id}: {e}")
-        try:
-            analysis_conn.close()
-        except Exception:
-            pass
+        # 1) 사용자 존재 확인(프로필은 워커에서 다시 로드 — 커넥션 분리)
+        cur.execute("SELECT plan, ai_usage_month, ai_usage_reset_at, plan_expires_at, business_number FROM users WHERE business_number = %s", (bn,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
-    # 3) 공고 target_type에 따라 프로필 필터링
-    _BIZ_FIELDS = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications"}
-    _INDIV_FIELDS = {"age_range", "income_level", "family_type", "employment_status", "housing_status", "gender", "address_city", "interests", "user_type"}
-    _COMMON_FIELDS = {"address_city", "interests", "user_type", "email", "plan"}
-    ann_target = (a.get("target_type") or "business").lower()
-    if ann_target == "individual":
-        consult_profile = {k: v for k, v in u.items() if k in (_INDIV_FIELDS | _COMMON_FIELDS) and v}
-    else:
-        consult_profile = {k: v for k, v in u.items() if k in (_BIZ_FIELDS | _COMMON_FIELDS) and v}
-
-    consult_conn = None
-    llm_ok = False
-    try:
-        from app.services.ai_consultant import chat_consult
-        consult_conn = get_db_connection()
-        result = chat_consult(
-            announcement_id=req.announcement_id,
-            messages=req.messages,
-            announcement=a,
-            deep_analysis_data=deep,
-            user_profile=consult_profile,
-            db_conn=consult_conn,
-        )
-        llm_ok = True
-    except Exception as e:
-        print(f"[Consult] chat_consult error: {e}")
-        import traceback; traceback.print_exc()
-        # 에러 발생해도 기본 응답 반환 (500 대신 정상 응답)
-        result = {
-            "reply": f"AI 상담 중 오류가 발생했습니다. 다시 시도해 주세요.\n\n공고 원문 확인: {a.get('origin_url', '')}",
-            "choices": ["다시 시도", "다른 공고 보기"],
-            "done": False,
-            "conclusion": None,
-        }
-    finally:
-        if consult_conn:
+        # 2) 신규/기존 세션 판별
+        session_id = req.session_id
+        is_existing_session = False
+        if session_id:
             try:
-                consult_conn.close()
+                cur.execute("""
+                    SELECT id FROM consult_sessions
+                    WHERE session_id = %s AND business_number = %s AND announcement_id = %s
+                      AND created_at > NOW() - INTERVAL '24 hours'
+                """, (session_id, bn, req.announcement_id))
+                if cur.fetchone():
+                    is_existing_session = True
             except Exception:
                 pass
-    conn.close()
+        is_new_session = not is_existing_session
 
-    is_done = result.get("done", False)
+        # 3) 신규 세션이면 402 사전 차단 + session 발급
+        if is_new_session:
+            if not _is_credit_exempt(current_user):
+                bal = wallet.wallet_balance(cur, current_user["user_id"])
+                if bal < CREDIT_COST_ANALYZE:
+                    raise HTTPException(status_code=402, detail={"error": "insufficient_credits", "required": CREDIT_COST_ANALYZE, "balance": bal})
+            session_id = str(_uuid.uuid4())
+            try:
+                cur.execute("INSERT INTO consult_sessions (session_id, business_number, announcement_id) VALUES (%s, %s, %s)",
+                            (session_id, bn, req.announcement_id))
+                conn.commit()
+            except Exception:
+                pass
 
-    # done=True 강제 오버라이드: 사용자 메시지가 3개 미만이면 done=false 강제
-    user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
-    if is_done and user_msg_count < 3:
-        is_done = False
-        result["done"] = False
-        result["conclusion"] = None
+        # 4) job 생성
+        job_id = str(_uuid.uuid4())
+        cur.execute("""INSERT INTO consult_jobs (job_id, session_id, business_number, announcement_id, status)
+                       VALUES (%s, %s, %s, %s, 'processing')""",
+                    (job_id, session_id, bn, req.announcement_id))
+        conn.commit()
+    finally:
+        conn.close()
 
-    consult_log_id = None
+    # 5) 백그라운드 워커 예약 후 즉시 반환
+    background_tasks.add_task(_run_consult_job, job_id, req, current_user, session_id, is_new_session)
+    return {"status": "PROCESSING", "job_id": job_id, "session_id": session_id, "is_new_session": is_new_session}
 
-    # P0.4: 매 턴 UPSERT 저장 (done 여부 무관) — session_id로 그룹핑
+
+def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, session_id: str, is_new_session: bool):
+    """백그라운드 워커 — ensure_analysis + chat_consult + 저장 + 성공시 과금 + (닫힘시)푸시.
+    요청 스코프 커넥션을 재사용하지 않고 자체 커넥션을 열고 닫는다."""
+    bn = current_user["bn"]
     try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # 프로필 로드
+        cur.execute(
+            """SELECT plan, company_name, establishment_date, address_city, industry_code,
+                      revenue_bracket, employee_count_bracket, interests, user_type,
+                      age_range, business_number, gender,
+                      income_level, family_type, employment_status, housing_status
+               FROM users WHERE business_number = %s""", (bn,))
+        user = cur.fetchone()
+        u = dict(user) if user else {}
+        for k in ("company_name", "establishment_date", "address_city", "industry_code",
+                  "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range",
+                  "gender", "income_level", "family_type", "employment_status", "housing_status"):
+            if u.get(k) is None:
+                u[k] = ""
+
+        # 공고 조회
+        cur.execute(
+            """SELECT announcement_id, title, department, category, support_amount, deadline_date,
+                      summary_text, region, eligibility_logic, origin_url, target_type
+               FROM announcements WHERE announcement_id = %s""", (req.announcement_id,))
+        ann = cur.fetchone()
+        if not ann:
+            raise RuntimeError("공고를 찾을 수 없음")
+        a = dict(ann)
+        conn.close()
+
+        # 정밀 분석 보장
+        deep = {}
+        try:
+            from app.services.doc_analysis_service import ensure_analysis
+            aconn = get_db_connection()
+            deep = ensure_analysis(req.announcement_id, aconn) or {}
+            aconn.close()
+        except Exception as e:
+            print(f"[ConsultJob] ensure_analysis error #{req.announcement_id}: {e}")
+
+        # 프로필 필터
+        _BIZ = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications"}
+        _INDIV = {"age_range", "income_level", "family_type", "employment_status", "housing_status", "gender", "address_city", "interests", "user_type"}
+        _COMMON = {"address_city", "interests", "user_type", "email", "plan"}
+        ann_target = (a.get("target_type") or "business").lower()
+        if ann_target == "individual":
+            consult_profile = {k: v for k, v in u.items() if k in (_INDIV | _COMMON) and v}
+        else:
+            consult_profile = {k: v for k, v in u.items() if k in (_BIZ | _COMMON) and v}
+
+        # LLM
+        from app.services.ai_consultant import chat_consult
+        cconn = get_db_connection()
+        result = chat_consult(announcement_id=req.announcement_id, messages=req.messages,
+                              announcement=a, deep_analysis_data=deep, user_profile=consult_profile, db_conn=cconn)
+        cconn.close()
+        llm_ok = True
+
+        is_done = result.get("done", False)
+        user_msg_count = sum(1 for m in req.messages if m.get("role") == "user")
+        if is_done and user_msg_count < 3:
+            is_done = False
+            result["done"] = False
+            result["conclusion"] = None
+
+        # ai_consult_logs 저장
         all_msgs = req.messages + [{"role": "assistant", "text": result.get("reply", "")}]
-        log_conn = get_db_connection()
-        log_cur = log_conn.cursor()
-        log_cur.execute("""
+        lconn = get_db_connection()
+        lcur = lconn.cursor()
+        lcur.execute("""
             INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
             VALUES (%s, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
@@ -5634,36 +5603,66 @@ def api_ai_consult(req: AiConsultRequest, current_user: dict = Depends(_get_curr
             RETURNING id
         """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False),
               result.get("conclusion") if is_done else None, session_id))
-        row = log_cur.fetchone()
+        row = lcur.fetchone()
         consult_log_id = row["id"] if row else None
-        log_conn.commit()
-        log_conn.close()
-    except Exception as log_err:
-        consult_log_id = None
-        print(f"[ConsultLog] Save error: {log_err}")
+        lconn.commit()
+        lconn.close()
 
-    # 신규 세션 + LLM(chat_consult) 성공 이후에만 50크레딧 차감. 후속 질문(기존 세션)·LLM 실패는 무차감.
-    # (엔드포인트는 chat_consult 예외를 내부에서 폴백 응답으로 삼키므로 llm_ok 플래그로 성공을 판정한다.)
-    if is_new_session and llm_ok:
-        _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=session_id)
+        # 성공 시에만 과금
+        if is_new_session and llm_ok:
+            _charge_credits(current_user, CREDIT_COST_ANALYZE, "analyze", ref=session_id)
 
-    # 최종 방어선: reply가 비어있으면 공고 제목 기반 안내 메시지로 대체
-    final_reply = result.get("reply", "")
-    if not final_reply or not final_reply.strip():
-        final_reply = f"**{a.get('title', '공고')}** 분석을 시작합니다. 아래 선택지를 눌러 질문해 주세요."
+        final_reply = result.get("reply", "") or f"**{a.get('title', '공고')}** 분석을 시작합니다. 아래 선택지를 눌러 질문해 주세요."
+        result_payload = {
+            "reply": final_reply,
+            "choices": result.get("choices", []),
+            "done": is_done,
+            "conclusion": result.get("conclusion") if is_done else None,
+            "consult_log_id": consult_log_id if is_done else None,
+            "session_id": session_id,
+            "origin_url": a.get("origin_url", ""),
+        }
 
-    return {
-        "status": "SUCCESS",
-        "reply": final_reply,
-        "choices": result.get("choices", []),
-        "done": is_done,
-        "conclusion": result.get("conclusion") if is_done else None,
-        "consult_log_id": consult_log_id if is_done else None,
-        "ai_used": 0,
-        "ai_limit": 0,
-        "session_id": session_id,
-        "origin_url": a.get("origin_url", ""),
-    }
+        # job done 기록
+        jconn = get_db_connection()
+        jcur = jconn.cursor()
+        jcur.execute("""UPDATE consult_jobs SET status = 'done', result = %s::jsonb, updated_at = CURRENT_TIMESTAMP
+                        WHERE job_id = %s""", (json.dumps(result_payload, ensure_ascii=False), job_id))
+        jconn.commit()
+
+        # notify_requested 재조회 → 닫고 나갔으면 푸시
+        jcur.execute("SELECT notify_requested, notified, session_id, announcement_id FROM consult_jobs WHERE job_id = %s", (job_id,))
+        jrow = jcur.fetchone()
+        if jrow and jrow["notify_requested"] and not jrow["notified"]:
+            _maybe_send_consult_push(job_id, bn, session_id, req.announcement_id, a.get("title", "공고"), jcur, jconn)
+        jconn.close()
+
+    except Exception as e:
+        print(f"[ConsultJob] {job_id} failed: {e}")
+        import traceback; traceback.print_exc()
+        try:
+            fconn = get_db_connection()
+            fcur = fconn.cursor()
+            fcur.execute("""UPDATE consult_jobs SET status = 'failed', error = %s, updated_at = CURRENT_TIMESTAMP
+                            WHERE job_id = %s""", (str(e)[:500], job_id))
+            fconn.commit()
+            fconn.close()
+        except Exception:
+            pass
+
+
+def _maybe_send_consult_push(job_id, bn, session_id, announcement_id, title, cur, conn):
+    """consult 완료 푸시 발송 + notified=true. cur/conn은 열린 상태로 전달받는다."""
+    try:
+        from app.services.notification_service import notification_service
+        url = f"/?consult={session_id}&aid={announcement_id}"
+        sent = notification_service.send_transactional_push(bn, "상담 분석이 완료됐어요", str(title)[:60], url)
+        cur.execute("UPDATE consult_jobs SET notified = TRUE, updated_at = CURRENT_TIMESTAMP WHERE job_id = %s", (job_id,))
+        conn.commit()
+        return sent
+    except Exception as e:
+        print(f"[ConsultJob] push error {job_id}: {e}")
+        return 0
 
 
 # ── AI 컨설턴트 모드 (고객사 조건 수집 대화) ──────────────────

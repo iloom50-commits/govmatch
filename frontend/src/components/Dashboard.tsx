@@ -808,6 +808,82 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(fadeTimer); };
   }, [highlightAid]);
 
+  // 완료된 비동기 AI상담 job_id를 seen 처리 (딥링크 진입 시 / 배지 클릭 시 공용)
+  const markConsultJobSeen = useCallback((jobId?: string) => {
+    if (!jobId) return;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    fetch(`${API}/api/ai/consult/job/${jobId}/seen`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+  }, []);
+
+  // 공고 단건 fetch → 세션 복원용 localStorage 기록 → 기존 AiConsultModal open 경로(open-ai-consult) 재사용
+  const openConsultForSession = useCallback(async (aid: number, sessionId: string, jobId?: string) => {
+    try {
+      const res = await fetch(`${API}/api/announcements/${aid}`);
+      const json = res.ok ? await res.json() : null;
+      const ann = json?.data;
+      if (!ann) return;
+      localStorage.setItem(`consult_session_${aid}`, JSON.stringify({ id: sessionId, ts: Date.now() }));
+      window.dispatchEvent(new CustomEvent("open-ai-consult", { detail: { announcement: ann } }));
+      markConsultJobSeen(jobId);
+    } catch {}
+  }, [markConsultJobSeen]);
+
+  // 인앱 배지 — 완료됐지만 아직 확인 안 한 비동기 상담 job 개수
+  const [pendingConsults, setPendingConsults] = useState<{ count: number; items: any[] }>({ count: 0, items: [] });
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    fetch(`${API}/api/ai/consult/pending`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.status === "SUCCESS") setPendingConsults({ count: d.count || 0, items: d.items || [] }); })
+      .catch(() => {});
+  }, []);
+
+  // 딥링크 진입(웹푸시 클릭) — /?consult=<session_id>&aid=<announcement_id> → 완료된 상담 자동 오픈 + seen 처리 + URL 정리
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get("consult");
+    const aidNum = Number(params.get("aid")) || 0;
+    if (!sid || !aidNum) return;
+    (async () => {
+      const token = localStorage.getItem("auth_token");
+      let jobId: string | undefined;
+      if (token) {
+        try {
+          const pr = await fetch(`${API}/api/ai/consult/pending`, { headers: { Authorization: `Bearer ${token}` } });
+          if (pr.ok) {
+            const pd = await pr.json();
+            const match = (pd.items || []).find((it: any) => it.session_id === sid);
+            if (match) {
+              jobId = match.job_id;
+              setPendingConsults(prev => ({
+                count: Math.max(0, prev.count - 1),
+                items: prev.items.filter((it: any) => it.job_id !== match.job_id),
+              }));
+            }
+          }
+        } catch {}
+      }
+      await openConsultForSession(aidNum, sid, jobId);
+      window.history.replaceState({}, "", window.location.pathname);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 배지 클릭 — 가장 먼저 완료된 상담을 오픈하고 seen 처리
+  const handlePendingBadgeClick = useCallback((e: React.MouseEvent) => {
+    if (pendingConsults.items.length === 0) return;
+    e.preventDefault();
+    const item = pendingConsults.items[0];
+    openConsultForSession(item.announcement_id, item.session_id, item.job_id);
+    setPendingConsults(prev => ({ count: Math.max(0, prev.count - 1), items: prev.items.slice(1) }));
+  }, [pendingConsults, openConsultForSession]);
+
   // 오늘의 인기 공고 state/fetch 제거 (사장님 요청)
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1656,11 +1732,16 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         </div>
         <a
           href="/my/consults"
-          onClick={() => setSidebarOpen(false)}
-          className="w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
+          onClick={(e) => { handlePendingBadgeClick(e); setSidebarOpen(false); }}
+          className="relative w-full py-2 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all border border-blue-100 active:scale-95 text-xs"
         >
           <span className="text-sm">💬</span>
           <span className="tracking-tight">상담 이력</span>
+          {pendingConsults.count > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-rose-500 text-white text-[10px] font-black rounded-full ring-2 ring-white">
+              {pendingConsults.count}
+            </span>
+          )}
         </a>
         {/* 드롭다운 제거 — 마이페이지 클릭 시 바로 ProfileSettings 모달 열림 */}
         <a

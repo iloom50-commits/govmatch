@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/Toast";
 import DOMPurify from "dompurify";
 import { generateConsultReportHTML } from "@/components/consult/reportTemplate";
 import { renderMarkdown } from "@/lib/markdown";
+import { ensurePushSubscribed } from "@/lib/push";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -490,7 +491,38 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     }
   };
 
-  const handleClose = useCallback(() => {
+  // 처리 중인 job이 있는 채로 닫힐 때 — 완료 시 푸시 알림을 받도록 서버에 요청
+  // (권한 미허용이어도 인앱 배지 폴백을 위해 항상 notify는 호출)
+  const requestPushAndNotify = useCallback(async (jobId: string) => {
+    const token = localStorage.getItem("auth_token");
+    const callNotify = async () => {
+      try {
+        await fetch(`${API}/api/ai/consult/job/${jobId}/notify`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch { /* 무시 — 인앱 배지 폴백 */ }
+    };
+    if (typeof Notification === "undefined") { await callNotify(); return; }
+    if (Notification.permission === "granted") {
+      try { await ensurePushSubscribed(); } catch {}
+      await callNotify();
+    } else if (Notification.permission === "default") {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === "granted") { await ensurePushSubscribed(); }
+      } catch {}
+      await callNotify();
+    } else {
+      await callNotify();
+    }
+  }, []);
+
+  const handleClose = useCallback(async () => {
+    // 진행 중인 job이 있으면 닫기 전에 푸시/알림 요청부터 처리
+    if (loading && jobIdRef.current) {
+      await requestPushAndNotify(jobIdRef.current);
+    }
     // 진행 중인 fetch 취소
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -507,7 +539,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     setShowSaveDialog(false);
     setOriginUrl(null);
     // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
-  }, []);
+  }, [loading, requestPushAndNotify]);
 
   // 새 상담 시작 — 세션 초기화 후 첫 메시지 재요청 (재과금 50)
   const startNewConsultSession = useCallback(() => {

@@ -584,6 +584,59 @@ class NotificationService:
             self._log_notification(business_number, company_name, "push", f"sent:{sent}")
         return sent
 
+    def send_transactional_push(self, business_number: str, title: str, body: str, url: str) -> int:
+        """트랜잭션 알림(상담 완료 등) — 시간대 게이트 없음, 임의 title/body/url."""
+        try:
+            from pywebpush import webpush, WebPushException
+        except ImportError:
+            print("  pywebpush 미설치 -> 트랜잭션 푸시 건너뜀")
+            return 0
+
+        vapid_private = os.getenv("VAPID_PRIVATE_KEY", "")
+        vapid_claims_email = os.getenv("VAPID_CLAIMS_EMAIL", "")
+        if not vapid_private or not vapid_claims_email:
+            return 0
+
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor = conn.cursor()
+        cursor.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE business_number = %s", (business_number,))
+        subs = cursor.fetchall()
+        conn.close()
+        if not subs:
+            return 0
+
+        payload = json.dumps({
+            "title": title,
+            "body": body,
+            "url": url,
+            "icon": "https://www.govmatch.kr/icon-192.png",
+        }, ensure_ascii=False)
+
+        sent = 0
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
+                    data=payload,
+                    vapid_private_key=vapid_private,
+                    vapid_claims={"sub": vapid_claims_email},
+                )
+                sent += 1
+            except WebPushException as e:
+                if "410" in str(e) or "404" in str(e):
+                    conn2 = psycopg2.connect(DATABASE_URL)
+                    cur2 = conn2.cursor()
+                    cur2.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (sub["endpoint"],))
+                    conn2.commit()
+                    conn2.close()
+                print(f"  TxPush error ({sub['endpoint'][:40]}...): {e}")
+            except Exception as e:
+                print(f"  TxPush error: {e}")
+
+        if sent:
+            self._log_notification(business_number, "consult", "push", f"tx_sent:{sent}")
+        return sent
+
     async def send_kakao_message(self, business_number: str, company_name: str, matches: List[Dict]) -> bool:
         """카카오 refresh_token으로 액세스 토큰 갱신 후 나에게 보내기 API로 맞춤 공고 발송"""
         import datetime as _dt

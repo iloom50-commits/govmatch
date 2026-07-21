@@ -5679,6 +5679,32 @@ def _maybe_send_consult_push(job_id, bn, session_id, announcement_id, title, cur
         return 0
 
 
+@app.post("/api/ai/consult/job/{job_id}/notify")
+def api_ai_consult_job_notify(job_id: str, current_user: dict = Depends(_get_current_user)):
+    """창을 닫고 나갈 때 호출 — 완료 시 푸시받기. 이미 완료면 즉시 발송."""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT business_number, status, notified, session_id, announcement_id FROM consult_jobs WHERE job_id = %s", (job_id,))
+        row = cur.fetchone()
+        if not row or row["business_number"] != bn:
+            raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
+        if row["status"] == "processing":
+            cur.execute("UPDATE consult_jobs SET notify_requested = TRUE, updated_at = CURRENT_TIMESTAMP WHERE job_id = %s", (job_id,))
+            conn.commit()
+            return {"status": "processing"}
+        if row["status"] == "done" and not row["notified"]:
+            cur.execute("SELECT title FROM announcements WHERE announcement_id = %s", (row["announcement_id"],))
+            trow = cur.fetchone()
+            title = (dict(trow).get("title") if trow else "공고") or "공고"
+            _maybe_send_consult_push(job_id, bn, row["session_id"], row["announcement_id"], title, cur, conn)
+            return {"status": "done", "pushed": True}
+        return {"status": row["status"]}
+    finally:
+        conn.close()
+
+
 @app.get("/api/ai/consult/job/{job_id}")
 def api_ai_consult_job(job_id: str, current_user: dict = Depends(_get_current_user)):
     """job 상태 폴링 — done이면 result 반환. processing 30분 초과는 failed 처리."""

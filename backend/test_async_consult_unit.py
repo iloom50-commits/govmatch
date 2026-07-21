@@ -52,6 +52,20 @@ class FakeCursor:
             j = self.s["jobs"].get(p[0], {})
             self._r = {"notify_requested": j.get("notify_requested", False), "notified": j.get("notified", False),
                        "session_id": "sid", "announcement_id": 1}
+        elif q.startswith("SELECT business_number, status, notified"):
+            j = self.s["jobs"].get(p[0])
+            if j is None:
+                self._r = None
+            else:
+                self._r = {"business_number": j.get("business_number", "111-11-11111"),
+                           "status": j["status"], "notified": j.get("notified", False),
+                           "session_id": "sid", "announcement_id": 1}
+        elif q.startswith("UPDATE consult_jobs SET notify_requested = TRUE"):
+            jid = p[0]; self.s["jobs"].setdefault(jid, {})["notify_requested"] = True
+        elif q.startswith("UPDATE consult_jobs SET notified = TRUE"):
+            jid = p[0]; self.s["jobs"].setdefault(jid, {})["notified"] = True
+        elif q.startswith("SELECT title FROM announcements"):
+            self._r = {"title": "테스트공고"}
         elif "SELECT announcement_id, title" in q:
             self._r = {"announcement_id": 1, "title": "테스트공고", "origin_url": "http://x", "target_type": "business",
                        "department": "", "category": "", "support_amount": "", "deadline_date": None,
@@ -222,6 +236,58 @@ def test_poll_unknown_job_404(monkeypatch):
 
     try:
         main.api_ai_consult_job(str(uuid.uuid4()), current_user=current_user)
+        assert False, "404가 발생해야 함"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_notify_while_processing_sets_flag(monkeypatch):
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "processing", "business_number": "111-11-11111",
+                              "notify_requested": False, "notified": False}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    resp = main.api_ai_consult_job_notify(job_id, current_user=current_user)
+
+    assert resp == {"status": "processing"}
+    assert state["jobs"][job_id]["notify_requested"] is True
+
+
+def test_notify_after_done_pushes_now(monkeypatch):
+    state = _state()
+    _patch_db(monkeypatch, state)
+    calls = []
+    import app.services.notification_service as notification_service_module
+    monkeypatch.setattr(
+        notification_service_module.notification_service, "send_transactional_push",
+        lambda *a, **k: calls.append((a, k)) or 1,
+    )
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "done", "business_number": "111-11-11111",
+                              "notify_requested": False, "notified": False}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    resp = main.api_ai_consult_job_notify(job_id, current_user=current_user)
+
+    assert resp["status"] == "done"
+    assert resp["pushed"] is True
+    assert len(calls) == 1, "완료 후 notify 호출 시 즉시 푸시 발송돼야 함"
+    assert state["jobs"][job_id]["notified"] is True
+
+
+def test_notify_ownership_mismatch_404(monkeypatch):
+    from fastapi import HTTPException
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "done", "business_number": "999-99-99999",
+                              "notify_requested": False, "notified": False}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    try:
+        main.api_ai_consult_job_notify(job_id, current_user=current_user)
         assert False, "404가 발생해야 함"
     except HTTPException as e:
         assert e.status_code == 404

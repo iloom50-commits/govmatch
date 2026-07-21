@@ -159,6 +159,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
   const isPro = planStatus && ["pro", "biz"].includes(planStatus.plan);
   const [open, setOpen] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLeaveNotifyDialog, setShowLeaveNotifyDialog] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -533,12 +534,9 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     }
   }, []);
 
-  const handleClose = useCallback(async () => {
-    // 진행 중인 job이 있으면 닫기 전에 푸시/알림 요청부터 처리
-    if (loading && jobIdRef.current) {
-      await requestPushAndNotify(jobIdRef.current);
-    }
-    // 진행 중인 fetch 취소
+  // 순수 닫기 — 처리 중 알림 요청은 requestClose/전용 안내창이 담당한다
+  const handleClose = useCallback(() => {
+    // 진행 중인 폴링 fetch만 취소(서버 백그라운드 작업은 계속 진행)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -552,9 +550,34 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     setFeedbackSent(false);
     setConsultLogId(null);
     setShowSaveDialog(false);
+    setShowLeaveNotifyDialog(false);
     setOriginUrl(null);
     // sessionId는 유지 — localStorage에 저장되어 24시간 내 재진입 시 복원
-  }, [loading, requestPushAndNotify]);
+  }, []);
+
+  // 권한 없이 notify만(인앱 배지 폴백) — '그냥 닫기'용
+  const notifyServer = useCallback(async (jobId: string) => {
+    const token = localStorage.getItem("auth_token");
+    try {
+      await fetch(`${API}/api/ai/consult/job/${jobId}/notify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch { /* 무시 — 인앱 배지 폴백 */ }
+  }, []);
+
+  // 닫기 시도 — 처리 중이면 알림 안내창, 대화만 진행 중이면 저장창, 아니면 바로 닫기
+  const requestClose = useCallback(() => {
+    if (loading && jobIdRef.current) {
+      setShowLeaveNotifyDialog(true);
+      return;
+    }
+    if (messages.some(m => m.role === "user") && !isDone) {
+      setShowSaveDialog(true);
+      return;
+    }
+    handleClose();
+  }, [loading, messages, isDone, handleClose]);
 
   // 새 상담 시작 — 세션 초기화 후 첫 메시지 재요청 (재과금 50)
   const startNewConsultSession = useCallback(() => {
@@ -568,16 +591,8 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [announcement]);
 
-  const handleBackPress = useCallback(() => {
-    if (messages.some(m => m.role === "user") && !isDone) {
-      setShowSaveDialog(true);
-    } else {
-      handleClose();
-    }
-  }, [messages, isDone, handleClose]);
-
-  // 모바일 뒤로가기 시 모달만 닫기 (앱 종료 방지)
-  useModalBack(open, handleBackPress);
+  // 모바일/브라우저 뒤로가기 시 모달만 닫기 (앱 종료 방지) — 처리 중이면 알림 안내창
+  useModalBack(open, requestClose);
 
   // 사용자가 직접 상담 종료 — ai_consult_logs에 명시 저장
   const handleManualEnd = async () => {
@@ -677,7 +692,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center lg:justify-end p-0 sm:p-2 lg:p-0 lg:pointer-events-none">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm lg:hidden" onClick={handleClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm lg:hidden" onClick={requestClose} />
 
       <div
         data-consult-panel
@@ -720,7 +735,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
                 )}
               </div>
             </div>
-            <button onClick={handleClose} className="p-2 hover:bg-white/60 rounded-lg transition-all flex-shrink-0">
+            <button onClick={requestClose} className="p-2 hover:bg-white/60 rounded-lg transition-all flex-shrink-0">
               <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -945,6 +960,41 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       </div>
 
       {/* 상담 저장 확인 다이얼로그 */}
+      {showLeaveNotifyDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
+            <div className="text-3xl mb-2">🔔</div>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">분석이 진행 중이에요</h3>
+            <p className="text-[13px] text-slate-600 mb-6">지금 닫아도 백그라운드에서 계속 분석돼요. 완료되면 알림으로 알려드릴까요?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setShowLeaveNotifyDialog(false);
+                  const jid = jobIdRef.current;
+                  if (jid) await notifyServer(jid);
+                  handleClose();
+                }}
+                className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"
+              >
+                그냥 닫기
+              </button>
+              <button
+                onClick={async () => {
+                  setShowLeaveNotifyDialog(false);
+                  const jid = jobIdRef.current;
+                  if (jid) await requestPushAndNotify(jid);
+                  handleClose();
+                }}
+                className="flex-1 py-2.5 px-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all active:scale-95"
+              >
+                알림 받기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSaveDialog && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />

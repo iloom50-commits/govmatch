@@ -634,7 +634,7 @@ class NotificationService:
                 print(f"  TxPush error: {e}")
 
         if sent:
-            self._log_notification(business_number, "consult", "push", f"tx_sent:{sent}")
+            self._log_notification(business_number, "", "push", f"consult_tx_sent:{sent}")
         return sent
 
     async def send_kakao_message(self, business_number: str, company_name: str, matches: List[Dict]) -> bool:

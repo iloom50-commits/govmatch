@@ -146,6 +146,28 @@ def init_database():
         except Exception:
             pass
 
+        # 비동기 AI 상담 작업 테이블 (턴별 백그라운드 처리 상태/결과 추적)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS consult_jobs (
+                job_id UUID PRIMARY KEY,
+                session_id VARCHAR(64),
+                business_number VARCHAR(50),
+                announcement_id INTEGER,
+                status VARCHAR(20) NOT NULL DEFAULT 'processing',
+                result JSONB,
+                notify_requested BOOLEAN NOT NULL DEFAULT FALSE,
+                notified BOOLEAN NOT NULL DEFAULT FALSE,
+                seen BOOLEAN NOT NULL DEFAULT FALSE,
+                error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_consult_jobs_bn_status ON consult_jobs(business_number, status)")
+        except Exception:
+            pass
+
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pro_consult_sessions (

@@ -503,14 +503,29 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
         });
       } catch { /* 무시 — 인앱 배지 폴백 */ }
     };
+    // 구독 매칭에 필요한 business_number — HomeClient/NotificationModal과 동일하게 /api/auth/me의 user 객체에서 가져온다
+    const getBusinessNumber = async (): Promise<string> => {
+      try {
+        const res = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return "";
+        const data = await res.json();
+        return data?.user?.business_number || "";
+      } catch { return ""; }
+    };
     if (typeof Notification === "undefined") { await callNotify(); return; }
     if (Notification.permission === "granted") {
-      try { await ensurePushSubscribed(); } catch {}
+      try {
+        const bn = await getBusinessNumber();
+        if (bn) await ensurePushSubscribed(bn);
+      } catch {}
       await callNotify();
     } else if (Notification.permission === "default") {
       try {
         const perm = await Notification.requestPermission();
-        if (perm === "granted") { await ensurePushSubscribed(); }
+        if (perm === "granted") {
+          const bn = await getBusinessNumber();
+          if (bn) await ensurePushSubscribed(bn);
+        }
       } catch {}
       await callNotify();
     } else {

@@ -13,9 +13,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /**
  * 이미 권한이 허용된 상태에서 푸시 구독을 보장한다.
  * 기존 구독이 있으면 서버에 재전송(idempotent)하고, 없으면 새로 구독한다.
+ * businessNumber는 백엔드가 구독 row를 사용자와 매칭(WHERE business_number = %s)하는 데 필수다.
  */
-export async function ensurePushSubscribed(): Promise<boolean> {
+export async function ensurePushSubscribed(businessNumber: string): Promise<boolean> {
   if (typeof window === "undefined") return false;
+  if (!businessNumber) return false;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
 
@@ -38,7 +40,7 @@ export async function ensurePushSubscribed(): Promise<boolean> {
     await fetch(`${API}/api/push/subscribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
+      body: JSON.stringify({ business_number: businessNumber, endpoint: subJson.endpoint, keys: subJson.keys }),
     }).catch(() => {});
     return true;
   } catch {

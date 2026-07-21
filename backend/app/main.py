@@ -5527,42 +5527,50 @@ def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, s
     bn = current_user["bn"]
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        # 프로필 로드
-        cur.execute(
-            """SELECT plan, company_name, establishment_date, address_city, industry_code,
-                      revenue_bracket, employee_count_bracket, interests, user_type,
-                      age_range, business_number, gender,
-                      income_level, family_type, employment_status, housing_status
-               FROM users WHERE business_number = %s""", (bn,))
-        user = cur.fetchone()
-        u = dict(user) if user else {}
-        for k in ("company_name", "establishment_date", "address_city", "industry_code",
-                  "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range",
-                  "gender", "income_level", "family_type", "employment_status", "housing_status"):
-            if u.get(k) is None:
-                u[k] = ""
+        try:
+            cur = conn.cursor()
+            # 프로필 로드
+            cur.execute(
+                """SELECT plan, company_name, establishment_date, address_city, industry_code,
+                          revenue_bracket, employee_count_bracket, interests, user_type,
+                          age_range, business_number, gender,
+                          income_level, family_type, employment_status, housing_status
+                   FROM users WHERE business_number = %s""", (bn,))
+            user = cur.fetchone()
+            u = dict(user) if user else {}
+            for k in ("company_name", "establishment_date", "address_city", "industry_code",
+                      "revenue_bracket", "employee_count_bracket", "interests", "user_type", "age_range",
+                      "gender", "income_level", "family_type", "employment_status", "housing_status"):
+                if u.get(k) is None:
+                    u[k] = ""
 
-        # 공고 조회
-        cur.execute(
-            """SELECT announcement_id, title, department, category, support_amount, deadline_date,
-                      summary_text, region, eligibility_logic, origin_url, target_type
-               FROM announcements WHERE announcement_id = %s""", (req.announcement_id,))
-        ann = cur.fetchone()
-        if not ann:
-            raise RuntimeError("공고를 찾을 수 없음")
-        a = dict(ann)
-        conn.close()
+            # 공고 조회
+            cur.execute(
+                """SELECT announcement_id, title, department, category, support_amount, deadline_date,
+                          summary_text, region, eligibility_logic, origin_url, target_type
+                   FROM announcements WHERE announcement_id = %s""", (req.announcement_id,))
+            ann = cur.fetchone()
+            if not ann:
+                raise RuntimeError("공고를 찾을 수 없음")
+            a = dict(ann)
+        finally:
+            conn.close()
 
         # 정밀 분석 보장
         deep = {}
+        aconn = None
         try:
             from app.services.doc_analysis_service import ensure_analysis
             aconn = get_db_connection()
             deep = ensure_analysis(req.announcement_id, aconn) or {}
-            aconn.close()
         except Exception as e:
             print(f"[ConsultJob] ensure_analysis error #{req.announcement_id}: {e}")
+        finally:
+            if aconn:
+                try:
+                    aconn.close()
+                except Exception:
+                    pass
 
         # 프로필 필터
         _BIZ = {"business_number", "company_name", "industry_code", "revenue_bracket", "employee_count_bracket", "establishment_date", "address_city", "interests", "user_type", "certifications"}
@@ -5577,9 +5585,11 @@ def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, s
         # LLM
         from app.services.ai_consultant import chat_consult
         cconn = get_db_connection()
-        result = chat_consult(announcement_id=req.announcement_id, messages=req.messages,
-                              announcement=a, deep_analysis_data=deep, user_profile=consult_profile, db_conn=cconn)
-        cconn.close()
+        try:
+            result = chat_consult(announcement_id=req.announcement_id, messages=req.messages,
+                                  announcement=a, deep_analysis_data=deep, user_profile=consult_profile, db_conn=cconn)
+        finally:
+            cconn.close()
         llm_ok = True
 
         is_done = result.get("done", False)
@@ -5592,21 +5602,23 @@ def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, s
         # ai_consult_logs 저장
         all_msgs = req.messages + [{"role": "assistant", "text": result.get("reply", "")}]
         lconn = get_db_connection()
-        lcur = lconn.cursor()
-        lcur.execute("""
-            INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
-            VALUES (%s, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
-                messages = EXCLUDED.messages,
-                conclusion = COALESCE(EXCLUDED.conclusion, ai_consult_logs.conclusion),
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING id
-        """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False),
-              result.get("conclusion") if is_done else None, session_id))
-        row = lcur.fetchone()
-        consult_log_id = row["id"] if row else None
-        lconn.commit()
-        lconn.close()
+        try:
+            lcur = lconn.cursor()
+            lcur.execute("""
+                INSERT INTO ai_consult_logs (announcement_id, business_number, messages, conclusion, session_id, updated_at)
+                VALUES (%s, %s, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                    messages = EXCLUDED.messages,
+                    conclusion = COALESCE(EXCLUDED.conclusion, ai_consult_logs.conclusion),
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id
+            """, (req.announcement_id, bn, json.dumps(all_msgs, ensure_ascii=False),
+                  result.get("conclusion") if is_done else None, session_id))
+            row = lcur.fetchone()
+            consult_log_id = row["id"] if row else None
+            lconn.commit()
+        finally:
+            lconn.close()
 
         # 성공 시에만 과금
         if is_new_session and llm_ok:
@@ -5625,17 +5637,19 @@ def _run_consult_job(job_id: str, req: "AiConsultRequest", current_user: dict, s
 
         # job done 기록
         jconn = get_db_connection()
-        jcur = jconn.cursor()
-        jcur.execute("""UPDATE consult_jobs SET status = 'done', result = %s::jsonb, updated_at = CURRENT_TIMESTAMP
-                        WHERE job_id = %s""", (json.dumps(result_payload, ensure_ascii=False), job_id))
-        jconn.commit()
+        try:
+            jcur = jconn.cursor()
+            jcur.execute("""UPDATE consult_jobs SET status = 'done', result = %s::jsonb, updated_at = CURRENT_TIMESTAMP
+                            WHERE job_id = %s""", (json.dumps(result_payload, ensure_ascii=False), job_id))
+            jconn.commit()
 
-        # notify_requested 재조회 → 닫고 나갔으면 푸시
-        jcur.execute("SELECT notify_requested, notified, session_id, announcement_id FROM consult_jobs WHERE job_id = %s", (job_id,))
-        jrow = jcur.fetchone()
-        if jrow and jrow["notify_requested"] and not jrow["notified"]:
-            _maybe_send_consult_push(job_id, bn, session_id, req.announcement_id, a.get("title", "공고"), jcur, jconn)
-        jconn.close()
+            # notify_requested 재조회 → 닫고 나갔으면 푸시
+            jcur.execute("SELECT notify_requested, notified, session_id, announcement_id FROM consult_jobs WHERE job_id = %s", (job_id,))
+            jrow = jcur.fetchone()
+            if jrow and jrow["notify_requested"] and not jrow["notified"]:
+                _maybe_send_consult_push(job_id, bn, session_id, req.announcement_id, a.get("title", "공고"), jcur, jconn)
+        finally:
+            jconn.close()
 
     except Exception as e:
         print(f"[ConsultJob] {job_id} failed: {e}")

@@ -5705,6 +5705,45 @@ def api_ai_consult_job_notify(job_id: str, current_user: dict = Depends(_get_cur
         conn.close()
 
 
+@app.get("/api/ai/consult/pending")
+def api_ai_consult_pending(current_user: dict = Depends(_get_current_user)):
+    """완료됐지만 아직 안 본 상담(닫고 나간 건) 목록 — 인앱 배지용."""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT j.job_id, j.session_id, j.announcement_id, a.title, j.updated_at
+            FROM consult_jobs j
+            LEFT JOIN announcements a ON a.announcement_id = j.announcement_id
+            WHERE j.business_number = %s AND j.status = 'done'
+              AND j.notify_requested = TRUE AND j.seen = FALSE
+              AND j.updated_at > NOW() - INTERVAL '7 days'
+            ORDER BY j.updated_at DESC
+            LIMIT 20
+        """, (bn,))
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["updated_at"] = str(r.get("updated_at"))
+        return {"status": "SUCCESS", "count": len(rows), "items": rows}
+    finally:
+        conn.close()
+
+
+@app.post("/api/ai/consult/job/{job_id}/seen")
+def api_ai_consult_job_seen(job_id: str, current_user: dict = Depends(_get_current_user)):
+    """배지 해제 — 사용자가 결과를 확인함."""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE consult_jobs SET seen = TRUE, updated_at = CURRENT_TIMESTAMP WHERE job_id = %s AND business_number = %s", (job_id, bn))
+        conn.commit()
+        return {"status": "SUCCESS"}
+    finally:
+        conn.close()
+
+
 @app.get("/api/ai/consult/job/{job_id}")
 def api_ai_consult_job(job_id: str, current_user: dict = Depends(_get_current_user)):
     """job 상태 폴링 — done이면 result 반환. processing 30분 초과는 failed 처리."""

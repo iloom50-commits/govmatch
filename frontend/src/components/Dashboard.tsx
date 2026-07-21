@@ -816,6 +816,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
     fetch(`${API}/api/ai/consult/job/${jobId}/seen`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
+      keepalive: true,
     }).catch(() => {});
   }, []);
 

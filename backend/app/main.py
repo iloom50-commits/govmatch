@@ -5679,6 +5679,36 @@ def _maybe_send_consult_push(job_id, bn, session_id, announcement_id, title, cur
         return 0
 
 
+@app.get("/api/ai/consult/job/{job_id}")
+def api_ai_consult_job(job_id: str, current_user: dict = Depends(_get_current_user)):
+    """job 상태 폴링 — done이면 result 반환. processing 30분 초과는 failed 처리."""
+    bn = current_user["bn"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT job_id, status, result, error, business_number,
+                              (updated_at < NOW() - INTERVAL '30 minutes') AS stale
+                       FROM consult_jobs WHERE job_id = %s""", (job_id,))
+        row = cur.fetchone()
+        if not row or row["business_number"] != bn:
+            raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
+        status = row["status"]
+        if status == "processing" and row.get("stale"):
+            cur.execute("UPDATE consult_jobs SET status = 'failed', error = 'timeout', updated_at = CURRENT_TIMESTAMP WHERE job_id = %s", (job_id,))
+            conn.commit()
+            status = "failed"
+        if status == "done":
+            res = row["result"] or {}
+            if isinstance(res, str):
+                res = json.loads(res)
+            return {"status": "done", **res}
+        if status == "failed":
+            return {"status": "failed", "reply": "분석 중 오류가 발생했어요. 다시 시도해 주세요."}
+        return {"status": "processing"}
+    finally:
+        conn.close()
+
+
 # ── AI 컨설턴트 모드 (고객사 조건 수집 대화) ──────────────────
 
 class AiConsultantChatRequest(BaseModel):

@@ -29,8 +29,25 @@ class FakeCursor:
             self.s["last_job"] = p[0]
         elif q.startswith("UPDATE consult_jobs SET status = 'done'"):
             jid = p[-1]; self.s["jobs"].setdefault(jid, {})["status"] = "done"
-        elif q.startswith("UPDATE consult_jobs SET status = 'failed'"):
+        elif q.startswith("UPDATE consult_jobs SET status = 'failed', error = %s"):
             jid = p[-1]; self.s["jobs"].setdefault(jid, {})["status"] = "failed"
+        elif "SELECT job_id, status, result, error, business_number" in q:
+            jid = p[0]
+            job = self.s["jobs"].get(jid)
+            if job is None:
+                self._r = None
+            else:
+                self._r = {
+                    "job_id": jid,
+                    "status": job["status"],
+                    "result": job.get("result"),
+                    "error": job.get("error"),
+                    "business_number": job.get("business_number", "111-11-11111"),
+                    "stale": job.get("stale", False),
+                }
+        elif q.startswith("UPDATE consult_jobs SET status = 'failed', error = 'timeout'"):
+            jid = p[-1]; self.s["jobs"].setdefault(jid, {})["status"] = "failed"
+            self.s["jobs"][jid]["error"] = "timeout"
         elif q.startswith("SELECT notify_requested"):
             j = self.s["jobs"].get(p[0], {})
             self._r = {"notify_requested": j.get("notify_requested", False), "notified": j.get("notified", False),
@@ -136,3 +153,75 @@ def test_worker_no_charge_on_failure(monkeypatch):
     main._run_consult_job(job_id, req, current_user, "sid", is_new_session=True)
 
     assert state["users"][1]["credits"] == 200, "LLM 실패 시 무차감"
+
+
+def test_poll_done_returns_result(monkeypatch):
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {
+        "status": "done", "business_number": "111-11-11111",
+        "result": {"reply": "완료된 답변", "choices": [], "done": True, "conclusion": "가능"},
+    }
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    resp = main.api_ai_consult_job(job_id, current_user=current_user)
+
+    assert resp["status"] == "done"
+    assert resp["reply"] == "완료된 답변"
+    assert resp["conclusion"] == "가능"
+
+
+def test_poll_processing_not_stale_returns_processing(monkeypatch):
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "processing", "business_number": "111-11-11111", "stale": False}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    resp = main.api_ai_consult_job(job_id, current_user=current_user)
+
+    assert resp == {"status": "processing"}
+
+
+def test_poll_stale_processing_marks_failed(monkeypatch):
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "processing", "business_number": "111-11-11111", "stale": True}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    resp = main.api_ai_consult_job(job_id, current_user=current_user)
+
+    assert resp["status"] == "failed"
+    assert state["jobs"][job_id]["status"] == "failed", "stale이면 서버가 failed로 갱신해야 함"
+    assert state["jobs"][job_id]["error"] == "timeout"
+
+
+def test_poll_ownership_mismatch_404(monkeypatch):
+    from fastapi import HTTPException
+    state = _state()
+    _patch_db(monkeypatch, state)
+    job_id = str(uuid.uuid4())
+    state["jobs"][job_id] = {"status": "done", "business_number": "999-99-99999",
+                              "result": {"reply": "다른 회사 결과"}}
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    try:
+        main.api_ai_consult_job(job_id, current_user=current_user)
+        assert False, "404가 발생해야 함"
+    except HTTPException as e:
+        assert e.status_code == 404
+
+
+def test_poll_unknown_job_404(monkeypatch):
+    from fastapi import HTTPException
+    state = _state()
+    _patch_db(monkeypatch, state)
+    current_user = {"user_id": 1, "bn": "111-11-11111"}
+
+    try:
+        main.api_ai_consult_job(str(uuid.uuid4()), current_user=current_user)
+        assert False, "404가 발생해야 함"
+    except HTTPException as e:
+        assert e.status_code == 404

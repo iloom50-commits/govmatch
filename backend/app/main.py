@@ -3542,14 +3542,18 @@ def api_announcements_public(
                 _m_where += f" AND {_m_sf} ILIKE %s"
                 _m_params.append(f"%{_m_sw}%")
 
-        # 매칭 키워드 수 계산 (정렬용)
+        # 매칭 키워드 수 계산 (정렬용) — 필터와 동일한 토큰화+동의어 기준(전체 통일)
         if _m_interests:
-            score_expr = " + ".join(
-                [f"(CASE WHEN title ILIKE %s OR category ILIKE %s THEN 1 ELSE 0 END)" for _ in _m_interests]
-            )
+            from app.core.keyword_match import build_match_sql
+            _sf = "(title || ' ' || COALESCE(category,'') || ' ' || COALESCE(summary_text,''))"
+            _score_cases = []
             score_params = []
             for kw in _m_interests:
-                score_params.extend([f"%{kw}%", f"%{kw}%"])
+                _ksql, _kp = build_match_sql([kw], _sf)
+                if _ksql:
+                    _score_cases.append(f"(CASE WHEN {_ksql} THEN 1 ELSE 0 END)")
+                    score_params.extend(_kp)
+            score_expr = " + ".join(_score_cases) if _score_cases else "0"
         else:
             score_expr = "0"
             score_params = []

@@ -3253,8 +3253,6 @@ def api_announcements_public(
                     _int_sql, interest_params = build_match_sql(interests, _int_field)
                     interest_sql = _int_sql if _int_sql else "FALSE"
 
-                    import datetime as _dt
-                    today_bucket = _dt.date.today().timetuple().tm_yday % 3
 
                     has_amount_sql = "(support_amount IS NOT NULL AND support_amount != '')"
 
@@ -3334,19 +3332,24 @@ def api_announcements_public(
                                               WHEN bucket = 2 THEN 1
                                               WHEN bucket = 1 THEN 2
                                               ELSE 5 END
-                                     ELSE (bucket - %s + 3) %% 3
+                                     ELSE
+                                         -- 기업도 관심 우선 고정(내지역0>관심1>전국2). 기존 날짜 회전 제거로 관심 매칭이 묻히지 않게.
+                                         CASE WHEN bucket = 0 THEN 0
+                                              WHEN bucket = 2 THEN 1
+                                              WHEN bucket = 1 THEN 2
+                                              ELSE 5 END
                                 END,
                                 CASE WHEN deadline_type IN ('fixed','ongoing') THEN 0 ELSE 1 END,
                                 deadline_date ASC NULLS LAST,
                                 created_at DESC
                             LIMIT %s OFFSET %s""",
-                        type_params + bucket_params + [target_type or "business", today_bucket, size, offset],
+                        type_params + bucket_params + [target_type or "business", size, offset],
                     )
                     rows = [dict(r) for r in _pcur.fetchall()]
 
                     # 백그라운드: 전체 정렬 ID 목록 → user_match_cache 저장 (신규/만료 시 1회)
                     import threading as _thr, json as _jcache
-                    def _bg_cache_save(_bn, _ct, _fw, _tp, _bs, _bp, _tt, _tb):
+                    def _bg_cache_save(_bn, _ct, _fw, _tp, _bs, _bp, _tt):
                         try:
                             _sc = get_db_connection(); _scu = _sc.cursor()
                             _scu.execute(
@@ -3356,10 +3359,10 @@ def api_announcements_public(
                                 ) SELECT announcement_id FROM ann
                                 ORDER BY CASE WHEN bucket=5 THEN 12 WHEN bucket=4 THEN 11 WHEN bucket=3 THEN 10
                                      WHEN %s='individual' THEN CASE WHEN bucket=0 THEN 0 WHEN bucket=2 THEN 1 WHEN bucket=1 THEN 2 ELSE 5 END
-                                     ELSE (bucket-%s+3)%%3 END,
+                                     ELSE CASE WHEN bucket=0 THEN 0 WHEN bucket=2 THEN 1 WHEN bucket=1 THEN 2 ELSE 5 END END,
                                 CASE WHEN deadline_type IN ('fixed','ongoing') THEN 0 ELSE 1 END,
                                 deadline_date ASC NULLS LAST, created_at DESC""",
-                                _tp + _bp + [_tt or "business", _tb]
+                                _tp + _bp + [_tt or "business"]
                             )
                             _ids = [r["announcement_id"] for r in _scu.fetchall()]
                             # 지역/전국 분리 (신형식 포함 저장)
@@ -3396,7 +3399,7 @@ def api_announcements_public(
                             print(f"[realtime-cache-save] {_e}")
                     _thr.Thread(
                         target=_bg_cache_save,
-                        args=(bn, cache_type, full_where, type_params, bucket_sql, bucket_params, target_type, today_bucket),
+                        args=(bn, cache_type, full_where, type_params, bucket_sql, bucket_params, target_type),
                         daemon=True
                     ).start()
 

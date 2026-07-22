@@ -148,7 +148,9 @@ def parse_deadline(raw) -> Tuple[Optional[str], str, Optional[str]]:
 def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
     """NULL 마감일 공고를 full_text로 보강 (파이프라인 단계용).
 
-    - deadline_date: NULL인 것만 채움(추가). deadline_type: 'unknown'/NULL만 교정.
+    - deadline_date: NULL인 것만 채움(추가). deadline_type: 'unknown'/NULL/'ongoing' 재검사.
+    - 'ongoing'(상시)도 재검사 — full_text에 명시적 접수마감일이 있으면 fixed로 업그레이드
+      (초기 상시 오분류 교정). enrich_deadline이 접수마감>상시 우선이라 진짜 상시는 유지.
     - 매처 필터에 deadline_type을 안 쓰므로 교정은 무해.
     Returns: {"scanned","fixed","ongoing","unknown"}
     """
@@ -161,7 +163,7 @@ def enrich_pending_deadlines(db_conn, limit: int = 1000) -> dict:
            JOIN announcement_analysis aa ON aa.announcement_id = a.announcement_id
            WHERE a.is_archived = FALSE AND a.deadline_date IS NULL
              AND LENGTH(aa.full_text) > 120
-             AND (a.deadline_type IS NULL OR a.deadline_type = 'unknown')
+             AND (a.deadline_type IS NULL OR a.deadline_type IN ('unknown', 'ongoing'))
              AND (a.deadline_checked_at IS NULL
                   OR a.deadline_checked_at < CURRENT_TIMESTAMP - INTERVAL '7 days')
            ORDER BY a.deadline_checked_at ASC NULLS FIRST, a.created_at ASC

@@ -7,6 +7,7 @@ from .pro_consult_tool import (
     PROMPT_PRO_CONSULT_INDIV_TOOL,
     PROMPT_PRO_FUND_BIZ_TOOL,
     PROMPT_PRO_FUND_INDIV_TOOL,
+    build_pro_fund_biz_prompt,
 )
 from .lite_fund_tool import PROMPT_LITE_FUND_BIZ_TOOL, PROMPT_LITE_FUND_INDIV_TOOL
 
@@ -19,4 +20,5 @@ __all__ = [
     "PROMPT_PRO_FUND_INDIV_TOOL",
     "PROMPT_LITE_FUND_BIZ_TOOL",
     "PROMPT_LITE_FUND_INDIV_TOOL",
+    "build_pro_fund_biz_prompt",
 ]

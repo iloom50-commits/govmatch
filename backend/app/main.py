@@ -5796,6 +5796,9 @@ class AiConsultantChatRequest(BaseModel):
     action: Optional[str] = None
     # [재설계 04] 공고 카드 클릭 직후 — 1차 턴(12섹션 분석) 강제 플래그
     is_announcement_start: Optional[bool] = False
+    # 화법 대상: "applicant"=사업주 본인 대면(2인칭, 임베드 상담 예: SmartDoc 자금상담AI).
+    # 미지정=전문가용 3인칭('고객사') 원본 유지(하위호환).
+    audience: Optional[str] = None
 
 
 @app.get("/api/pro/announcements/{announcement_id}/analyze")
@@ -6156,6 +6159,7 @@ def _handle_pro_fund_consult(req: AiConsultantChatRequest, current_user: dict):
             user_profile=profile,
             mode=fund_mode,
             pro_consult_context=pro_ctx,
+            audience=req.audience,
         )
 
         # 4) 상담 로그 저장

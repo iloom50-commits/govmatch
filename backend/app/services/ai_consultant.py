@@ -39,6 +39,7 @@ from .prompts import (
     PROMPT_PRO_FUND_INDIV_TOOL,
     PROMPT_LITE_FUND_BIZ_TOOL,
     PROMPT_LITE_FUND_INDIV_TOOL,
+    build_pro_fund_biz_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -1713,6 +1714,7 @@ def chat_lite_fund_expert(
     user_profile: dict = None,
     mode: str = None,  # "business_fund" | "individual_fund" | None (자동 판별)
     pro_consult_context: str = None,  # PRO: "individual" | "business" — 전문가-고객 관점 주입
+    audience: str = None,  # "applicant"=사업주 본인 대면(2인칭). 임베드(SmartDoc 자금상담) 맥락.
 ) -> Dict[str, Any]:
     """LITE 자금 전문 상담. mode 명시 → 사용자 선택 우선.
     mode=None이면 user_profile.user_type + 시드 메시지로 자동 판별.
@@ -1839,7 +1841,9 @@ def chat_lite_fund_expert(
         base_prompt = PROMPT_PRO_FUND_INDIV_TOOL if pro_consult_context else PROMPT_LITE_FUND_INDIV_TOOL
         tt = "individual"
     else:
-        base_prompt = PROMPT_PRO_FUND_BIZ_TOOL if pro_consult_context else PROMPT_LITE_FUND_BIZ_TOOL
+        # audience="applicant"(사업주 본인 대면, 임베드 맥락)면 2인칭 프롬프트로 결정론 분기.
+        base_prompt = (build_pro_fund_biz_prompt(audience) if pro_consult_context
+                       else PROMPT_LITE_FUND_BIZ_TOOL)
         tt = "business"
 
     # ── 학습된 지식 주입 (knowledge_base → 프롬프트) ──

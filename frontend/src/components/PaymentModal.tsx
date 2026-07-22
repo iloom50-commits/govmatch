@@ -84,6 +84,10 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
 
     setLoading(true);
     try {
+      // 모바일은 전체화면 리다이렉트, PC는 iframe. 모바일 리다이렉트 복귀는 /payment/charge-callback 에서 검증.
+      const redirectUrl = typeof window !== "undefined"
+        ? `${window.location.origin}/payment/charge-callback`
+        : undefined;
       // SmartDoc 검증된 단건결제 이식 (@portone/browser-sdk/v2)
       const response = await PortOne.requestPayment({
         storeId: STORE_ID,
@@ -95,9 +99,13 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
         currency: "KRW",
         payMethod: "CARD",
         customData: JSON.stringify({ userId }),
+        redirectUrl,
+        windowType: { pc: "IFRAME", mobile: "REDIRECTION" },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
+      // 모바일 REDIRECTION은 여기서 반환되지 않고 페이지가 이동한다(콜백에서 처리).
+      // 아래는 PC(IFRAME)에서 Promise로 결과를 받는 경로.
       if (response?.code) {
         toast(response.message || "결제가 취소되었습니다.", "info");
         setLoading(false);

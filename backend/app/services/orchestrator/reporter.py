@@ -71,15 +71,34 @@ def _build_alert_text(health: dict) -> str:
 
 
 def _build_sales_text(health: dict) -> str:
-    """💰 매출/전환 (텍스트)."""
+    """💰 매출/크레딧 (텍스트) — 크레딧 충전·소진 모델(구독 폐지 2026-07)."""
     s = (health or {}).get("sales", {}) or {}
     if not s or s.get("error"):
         return ""
-    return (
-        "▌ 💰 매출/전환\n"
-        f"  유료 PRO(결제): {s.get('pro_paying',0)}명  |  프로모·체험 PRO: {s.get('pro_promo_trial',0)}명\n"
-        f"  어제 신규 PRO 전환: {s.get('new_pro_yesterday',0)}명  |  전환율: {s.get('conversion_rate',0)}%\n"
+
+    def _n(v):
+        return f"{v:,}" if isinstance(v, (int, float)) else "N/A"
+
+    # 어제 소진 크레딧 type별 분해 (상담·분석·도구)
+    by_type = s.get("credits_spent_by_type_yesterday") or {}
+    consult = by_type.get("consult", 0)
+    analyze = by_type.get("analyze", 0)
+    tool = by_type.get("deduct", 0)
+
+    lines = (
+        "▌ 💰 매출/크레딧\n"
+        f"  어제 충전: {_n(s.get('charge_cnt_yesterday'))}건 / {_n(s.get('charge_krw_yesterday'))}원"
+        f"  |  누적 충전: {_n(s.get('charge_cnt_total'))}건 / {_n(s.get('charge_krw_total'))}원\n"
+        f"  어제 크레딧 소진: {_n(s.get('credits_spent_yesterday'))} "
+        f"(상담 {_n(consult)} · 분석 {_n(analyze)} · 도구 {_n(tool)})\n"
+        f"  충전자: {_n(s.get('chargers_total'))}명  |  충전 전환율: {s.get('charge_conversion_rate','N/A')}%\n"
+        f"  미사용 크레딧 잔액: {_n(s.get('credits_outstanding'))} (선불 부채)\n"
+        f"  가입보너스 누적: {_n(s.get('signup_bonus_users'))}명 / {_n(s.get('signup_bonus_credits'))} 크레딧\n"
     )
+    # (레거시) 구 구독 PRO 잔존 — 구독 폐지 후 참고용 한 줄만
+    legacy = s.get("pro_paying", 0) + s.get("pro_promo_trial", 0)
+    lines += f"  (레거시) 구 구독 PRO 잔존 {legacy}명 — 구독 폐지(2026-07)\n"
+    return lines
 
 
 def _build_dq_text(health: dict) -> str:
@@ -430,14 +449,36 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
     _s = (health or {}).get("sales", {}) or {}
     sales_html = ""
     if _s and not _s.get("error"):
+        def _n(v):
+            return f"{v:,}" if isinstance(v, (int, float)) else "N/A"
+        _bt = _s.get("credits_spent_by_type_yesterday") or {}
+        _consult = _bt.get("consult", 0)
+        _analyze = _bt.get("analyze", 0)
+        _tool = _bt.get("deduct", 0)
+        _legacy = _s.get("pro_paying", 0) + _s.get("pro_promo_trial", 0)
         sales_html = (
-            '<h3 style="color:#111;font-size:15px;margin-top:20px">&#128176; 매출/전환</h3>'
+            '<h3 style="color:#111;font-size:15px;margin-top:20px">&#128176; 매출/크레딧</h3>'
             '<table style="width:100%;border-collapse:collapse">'
-            + stat_row("유료 PRO (결제)", f'<span style="color:#6d28d9">{_s.get("pro_paying",0)}명</span>')
-            + stat_row("프로모·체험 PRO", f'{_s.get("pro_promo_trial",0)}명')
-            + stat_row("어제 신규 PRO 전환", f'<span style="color:#6d28d9">{_s.get("new_pro_yesterday",0)}명</span>')
-            + stat_row("유료 전환율", f'{_s.get("conversion_rate",0)}%')
+            + stat_row("어제 충전",
+                       f'<span style="color:#6d28d9">{_n(_s.get("charge_cnt_yesterday"))}건 / '
+                       f'{_n(_s.get("charge_krw_yesterday"))}원</span>')
+            + stat_row("누적 충전",
+                       f'{_n(_s.get("charge_cnt_total"))}건 / {_n(_s.get("charge_krw_total"))}원')
+            + stat_row("어제 크레딧 소진",
+                       f'<span style="color:#6d28d9">{_n(_s.get("credits_spent_yesterday"))}</span> '
+                       f'<span style="color:#6b7280;font-weight:normal;font-size:12px">'
+                       f'(상담 {_n(_consult)} · 분석 {_n(_analyze)} · 도구 {_n(_tool)})</span>')
+            + stat_row("충전자 · 전환율",
+                       f'{_n(_s.get("chargers_total"))}명 &nbsp;'
+                       f'<span style="color:#6d28d9">{_s.get("charge_conversion_rate","N/A")}%</span>')
+            + stat_row("미사용 크레딧 잔액",
+                       f'{_n(_s.get("credits_outstanding"))} '
+                       f'<span style="color:#6b7280;font-weight:normal;font-size:12px">(선불 부채)</span>')
+            + stat_row("가입보너스 누적",
+                       f'{_n(_s.get("signup_bonus_users"))}명 / {_n(_s.get("signup_bonus_credits"))} 크레딧')
             + '</table>'
+            + f'<p style="color:#9ca3af;font-size:12px;margin:6px 0 0">'
+              f'(레거시) 구 구독 PRO 잔존 {_legacy}명 — 구독 폐지(2026-07)</p>'
         )
 
     _dq = (health or {}).get("data_quality", {}) or {}

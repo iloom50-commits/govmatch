@@ -261,7 +261,9 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     except Exception as e:
         h["hot_issue"] = {"error": str(e)[:80]}
 
-    # 5. 매출/전환 신호 (users.plan / billing_key / plan_started_at)
+    # 5. 매출/전환 신호 — 크레딧 충전·차감 모델(구독 폐지 2026-07). 레거시 구독 키는 참고용 잔존.
+    users_total = 0
+    # 5a. (레거시) 구독 지표 — billing_key 기반. 구독 폐지 후엔 잔존 PRO 참고용.
     try:
         cur.execute("""
             SELECT
@@ -286,6 +288,83 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
         }
     except Exception as e:
         h["sales"] = {"error": str(e)[:80]}
+
+    # 5b. 크레딧 지표 — 실매출(충전)·소진·선불부채·전환. 각 쿼리 독립 try (하나 실패해도 나머지 유지).
+    sales = h.get("sales")
+    if not isinstance(sales, dict):
+        sales = {}
+        h["sales"] = sales
+
+    # 충전 결제 (payments) — 어제/누적 건수·금액 + 고유 충전자 수·전환율
+    try:
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'
+                                   AND created_at <  CURRENT_DATE) AS cnt_y,
+                COALESCE(SUM(amount_krw) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'
+                                                   AND created_at <  CURRENT_DATE), 0) AS krw_y,
+                COUNT(*) AS cnt_t,
+                COALESCE(SUM(amount_krw), 0) AS krw_t,
+                COUNT(DISTINCT user_id) AS chargers
+            FROM payments WHERE status = 'paid'
+        """)
+        r = cur.fetchone()
+        sales["charge_cnt_yesterday"] = int(r["cnt_y"] or 0)
+        sales["charge_krw_yesterday"] = int(r["krw_y"] or 0)
+        sales["charge_cnt_total"] = int(r["cnt_t"] or 0)
+        sales["charge_krw_total"] = int(r["krw_t"] or 0)
+        chargers_total = int(r["chargers"] or 0)
+        sales["chargers_total"] = chargers_total
+        sales["charge_conversion_rate"] = round(chargers_total / users_total * 100, 1) if users_total else 0
+    except Exception as e:
+        sales["charge_error"] = str(e)[:80]
+
+    # 어제 소진 크레딧 총량 (음수 amount의 절대값 합)
+    try:
+        cur.execute("""
+            SELECT COALESCE(SUM(-amount), 0) AS spent
+            FROM credit_transactions
+            WHERE amount < 0
+              AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE
+        """)
+        sales["credits_spent_yesterday"] = int(cur.fetchone()["spent"] or 0)
+    except Exception as e:
+        sales["credits_spent_yesterday"] = None
+
+    # 어제 소진 크레딧 — type별 분해 (consult/analyze/deduct 등)
+    try:
+        cur.execute("""
+            SELECT type, COALESCE(SUM(-amount), 0) AS spent
+            FROM credit_transactions
+            WHERE amount < 0
+              AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE
+            GROUP BY type
+        """)
+        sales["credits_spent_by_type_yesterday"] = {
+            row["type"]: int(row["spent"] or 0) for row in cur.fetchall()
+        }
+    except Exception as e:
+        sales["credits_spent_by_type_yesterday"] = {}
+
+    # 미사용 크레딧 잔액 총량 (선불 부채)
+    try:
+        cur.execute("SELECT COALESCE(SUM(credits), 0) AS bal FROM users")
+        sales["credits_outstanding"] = int(cur.fetchone()["bal"] or 0)
+    except Exception as e:
+        sales["credits_outstanding"] = None
+
+    # 가입보너스 지급 누적 (고유 사용자 수 + 총 크레딧)
+    try:
+        cur.execute("""
+            SELECT COUNT(DISTINCT user_id) AS users, COALESCE(SUM(amount), 0) AS credits
+            FROM credit_transactions WHERE type = 'signup_bonus'
+        """)
+        r = cur.fetchone()
+        sales["signup_bonus_users"] = int(r["users"] or 0)
+        sales["signup_bonus_credits"] = int(r["credits"] or 0)
+    except Exception as e:
+        sales["signup_bonus_users"] = None
+        sales["signup_bonus_credits"] = None
 
     # 데이터 품질 지표 — 문제2·3 근본개선이 실제로 되는지 매일 실측(추이 추적).
     try:

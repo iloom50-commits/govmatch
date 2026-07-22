@@ -3528,12 +3528,12 @@ def api_announcements_public(
 
         # 관심사 키워드 필터 (설정된 경우만, OR 매칭)
         if _m_interests:
-            kw_parts = " OR ".join(
-                ["(title ILIKE %s OR category ILIKE %s OR summary_text ILIKE %s)" for _ in _m_interests]
-            )
-            _m_where += f" AND ({kw_parts})"
-            for kw in _m_interests:
-                _m_params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%"])
+            from app.core.keyword_match import build_match_sql
+            _mf = "(title || ' ' || COALESCE(category,'') || ' ' || COALESCE(summary_text,''))"
+            _kw_sql, _kw_params = build_match_sql(_m_interests, _mf)
+            if _kw_sql:
+                _m_where += f" AND {_kw_sql}"
+                _m_params.extend(_kw_params)
 
         # 검색어 AND 필터 (맞춤 결과 내 추가 좁히기)
         if search:

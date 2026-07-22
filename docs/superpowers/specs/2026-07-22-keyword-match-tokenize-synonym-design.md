@@ -33,33 +33,53 @@ AND
 - 사전에 없는 단어(예 "바이오")는 동의어 확장 없이 그 토큰만 매칭 → **모든 키워드가 최소한 토큰 매칭은 됨**(현 substring보다 이미 개선).
 - 매칭 필드 F = `title + category + summary_text` (검색은 department도 보지만, 관심 매칭은 노이즈 축소 위해 3필드).
 
+## 기존 자산 재사용 (중복 생성 금지)
+
+matcher.py에 이미 존재:
+- `SYNONYM_MAP`([matcher.py:240](backend/app/core/matcher.py#L240)) — 단어 동의어(예 "수행기관"→[수행기관,용역,위탁,대행,수탁기관] 이미 있음). **"전문기관"·모집족은 없음.**
+- `INTEREST_KEYWORD_MAP`([matcher.py:149](backend/app/core/matcher.py#L149)) — 태그→키워드(창업지원→[창업,스타트업…]). 이건 matcher 전용이라 그대로 둠.
+
+**결정적 공백**: 어디에도 **토큰화가 없다.** custom_keyword "전문기관 모집"은 SYNONYM_MAP 키(단어)가 아니라 통째로 substring 매칭 → 2건. 즉 **핵심 신규 능력 = 토큰화**이고, 동의어는 기존 맵 확장으로 해결.
+
 ## 신규 모듈 `backend/app/core/keyword_match.py`
 
+- **`SYNONYM_MAP`을 이 모듈로 이관**(matcher.py:240 정의 제거 → `from app.core.keyword_match import SYNONYM_MAP`). keyword_match는 matcher를 import하지 않음 → **순환 import 없음**(단방향: matcher/main → keyword_match).
+- 이관하며 **기관族·모집族 확장**:
 ```python
-# 동의어 그룹(족). 대칭 확장은 그룹 멤버 전체로.
-SYNONYM_GROUPS: list[list[str]] = [
-    ["전문기관", "수행기관", "운영기관", "전담기관", "주관기관"],
-    ["모집", "지정", "선정", "공모"],
-]
+SYNONYM_MAP = {
+    # ... 기존 항목 유지(컨설팅/전문가/수행기관/용역기관/인증/특허/바우처/사업화/입주/해외/디자인/홍보/네트워킹) ...
+    # 기관族 추가·정합
+    "전문기관": ["전문기관", "수행기관", "운영기관", "전담기관", "주관기관"],
+    "수행기관": ["수행기관", "전문기관", "운영기관", "전담기관", "주관기관", "용역", "위탁", "대행", "수탁기관"],
+    "운영기관": ["운영기관", "전문기관", "수행기관", "전담기관", "주관기관"],
+    "전담기관": ["전담기관", "전문기관", "수행기관", "운영기관", "주관기관"],
+    "주관기관": ["주관기관", "전문기관", "수행기관", "운영기관", "전담기관"],
+    # 모집族 추가
+    "모집": ["모집", "지정", "선정", "공모"],
+    "지정": ["지정", "모집", "선정", "공모"],
+    "선정": ["선정", "모집", "지정", "공모"],
+    "공모": ["공모", "모집", "지정", "선정"],
+}
 ```
 
-- `expand_token(token: str) -> list[str]`: 토큰이 속한 그룹이 있으면 그룹 전체(자기 포함), 없으면 `[token]`.
-- `tokenize(keyword: str) -> list[str]`: `keyword.strip().split()` (공백 분리). 빈 문자열 토큰 제거.
-- `keyword_hit(keywords: list[str], text: str) -> bool`: (파이썬용 — 배치 루프에서 사용)
-  - text 소문자화. 각 keyword: 각 token을 expand → 동의어 중 하나라도 text에 포함이면 그 토큰 hit; **모든 토큰 hit**이면 keyword hit(AND). **하나의 keyword라도 hit**이면 True(OR).
-- `build_match_sql(keywords: list[str], field_expr: str) -> tuple[str | None, list]`: (SQL용 — 실시간/맞춤 경로)
-  - `field_expr` = 이미 조립된 필드 표현식(예 `"(title || ' ' || COALESCE(category,'') || ' ' || COALESCE(summary_text,''))"`).
-  - 각 keyword: 각 token → `(field ILIKE %s OR field ILIKE %s ...)`(동의어들); 토큰 간 AND; keyword 간 OR.
-  - 반환: `(sql_fragment, params)` — keywords 비면 `(None, [])`(호출자가 처리).
+- `tokenize(keyword: str) -> list[str]`: `keyword.strip().split()`, 빈 토큰 제거.
+- `expand_token(token: str) -> list[str]`: `SYNONYM_MAP.get(token, [token])` (사전에 있으면 동의어 전체, 없으면 자기만).
+- `keyword_hit(keywords: list[str], text: str) -> bool`: (파이썬용 — 배치 루프)
+  - text 소문자화. 각 keyword: 각 token expand → 동의어 중 하나라도 text 포함이면 토큰 hit; **모든 토큰 hit**이면 keyword hit(AND); **하나라도** keyword hit이면 True(OR).
+- `build_match_sql(keywords: list[str], field_expr: str) -> tuple[str | None, list]`: (SQL용 — 실시간/맞춤)
+  - 각 keyword: 각 token → `(field ILIKE %s OR ...)`(동의어); 토큰 간 AND; keyword 간 OR. 반환 `(sql, params)`; 비면 `(None, [])`.
 
-빈 keywords·공백만 입력 등 방어. 순수 함수(DB·IO 없음) → 단위 테스트 용이.
+빈 입력 방어. 순수 함수(DB·IO 없음). matcher.py의 기존 SYNONYM_MAP 사용처(701·1342)는 import만 바꾸면 그대로 동작(값 동일·확장).
 
 ## 통합 지점 (전부 헬퍼로 교체)
 
 1. **배치** `_compute_public_order_for_user` ([main.py:1081](backend/app/main.py#L1081)) — `interest_hit` 계산을 `keyword_hit(interests, f"{title} {category} {summary_text}")`로. **필드 정합성**: 배치 SELECT([main.py:980](backend/app/main.py#L980))에 `summary_text`가 없으면 추가(SQL 경로와 동일한 title+category+summary 3필드로 통일).
 2. **실시간 public** ([main.py:3250](backend/app/main.py#L3250)) — `interest_sql`/`interest_params`를 `build_match_sql`로.
 3. **맞춤 목록** ([main.py:3533](backend/app/main.py#L3533)) — `kw_parts`를 `build_match_sql`로.
-4. **매처 custom_keywords** ([matcher.py:1027](backend/app/core/matcher.py#L1027) 등) — 사용자 자유입력 키워드("전문기관 모집")가 들어오는 곳. custom_keywords의 substring 매칭을 헬퍼로 교체. (정확한 사이트는 구현 계획 단계에서 matcher.py의 708·1027·1327·1346·1684를 실사해 확정.)
+4. **매처 custom_keywords** — 사용자 자유입력 키워드("전문기관 모집")가 들어오는 곳. 실사 결과:
+   - [matcher.py:708-711](backend/app/core/matcher.py#L708) `custom_kw_list` 구성(콤마 분리).
+   - [matcher.py:1028-1033](backend/app/core/matcher.py#L1028) 직접 매칭 부스트: `direct_match = [kw for kw in custom_kw_list if kw.lower() in title_lower]` → **여기가 통째 substring**. `keyword_hit([kw], search_text)`(토큰화+동의어)로 교체. (title만 보던 것도 search_text=title+category+summary로 정합.)
+   - `SYNONYM_MAP` 이관에 따라 [701](backend/app/core/matcher.py#L701)·[1342](backend/app/core/matcher.py#L1342)는 import만 변경(동작 동일).
 
 > 각 사이트는 역할이 다름(불리언 hit / WHERE 조각 / 점수). 헬퍼는 `keyword_hit`(bool)와 `build_match_sql`(SQL 조각) 둘 다 제공해 사이트별로 알맞게 사용.
 

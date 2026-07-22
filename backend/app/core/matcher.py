@@ -5,7 +5,7 @@ import datetime
 import json
 from app.services.rule_engine import rule_engine, _normalize_region
 from app.config import DATABASE_URL
-from app.core.keyword_match import SYNONYM_MAP
+from app.core.keyword_match import SYNONYM_MAP, keyword_hit
 
 # 광역 표현 → 하위 지역 (DB에 "경상" 등으로 저장된 경우 처리)
 _BROAD_REGION_MAP: dict[str, set[str]] = {
@@ -1009,8 +1009,8 @@ def get_matches_for_user(user_profile):
         # C-2. 구체적 키워드 직접 매칭 부스트 (최대 30점)
         # custom_keywords(스마트공장, 바이오 등)가 제목에 직접 포함되면 최우선
         if custom_kw_list:
-            title_lower = title.lower()
-            direct_match = [kw for kw in custom_kw_list if kw.lower() in title_lower]
+            _ck_text = f"{title} {ad_category} {clean_summary}"
+            direct_match = [kw for kw in custom_kw_list if keyword_hit([kw], _ck_text)]
             if direct_match:
                 score += min(30.0, len(direct_match) * 15.0)
                 reasons.append(f'"{direct_match[0]}" 키워드 직접 매칭')

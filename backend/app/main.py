@@ -973,13 +973,14 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
     """
     from app.core.matcher import _check_region_exclusion
     from app.services.rule_engine import _normalize_region
+    from app.core.keyword_match import keyword_hit
 
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         f"""SELECT announcement_id, title, region, category,
                    support_amount, support_amount_max, target_type, deadline_date, deadline_type,
-                   eligibility_logic
+                   eligibility_logic, summary_text
             FROM announcements
             WHERE {valid_announcement_where()}
             ORDER BY deadline_date ASC NULLS LAST, created_at DESC"""
@@ -1077,8 +1078,9 @@ def _compute_public_order_for_user(user_profile: dict, is_individual: bool) -> d
         # ── 매칭 점수 계산 ──
         score = 0
 
-        # 관심분야 일치 (50점)
-        interest_hit = bool(interests) and any(it in category or it in title for it in interests)
+        # 관심분야 일치 (50점) — 토큰화+동의어 매칭
+        _match_text = f"{title} {category} {ann.get('summary_text','') or ''}"
+        interest_hit = keyword_hit(interests, _match_text)
         if interest_hit:
             score += 50
 

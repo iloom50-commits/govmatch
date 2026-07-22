@@ -88,7 +88,8 @@ export default function PaymentModal({ planStatus, onSuccess, onClose }: Payment
       const response = await PortOne.requestPayment({
         storeId: STORE_ID,
         channelKey: CHARGE_CHANNEL_KEY,
-        paymentId: "gm-charge-" + crypto.randomUUID().replace(/-/g, ""),
+        // KCP V2 주문번호는 최대 40자. "gm-"(3) + uuid 32자 = 35자로 제한 내 유지.
+        paymentId: "gm-" + crypto.randomUUID().replace(/-/g, ""),
         orderName: "지원금AI 크레딧 " + pack.credits.toLocaleString(),
         totalAmount: pack.krw,
         currency: "KRW",

@@ -3248,15 +3248,10 @@ def api_announcements_public(
                         region_sql = "FALSE"
                         region_params = []
 
-                    if interests:
-                        interest_parts = " OR ".join(["(category ILIKE %s OR title ILIKE %s)" for _ in interests])
-                        interest_sql = f"({interest_parts})"
-                        interest_params = []
-                        for it in interests:
-                            interest_params.extend([f"%{it}%", f"%{it}%"])
-                    else:
-                        interest_sql = "FALSE"
-                        interest_params = []
+                    from app.core.keyword_match import build_match_sql
+                    _int_field = "(title || ' ' || COALESCE(category,'') || ' ' || COALESCE(summary_text,''))"
+                    _int_sql, interest_params = build_match_sql(interests, _int_field)
+                    interest_sql = _int_sql if _int_sql else "FALSE"
 
                     import datetime as _dt
                     today_bucket = _dt.date.today().timetuple().tm_yday % 3

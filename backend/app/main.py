@@ -4999,12 +4999,14 @@ def api_wallet_charge_webhook(body: ChargeWebhookBody):
         if cur.fetchone():
             return {"ok": True, "duplicate": True}
 
-        # body를 신뢰하지 않고 PortOne 재조회(위조 방지). 조회 실패는 502로 재전송 유도.
+        # body를 신뢰하지 않고 PortOne 재조회(위조 방지).
+        # 조회 실패(결제 없음=테스트 호출/가짜 id, 또는 일시 오류)는 200으로 무시해 재전송 폭탄을 막는다.
+        # 진짜 결제완료 웹훅이면 해당 결제가 PortOne에 존재하므로 조회가 성공한다.
         try:
             payment = _verify_portone_payment(payment_id)
         except RuntimeError as e:
-            print(f"[wallet-webhook] 조회 실패 payment_id={payment_id}: {e}")
-            raise HTTPException(status_code=502, detail="verify failed")
+            print(f"[wallet-webhook] 조회 실패(무시) payment_id={payment_id}: {e}")
+            return {"ok": True, "verify_failed": True}
 
         if payment["status"] != "PAID":
             return {"ok": True, "status": payment["status"]}

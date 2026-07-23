@@ -395,18 +395,17 @@ def test_webhook_bad_amount_skips():
         _restore()
 
 
-def test_webhook_lookup_failure_502():
+def test_webhook_lookup_failure_ignored_200():
+    """조회 실패(존재하지 않는 테스트 id/일시 오류)는 200으로 무시 — PortOne 재전송 폭탄 방지."""
     cur = FakeCursor(users={1: 0})
     try:
         _patch_db(cur)
         def _v(pid):
-            raise RuntimeError("네트워크 오류")
+            raise RuntimeError("결제 없음(404) 또는 네트워크 오류")
         m._verify_portone_payment = _v
-        try:
-            m.api_wallet_charge_webhook(_webhook_body("pay-neterr"))
-            assert False, "조회 실패 시 502를 던져 PortOne 재전송을 유도해야 함"
-        except m.HTTPException as e:
-            assert e.status_code == 502
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-neterr"))
+        assert result == {"ok": True, "verify_failed": True}
+        assert cur._users[1] == 0, "조회 실패 시 적립되면 안 됨"
     finally:
         _restore()
 

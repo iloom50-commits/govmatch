@@ -4965,6 +4965,71 @@ def api_wallet_charge_verify(
         conn.close()
 
 
+class ChargeWebhookData(BaseModel):
+    paymentId: str
+    storeId: Optional[str] = None
+    transactionId: Optional[str] = None
+
+
+class ChargeWebhookBody(BaseModel):
+    type: str
+    data: ChargeWebhookData
+    timestamp: Optional[str] = None
+
+
+@app.post("/api/wallet/charge/webhook")
+def api_wallet_charge_webhook(body: ChargeWebhookBody):
+    """PortOne 결제완료 웹훅 — 브라우저 복귀와 무관하게 서버가 직접 크레딧을 적립한다(멱등).
+
+    앱카드·간편결제는 카드사 앱으로 이탈 후 복귀가 불안정해 charge/verify(브라우저 콜백)가
+    안 불릴 수 있다. 이 웹훅은 결제만 승인되면 PortOne이 서버로 직접 통보하므로 적립을 보장한다.
+    body(paymentId)는 신뢰하지 않고 PortOne 재조회로 진위·PAID·userId·amount를 확인한다.
+    payments.portone_id UNIQUE로 charge/verify와 중복돼도 이중 적립되지 않는다.
+    """
+    # 결제완료 외 이벤트(취소·기타)는 무시하고 200으로 종료(PortOne 재전송 방지).
+    if body.type != "Transaction.Paid":
+        return {"ok": True, "ignored": body.type}
+
+    payment_id = body.data.paymentId
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # 멱등 fast-path: 이미 적립된 결제면 재조회 없이 종료
+        cur.execute("SELECT 1 FROM payments WHERE portone_id = %s", (payment_id,))
+        if cur.fetchone():
+            return {"ok": True, "duplicate": True}
+
+        # body를 신뢰하지 않고 PortOne 재조회(위조 방지). 조회 실패는 502로 재전송 유도.
+        try:
+            payment = _verify_portone_payment(payment_id)
+        except RuntimeError as e:
+            print(f"[wallet-webhook] 조회 실패 payment_id={payment_id}: {e}")
+            raise HTTPException(status_code=502, detail="verify failed")
+
+        if payment["status"] != "PAID":
+            return {"ok": True, "status": payment["status"]}
+
+        uid = payment.get("user_id")
+        if uid is None:
+            print(f"[wallet-webhook] customData.userId 없음 payment_id={payment_id}")
+            return {"ok": True, "no_user": True}
+
+        amount = payment.get("amount")
+        credits = _credits_for_krw(amount)
+        if not credits:
+            print(f"[wallet-webhook] 카탈로그 외 금액 payment_id={payment_id} amount={amount}")
+            return {"ok": True, "bad_amount": amount}
+
+        new_balance = wallet.wallet_record_charge(cur, uid, amount, credits, payment_id)
+        if new_balance is None:
+            return {"ok": True, "duplicate": True}
+        conn.commit()
+        print(f"[wallet-webhook] 적립 완료 uid={uid} +{credits} payment_id={payment_id} balance={new_balance}")
+        return {"ok": True, "credits": new_balance}
+    finally:
+        conn.close()
+
+
 def _charge_v1(customer_uid: str, merchant_uid: str, amount: int, order_name: str) -> bool:
     """iamport V1 API로 customer_uid 기반 정기결제 실행. 성공 시 True 반환."""
     import httpx as _httpx

@@ -306,6 +306,111 @@ def test_backfill_signup_bonus_batch_idempotent():
         _restore()
 
 
+# ─────────────────────────────────────────────────────────────
+# /api/wallet/charge/webhook — 앱카드 복귀실패에도 서버가 직접 적립(멱등)
+# ─────────────────────────────────────────────────────────────
+def _webhook_body(payment_id="pay-wh", type_="Transaction.Paid"):
+    return m.ChargeWebhookBody(type=type_, data=m.ChargeWebhookData(paymentId=payment_id))
+
+
+def test_webhook_paid_adds_credits():
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        krw, credits = m.CREDIT_PACKS[0]
+        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": krw, "user_id": 1}
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-wh-1"))
+        assert result == {"ok": True, "credits": credits}
+        assert cur._users[1] == credits, "웹훅으로 크레딧이 적립돼야 함"
+    finally:
+        _restore()
+
+
+def test_webhook_idempotent_already_processed():
+    cur = FakeCursor(users={1: 500}, payments={"pay-dup": {"portone_id": "pay-dup"}})
+    called = {"verify": 0}
+    try:
+        _patch_db(cur)
+        def _v(pid):
+            called["verify"] += 1
+            return {"status": "PAID", "amount": m.CREDIT_PACKS[0][0], "user_id": 1}
+        m._verify_portone_payment = _v
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-dup"))
+        assert result == {"ok": True, "duplicate": True}
+        assert called["verify"] == 0, "이미 처리된 결제는 재조회조차 하지 않아야 함"
+        assert cur._users[1] == 500, "이중 적립되면 안 됨"
+    finally:
+        _restore()
+
+
+def test_webhook_ignores_non_paid_type():
+    cur = FakeCursor(users={1: 0})
+    called = {"verify": 0}
+    try:
+        _patch_db(cur)
+        def _v(pid):
+            called["verify"] += 1
+            return {"status": "PAID", "amount": m.CREDIT_PACKS[0][0], "user_id": 1}
+        m._verify_portone_payment = _v
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-x", type_="Transaction.Cancelled"))
+        assert result["ok"] is True and result.get("ignored") == "Transaction.Cancelled"
+        assert called["verify"] == 0, "결제완료 외 이벤트는 재조회 안 함"
+        assert cur._users[1] == 0
+    finally:
+        _restore()
+
+
+def test_webhook_ignores_not_paid_status():
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        m._verify_portone_payment = lambda pid: {"status": "READY", "amount": m.CREDIT_PACKS[0][0], "user_id": 1}
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-ready"))
+        assert result == {"ok": True, "status": "READY"}
+        assert cur._users[1] == 0, "미완료 결제는 적립 안 됨"
+    finally:
+        _restore()
+
+
+def test_webhook_no_user_id_skips():
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": m.CREDIT_PACKS[0][0], "user_id": None}
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-nouser"))
+        assert result == {"ok": True, "no_user": True}
+    finally:
+        _restore()
+
+
+def test_webhook_bad_amount_skips():
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        m._verify_portone_payment = lambda pid: {"status": "PAID", "amount": 777, "user_id": 1}  # 카탈로그 외
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-badamt"))
+        assert result == {"ok": True, "bad_amount": 777}
+        assert cur._users[1] == 0, "카탈로그 외 금액은 적립 안 됨"
+    finally:
+        _restore()
+
+
+def test_webhook_lookup_failure_502():
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        def _v(pid):
+            raise RuntimeError("네트워크 오류")
+        m._verify_portone_payment = _v
+        try:
+            m.api_wallet_charge_webhook(_webhook_body("pay-neterr"))
+            assert False, "조회 실패 시 502를 던져 PortOne 재전송을 유도해야 함"
+        except m.HTTPException as e:
+            assert e.status_code == 502
+    finally:
+        _restore()
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items())

@@ -11,7 +11,9 @@ const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID || "";
 // 기존 NEXT_PUBLIC_PORTONE_CHANNEL_KEY(빌링 등 다른 용도일 수 있음)와 분리해, 검증된 단건결제 채널을 명시적으로 쓴다.
 const CHARGE_CHANNEL_KEY = process.env.NEXT_PUBLIC_PORTONE_CHARGE_CHANNEL_KEY || "channel-key-c71e2358-2832-4bb8-a66e-f688c807e87c";
 // 결제 승인(KCP 실채널) 연동 완료 전까지는 실제 결제창을 열지 않고 "준비 중" 안내만 띄운다.
-// 연동 완료 시 Vercel 환경변수 NEXT_PUBLIC_CHARGE_READY=true 만 설정하면 코드 수정 없이 실결제가 열린다.
+// 연동 완료 시 Vercel 환경변수 NEXT_PUBLIC_CHARGE_READY=true 설정.
+// ※ NEXT_PUBLIC_*는 빌드타임 인라인이라 env 변경만으로는 반영 안 됨 — 반드시 실제 재배포 필요
+//   (빈 커밋 --allow-empty는 Vercel이 자동배포를 스킵하므로 파일 변경 커밋 또는 대시보드 Redeploy 사용).
 const CHARGE_READY = process.env.NEXT_PUBLIC_CHARGE_READY === "true";
 
 interface Pack {

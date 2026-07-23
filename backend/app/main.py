@@ -4882,11 +4882,17 @@ def _verify_portone_payment(payment_id: str) -> dict:
     user_id = None
     if custom_data:
         try:
-            if isinstance(custom_data, str):
-                custom_data = json.loads(custom_data)
-            raw_uid = custom_data.get("userId")
-            if raw_uid is not None:
-                user_id = int(raw_uid)
+            # customData 이중 JSON 인코딩 방어: dict가 될 때까지 최대 2회 파싱
+            # (PortOne이 우리가 보낸 JSON 문자열을 한 번 더 감싸 저장하는 경우가 있음).
+            for _ in range(2):
+                if isinstance(custom_data, str):
+                    custom_data = json.loads(custom_data)
+                else:
+                    break
+            if isinstance(custom_data, dict):
+                raw_uid = custom_data.get("userId")
+                if raw_uid is not None:
+                    user_id = int(raw_uid)
         except (ValueError, TypeError, json.JSONDecodeError):
             user_id = None
     return {"status": payment.get("status"), "amount": amount, "user_id": user_id}

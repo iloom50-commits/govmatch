@@ -4992,11 +4992,37 @@ def api_wallet_charge_webhook(body: ChargeWebhookBody):
     body(paymentId)는 신뢰하지 않고 PortOne 재조회로 진위·PAID·userId·amount를 확인한다.
     payments.portone_id UNIQUE로 charge/verify와 중복돼도 이중 적립되지 않는다.
     """
-    # 결제완료 외 이벤트(취소·기타)는 무시하고 200으로 종료(PortOne 재전송 방지).
+    payment_id = body.data.paymentId
+
+    # 취소 이벤트 → 적립분 크레딧 회수(멱등). 환불 시 크레딧이 그대로 남는 불일치 방지.
+    if body.type in ("Transaction.Cancelled", "Transaction.PartialCancelled"):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT user_id, credits, status FROM payments WHERE portone_id = %s",
+                (payment_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"ok": True, "not_charged": True}  # 적립된 적 없는 결제 취소 → 무시
+            if row["status"] == "cancelled":
+                return {"ok": True, "already_cancelled": True}  # 멱등
+            uid = row["user_id"]
+            credits = row["credits"]
+            # 잔액에서 회수. 이미 소진해 부족하면 wallet_deduct가 False(음수 방지) — 로그로 남김.
+            deducted = wallet.wallet_deduct(cur, uid, credits, "refund", ref=payment_id)
+            cur.execute("UPDATE payments SET status = 'cancelled' WHERE portone_id = %s", (payment_id,))
+            conn.commit()
+            print(f"[wallet-webhook] 취소 회수 uid={uid} -{credits} payment_id={payment_id} deducted={deducted}")
+            return {"ok": True, "refunded": credits, "deducted": deducted}
+        finally:
+            conn.close()
+
+    # 결제완료 외(취소는 위에서 처리) 기타 이벤트는 무시하고 200으로 종료(재전송 방지).
     if body.type != "Transaction.Paid":
         return {"ok": True, "ignored": body.type}
 
-    payment_id = body.data.paymentId
     conn = get_db_connection()
     cur = conn.cursor()
     try:

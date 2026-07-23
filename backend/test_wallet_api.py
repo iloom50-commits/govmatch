@@ -55,6 +55,17 @@ class FakeCursor:
                 self._result = {"credits": self._users[user_id]}
                 self.rowcount = 1
 
+        elif s.startswith("UPDATE users SET credits = credits - %s"):
+            # 조건부 원자 차감: WHERE credits >= %s
+            amount, user_id, min_credits = params
+            if user_id in self._users and self._users[user_id] >= min_credits:
+                self._users[user_id] -= amount
+                self._result = {"credits": self._users[user_id]}
+                self.rowcount = 1
+            else:
+                self._result = None
+                self.rowcount = 0
+
         elif s.startswith("INSERT INTO credit_transactions"):
             user_id, tx_type, amount, balance_after, ref = params
             self.tx_log.append({
@@ -73,7 +84,7 @@ class FakeCursor:
                 row = {
                     "id": len(self.payments) + 1, "user_id": user_id,
                     "portone_id": portone_id, "amount_krw": amount_krw,
-                    "credits": credits,
+                    "credits": credits, "status": "paid",
                 }
                 self.payments[portone_id] = row
                 self._result = {"id": row["id"]}
@@ -82,6 +93,21 @@ class FakeCursor:
         elif s.startswith("SELECT 1 FROM payments WHERE portone_id"):
             portone_id = params[0]
             self._result = {"?column?": 1} if portone_id in self.payments else None
+
+        elif s.startswith("SELECT user_id, credits, status FROM payments"):
+            portone_id = params[0]
+            row = self.payments.get(portone_id)
+            self._result = (
+                {"user_id": row["user_id"], "credits": row["credits"],
+                 "status": row.get("status", "paid")}
+                if row else None
+            )
+
+        elif s.startswith("UPDATE payments SET status"):
+            portone_id = params[0]
+            if portone_id in self.payments:
+                self.payments[portone_id]["status"] = "cancelled"
+            self.rowcount = 1
 
         elif s.startswith("SELECT 1 FROM credit_transactions WHERE user_id") and "signup_bonus" in s:
             user_id = params[0]
@@ -352,9 +378,9 @@ def test_webhook_ignores_non_paid_type():
             called["verify"] += 1
             return {"status": "PAID", "amount": m.CREDIT_PACKS[0][0], "user_id": 1}
         m._verify_portone_payment = _v
-        result = m.api_wallet_charge_webhook(_webhook_body("pay-x", type_="Transaction.Cancelled"))
-        assert result["ok"] is True and result.get("ignored") == "Transaction.Cancelled"
-        assert called["verify"] == 0, "결제완료 외 이벤트는 재조회 안 함"
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-x", type_="Transaction.Failed"))
+        assert result["ok"] is True and result.get("ignored") == "Transaction.Failed"
+        assert called["verify"] == 0, "결제완료·취소 외 이벤트는 재조회 안 함"
         assert cur._users[1] == 0
     finally:
         _restore()
@@ -406,6 +432,48 @@ def test_webhook_lookup_failure_ignored_200():
         result = m.api_wallet_charge_webhook(_webhook_body("pay-neterr"))
         assert result == {"ok": True, "verify_failed": True}
         assert cur._users[1] == 0, "조회 실패 시 적립되면 안 됨"
+    finally:
+        _restore()
+
+
+def test_webhook_cancelled_refunds_credits():
+    """취소 웹훅 → 적립분 크레딧 회수 + payments status=cancelled."""
+    krw, credits = m.CREDIT_PACKS[0]
+    cur = FakeCursor(users={1: credits})  # 충전으로 credits 보유 상태
+    cur.payments["pay-c"] = {"user_id": 1, "portone_id": "pay-c", "amount_krw": krw,
+                             "credits": credits, "status": "paid"}
+    try:
+        _patch_db(cur)
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-c", type_="Transaction.Cancelled"))
+        assert result == {"ok": True, "refunded": credits, "deducted": True}
+        assert cur._users[1] == 0, "취소 시 적립분이 회수돼야 함"
+        assert cur.payments["pay-c"]["status"] == "cancelled"
+    finally:
+        _restore()
+
+
+def test_webhook_cancelled_idempotent():
+    """이미 취소 처리된 결제는 재회수하지 않음(멱등)."""
+    krw, credits = m.CREDIT_PACKS[0]
+    cur = FakeCursor(users={1: credits})
+    cur.payments["pay-c2"] = {"user_id": 1, "portone_id": "pay-c2", "amount_krw": krw,
+                              "credits": credits, "status": "cancelled"}
+    try:
+        _patch_db(cur)
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-c2", type_="Transaction.Cancelled"))
+        assert result == {"ok": True, "already_cancelled": True}
+        assert cur._users[1] == credits, "이미 취소된 결제는 재회수하면 안 됨"
+    finally:
+        _restore()
+
+
+def test_webhook_cancelled_not_charged_ignored():
+    """적립된 적 없는 결제의 취소는 무시."""
+    cur = FakeCursor(users={1: 0})
+    try:
+        _patch_db(cur)
+        result = m.api_wallet_charge_webhook(_webhook_body("pay-unknown", type_="Transaction.Cancelled"))
+        assert result == {"ok": True, "not_charged": True}
     finally:
         _restore()
 

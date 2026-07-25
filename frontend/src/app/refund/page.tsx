@@ -60,7 +60,7 @@ export default function RefundPage() {
         </div>
 
         <div className="pt-6 border-t border-slate-200 text-slate-500">
-          <p>밸류파인더 | 대표: 오성근</p>
+          <p>밸류파인더 | 대표: 권오성</p>
           <p>문의: iloom50@gmail.com</p>
         </div>
       </section>

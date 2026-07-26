@@ -33,7 +33,7 @@
 ```
 [대표 Gmail] ─(인프라 알림: railway/vercel/supabase 발신)
    │
-① Google Apps Script (대표 구글계정 내, 시간기반 트리거 15분)
+① Google Apps Script (대표 구글계정 내, 시간기반 트리거 1일 1회 · 08~09시 KST = COO 09:30 직전)
    │  Gmail 검색 from:(railway.app OR vercel.com OR supabase.io OR supabase.com) newer_than:1d -label:govmatch-processed
    │  각 메일 요약(msg_id·date·from·subject·snippet) → POST → 성공 시 'govmatch-processed' 라벨
    ▼ HTTPS POST + X-Bridge-Secret
@@ -60,9 +60,12 @@
 
 ### 4.1 Apps Script `govmatch-mail-bridge.gs` (대표 1회 설치, 코드는 제공)
 - 스크립트 속성에 백엔드 URL·공유 시크릿 저장.
-- 시간기반 트리거 15분. 검색 쿼리로 인프라 알림만, `-label:govmatch-processed`로 미처리분만.
-- 각 메시지 → `{msgId, date, from, subject, snippet}` POST → **성공(2xx) 시에만** 라벨 부착.
-- POST 실패 시 라벨 미부착 → 다음 트리거 자연 재시도. 발신자 목록은 스크립트 상단 상수.
+- 시간기반 트리거 **1일 1회**(08~09시 KST, COO 09:30 전). v1은 일일 보고 통합이라 더 자주 긁어도
+  이득 없음 + 쿼터 절약. `newer_than:1d`가 일일 주기와 맞음. (즉시성 필요 시 v2에서 15분+즉시알림.)
+- 검색 쿼리로 인프라 알림만, `-label:govmatch-processed`로 미처리분만.
+- 각 메시지 → `{msg_id, date, from, subject, snippet}` POST → **성공(2xx) 시에만** 라벨 부착.
+- POST 실패 시 **동일 실행 내 2~3회 재시도**(일시 실패 흡수), 그래도 실패면 라벨 미부착 → 다음날
+  트리거에서 재시도(하루 1회라 24h 지연 방지용 동일-실행 재시도). 발신자 목록은 스크립트 상단 상수.
 
 ### 4.2 엔드포인트 `POST /api/internal/mail-signal` (main.py)
 - 헤더 `X-Bridge-Secret` == env `MAIL_BRIDGE_SECRET` 검증(불일치·누락→401).
@@ -108,7 +111,7 @@
 ### 에러처리
 | 지점 | 실패 시 |
 |---|---|
-| Apps Script POST 실패 | 라벨 미부착 → 15분 후 재시도(유실 없음) |
+| Apps Script POST 실패 | 동일 실행 내 2~3회 재시도 → 실패 시 라벨 미부착 → 다음날 트리거 재시도(유실 없음) |
 | 중복 전송 | gmail_msg_id UNIQUE + ON CONFLICT → 멱등 |
 | body 필드 누락 | 400, 저장 안 함 |
 | collector LLM 실패 | 스텝 try/except 격리 → 그 섹션만 "분석 실패", 일일 보고서 전체는 정상 발송 |

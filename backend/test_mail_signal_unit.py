@@ -121,8 +121,9 @@ def test_collect_surfaces_high_and_marks_analyzed():
 from app.services.orchestrator.reporter import render_mail_signal_section
 
 def test_reporter_section_empty():
+    # 신호 0건이면 섹션 미표시(빈 문자열) — 감시 안 하는데 "이상 없음" 노출하는 오해 방지
     txt, html = render_mail_signal_section({"count":0,"high":[],"by_service":{}})
-    assert "이상 없음" in txt and "이상 없음" in html
+    assert txt == "" and html == ""
 
 def test_reporter_section_high():
     data = {"count":2,"high":[{"service":"railway","subject":"Deployment failed","action":"로그 확인"}],

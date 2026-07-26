@@ -182,9 +182,9 @@ def render_mail_signal_section(data: dict) -> tuple:
     count = (data or {}).get("count", 0)
     high = (data or {}).get("high", [])
     if not count:
-        t = "🖥 인프라 상태 — 이상 없음"
-        h = '<h3>🖥 인프라 상태</h3><p>이상 없음</p>'
-        return t, h
+        # 신호 0건(브리지 미가동 또는 조용한 날) → 섹션 자체 미표시(빈 문자열).
+        # "이상 없음" 상시 노출은 감시 안 하는데 감시한 척이라 오해 유발 → alert-only.
+        return "", ""
     by = (data or {}).get("by_service", {})
     by_str = ", ".join(f"{k} {v}" for k, v in by.items())
     lines = [f"🖥 인프라 상태 — 알림 {count}건 ({by_str})"]

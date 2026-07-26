@@ -118,6 +118,20 @@ def test_collect_surfaces_high_and_marks_analyzed():
     assert updates, "analyzed_at 마킹 UPDATE 누락"
 
 
+from app.services.orchestrator.reporter import render_mail_signal_section
+
+def test_reporter_section_empty():
+    txt, html = render_mail_signal_section({"count":0,"high":[],"by_service":{}})
+    assert "이상 없음" in txt and "이상 없음" in html
+
+def test_reporter_section_high():
+    data = {"count":2,"high":[{"service":"railway","subject":"Deployment failed","action":"로그 확인"}],
+            "by_service":{"railway":1,"vercel":1}}
+    txt, html = render_mail_signal_section(data)
+    assert "railway" in txt and "Deployment failed" in txt and "로그 확인" in txt
+    assert "railway" in html
+
+
 if __name__ == "__main__":
     import traceback
     _fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

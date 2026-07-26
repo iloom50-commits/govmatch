@@ -177,8 +177,32 @@ def _build_coverage_text(coverage: dict) -> str:
     return lines
 
 
+def render_mail_signal_section(data: dict) -> tuple:
+    """(text, html) — '🖥 인프라 상태' 섹션. data=collect_mail_signals 반환."""
+    count = (data or {}).get("count", 0)
+    high = (data or {}).get("high", [])
+    if not count:
+        t = "🖥 인프라 상태 — 이상 없음"
+        h = '<h3>🖥 인프라 상태</h3><p>이상 없음</p>'
+        return t, h
+    by = (data or {}).get("by_service", {})
+    by_str = ", ".join(f"{k} {v}" for k, v in by.items())
+    lines = [f"🖥 인프라 상태 — 알림 {count}건 ({by_str})"]
+    for it in high:
+        lines.append(f"  ⚠️ [{it['service']}] {it['subject']} → {it['action']}")
+    t = "\n".join(lines)
+    if high:
+        h_items = "".join(
+            f"<li>⚠️ <b>[{it['service']}]</b> {it['subject']} → {it['action']}</li>" for it in high
+        )
+        h = (f"<h3>🖥 인프라 상태</h3><p>알림 {count}건 ({by_str})</p><ul>{h_items}</ul>")
+    else:
+        h = (f"<h3>🖥 인프라 상태</h3><p>알림 {count}건 ({by_str}) — high 없음</p>")
+    return t, h
+
+
 def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None,
-                       health: dict = None, coverage: dict = None) -> str:
+                       health: dict = None, coverage: dict = None, mail_signals: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -237,6 +261,7 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
     seo_lines = _build_seo_text(seo or {})
     alert_block = _build_alert_text(health)
     coverage_block = _build_coverage_text(coverage or {})
+    mail_block, _ = render_mail_signal_section(mail_signals or {})
     sales_block = _build_sales_text(health)
     dq_block = _build_dq_text(health)
 
@@ -245,6 +270,8 @@ def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict =
 
 {alert_block}
 {coverage_block}
+{mail_block}
+
 ▌ 구글 검색 유입
 {seo_lines}
 ▌ 회원 현황
@@ -374,7 +401,7 @@ def _build_coverage_html(coverage: dict) -> str:
 
 
 def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict = None,
-                       health: dict = None, coverage: dict = None) -> str:
+                       health: dict = None, coverage: dict = None, mail_signals: dict = None) -> str:
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
     yest  = (now - timedelta(days=1)).strftime("%m-%d")
@@ -446,6 +473,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
     # 🚦 경보 + 💰 매출 HTML
     alert_html = _build_alert_html(health)
     coverage_html = _build_coverage_html(coverage or {})
+    _, mail_html = render_mail_signal_section(mail_signals or {})
     _s = (health or {}).get("sales", {}) or {}
     sales_html = ""
     if _s and not _s.get("error"):
@@ -550,6 +578,7 @@ def _build_report_html(metrics: dict, learning: dict, quality: dict, seo: dict =
   <hr style="border-color:#e5e7eb">
   {alert_html}
   {coverage_html}
+  {mail_html}
   {seo_html}
 
   <h3 style="color:#111;font-size:15px">&#128101; 회원</h3>
@@ -702,7 +731,7 @@ def _send_kakao(metrics: dict) -> bool:
 
 # ── 발송 ──────────────────────────────────────────────────────
 def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None,
-                health: dict = None, coverage: dict = None) -> dict:
+                health: dict = None, coverage: dict = None, mail_signals: dict = None) -> dict:
     if quality is None:
         quality = {}
     if seo is None:
@@ -711,8 +740,10 @@ def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict =
         health = {}
     if coverage is None:
         coverage = {}
-    report_text = _build_report_text(metrics, learning, quality, seo, health, coverage)
-    report_html = _build_report_html(metrics, learning, quality, seo, health, coverage)
+    if mail_signals is None:
+        mail_signals = {}
+    report_text = _build_report_text(metrics, learning, quality, seo, health, coverage, mail_signals)
+    report_html = _build_report_html(metrics, learning, quality, seo, health, coverage, mail_signals)
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──

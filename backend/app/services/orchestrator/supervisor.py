@@ -161,6 +161,17 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 커버리지 감시 오류: {e}")
             traceback.print_exc()
 
+        # ── 인프라 메일 신호 수집·진단 ──
+        print("[AI COO] Step: 인프라 메일 신호 수집 중...")
+        try:
+            from .mail_signal_collector import collect_mail_signals
+            mail_sig = collect_mail_signals(db_conn)
+            results["mail_signals"] = mail_sig
+            print(f"  → 인프라 알림 {mail_sig.get('count',0)}건 (high {len(mail_sig.get('high',[]))})")
+        except Exception as e:
+            results["mail_signals"] = {"error": str(e)}
+            print(f"  → 메일 신호 수집 오류: {e}")
+
         # ── 7. 보고서 발송 ──
         print("[AI COO] Step 7/7: 보고서 생성 + 발송 중...")
         try:
@@ -172,6 +183,7 @@ def run_daily_supervision(db_conn=None) -> dict:
                 seo=results.get("seo", {}),
                 health=results.get("health", {}),
                 coverage=results.get("coverage", {}),
+                mail_signals=results.get("mail_signals", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

@@ -43,7 +43,7 @@
 ③ mail_signals 테이블 (ADD-only)
    ▼
 ④ AI COO supervisor.py 신규 스텝: collect_mail_signals(db_conn)
-   │  최근 24h 미분석 신호 → LLM "이상상태+조치" 분석 → analyzed_at 마킹
+   │  최근 24h 미분석 신호 → 규칙 기반 진단(서비스별 조치힌트·high 노출) → analyzed_at 마킹
    ▼
 ⑤ reporter.py '🖥 인프라 상태' 섹션(텍스트/HTML). 0건이면 "이상 없음" 한 줄.
 ```
@@ -93,9 +93,11 @@
 > `_safe_exec` 필수: init_database 직접 execute는 뒤 statement 실패 시 롤백에 휩쓸림(async-consult 사고 교훈).
 
 ### 4.4 collector `mail_signal_collector.py` + supervisor 배선
-- `collect_mail_signals(db_conn) -> dict`: 최근 24h `analyzed_at IS NULL` 신호 조회 → 있으면 LLM에
-  "인프라 알림들 → 이상상태 진단 + 조치계획" 요청 → 요약 dict 반환 → analyzed_at 마킹. **0건이면 LLM
-  스킵**, `{"count":0}` 반환.
+- `collect_mail_signals(db_conn) -> dict`: 최근 24h `analyzed_at IS NULL` 신호 조회 → **규칙 기반**으로
+  서비스별 카운트·high 신호 노출·서비스별 조치힌트(`action_hint`) 산출 → `{count, high[], by_service{}}`
+  반환 → analyzed_at 마킹. **0건이면 즉시 `{"count":0}` 반환**(비용 0).
+- 규칙 기반 채택 근거: 기존 COO 수집기(coverage/quality)가 전부 규칙 기반, 인프라 알림 저빈도 → LLM
+  불필요(결정적·비용 0). 즉시성/서술형 조치가 필요해지면 v2에서 LLM 도입.
 - supervisor.py 스텝 흐름에 삽입(현 4스텝 → 5스텝). 기존 스텝별 try/except 격리 패턴 준수.
 
 ### 4.5 reporter 섹션
@@ -114,8 +116,8 @@
 | Apps Script POST 실패 | 동일 실행 내 2~3회 재시도 → 실패 시 라벨 미부착 → 다음날 트리거 재시도(유실 없음) |
 | 중복 전송 | gmail_msg_id UNIQUE + ON CONFLICT → 멱등 |
 | body 필드 누락 | 400, 저장 안 함 |
-| collector LLM 실패 | 스텝 try/except 격리 → 그 섹션만 "분석 실패", 일일 보고서 전체는 정상 발송 |
-| 신호 0건 | "이상 없음" 한 줄, LLM 스킵(비용 0) |
+| collector 오류 | 스텝 try/except 격리 → 그 섹션만 "분석 실패", 일일 보고서 전체는 정상 발송 |
+| 신호 0건 | "이상 없음" 한 줄(비용 0) |
 
 ### 되돌리기
 - 전부 ADD-only(새 테이블·엔드포인트·스텝·env). 기존 로직 무변경([[project_deployment_policy]]).
@@ -126,7 +128,7 @@
 | 대상 | 종류 | 케이스 |
 |---|---|---|
 | 엔드포인트 | 단위(FakeCursor) | 시크릿 401 / 서비스 분류 / 심각도 / 멱등(2회→1행) / 필드누락 400 |
-| collector | 단위(LLM·DB 모킹) | 24h만 조회 / 프롬프트에 신호 포함 / 0건→LLM 스킵 / analyzed_at 마킹 |
+| collector | 단위(DB 모킹) | 24h만 조회 / high 노출·by_service 집계 / 0건→빈 결과 / analyzed_at 마킹 |
 | reporter | 단위 | 있음·없음 렌더(텍스트·HTML), high 강조 |
 | Apps Script | 자동불가 | 설치 후 실제 알림 1건 도착 = 라이브 스모크 |
 | 통합 | 수동 1회 | 알림 1건 도착 → mail_signals 저장 → 다음 COO 메일 섹션 노출 |

@@ -78,3 +78,6 @@ from . import kocca_api_scraper  # noqa: F401
 
 # 식품의약품안전처 연구관리 사업공고 API (MFDS/NIFDS)
 from . import mfds_scraper  # noqa: F401
+
+# 한국표준협회(KSA) 공고 게시판 (Jflow CMS, bbsNo 1021)
+from . import ksa_scraper  # noqa: F401

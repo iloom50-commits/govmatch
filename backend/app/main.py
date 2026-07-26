@@ -696,6 +696,22 @@ def init_database():
                 )
             """)
 
+            # 메일 신호 수신 테이블 (Gmail 브릿지 → COO 경보) — _safe_exec로 즉시 커밋·격리
+            _safe_exec("""
+                CREATE TABLE IF NOT EXISTS mail_signals (
+                    id SERIAL PRIMARY KEY,
+                    gmail_msg_id VARCHAR(200) UNIQUE NOT NULL,
+                    received_at TIMESTAMP,
+                    sender VARCHAR(300),
+                    subject TEXT,
+                    snippet TEXT,
+                    service VARCHAR(20),
+                    severity VARCHAR(10),
+                    analyzed_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """, "mail_signals table")
+
             conn.commit()
         except Exception:
             conn.rollback()
@@ -2025,6 +2041,36 @@ async def run_admin_scrape_endpoint(request: Request):
     except Exception as e:
         _log_system("admin_scrape", "scraper", f"오류: {e}", "error")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/api/internal/mail-signal")
+async def receive_mail_signal(request: Request):
+    """Gmail 브릿지 전용 — 수신 메일 신호를 mail_signals에 멱등 저장.
+    X-Bridge-Secret 헤더로 인증(validate_mail_signal), RealDictCursor 연결로 저장.
+    """
+    from app.services.orchestrator.mail_signal_collector import (
+        validate_mail_signal,
+        store_mail_signal,
+    )
+
+    secret = request.headers.get("X-Bridge-Secret", "")
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+
+    ok, http_status, error = validate_mail_signal(
+        secret, body, os.getenv("MAIL_BRIDGE_SECRET", "")
+    )
+    if not ok:
+        return JSONResponse(status_code=http_status, content={"error": error})
+
+    conn = get_db_connection()
+    try:
+        stored = store_mail_signal(conn, body)
+    finally:
+        conn.close()
+    return JSONResponse(content={"stored": stored})
 
 
 class BlogContextRequest(BaseModel):

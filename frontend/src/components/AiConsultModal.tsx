@@ -517,7 +517,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       } catch { return ""; }
     };
     const PUSH_OK = "완료되면 알림을 보내드릴게요 ✓";
-    const PUSH_FALLBACK = "알림이 꺼져 있어요 — 재접속하면 상담이력에서 확인할 수 있어요";
+    const PUSH_FALLBACK = "알림이 꺼져 있어요 — 마이페이지 알림 설정에서 켤 수 있어요 (이번 건은 상담이력에서 확인)";
     if (typeof Notification === "undefined") {
       await callNotify();
       toast(PUSH_FALLBACK, "info");

@@ -272,6 +272,18 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
               </>
             )}
 
+            {/* 알림 설정 진입 — 웹 푸시(상담 완료·맞춤 공고) 켜기/관리 */}
+            {onOpenNotify && (
+              <>
+                <Row
+                  label="알림 설정"
+                  value="상담 완료·맞춤 공고 알림 →"
+                  onClick={() => onOpenNotify()}
+                />
+                <Divider />
+              </>
+            )}
+
             {/* 카카오 연결하기 — 카카오 로그인이 아닌 사용자 대상 */}
             {!profile?.kakao_linked && (
               <>

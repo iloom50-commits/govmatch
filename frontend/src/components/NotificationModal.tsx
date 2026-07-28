@@ -913,8 +913,10 @@ export default function NotificationModal({
                       <span className="text-base">🔔</span>
                       <div className="flex flex-col">
                         <span className="text-sm font-semibold text-slate-700">브라우저 푸시</span>
-                        {pushLoading && (
+                        {pushLoading ? (
                           <span className="text-[10px] text-indigo-500 font-medium animate-pulse">설정 중... (최대 10초)</span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 leading-tight">상담 완료 · 맞춤 공고 알림</span>
                         )}
                       </div>
                     </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
+import { enableWebPush, disableWebPush, isPushSubscribed, isPushSupported } from "@/lib/push";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -26,7 +27,7 @@ interface ProfileSettingsProps {
   planStatus?: any;
 }
 
-export default function ProfileSettings({ profile, onSave, onClose, onLogout, onOpenNotify, onCharge, planStatus }: ProfileSettingsProps) {
+export default function ProfileSettings({ profile, onSave, onClose, onLogout, onCharge, planStatus }: ProfileSettingsProps) {
   useModalBack(true, onClose);
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -50,6 +51,33 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
   }, []);
 
   const credits = wallet?.credits ?? (typeof planStatus?.credits === "number" ? planStatus.credits : null);
+
+  // ── 웹 푸시 토글 ──
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSupported, setPushSupported] = useState(true);
+  useEffect(() => {
+    const ok = isPushSupported();
+    setPushSupported(ok);
+    if (ok) isPushSubscribed().then(setPushEnabled).catch(() => {});
+  }, []);
+  const handlePushToggle = async (next: boolean) => {
+    if (pushLoading) return;
+    setPushLoading(true);
+    try {
+      if (next) {
+        const bn = profile?.business_number;
+        const ok = bn ? await enableWebPush(bn) : false;
+        setPushEnabled(ok);
+        if (!ok) alert("브라우저 알림 권한이 필요해요. 브라우저 설정에서 알림을 허용한 뒤 다시 켜 주세요.");
+      } else {
+        await disableWebPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   const userTypeLabel: Record<string, string> = { individual: "개인", business: "사업자", both: "개인+사업자" };
   const userType = profile?.user_type || "business";
@@ -272,17 +300,33 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
               </>
             )}
 
-            {/* 알림 설정 진입 — 웹 푸시(상담 완료·맞춤 공고) 켜기/관리 */}
-            {onOpenNotify && (
-              <>
-                <Row
-                  label="알림 설정"
-                  value="상담 완료·맞춤 공고 알림 →"
-                  onClick={() => onOpenNotify()}
-                />
-                <Divider />
-              </>
-            )}
+            {/* 푸시 알림 — 상담 완료·맞춤 공고 알림을 바로 켜고/끄기 */}
+            <div className="w-full flex items-center justify-between py-3.5">
+              <div className="flex flex-col items-start">
+                <span className="text-[15px] text-slate-500">푸시 알림</span>
+                <span className="text-[12px] text-slate-400 mt-0.5">상담 완료 · 맞춤 공고를 브라우저로</span>
+              </div>
+              {pushSupported ? (
+                <button
+                  disabled={pushLoading}
+                  onClick={() => handlePushToggle(!pushEnabled)}
+                  aria-label="푸시 알림 켜기/끄기"
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 ${pushEnabled ? "bg-blue-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
+                >
+                  {pushLoading ? (
+                    <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                  )}
+                </button>
+              ) : (
+                <span className="text-[13px] text-slate-400 shrink-0">이 브라우저 미지원</span>
+              )}
+            </div>
+            <Divider />
 
             {/* 카카오 연결하기 — 카카오 로그인이 아닌 사용자 대상 */}
             {!profile?.kakao_linked && (

@@ -8,6 +8,7 @@ import SmartDocModal from "./SmartDocModal";
 import ProDashboard from "./ProDashboard";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
+import { enableWebPush, disableWebPush, isPushSubscribed, isPushSupported } from "@/lib/push";
 
 // 맞춤형 알림 버튼 + 말풍선 안내
 function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => void }) {
@@ -637,6 +638,33 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const [notifyShortcut, setNotifyShortcut] = useState(false);  // true면 모달이 알림 설정만 바로 표시 (프로필 스텝 스킵)
   const [hasNotificationSet, setHasNotificationSet] = useState<boolean>(true);  // 기본 true (깜빡임 방지) — 실제 상태는 API로 확인
+
+  // 사이드바(내 정보) 웹 푸시 토글 — 상담 완료·맞춤 공고 알림 즉시 on/off
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSupported, setPushSupported] = useState(true);
+  useEffect(() => {
+    const ok = isPushSupported();
+    setPushSupported(ok);
+    if (ok) isPushSubscribed().then(setPushEnabled).catch(() => {});
+  }, []);
+  const handleSidebarPushToggle = async (next: boolean) => {
+    if (pushLoading) return;
+    setPushLoading(true);
+    try {
+      if (next) {
+        const bn = profile?.business_number;
+        const ok = bn ? await enableWebPush(bn) : false;
+        setPushEnabled(ok);
+        if (!ok) alert("브라우저 알림 권한이 필요해요. 브라우저 설정에서 알림을 허용한 뒤 다시 켜 주세요.");
+      } else {
+        await disableWebPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   // 하단 pill: 스크롤 내릴 때 숨김(피드 카드 가림 최소화), 올리거나 최상단이면 표시
   const [pillHidden, setPillHidden] = useState(false);
@@ -1580,6 +1608,40 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </div>
         );
       })()}
+
+      {/* 웹 푸시 알림 토글 — 상담 완료·맞춤 공고 알림을 여기서 바로 켜고/끄기 */}
+      {profile && (
+        <div className="relative z-10 flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 flex-shrink-0 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[14px] font-bold text-slate-900 leading-tight">푸시 알림</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug break-keep">상담 완료 · 맞춤 공고를 브라우저로</p>
+            </div>
+          </div>
+          {pushSupported ? (
+            <button
+              disabled={pushLoading}
+              onClick={() => handleSidebarPushToggle(!pushEnabled)}
+              aria-label="푸시 알림 켜기/끄기"
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 ${pushEnabled ? "bg-blue-600" : "bg-slate-300"} ${pushLoading ? "opacity-50 cursor-wait" : ""}`}
+            >
+              {pushLoading ? (
+                <svg className="animate-spin h-4 w-4 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                </svg>
+              ) : (
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-1"}`} />
+              )}
+            </button>
+          ) : (
+            <span className="text-[12px] text-slate-400 shrink-0">미지원</span>
+          )}
+        </div>
+      )}
 
       {/* 프로필 미완성: 설정 유도 카드 / 완성: 기업 정보 카드 */}
       {(() => {

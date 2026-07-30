@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
 import { enableWebPush, disableWebPush, isPushSubscribed, isPushSupported } from "@/lib/push";
+import PushEnableGuide from "./PushEnableGuide";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -56,6 +57,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushSupported, setPushSupported] = useState(true);
+  const [showPushGuide, setShowPushGuide] = useState(false);
   useEffect(() => {
     const ok = isPushSupported();
     setPushSupported(ok);
@@ -69,7 +71,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
         const bn = profile?.business_number;
         const ok = bn ? await enableWebPush(bn) : false;
         setPushEnabled(ok);
-        if (!ok) alert("브라우저 알림 권한이 필요해요. 브라우저 설정에서 알림을 허용한 뒤 다시 켜 주세요.");
+        if (!ok) setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
       } else {
         await disableWebPush();
         setPushEnabled(false);
@@ -169,6 +171,7 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300 md:flex md:items-center md:justify-center md:p-6">
+      {showPushGuide && <PushEnableGuide onClose={() => setShowPushGuide(false)} />}
       <div className="bg-white w-full h-full md:h-auto md:max-w-md md:max-h-[95vh] md:rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 flex flex-col">
         {/* Header */}
         <div className="px-5 pt-4 pb-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0 safe-top">
@@ -323,7 +326,12 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
                   )}
                 </button>
               ) : (
-                <span className="text-[13px] text-slate-400 shrink-0">이 브라우저 미지원</span>
+                <button
+                  onClick={() => setShowPushGuide(true)}
+                  className="text-[13px] text-blue-600 font-semibold shrink-0 underline underline-offset-2"
+                >
+                  켜는 방법
+                </button>
               )}
             </div>
             <Divider />

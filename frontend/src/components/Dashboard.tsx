@@ -9,6 +9,7 @@ import ProDashboard from "./ProDashboard";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
 import { enableWebPush, disableWebPush, isPushSubscribed, isPushSupported } from "@/lib/push";
+import PushEnableGuide from "./PushEnableGuide";
 
 // 맞춤형 알림 버튼 + 말풍선 안내
 function NudgeBubbleButton({ profile, onClick }: { profile: any; onClick: () => void }) {
@@ -643,6 +644,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushSupported, setPushSupported] = useState(true);
+  const [showPushGuide, setShowPushGuide] = useState(false);
   useEffect(() => {
     const ok = isPushSupported();
     setPushSupported(ok);
@@ -656,7 +658,7 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         const bn = profile?.business_number;
         const ok = bn ? await enableWebPush(bn) : false;
         setPushEnabled(ok);
-        if (!ok) alert("브라우저 알림 권한이 필요해요. 브라우저 설정에서 알림을 허용한 뒤 다시 켜 주세요.");
+        if (!ok) setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
       } else {
         await disableWebPush();
         setPushEnabled(false);
@@ -1638,7 +1640,12 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
               )}
             </button>
           ) : (
-            <span className="text-[12px] text-slate-400 shrink-0">미지원</span>
+            <button
+              onClick={() => setShowPushGuide(true)}
+              className="text-[12px] text-blue-600 font-semibold shrink-0 underline underline-offset-2"
+            >
+              켜는 방법
+            </button>
           )}
         </div>
       )}
@@ -2346,6 +2353,8 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
           </button>
         </div>
       )}
+
+      {showPushGuide && <PushEnableGuide onClose={() => setShowPushGuide(false)} />}
 
       <NotificationModal
         isOpen={isNotifyOpen}

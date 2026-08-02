@@ -226,16 +226,12 @@ def _call_gemini_classify(items: list[dict]) -> dict[int, dict]:
     깨지는 것을 방지. 일부 청크 실패는 건너뛰고, 전체 실패 시에만 예외 전파
     (상위 _classify_and_update의 키워드 폴백이 처리).
     """
-    import google.generativeai as genai
     import os
     import re
 
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY 없음")
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
 
     out: dict[int, dict] = {}
     for start in range(0, len(items), _GEMINI_CHUNK):
@@ -247,12 +243,11 @@ def _call_gemini_classify(items: list[dict]) -> dict[int, dict]:
         )
         prompt = _CLASSIFY_PROMPT.replace("{items_json}", items_json)
         try:
-            response = model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.1, "max_output_tokens": 8192},
-            )
-            from app.services.ai_usage import log_gemini_usage
-            log_gemini_usage("target_type_classify", "gemini-2.5-flash", response)
+            from app.services.gemini_client import generate_flash
+            response = generate_flash(
+                "target_type_classify", prompt,
+                temperature=0.1, max_output_tokens=8192,
+            )  # 신 SDK, thinking OFF, 로깅 내장
             raw = (response.text or "").strip()
             if "```" in raw:
                 m = re.search(r"```(?:json)?\s*([\s\S]+?)```", raw)

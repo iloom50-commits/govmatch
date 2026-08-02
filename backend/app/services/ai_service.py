@@ -78,9 +78,8 @@ class AIService:
         
         # 1차: Gemini (타임아웃 필수 — 없으면 한 호출이 멈출 때 전체가 무한 대기)
         try:
-            response = self.model.generate_content(prompt, request_options={"timeout": 60})
-            from app.services.ai_usage import log_gemini_usage
-            log_gemini_usage("eligibility_extract", "gemini-2.5-flash", response)
+            from app.services.gemini_client import generate_flash
+            response = generate_flash("eligibility_extract", prompt)  # 신 SDK, thinking OFF, 로깅 내장
             return self._parse_json_block(response.text)
         except Exception as e:
             print(f"Error in extract_program_details (gemini): {e}")

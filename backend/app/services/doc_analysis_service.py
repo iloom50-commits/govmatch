@@ -986,9 +986,6 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
     if not api_key:
         return {"parsed_sections": {}, "deep_analysis": {}}
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-2.5-flash")
-
     text_for_analysis = full_text[:25000]
 
     prompt = f"""당신은 대한민국 정부지원사업 공고문 분석 최고 전문가입니다.
@@ -1081,9 +1078,8 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 7. 반드시 순수 JSON만 반환하세요. 설명 텍스트 없이."""
 
     try:
-        response = model.generate_content(prompt)
-        from app.services.ai_usage import log_gemini_usage
-        log_gemini_usage("deep_analysis", "gemini-2.5-flash", response)
+        from app.services.gemini_client import generate_flash
+        response = generate_flash("deep_analysis", prompt)  # 신 SDK, thinking OFF, 로깅 내장
         text = response.text.strip()
         if "```json" in text:
             text = text.split("```json")[-1].split("```")[0].strip()

@@ -1164,6 +1164,9 @@ def _resolve_failure(db_conn, announcement_id: int) -> None:
 
 
 _MAX_ANALYSIS_ATTEMPTS = 3
+# 하드 상한: 이 횟수 초과 실패 공고는 Gemini 재호출 없이 영구 포기(재시도·재분석 비용 누수 차단).
+# recover의 retry_count<5 필터를 우회하는 어떤 경로가 불러도 analyze_and_store 자체가 막는다.
+_HARD_ABANDON_ATTEMPTS = 5
 
 
 def _update_analysis_status(db_conn, announcement_id: int, status: str, attempts_inc: bool = True,
@@ -1322,17 +1325,40 @@ def analyze_and_store(
         "attachments": [], "error": None,
     }
 
-    # [Phase 3] 분석 시작 시점에 attempts 증가 (재시도 추적)
+    # [Phase 3] 분석 시작 시점에 attempts 증가 (재시도 추적) + 하드 상한 값 확보
+    _attempts = 1
     try:
         cur0 = db_conn.cursor()
         cur0.execute(
-            "UPDATE announcements SET analysis_attempts = COALESCE(analysis_attempts, 0) + 1, last_analyzed_at = CURRENT_TIMESTAMP WHERE announcement_id = %s",
+            "UPDATE announcements SET analysis_attempts = COALESCE(analysis_attempts, 0) + 1, last_analyzed_at = CURRENT_TIMESTAMP WHERE announcement_id = %s RETURNING analysis_attempts",
             (announcement_id,)
         )
+        _r = cur0.fetchone()
+        if _r is not None:
+            _attempts = _r["analysis_attempts"] if isinstance(_r, dict) else _r[0]
         db_conn.commit()
     except Exception:
         try: db_conn.rollback()
         except Exception: pass
+
+    # 하드 상한: N회 초과 실패 공고는 Gemini(analyze_announcement_deep) 재호출 없이 영구 포기.
+    # 재시도·재분석으로 인한 비용 누수(같은 실패건 반복 호출) 차단. 어느 호출 경로든 여기서 막힌다.
+    if _attempts > _HARD_ABANDON_ATTEMPTS:
+        msg = f"abandoned after {_attempts} attempts (hard cap)"
+        print(f"[DocAnalysis] ⛔ #{announcement_id} {msg}")
+        result_info["error"] = msg
+        try:
+            cur_ab = db_conn.cursor()
+            cur_ab.execute(
+                "UPDATE analysis_failures SET resolved_at = CURRENT_TIMESTAMP WHERE announcement_id = %s AND resolved_at IS NULL",
+                (announcement_id,),
+            )
+            db_conn.commit()
+        except Exception:
+            try: db_conn.rollback()
+            except Exception: pass
+        _update_analysis_status(db_conn, announcement_id, "abandoned", attempts_inc=False)
+        return result_info
 
     # 1) 통합 텍스트 수집 (첨부파일 우선 → HTML → summary fallback)
     full_text, source_type, att_names = extract_full_text(origin_url, summary_text, title=title)

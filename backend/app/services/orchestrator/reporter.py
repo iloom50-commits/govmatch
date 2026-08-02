@@ -201,6 +201,27 @@ def render_mail_signal_section(data: dict) -> tuple:
     return t, h
 
 
+def render_ai_cost_section(data: dict) -> tuple:
+    """(text, html) — '💸 AI 비용(추정)' 섹션. data=summarize_usage 반환. 없으면 빈 문자열."""
+    flows = (data or {}).get("flows", [])
+    if not flows:
+        return "", ""
+    total = (data or {}).get("total_krw", 0)
+    hours = (data or {}).get("hours", 24)
+    lines = [f"💸 AI 비용({hours}h 추정) — 약 {total:,}원"]
+    for f in flows[:6]:
+        th = f" · 추론 {f['thought']:,}" if f.get("thought") else ""
+        lines.append(f"  · {f['flow']}: {f['calls']}회 ~{f['krw']:,}원 (출력 {f['output']:,}{th})")
+    t = "\n".join(lines)
+    items = "".join(
+        f"<li><b>{f['flow']}</b>: {f['calls']}회 · ~{f['krw']:,}원 "
+        f"(출력 {f['output']:,}{(' · 추론 ' + format(f['thought'], ',')) if f.get('thought') else ''})</li>"
+        for f in flows[:6]
+    )
+    h = f"<h3>💸 AI 비용 ({hours}h 추정)</h3><p>약 <b>{total:,}원</b></p><ul>{items}</ul>"
+    return t, h
+
+
 def _build_report_text(metrics: dict, learning: dict, quality: dict, seo: dict = None,
                        health: dict = None, coverage: dict = None, mail_signals: dict = None) -> str:
     now   = datetime.now()
@@ -731,7 +752,8 @@ def _send_kakao(metrics: dict) -> bool:
 
 # ── 발송 ──────────────────────────────────────────────────────
 def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None,
-                health: dict = None, coverage: dict = None, mail_signals: dict = None) -> dict:
+                health: dict = None, coverage: dict = None, mail_signals: dict = None,
+                ai_cost: dict = None) -> dict:
     if quality is None:
         quality = {}
     if seo is None:
@@ -744,6 +766,11 @@ def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict =
         mail_signals = {}
     report_text = _build_report_text(metrics, learning, quality, seo, health, coverage, mail_signals)
     report_html = _build_report_html(metrics, learning, quality, seo, health, coverage, mail_signals)
+    # AI 비용 섹션 append (빌더 f-string 미변경, 데이터 있을 때만)
+    _ai_t, _ai_h = render_ai_cost_section(ai_cost or {})
+    if _ai_t:
+        report_text = report_text + "\n\n" + _ai_t
+        report_html = report_html + _ai_h
     result = {"text": report_text, "email_sent": False, "kakao_sent": False}
 
     # ── 이메일 ──

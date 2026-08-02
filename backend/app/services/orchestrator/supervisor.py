@@ -173,6 +173,17 @@ def run_daily_supervision(db_conn=None) -> dict:
             print(f"  → 메일 신호 수집 오류: {e}")
 
         # ── 7. 보고서 발송 ──
+        # ── AI 토큰 비용 집계(24h) ──
+        print("[AI COO] Step: AI 토큰 비용 집계 중...")
+        try:
+            from app.services.ai_usage import summarize_usage
+            ai_cost = summarize_usage(db_conn, hours=24)
+            results["ai_cost"] = ai_cost
+            print(f"  → AI 비용 24h 추정 약 {ai_cost.get('total_krw',0):,}원 ({len(ai_cost.get('flows',[]))} 흐름)")
+        except Exception as e:
+            results["ai_cost"] = {"error": str(e)}
+            print(f"  → AI 비용 집계 오류: {e}")
+
         print("[AI COO] Step 7/7: 보고서 생성 + 발송 중...")
         try:
             from .reporter import send_report
@@ -184,6 +195,7 @@ def run_daily_supervision(db_conn=None) -> dict:
                 health=results.get("health", {}),
                 coverage=results.get("coverage", {}),
                 mail_signals=results.get("mail_signals", {}),
+                ai_cost=results.get("ai_cost", {}),
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

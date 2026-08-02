@@ -712,6 +712,21 @@ def init_database():
                 )
             """, "mail_signals table")
 
+            # AI 토큰 사용량 로그 (Gemini 비용 관측 — 흐름별·일별 토큰/추론) — 추가만
+            _safe_exec("""
+                CREATE TABLE IF NOT EXISTS ai_usage_log (
+                    id BIGSERIAL PRIMARY KEY,
+                    flow_tag VARCHAR(60),
+                    model VARCHAR(60),
+                    prompt_tokens INTEGER,
+                    output_tokens INTEGER,
+                    thought_tokens INTEGER,
+                    total_tokens INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """, "ai_usage_log table")
+            _safe_exec("CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created ON ai_usage_log(created_at)", "ai_usage_log idx")
+
             conn.commit()
         except Exception:
             conn.rollback()

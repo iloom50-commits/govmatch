@@ -251,6 +251,8 @@ def _call_gemini_classify(items: list[dict]) -> dict[int, dict]:
                 prompt,
                 generation_config={"temperature": 0.1, "max_output_tokens": 8192},
             )
+            from app.services.ai_usage import log_gemini_usage
+            log_gemini_usage("target_type_classify", "gemini-2.5-flash", response)
             raw = (response.text or "").strip()
             if "```" in raw:
                 m = re.search(r"```(?:json)?\s*([\s\S]+?)```", raw)

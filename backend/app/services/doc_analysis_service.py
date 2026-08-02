@@ -1082,6 +1082,8 @@ def analyze_announcement_deep(full_text: str, title: str = "") -> Dict[str, Any]
 
     try:
         response = model.generate_content(prompt)
+        from app.services.ai_usage import log_gemini_usage
+        log_gemini_usage("deep_analysis", "gemini-2.5-flash", response)
         text = response.text.strip()
         if "```json" in text:
             text = text.split("```json")[-1].split("```")[0].strip()

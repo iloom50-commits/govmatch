@@ -430,6 +430,7 @@ export default function RootLayout({
                 <a href="/" className="hover:text-indigo-600 hover:underline">홈 · 맞춤 매칭</a>
                 <a href="/search" className="hover:text-indigo-600 hover:underline">공고 검색</a>
                 <a href="/calendar" className="hover:text-indigo-600 hover:underline">지원금 캘린더</a>
+                <a href="/blog" className="hover:text-indigo-600 hover:underline">지원금 정보 블로그</a>
                 <a href="/api-partnership" className="hover:text-indigo-600 hover:underline">API 제휴</a>
                 <a href="/support" className="hover:text-indigo-600 hover:underline">고객상담</a>
               </nav>

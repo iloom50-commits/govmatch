@@ -6,6 +6,7 @@ import json
 from app.services.rule_engine import rule_engine, _normalize_region
 from app.config import DATABASE_URL
 from app.core.keyword_match import SYNONYM_MAP, keyword_hit
+from app.core.interest_tags import _INTEREST_TAG_SEED_BIZ, _INTEREST_TAG_SEED_INDIV
 
 # 광역 표현 → 하위 지역 (DB에 "경상" 등으로 저장된 경우 처리)
 _BROAD_REGION_MAP: dict[str, set[str]] = {
@@ -162,6 +163,35 @@ INTEREST_KEYWORD_MAP = {
     "R&D":        ["R&D", "연구개발", "기술개발", "혁신", "연구", "AI", "인공지능", "기술사업화", "원천기술", "산학협력", "융합기술", "응용연구"],
 }
 
+# 관심 태그 그룹(interest_tags._INTEREST_TAG_SEED_BIZ의 두 번째 원소) → INTEREST_KEYWORD_MAP 키 별칭.
+# 세부태그("AI도입"·"공장자동화")는 seed 그룹("디지털"·"시설")을 거쳐 대분류 키워드를 상속한다.
+# (작업3, 2026-08-16: 기존엔 세부태그를 키로 직접 조회해 리터럴로 떨어졌고 "R&D"만 우연히 작동.)
+_INTEREST_GROUP_TO_KEY = {
+    "창업": "창업지원", "R&D": "R&D", "수출": "수출마케팅", "금융": "정책자금",
+    "고용": "고용지원", "시설": "시설개선", "디지털": "디지털전환", "판로": "판로개척",
+    "교육": "교육훈련", "소상공인": "소상공인", "에너지환경": "에너지환경",
+}
+# 대응 키워드셋이 없어 태그 문자열 자체로 검색하는 그룹(의도된 예외).
+# 업종=특정 산업명(로봇·바이오…), 인증=자격명(이노비즈…), 수요=비목(인건비…).
+# 개인 시드(_INDIV)의 그룹(취업·주거…)도 대응 키가 없어 자연히 리터럴로 처리된다.
+_INTEREST_LITERAL_GROUPS = {"업종", "인증", "수요"}
+
+# 태그 → 그룹 조회표(BIZ+INDIV 통합). 사용자가 고른 어떤 태그든 그룹을 찾을 수 있게.
+_TAG_TO_GROUP = {tag: group for tag, group in (_INTEREST_TAG_SEED_BIZ + _INTEREST_TAG_SEED_INDIV)}
+
+
+def _expand_interest_tag(tag: str) -> list:
+    """관심 태그 → 검색 키워드 목록.
+    1) 태그가 곧 대분류 키면 그 키워드셋. 2) seed 그룹이 키에 연결되면 그 대분류 키워드를 상속.
+    3) 대응 키 없음(업종·인증·수요·개인그룹) → 태그 문자열 자체로 검색."""
+    if tag in INTEREST_KEYWORD_MAP:
+        return INTEREST_KEYWORD_MAP[tag]
+    group = _TAG_TO_GROUP.get(tag)
+    key = _INTEREST_GROUP_TO_KEY.get(group) if group else None
+    if key:
+        return INTEREST_KEYWORD_MAP[key]
+    return [tag]
+
 # 지원 대상 기업 유형 분류
 EXCLUSIVE_BIZ_TYPES = {"소상공인", "예비창업자", "사회적기업", "예비사회적기업", "마을기업", "자활기업", "수출기업"}
 
@@ -189,8 +219,10 @@ INDUSTRY_EXCLUSIVE = [
 ]
 
 # 공지성(지원사업 아님) — 변경/수정/정정/결과 안내. 매칭·리포트에서 제외.
-NOTICE_KEYWORDS = ["변경 공고", "수정 공고", "정정 공고", "변경계획", "재공고 안내",
-                   "선정 결과", "결과 발표", "합격자 발표", "선정결과 발표"]
+# [2026-08-16] "수정/변경/정정/재공고"를 제거 — 신청 가능한 정본을 버리고 있었음.
+# 정부 공고에서 "수정 공고"는 '지원사업이 아님'이 아니라 '이것이 최종본'이라는 뜻이며,
+# 수집단은 원본을 is_archived 처리하고 수정본을 살려둔다. 결과 발표성 공고만 제외한다.
+NOTICE_KEYWORDS = ["선정 결과", "결과 발표", "합격자 발표", "선정결과 발표"]
 
 # 카테고리 정규화 (AI가 영어/한글 혼재로 추출)
 CATEGORY_NORMALIZE = {
@@ -983,7 +1015,9 @@ def get_matches_for_user(user_profile):
 
         if is_soho and ad_targets_soho:
             score += 20.0
-            reasons.append("소상공인 전용 지원사업")
+            # 작업2: ad_targets_soho는 본문에 "소규모" 등 키워드 하나만 있어도 True → '관련/대상'이지
+            # '전용'이 아니다. 실제 배타 판정(_mark_ineligible "소상공인 전용 (사용자 비해당)")과 구분.
+            reasons.append("소상공인 대상 지원사업")
         elif is_soho and ad_targets_large:
             score -= 15.0
         elif not is_soho and ad_targets_soho:
@@ -998,7 +1032,7 @@ def get_matches_for_user(user_profile):
                 ad["interest_matched"] = True
                 # 어떤 관심분야가 일치했는지 저장 (프론트 뱃지용)
                 for tag in user_interest_tags:
-                    tag_kws = INTEREST_KEYWORD_MAP.get(tag, [tag])
+                    tag_kws = _expand_interest_tag(tag)
                     if any(kw.lower() in search_text for kw in tag_kws):
                         ad["matched_interests"].append(tag)
                 interest_score = min(35.0, len(set(matched_interests)) * 6.0)
@@ -1165,10 +1199,9 @@ def get_matches_for_user(user_profile):
     eligible_titles = {re.sub(r'\s+', '', r.get("title", "")) for r in results}
     ineligible_results = [r for r in ineligible_results if re.sub(r'\s+', '', r.get("title", "")) not in eligible_titles]
 
-    # 노이즈 컷오프 — 60점 미만은 eligible에서만 제외
-    results = [r for r in results if r.get("match_score", 0) >= 60]
-
-    # 점수 순 정렬 (eligible)
+    # 점수 컷오프 제거(작업1): 자격은 필터, 점수는 적합도(정렬)만.
+    # 자격을 통과한 공고를 점수 낮다는 이유로 제외하지 않는다(CLAUDE.md 6절 매칭원칙).
+    # 노출 여부는 자격판정(eligibility_status)으로만 결정하고, 점수는 아래 정렬에만 쓴다.
     results.sort(key=lambda x: x["match_score"], reverse=True)
 
     # 임시 필드 제거
@@ -1479,7 +1512,7 @@ def get_individual_matches_for_user(user_profile: dict) -> list:
         interest_rank = 0 if r.get("interest_matched") else 1
         amt = str(r.get("support_amount") or "")
         has_amt = 0 if (any(c.isdigit() for c in amt) and any(k in amt for k in ("원", "억", "만"))) else 1
-        dl_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        dl_ok = _deadline_sort_rank(r.get("deadline_date"), r.get("deadline_type"))
         return (interest_rank, has_amt, dl_ok)
 
     results.sort(key=_indiv_sort_key)
@@ -1621,18 +1654,24 @@ def _amount_value(amount_str: str) -> int:
     return 0
 
 
-def _is_deadline_valid(deadline_date) -> bool:
-    """마감 유효 (미래이거나 상시모집)."""
-    if deadline_date is None:
-        return True
-    try:
-        if isinstance(deadline_date, (datetime.date, datetime.datetime)):
-            d = deadline_date if isinstance(deadline_date, datetime.date) else deadline_date.date()
-        else:
-            d = datetime.datetime.strptime(str(deadline_date)[:10], "%Y-%m-%d").date()
-        return d >= datetime.date.today()
-    except Exception:
-        return True
+def _deadline_sort_rank(deadline_date, deadline_type=None) -> int:
+    """정렬용 마감 위계 3단계 (작음이 상위): 0=마감일 유효(미래) 또는 진짜 상시,
+    1=미상(마감일 파싱 실패), 2=마감 지남.
+
+    마감일 NULL은 두 종류다 — 진짜 상시(deadline_type='ongoing')와 파싱실패 미상('unknown').
+    과거엔 둘 다 '유효'(최상)로 취급해 신뢰도 낮은 미상이 상단을 차지했다. 마감일이 있으면
+    날짜로 판정하고, 없으면 상시만 최상으로 두고 미상은 중간으로 내린다."""
+    if deadline_date is not None:
+        try:
+            if isinstance(deadline_date, (datetime.date, datetime.datetime)):
+                d = deadline_date if isinstance(deadline_date, datetime.date) else deadline_date.date()
+            else:
+                d = datetime.datetime.strptime(str(deadline_date)[:10], "%Y-%m-%d").date()
+            return 0 if d >= datetime.date.today() else 2
+        except Exception:
+            return 1  # 날짜 파싱 실패 = 미상
+    # 마감일 없음: 진짜 상시만 최상, 그 외(unknown 등)는 미상
+    return 0 if deadline_type == "ongoing" else 1
 
 
 def _days_left(deadline_date) -> int:
@@ -1856,7 +1895,7 @@ def _apply_bucket_layer_v2(results: list, user_profile: dict) -> list:
         affinity = -(r.get("industry_affinity") or 0)
         amt_str = str(r.get("support_amount") or "")
         has_real_amount = 0 if (any(c.isdigit() for c in amt_str) and any(k in amt_str for k in ("원", "억", "만"))) else 1
-        deadline_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        deadline_ok = _deadline_sort_rank(r.get("deadline_date"), r.get("deadline_type"))
         amount = -_amount_value(amt_str)
         return (affinity, has_real_amount, deadline_ok, amount)
 
@@ -1923,7 +1962,7 @@ def _apply_bucket_layer(results: list, user_profile: dict) -> list:
         amt_str = str(r.get("support_amount") or "")
         has_real_amount = 0 if (any(c.isdigit() for c in amt_str) and any(k in amt_str for k in ("원", "억", "만"))) else 1
         fund = 0 if _is_fund_related(r.get("title", ""), r.get("category", "")) else 1
-        deadline_ok = 0 if _is_deadline_valid(r.get("deadline_date")) else 1
+        deadline_ok = _deadline_sort_rank(r.get("deadline_date"), r.get("deadline_type"))
         amount = -_amount_value(amt_str)
         return (has_real_amount, fund, deadline_ok, amount)
 

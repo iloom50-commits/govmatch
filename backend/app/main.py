@@ -1812,6 +1812,19 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get("/api/_diag_match")
+def _diag_match():
+    """[임시 진단 2026-08-19] 배포된 코드가 실제로 새 매칭인지 확인. 진단 후 제거."""
+    try:
+        from app.core.matcher import get_matches_hybrid, _expand_interest_tag
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE user_id=1"); u = dict(cur.fetchone()); conn.close()
+        res = get_matches_hybrid(u, is_individual=False)
+        return {"build": "diag-5b0021c", "count": len(res), "dx_expand": len(_expand_interest_tag("DX"))}
+    except Exception as e:
+        return {"build": "diag-5b0021c", "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
 # ── 어드민 엔드포인트 보안 레이트 리미터 ────────────────────────────────
 import time as _time
 from collections import defaultdict as _defaultdict

@@ -19,9 +19,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install --with-deps chromium
 
 # 앱 복사
-# CACHE_BUST: 값이 바뀌면 이후 COPY 레이어가 강제 재실행 → stale 빌드캐시로 옛 소스가
-# 서빙되던 문제 해결(2026-08-19). 소스 갱신이 이미지에 반영 안 될 때 이 값을 올린다.
-ARG CACHE_BUST=20260819-3
 COPY . /app
 
 # 서버 시작

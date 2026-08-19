@@ -81,3 +81,6 @@ from . import mfds_scraper  # noqa: F401
 
 # 한국표준협회(KSA) 공고 게시판 (Jflow CMS, bbsNo 1021)
 from . import ksa_scraper  # noqa: F401
+
+# 한국소공인진흥협회(kfme) 공지 게시판 — 소공인 스마트공방 등 kfme 전용 공고
+from . import kfme_scraper  # noqa: F401

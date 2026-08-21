@@ -13,24 +13,29 @@ import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-async function subscribePush(bn: string) {
+// 로그인 시 푸시 구독 자동 재동기화.
+// 웹푸시 구독은 브라우저가 주기적으로 무효화하고, 서버는 발송 실패(410) 시 구독을 삭제한다.
+// 그 결과 사용자가 알림을 켜뒀어도 '어느 순간' 푸시가 끊긴다. 앱을 열 때마다(이미 알림 권한을
+// 허용한 사용자에 한해) 구독을 서버와 재동기화해 만료돼도 스스로 복구되게 한다.
+// - 권한 팝업은 자동으로 띄우지 않는다(permission==='granted'일 때만 동작).
+// - 브라우저 구독이 없으면 새로 만들고, 있으면 서버에 재전송해 서버측 삭제와의 불일치를 치유한다.
+// - opt-out(알림 끔) 사용자는 발송 쿼리에서 제외되므로 구독 유지는 무해하다.
+async function ensurePushSubscribed(bn: string) {
+  if (!bn) return;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
     const reg = await navigator.serviceWorker.register("/sw.js");
-    const existing = await reg.pushManager.getSubscription();
-    if (existing) return;
-
-    const res = await fetch(`${API}/api/push/vapid-key`);
-    const { publicKey } = await res.json();
-    if (!publicKey) return;
-
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return;
-
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const res = await fetch(`${API}/api/push/vapid-key`);
+      const { publicKey } = await res.json();
+      if (!publicKey) return;
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
     const subJson = sub.toJSON();
     await fetch(`${API}/api/push/subscribe`, {
       method: "POST",
@@ -42,7 +47,7 @@ async function subscribePush(bn: string) {
       }),
     });
   } catch (e) {
-    console.warn("Push subscription failed:", e);
+    console.warn("Push resync failed:", e);
   }
 }
 
@@ -316,6 +321,8 @@ export default function Home() {
       if (typeof data.plan?.credits === "number") setCredits(data.plan.credits);
       setBusinessNumber(user.business_number);
       setProfileData(user);
+      // 푸시 구독 자동 재동기화(권한 허용자 한정, 팝업 없음) — 만료된 구독 자동 복구
+      ensurePushSubscribed(user.business_number);
 
       if (data.plan.plan === "expired") {
         setStep("RESULTS");

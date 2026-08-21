@@ -12447,6 +12447,10 @@ def get_vapid_key():
 
 @app.post("/api/push/subscribe")
 def push_subscribe(sub: PushSubscription):
+    # business_number가 비면 구독이 어느 계정에도 매칭 안 되는 '고아 구독'이 되어 푸시가 안 간다.
+    # (발송 쿼리가 WHERE business_number = %s로 조인) — 빈 값은 저장 거부해 근본 차단.
+    if not (sub.business_number or "").strip() or not (sub.endpoint or "").strip():
+        raise HTTPException(status_code=400, detail="business_number와 endpoint가 필요합니다.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(

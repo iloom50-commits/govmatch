@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { useModalBack } from "@/hooks/useModalBack";
 import IndustryPicker from "@/components/shared/IndustryPicker";
+import { enableWebPush, disableWebPush, isPushSubscribed } from "@/lib/push";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -38,77 +39,8 @@ const IND_KEYWORDS = ["전세자금", "월세지원", "청년수당", "취업성
 
 type UserType = "individual" | "business" | "both";
 
-// ── 푸시 구독 유틸 ──
-// 최적화:
-// 1. 권한 요청을 맨 먼저 → 사용자 클릭 즉시 브라우저 팝업이 뜸 (체감 속도 향상)
-// 2. Service Worker 등록과 VAPID key fetch를 병렬 처리
-// 3. 서버 저장(/api/push/subscribe)은 fire-and-forget — 구독 성공 후 UI 차단 없이 백그라운드 전송
-async function subscribePush(bn: string): Promise<boolean> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
-  try {
-    // 1) 권한 요청을 최우선 — 사용자 클릭 반응 즉시 나타남
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return false;
-
-    // 2) SW 등록 + VAPID 키 fetch를 병렬로 실행
-    const [reg, vapidRes] = await Promise.all([
-      navigator.serviceWorker.getRegistration("/sw.js").then(r => r || navigator.serviceWorker.register("/sw.js")),
-      fetch(`${API}/api/push/vapid-key`).then(r => r.json()).catch(() => null),
-    ]);
-    if (!reg || !vapidRes?.publicKey) return false;
-
-    // 3) 기존 구독 있으면 재사용
-    const existing = await reg.pushManager.getSubscription();
-    if (existing) {
-      // 서버 저장은 백그라운드로 (UI 차단 X)
-      const subJson = existing.toJSON();
-      fetch(`${API}/api/push/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ business_number: bn, endpoint: subJson.endpoint, keys: subJson.keys }),
-      }).catch(() => {});
-      return true;
-    }
-
-    // 4) 새 구독 생성 (FCM 왕복 — 2~10초, 브라우저 제어)
-    const publicKey = vapidRes.publicKey;
-    const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
-    const base64 = (publicKey + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const raw = atob(base64);
-    const applicationServerKey = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-
-    // 5) 서버 저장은 fire-and-forget (성공 즉시 UI 반환)
-    const subJson = sub.toJSON();
-    fetch(`${API}/api/push/subscribe`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ business_number: bn, endpoint: subJson.endpoint, keys: subJson.keys }),
-    }).catch(() => {});
-
-    return true;
-  } catch { return false; }
-}
-async function unsubscribePush(): Promise<boolean> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
-  try {
-    const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-    if (!reg) return true;
-    const existing = await reg.pushManager.getSubscription();
-    if (!existing) return true;
-    const endpoint = existing.endpoint;
-    await existing.unsubscribe();
-    await fetch(`${API}/api/push/unsubscribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint }) });
-    return true;
-  } catch { return false; }
-}
-async function isPushSubscribed(): Promise<boolean> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
-  try {
-    const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-    return !!(reg && await reg.pushManager.getSubscription());
-  } catch { return false; }
-}
+// 푸시 구독 유틸은 공용 라이브러리 @/lib/push 로 통일했다.
+// (자체 구현엔 빈 business_number 가드가 없어 '고아 구독'을 만들었음 — push.ts는 bn/권한 가드 포함)
 
 // iOS 일반 브라우저 감지 (홈 화면 PWA 제외)
 function isIosBrowser(): boolean {
@@ -479,11 +411,11 @@ export default function NotificationModal({
     setPushLoading(true);
     try {
       if (enabled) {
-        const ok = await subscribePush(businessNumber);
+        const ok = await enableWebPush(businessNumber);
         setPushEnabled(ok);
         if (!ok) toast("푸시 알림 권한이 없습니다. 브라우저 설정에서 허용해주세요.", "error");
       } else {
-        await unsubscribePush();
+        await disableWebPush();
         setPushEnabled(false);
       }
     } finally {

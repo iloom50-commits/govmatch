@@ -2741,7 +2741,7 @@ class URLRequest(BaseModel):
     url: str
 
 class NotificationSettings(BaseModel):
-    business_number: str
+    business_number: Optional[str] = None  # body 값은 무시 — 서버가 토큰의 bn을 사용(누락/불일치 무관)
     email: Optional[str] = None
     phone_number: Optional[str] = None
     channel: str = "email"
@@ -12724,10 +12724,12 @@ def api_unsubscribe(bn: str = "", token: str = ""):
 @app.post("/api/notification-settings")
 def api_save_notification_settings(settings: NotificationSettings, current_user: dict = Depends(_get_current_user)):
     """
-    Saves or updates user notification preferences. (본인 계정만 — H-4 무인증 변조 수정)
+    Saves or updates user notification preferences.
+    business_number는 토큰(current_user)의 bn을 사용한다 — body 값은 신뢰하지 않음.
+    (첫 가입자 등 프론트의 profile.business_number가 비어 body에서 누락되면 422로 저장이 실패하던
+     문제 근본수정. 동시에 소유권도 항상 본인 것으로 보장 — H-4 무인증 변조 방지 유지.)
     """
-    if settings.business_number != current_user["bn"]:
-        raise HTTPException(status_code=403, detail="본인 계정의 알림 설정만 변경할 수 있습니다.")
+    bn = current_user["bn"]
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -12743,7 +12745,7 @@ def api_save_notification_settings(settings: NotificationSettings, current_user:
             updated_at=NOW()
         """
         cursor.execute(query, (
-            settings.business_number, settings.email, settings.phone_number,
+            bn, settings.email, settings.phone_number,
             settings.channel, int(settings.is_active), int(settings.kakao_enabled or 0)
         ))
         conn.commit()

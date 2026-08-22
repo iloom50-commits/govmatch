@@ -89,8 +89,8 @@ export default function PricingPage() {
         </div>
 
         <p className="text-xs text-slate-500 mt-4 leading-relaxed">
-          충전한 크레딧은 사용 기한이 없습니다. 결제는 카드·간편결제로 진행되며, 충전 즉시 잔액에
-          반영됩니다.
+          충전한 크레딧의 유효기간은 <strong>충전일로부터 12개월</strong>입니다. 결제는
+          카드·간편결제로 진행되며, 충전 즉시 잔액에 반영됩니다.
         </p>
       </section>
 

@@ -18,6 +18,7 @@ export default function RefundPage() {
           <ul className="list-disc ml-5 space-y-1">
             <li>지원금 매칭(찾기)과 맞춤 공고 알림은 무료로 제공됩니다.</li>
             <li>AI 상담·분석 등 유료 기능은 크레딧(1크레딧 = 1원)을 선불로 충전하여 이용합니다.</li>
+            <li>충전한 크레딧의 유효기간은 충전일로부터 <strong>12개월</strong>이며, 유효기간 내 즉시 이용 가능한 디지털 콘텐츠입니다.</li>
             <li>구독·정기결제·자동결제·무료 체험은 제공하지 않으며, 필요한 만큼만 충전합니다.</li>
           </ul>
         </div>

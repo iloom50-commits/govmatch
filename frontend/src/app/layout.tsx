@@ -431,6 +431,7 @@ export default function RootLayout({
                 <a href="/search" className="hover:text-indigo-600 hover:underline">공고 검색</a>
                 <a href="/calendar" className="hover:text-indigo-600 hover:underline">지원금 캘린더</a>
                 <a href="/blog" className="hover:text-indigo-600 hover:underline">지원금 정보 블로그</a>
+                <a href="/pricing" className="hover:text-indigo-600 hover:underline">이용 요금</a>
                 <a href="/api-partnership" className="hover:text-indigo-600 hover:underline">API 제휴</a>
                 <a href="/support" className="hover:text-indigo-600 hover:underline">고객상담</a>
               </nav>
@@ -471,6 +472,7 @@ export default function RootLayout({
               <span>osung94@naver.com</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+              <a href="/pricing" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">이용 요금</a>
               <a href="/terms" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">이용약관</a>
               <a href="/privacy" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">개인정보 처리방침</a>
               <a href="/refund" className="text-slate-400 hover:text-indigo-500 underline underline-offset-2">환불 정책</a>

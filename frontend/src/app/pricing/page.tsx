@@ -153,8 +153,16 @@ export default function PricingPage() {
       <section className="text-sm text-slate-600 leading-relaxed">
         <h2 className="text-lg font-bold mb-3 text-slate-800">환불</h2>
         <p>
-          충전한 크레딧 중 <strong>사용하지 않은 분</strong>은 환불받으실 수 있습니다. 자세한 조건과
-          신청 방법은{" "}
+          충전한 크레딧을 <strong>한 번도 사용하지 않은 경우</strong> 결제 금액 전액을 환불해
+          드립니다. 다만 <strong>한 건이라도 사용하신 뒤에는 환불이 어렵습니다</strong> — AI
+          상담·분석은 요청 즉시 제공이 끝나는 서비스이기 때문입니다.
+        </p>
+        <p className="mt-2">
+          <strong>그래서 가입 시 드리는 500 크레딧으로 먼저 써 보시기를 권합니다.</strong> 결제 없이
+          AI 상담 5회를 이용하실 수 있습니다.
+        </p>
+        <p className="mt-2">
+          자세한 조건과 신청 방법은{" "}
           <Link href="/refund" className="text-indigo-600 underline underline-offset-2">
             환불 정책
           </Link>

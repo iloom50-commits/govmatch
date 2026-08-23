@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Re
 from fastapi.responses import Response, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import psycopg2
 import psycopg2.extras
 import datetime
@@ -750,6 +750,39 @@ def init_database():
             """, "ai_usage_log table")
             _safe_exec("CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created ON ai_usage_log(created_at)", "ai_usage_log idx")
 
+            # 블로그 컨텍스트 캐시 — announcements 를 FK 로 참조하므로 뒤쪽에 둔다.
+            # 2026-05-14~08-24 동안 이 블록이 _seed_keyword_synonyms() 안에 있었다.
+            # 거기서는 _safe_exec 가 보이지 않아 NameError 가 났고, init_database 가
+            # 604행에서 중단돼 그 뒤 테이블이 만들어지지 않았다(mail_signals 누락).
+            _safe_exec("""
+                CREATE TABLE IF NOT EXISTS blog_context_cache (
+                    id SERIAL PRIMARY KEY,
+                    announcement_id INTEGER NOT NULL
+                        REFERENCES announcements(announcement_id) ON DELETE CASCADE,
+                    questions_hash VARCHAR(64) NOT NULL,
+                    answers JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (announcement_id, questions_hash)
+                )
+            """, "blog_context_cache")
+            # 기존 테이블에 FK가 없는 경우 마이그레이션으로 추가
+            _safe_exec("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'blog_context_cache_announcement_id_fkey'
+                          AND table_name = 'blog_context_cache'
+                    ) THEN
+                        ALTER TABLE blog_context_cache
+                            ADD CONSTRAINT blog_context_cache_announcement_id_fkey
+                            FOREIGN KEY (announcement_id)
+                            REFERENCES announcements(announcement_id)
+                            ON DELETE CASCADE;
+                    END IF;
+                END$$
+            """, "blog_context_cache FK migration")
+
             conn.commit()
         except Exception:
             conn.rollback()
@@ -839,35 +872,6 @@ def _seed_keyword_synonyms(conn):
                 pass
     conn.commit()
     print("  [Seed] keyword_synonyms 초기 데이터 삽입 완료")
-
-    _safe_exec("""
-        CREATE TABLE IF NOT EXISTS blog_context_cache (
-            id SERIAL PRIMARY KEY,
-            announcement_id INTEGER NOT NULL
-                REFERENCES announcements(announcement_id) ON DELETE CASCADE,
-            questions_hash VARCHAR(64) NOT NULL,
-            answers JSONB NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (announcement_id, questions_hash)
-        )
-    """, "blog_context_cache")
-    # 기존 테이블에 FK가 없는 경우 마이그레이션으로 추가
-    _safe_exec("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.table_constraints
-                WHERE constraint_name = 'blog_context_cache_announcement_id_fkey'
-                  AND table_name = 'blog_context_cache'
-            ) THEN
-                ALTER TABLE blog_context_cache
-                    ADD CONSTRAINT blog_context_cache_announcement_id_fkey
-                    FOREIGN KEY (announcement_id)
-                    REFERENCES announcements(announcement_id)
-                    ON DELETE CASCADE;
-            END IF;
-        END$$
-    """, "blog_context_cache FK migration")
 
 
 import threading as _threading
@@ -10669,6 +10673,9 @@ def _fetch_ga4_data() -> dict:
 
         from google.oauth2 import service_account
         import google.auth.transport.requests
+        # HTTP 클라이언트. google.auth.transport.requests 는 `google` 만 바인딩하므로
+        # 이것 없이 _run_report 의 requests.post 를 부르면 NameError 가 난다.
+        import requests
 
         creds_dict = json.loads(ga4_creds_json)
         credentials = service_account.Credentials.from_service_account_info(

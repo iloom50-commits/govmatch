@@ -670,9 +670,12 @@ def search_announcements(query: str, db_conn, user_profile: dict = None, limit: 
                     r[field] = {}
         results.append(r)
 
-    # 2차 필터: _check_profile_match로 텍스트 기반 부적합 공고 제거
+    # 2차 필터: 프로필 기준 후검증으로 부적합 공고 제거
+    # 2026-04-26 커밋에 정의 없는 _check_profile_match 를 부르는 코드가 들어왔다.
+    # 같은 일을 하는 함수는 _validate_against_profile 이고 시그니처도 같다(_profile_match 를 세팅).
+    # search_announcements 를 호출하는 곳이 없어 4개월간 드러나지 않았다.
     if user_profile and results:
-        results = _check_profile_match(results, user_profile)
+        results = _validate_against_profile(results, user_profile)
         results = [r for r in results if r.get("_profile_match", True)]
 
     return results

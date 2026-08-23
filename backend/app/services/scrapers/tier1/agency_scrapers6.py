@@ -205,7 +205,9 @@ _KSTARTUP_TIT_RE = re.compile(
 class KstartupScraper(BaseScraper):
     name = "k_startup"
     display_name = "K-Startup(창업진흥원 포털)"
-    origin_url_prefix = f"{_KSTARTUP_BASE}/web/contents/bizpbanc-read.do"
+    # 상세 주소는 bizpbanc-read.do 가 아니라 목록 페이지에 schM=view 를 붙인 형태다.
+    # read.do 는 열리지 않는다(2026-08-23 확인). public_api_service.py 도 같은 형식을 쓴다.
+    origin_url_prefix = f"{_KSTARTUP_BASE}/web/contents/bizpbanc-ongoing.do"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -242,8 +244,8 @@ class KstartupScraper(BaseScraper):
                 items.append({
                     "title": title[:400],
                     "origin_url": (
-                        f"{_KSTARTUP_BASE}/web/contents/bizpbanc-read.do"
-                        f"?pbancSn={pbanc_sn}"
+                        f"{_KSTARTUP_BASE}/web/contents/bizpbanc-ongoing.do"
+                        f"?schM=view&pbancSn={pbanc_sn}"
                     ),
                     "region": "전국",
                     "target_type": "business",

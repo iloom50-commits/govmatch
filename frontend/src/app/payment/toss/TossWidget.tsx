@@ -86,6 +86,11 @@ export default function TossWidget() {
     setPaying(true);
     try {
       const pack = PACKS[picked];
+      // ⚠ 아직 결제 승인을 붙이지 않았다 — 심사 자료용 화면까지만 만든 상태다.
+      //   결제창에서 성공해도 successUrl 로 돌아오기만 하고 끝난다. 실제 결제가 완료되려면
+      //   돌아온 paymentKey·orderId·amount 로 백엔드가 승인 API 를 호출해야 하고,
+      //   그때 amount 가 주문 금액과 같은지 서버에서 반드시 다시 확인해야 한다.
+      //   절차는  docs/토스페이먼츠_라이브전환.md  3절에 있다.
       await widgetsRef.current.requestPayment({
         orderId: "gm" + crypto.randomUUID().replace(/-/g, "").slice(0, 24),
         orderName: `지원금AI 크레딧 ${pack.credits.toLocaleString()}`,

@@ -20,7 +20,15 @@ const DOCS_SAMPLE_KEY = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm";
 // 클라이언트 키는 브라우저에 노출되는 공개 값이라 코드에 두어도 된다. 테스트 키라 실결제도 되지 않는다.
 // 라이브 키는 절대 여기 두지 않는다 — 심사 통과 후 NEXT_PUBLIC_TOSS_CLIENT_KEY 로 주입한다.
 const STORE_TEST_KEY = "test_gck_yL0qZ4G1VODo4ZYyDemoroWb2MQY";
-const CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || STORE_TEST_KEY;
+
+// 위젯 SDK 는 "주문서형·결제창형 연동 키"(gck) 만 받는다. "API 개별 연동 키"(ck) 를 주면
+//   "결제위젯 연동 키의 클라이언트 키로 SDK를 연동해주세요"
+// 로 거부한다. 실제로 Vercel 에 ck 키가 들어 있어 라이브에서만 화면이 안 떴다.
+// 그래서 환경변수를 그대로 믿지 않고, 형식이 맞을 때만 쓴다.
+const ENV_KEY = (process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "").trim();
+const ENV_KEY_USABLE = /^(test|live)_gck_/.test(ENV_KEY);
+const CLIENT_KEY = ENV_KEY_USABLE ? ENV_KEY : STORE_TEST_KEY;
+const ENV_KEY_IGNORED = ENV_KEY.length > 0 && !ENV_KEY_USABLE;
 const IS_SAMPLE = CLIENT_KEY === DOCS_SAMPLE_KEY;
 const IS_TEST = CLIENT_KEY.startsWith("test_");
 
@@ -95,6 +103,12 @@ export default function TossWidget() {
       {IS_TEST && (
         <div className="mb-6 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
           <strong>테스트 결제 화면입니다.</strong> 실제로 돈이 빠져나가지 않습니다.
+          {ENV_KEY_IGNORED && (
+            <div className="mt-1 text-amber-800">
+              환경변수 <code>NEXT_PUBLIC_TOSS_CLIENT_KEY</code> 가 위젯용 키(<code>gck</code>)가
+              아니어서 무시했습니다. 「주문서형·결제창형 연동 키」의 클라이언트 키로 바꿔 주십시오.
+            </div>
+          )}
           {IS_SAMPLE && (
             <div className="mt-1 text-amber-800">
               지금은 <strong>토스 공식 문서의 공개 샘플 키</strong>로 떠 있습니다. 우리 상점과

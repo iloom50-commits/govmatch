@@ -11,8 +11,13 @@ import { loadTossPayments, ANONYMOUS } from "@tosspayments/tosspayments-sdk";
  *   토스 결제창만 띄워 심사 자료(결제경로)를 만들기 위해 분리했다.
  *
  * 키:
- *   NEXT_PUBLIC_TOSS_CLIENT_KEY 로 주입한다. 없으면 토스 공식 문서의 공개 샘플 키로 뜨는데,
- *   그건 우리 상점과 연결돼 있지 않으므로 심사 자료로 쓰면 안 된다. 화면에 그 사실을 표시한다.
+ *   기본값은 아래 STORE_TEST_KEY(밸류파인더 상점의 테스트 키)다. 환경변수
+ *   NEXT_PUBLIC_TOSS_CLIENT_KEY 로 덮을 수 있지만, 위젯용(gck) 형식일 때만 쓴다.
+ *
+ *   2026-08-23: Vercel 에 있던 NEXT_PUBLIC_TOSS_CLIENT_KEY 를 삭제했다. 값이
+ *   test_ck_D5GePWvyJnrK0W0k6q8gLzN97Emo(API 개별 연동 키이자 토스 문서의 공개 샘플)라
+ *   라이브에서만 위젯이 뜨지 않았다. 심사 통과 후 라이브 키를 넣을 때 이 변수를 다시 쓴다.
+ *
  *   시크릿 키는 여기에 절대 두지 않는다 — 승인 API 는 백엔드에서 호출한다.
  */
 const DOCS_SAMPLE_KEY = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm";

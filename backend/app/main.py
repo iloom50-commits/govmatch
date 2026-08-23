@@ -171,6 +171,28 @@ def init_database():
             "idx_consult_jobs_bn_status",
         )
 
+        # 토스페이먼츠 주문 테이블 (결제 전 'pending' 단계 보관)
+        # payments 는 portone_id 가 NOT NULL 이라 결제 전 단계를 담을 수 없어 따로 둔다.
+        # 승인할 때 여기 저장된 amount_krw 와 대조한다 — 브라우저가 보낸 금액은 믿지 않는다.
+        _safe_exec("""
+            CREATE TABLE IF NOT EXISTS toss_orders (
+                id           BIGSERIAL PRIMARY KEY,
+                user_id      INTEGER NOT NULL,
+                order_id     TEXT NOT NULL UNIQUE,
+                amount_krw   INTEGER NOT NULL,
+                credits      INTEGER NOT NULL,
+                status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+                payment_key  TEXT,
+                method       TEXT,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                paid_at      TIMESTAMP
+            )
+        """, "toss_orders")
+        _safe_exec(
+            "CREATE INDEX IF NOT EXISTS idx_toss_orders_user ON toss_orders(user_id)",
+            "idx_toss_orders_user",
+        )
+
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pro_consult_sessions (
@@ -5122,6 +5144,158 @@ def api_wallet_charge_webhook(body: ChargeWebhookBody):
         conn.commit()
         print(f"[wallet-webhook] 적립 완료 uid={uid} +{credits} payment_id={payment_id} balance={new_balance}")
         return {"ok": True, "credits": new_balance}
+    finally:
+        conn.close()
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# 토스페이먼츠 결제 (결제위젯 · 단건 크레딧 충전)
+#
+# PortOne(KCP 정기결제 상점) 경로와 나란히 둔다. 기존 경로는 건드리지 않는다.
+#
+# 왜 주문을 먼저 저장하는가 —
+#   승인 요청은 브라우저가 보낸다. 브라우저 값을 믿으면 금액을 바꿔 보낼 수 있다.
+#   그래서 결제 전에 서버가 주문번호와 금액을 저장해 두고, 승인할 때 저장된 금액과
+#   토스가 알려준 금액이 같은지 대조한다. 이 프로젝트에는 결제창을 닫았는데 구독이
+#   시작된 사고 이력이 있다 — 프론트 응답만 믿지 않는다.
+# ══════════════════════════════════════════════════════════════════
+
+TOSS_SECRET_KEY = os.getenv("TOSS_SECRET_KEY", "")
+TOSS_API = "https://api.tosspayments.com/v1/payments"
+
+
+# toss_orders 테이블은 init_database() 에서 만든다. 여기서 import 시점에 만들면
+# consult_jobs 때처럼 배포 후 테이블이 없는 상태가 될 수 있다.
+
+
+class TossOrderRequest(BaseModel):
+    amount_krw: int
+
+
+class TossConfirmRequest(BaseModel):
+    order_id: str
+    payment_key: str
+    amount: int
+
+
+@app.post("/api/toss/order")
+def api_toss_order(req: TossOrderRequest, current_user: dict = Depends(_get_current_user)):
+    """결제 전에 주문을 만든다. 금액은 서버가 정한 충전팩만 허용한다."""
+    # 시크릿 키가 없으면 승인 단계에서 막힌다. 돈이 빠져나간 뒤에 막히면 늦으므로
+    # 결제창을 열기 전에 여기서 끊는다.
+    if not TOSS_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다.")
+
+    credits = _credits_for_krw(req.amount_krw)
+    if credits <= 0:
+        raise HTTPException(status_code=400, detail="판매하지 않는 금액입니다.")
+
+    uid = current_user["user_id"]
+    # 토스 orderId 는 6~64자. 'gm' + uuid 32자 = 34자
+    order_id = "gm" + _uuid.uuid4().hex
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO toss_orders (user_id, order_id, amount_krw, credits, status)
+            VALUES (%s, %s, %s, %s, 'pending')
+            """,
+            (uid, order_id, req.amount_krw, credits),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"ok": True, "order_id": order_id, "amount": req.amount_krw, "credits": credits}
+
+
+@app.post("/api/toss/confirm")
+def api_toss_confirm(req: TossConfirmRequest, current_user: dict = Depends(_get_current_user)):
+    """결제창에서 돌아온 결과로 승인을 마치고 크레딧을 적립한다.
+
+    브라우저가 보낸 amount 를 그대로 쓰지 않는다. 저장해 둔 주문 금액과 대조해
+    다르면 승인 자체를 하지 않는다.
+    """
+    if not TOSS_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="결제 설정이 준비되지 않았습니다.")
+
+    uid = current_user["user_id"]
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT user_id, amount_krw, credits, status FROM toss_orders WHERE order_id = %s",
+            (req.order_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+        if row["user_id"] != uid:
+            raise HTTPException(status_code=403, detail="본인의 주문이 아닙니다.")
+
+        # 이미 처리된 주문 — 다시 적립하지 않는다(새로고침·중복 호출 대비)
+        if row["status"] == "paid":
+            return {"ok": True, "duplicate": True, "credits": wallet.wallet_balance(cur, uid)}
+
+        # ★ 금액 대조 — 브라우저 값이 아니라 저장된 주문 금액이 기준이다
+        if int(req.amount) != int(row["amount_krw"]):
+            print(f"[toss] 금액 불일치 order={req.order_id} 저장={row['amount_krw']} 요청={req.amount}")
+            raise HTTPException(status_code=400, detail="결제 금액이 주문과 일치하지 않습니다.")
+
+        # 토스 승인
+        import base64 as _b64
+        import requests as _rq
+        auth = _b64.b64encode((TOSS_SECRET_KEY + ":").encode()).decode()
+        try:
+            resp = _rq.post(
+                f"{TOSS_API}/confirm",
+                headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
+                json={"paymentKey": req.payment_key, "orderId": req.order_id, "amount": int(req.amount)},
+                timeout=20,
+            )
+        except Exception as e:
+            print(f"[toss] 승인 요청 실패 order={req.order_id}: {e}")
+            raise HTTPException(status_code=502, detail="결제 승인 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+
+        if resp.status_code != 200:
+            # 토스가 준 사유를 그대로 전달한다 — 사용자가 무엇이 문제인지 알 수 있게
+            try:
+                err = resp.json()
+                msg = err.get("message") or "결제 승인이 거절되었습니다."
+                code = err.get("code", "")
+            except Exception:
+                msg, code = "결제 승인이 거절되었습니다.", ""
+            print(f"[toss] 승인 거절 order={req.order_id} status={resp.status_code} code={code} msg={msg}")
+            cur.execute("UPDATE toss_orders SET status='failed' WHERE order_id=%s", (req.order_id,))
+            conn.commit()
+            raise HTTPException(status_code=400, detail=msg)
+
+        data = resp.json()
+        paid = int(data.get("totalAmount") or 0)
+        # 승인 결과 금액까지 한 번 더 확인한다
+        if paid != int(row["amount_krw"]):
+            print(f"[toss] 승인액 불일치 order={req.order_id} 주문={row['amount_krw']} 승인={paid}")
+            raise HTTPException(status_code=400, detail="승인 금액이 주문과 일치하지 않습니다.")
+
+        # 적립 — order_id 를 멱등키로 쓴다(payments.portone_id UNIQUE 재사용)
+        new_balance = wallet.wallet_record_charge(
+            cur, uid, row["amount_krw"], row["credits"], req.order_id
+        )
+        cur.execute(
+            "UPDATE toss_orders SET status='paid', payment_key=%s, method=%s, paid_at=NOW() WHERE order_id=%s",
+            (req.payment_key, data.get("method"), req.order_id),
+        )
+        conn.commit()
+
+        if new_balance is None:
+            # payments 에 이미 있던 주문 — 재적립하지 않는다
+            return {"ok": True, "duplicate": True, "credits": wallet.wallet_balance(cur, uid)}
+
+        print(f"[toss] 충전 완료 uid={uid} +{row['credits']} order={req.order_id}")
+        return {"ok": True, "credits": new_balance, "added": row["credits"]}
     finally:
         conn.close()
 

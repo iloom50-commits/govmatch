@@ -16,7 +16,11 @@ import { loadTossPayments, ANONYMOUS } from "@tosspayments/tosspayments-sdk";
  *   시크릿 키는 여기에 절대 두지 않는다 — 승인 API 는 백엔드에서 호출한다.
  */
 const DOCS_SAMPLE_KEY = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm";
-const CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || DOCS_SAMPLE_KEY;
+// 밸류파인더 상점(계정 1612342)의 테스트 클라이언트 키.
+// 클라이언트 키는 브라우저에 노출되는 공개 값이라 코드에 두어도 된다. 테스트 키라 실결제도 되지 않는다.
+// 라이브 키는 절대 여기 두지 않는다 — 심사 통과 후 NEXT_PUBLIC_TOSS_CLIENT_KEY 로 주입한다.
+const STORE_TEST_KEY = "test_gck_yL0qZ4G1VODo4ZYyDemoroWb2MQY";
+const CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || STORE_TEST_KEY;
 const IS_SAMPLE = CLIENT_KEY === DOCS_SAMPLE_KEY;
 const IS_TEST = CLIENT_KEY.startsWith("test_");
 

@@ -88,6 +88,15 @@ export default function PricingPage() {
           ))}
         </div>
 
+        <div className="mt-6">
+          <Link
+            href="/payment/toss"
+            className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-7 py-3.5 text-white text-[15px] font-bold hover:bg-indigo-700 transition"
+          >
+            크레딧 충전하기 →
+          </Link>
+        </div>
+
         <p className="text-xs text-slate-500 mt-4 leading-relaxed">
           충전한 크레딧의 유효기간은 <strong>충전일로부터 12개월</strong>입니다. 결제는
           카드·간편결제로 진행되며, 충전 즉시 잔액에 반영됩니다.

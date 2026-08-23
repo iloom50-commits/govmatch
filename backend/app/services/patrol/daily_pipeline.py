@@ -223,8 +223,30 @@ def run_daily_pipeline(db_conn) -> Dict[str, Any]:
         discover_result = discover_unanalyzed(db_conn, limit=300)
         recovery_result = recover_failed_analyses(db_conn, max_retries=500)
 
+        # 저장한 링크가 실제로 열리는지 — url_health(형태 검사)로는 못 잡는 부류다.
+        # K-Startup 212건이 흠 없는 주소인 채로 죽어 있었고, 대표가 눈으로 발견했다.
+        # 실패해도 파이프라인을 멈추지 않는다(감시는 본업이 아니다).
+        link_result = None
+        try:
+            from .link_liveness import scan_dead_links
+            link_result = scan_dead_links(db_conn, per_host=4, min_total=8, max_browser_hosts=6)
+            # 죽은 것은 따로 남긴다 — 이 단계의 detail 은 2000자에서 잘리고,
+            # 리포터가 읽어야 하는 것은 이 목록뿐이다.
+            dead = (link_result or {}).get("dead") or []
+            if dead:
+                _log_step(
+                    "④-L 죽은 링크",
+                    "warn",
+                    {"hosts": [{"host": d["host"], "total": d["total"]} for d in dead[:12]],
+                     "announcements": link_result.get("dead_announcements", 0)},
+                    count=link_result.get("dead_announcements", 0),
+                )
+        except Exception as e:
+            print(f"[pipeline] link_liveness 실패: {e}")
+
         return {
             "url_health": url_result,
+            "link_liveness": link_result,
             "discovered": discover_result.get("queued_for_analysis", 0),
             "recovered": recovery_result.get("recovered", 0),
             "attempted": recovery_result.get("attempted", 0),

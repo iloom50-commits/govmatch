@@ -186,7 +186,13 @@ def run_daily_supervision(db_conn=None) -> dict:
 
         print("[AI COO] Step 7/7: 보고서 생성 + 발송 중...")
         try:
-            from .reporter import send_report
+            from .reporter import send_report, fetch_dead_links
+            # 링크 생사 검사는 파이프라인(patrol)이 하고 결과를 system_logs 에 남긴다.
+            # 여기서는 읽기만 한다 — 보고가 무거운 브라우저 검사를 다시 돌리지 않게.
+            try:
+                dead_links = fetch_dead_links(db_conn)
+            except Exception:
+                dead_links = {}
             report_result = send_report(
                 metrics=results.get("metrics", {}),
                 learning=results.get("learning", {}),
@@ -196,6 +202,7 @@ def run_daily_supervision(db_conn=None) -> dict:
                 coverage=results.get("coverage", {}),
                 mail_signals=results.get("mail_signals", {}),
                 ai_cost=results.get("ai_cost", {}),
+                dead_links=dead_links,
             )
             results["report"] = report_result
             print(f"  → 이메일={report_result.get('email_sent')}, 카카오={report_result.get('kakao_sent')}")

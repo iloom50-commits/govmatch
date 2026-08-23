@@ -363,6 +363,61 @@ def _build_alert_html(health: dict) -> str:
     return box
 
 
+def fetch_dead_links(db_conn, hours: int = 30) -> dict:
+    """일일 파이프라인이 남긴 죽은 링크 결과를 읽는다.
+
+    파이프라인(patrol)과 보고(orchestrator)는 따로 돌기 때문에 system_logs 를 통해 받는다.
+    step:④-L 은 죽은 것이 있을 때만 기록된다 — 없으면 빈 dict.
+    """
+    try:
+        cur = db_conn.cursor()
+        cur.execute(
+            """SELECT detail, count_affected, created_at FROM system_logs
+               WHERE category = 'pipeline_step' AND action LIKE 'step:④-L%%'
+                 AND created_at > NOW() - INTERVAL '%s hours'
+               ORDER BY created_at DESC LIMIT 1""",
+            (hours,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {}
+        import json as _json
+        d = _json.loads(row["detail"]) if isinstance(row["detail"], str) else (row["detail"] or {})
+        return {"hosts": d.get("hosts") or [], "announcements": d.get("announcements", 0),
+                "checked_at": row["created_at"]}
+    except Exception:
+        return {}
+
+
+def _build_dead_link_html(dead: dict) -> str:
+    """🔗 열리지 않는 공고 링크. 없으면 빈 문자열(정상일 때 메일을 늘리지 않는다)."""
+    hosts = (dead or {}).get("hosts") or []
+    if not hosts:
+        return ""
+    items = "".join(
+        f'<li style="margin-bottom:4px">{h.get("host")} — <b>마감 전 {h.get("total",0)}건</b></li>'
+        for h in hosts[:10])
+    return (
+        '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin:12px 0">'
+        f'<div style="font-weight:bold;color:#dc2626;font-size:15px;margin-bottom:6px">'
+        f'&#128279; 열리지 않는 공고 링크 — {len(hosts)}개 수집처 · {dead.get("announcements",0)}건</div>'
+        f'<ul style="margin:0;padding-left:18px;color:#b91c1c;font-size:13px">{items}</ul>'
+        '<div style="color:#7f1d1d;font-size:12px;margin-top:6px">'
+        '수집은 되는데 링크가 열리지 않습니다. 상세 URL 조립 규칙을 확인해야 합니다'
+        '(브라우저로 두 번 확인한 결과라 JS 렌더링 오탐은 걸러졌습니다).</div>'
+        '</div>')
+
+
+def _build_dead_link_text(dead: dict) -> str:
+    hosts = (dead or {}).get("hosts") or []
+    if not hosts:
+        return ""
+    lines = f"\n🔗 열리지 않는 공고 링크 — {len(hosts)}개 수집처 · {dead.get('announcements',0)}건\n"
+    for h in hosts[:10]:
+        lines += f"  · {h.get('host')} — 마감 전 {h.get('total',0)}건\n"
+    return lines
+
+
 def _build_coverage_html(coverage: dict) -> str:
     """📡 수집 소스 커버리지 박스 (HTML). red>0 빨강 / yellow·조기경보 호박 / 정상 초록."""
     if not coverage or coverage.get("error"):
@@ -753,7 +808,7 @@ def _send_kakao(metrics: dict) -> bool:
 # ── 발송 ──────────────────────────────────────────────────────
 def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict = None,
                 health: dict = None, coverage: dict = None, mail_signals: dict = None,
-                ai_cost: dict = None) -> dict:
+                ai_cost: dict = None, dead_links: dict = None) -> dict:
     if quality is None:
         quality = {}
     if seo is None:
@@ -766,6 +821,11 @@ def send_report(metrics: dict, learning: dict, quality: dict = None, seo: dict =
         mail_signals = {}
     report_text = _build_report_text(metrics, learning, quality, seo, health, coverage, mail_signals)
     report_html = _build_report_html(metrics, learning, quality, seo, health, coverage, mail_signals)
+    # 열리지 않는 공고 링크 — 경보성이라 비용 섹션보다 앞에 붙인다. 없으면 아무것도 안 붙는다.
+    _dl_t = _build_dead_link_text(dead_links or {})
+    if _dl_t:
+        report_text = report_text + "\n" + _dl_t
+        report_html = report_html + _build_dead_link_html(dead_links or {})
     # AI 비용 섹션 append (빌더 f-string 미변경, 데이터 있을 때만)
     _ai_t, _ai_h = render_ai_cost_section(ai_cost or {})
     if _ai_t:

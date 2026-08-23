@@ -1,0 +1,25 @@
+# 백엔드 정적 검사 설정.
+#
+# 왜 F821 만 막는가 —
+#   실제로 런타임에 터지는 것만 커밋을 막는다. 미사용 import(F401) 는 62건이라
+#   지금 차단하면 훅이 방해물이 되고, 결국 --no-verify 로 우회하게 된다.
+#   통과할 수 없는 검사는 검사가 아니다.
+#
+# F821 이 잡아낸 실제 사고(2026-08-24 실측):
+#   · _seed_keyword_synonyms() 의 _safe_exec  → init_database 가 3개월간 중도 중단,
+#                                               mail_signals 테이블 누락
+#   · _fetch_ga4_data() 의 requests           → GA4 지표 조회 불가
+#   · ai_consultant 의 _check_profile_match   → 정의 없는 함수 호출(4개월 잠복)
+#   · api_toss_order() 의 _uuid               → 결제 주문 API 500
+#
+# 여유가 생기면 F401 을 정리하고 목록에 추가한다.
+
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["F821"]
+
+[lint.per-file-ignores]
+# venv·마이그레이션 스크립트는 검사 대상이 아니다
+"venv/**" = ["F821"]

@@ -5192,6 +5192,8 @@ def api_toss_order(req: TossOrderRequest, current_user: dict = Depends(_get_curr
         raise HTTPException(status_code=400, detail="판매하지 않는 금액입니다.")
 
     uid = current_user["user_id"]
+    # uuid 는 모듈 전역에 없다 — 이 파일은 쓰는 자리에서 지역 import 한다(5811·6483행과 동일)
+    import uuid as _uuid
     # 토스 orderId 는 6~64자. 'gm' + uuid 32자 = 34자
     order_id = "gm" + _uuid.uuid4().hex
 

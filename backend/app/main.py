@@ -219,6 +219,36 @@ def init_database():
             END$$
         """, "analysis_failures FK")
 
+        # 공고에 딸린 파생 데이터도 FK 가 없어 고아가 쌓였다(2026-08-24 실측 34,416건).
+        # 조회 쿼리가 announcements 와 INNER JOIN 이라 고아는 결과에 나오지 않는다 —
+        # 즉 쓰이지 않으면서 공간만 차지했고, announcement_sections 는 LEFT JOIN 이라
+        # 고아 조각에까지 임베딩을 만들고 있었다(생성 대기의 26%).
+        # 사용자 기록(notification_logs·ai_consult_logs)과 지식(knowledge_base)은
+        # 성격이 달라 여기서 건드리지 않는다.
+        for _t in ("announcement_sections", "announcement_embeddings",
+                   "blog_context_cache", "trending_announcements", "consult_jobs"):
+            _safe_exec(f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = '{_t}_announcement_id_fkey'
+                          AND table_name = '{_t}'
+                    ) THEN
+                        DELETE FROM {_t} x
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM announcements a
+                            WHERE a.announcement_id = x.announcement_id
+                        );
+                        ALTER TABLE {_t}
+                            ADD CONSTRAINT {_t}_announcement_id_fkey
+                            FOREIGN KEY (announcement_id)
+                            REFERENCES announcements(announcement_id)
+                            ON DELETE CASCADE;
+                    END IF;
+                END$$
+            """, f"{_t} FK")
+
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pro_consult_sessions (

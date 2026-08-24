@@ -254,9 +254,15 @@ class SemasScraper(BaseScraper):
 
                 reg_date = item.get("frstRegDt", "")
 
+                # bbsTypeCd 가 없으면 상세 페이지가 본문 없이 껍데기만 돌려준다.
+                # 목록 화면의 fnGoModNoti(seq, bbsTypeCd) 가 이 두 값을 함께 넘긴다.
+                # 실측(2026-08-24): ?bltwtrSeq=398 → 본문 없음 / ?bltwtrSeq=398&bbsTypeCd=01 → 본문 있음.
+                # 지금은 목록이 전부 '01' 이지만 고정하지 않고 API 가 준 값을 쓴다.
+                bbs_type = str(item.get("bbsTypeCd") or "01").strip() or "01"
+
                 items.append({
                     "title": title[:400],
-                    "origin_url": f"{_SEMAS_DETAIL}?bltwtrSeq={seq}",
+                    "origin_url": f"{_SEMAS_DETAIL}?bltwtrSeq={seq}&bbsTypeCd={bbs_type}",
                     "region": "전국",
                     "target_type": "business",
                     "category": category_nm or "소상공인",

@@ -249,6 +249,26 @@ def init_database():
                 END$$
             """, f"{_t} FK")
 
+        # classification_events 는 기존 이력을 지우지 않는다 — 「이 공고를 왜 개인용으로
+        # 분류했나」를 되짚는 감사 기록이다. NOT VALID 로 걸어 기존 행은 검사하지 않고
+        # 앞으로 들어오는 것만 제약한다. ON DELETE CASCADE 는 그대로 작동한다(실측 확인).
+        _safe_exec("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints
+                    WHERE constraint_name = 'classification_events_announcement_id_fkey'
+                      AND table_name = 'classification_events'
+                ) THEN
+                    ALTER TABLE classification_events
+                        ADD CONSTRAINT classification_events_announcement_id_fkey
+                        FOREIGN KEY (announcement_id)
+                        REFERENCES announcements(announcement_id)
+                        ON DELETE CASCADE NOT VALID;
+                END IF;
+            END$$
+        """, "classification_events FK")
+
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pro_consult_sessions (

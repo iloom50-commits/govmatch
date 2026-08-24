@@ -7841,6 +7841,76 @@ def api_sbiz24_purge(req: AdminAuthRequest):
         except: pass
 
 
+class LinkProbeRequest(BaseModel):
+    password: str
+    host: str
+    use_browser: bool = False
+
+
+@app.post("/api/admin/link-liveness/probe")
+def api_link_liveness_probe(req: LinkProbeRequest):
+    """수집처 하나의 공고 링크를 이 서버에서 실제로 열어 본다.
+
+    왜 필요한가 — 2026-08-24, www.jeju.go.kr 106건이 죽은 링크로 보고돼 메일에 나갔다.
+    다른 회선에서 재니 100% 정상이었다. Railway 서버가 차단당한 것이었는데, 그 사실을
+    확인하려면 다음 파이프라인(하루 뒤)을 기다려야 했다. 여기서 즉시 본다.
+
+    ★ 임의 URL 은 받지 않는다. 호스트 이름만 받아 DB 의 마감 전 공고에서 표본을 뽑는다.
+      임의 URL 을 열어주면 내부망 스캔 도구(SSRF)가 된다.
+    """
+    if req.password != os.environ.get("ADMIN_PASSWORD", "admin1234"):
+        raise HTTPException(status_code=401, detail="관리자 비밀번호가 올바르지 않습니다.")
+
+    host = (req.host or "").strip().lower()
+    if not host or len(host) > 200:
+        raise HTTPException(status_code=400, detail="host 가 필요합니다.")
+
+    from app.services.patrol.link_liveness import (
+        check_samples_html, check_samples_browser, judge_source_probes)
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT announcement_id, title, origin_url FROM announcements
+               WHERE split_part(split_part(origin_url,'//',2),'/',1) = %s
+                 AND title IS NOT NULL AND length(title) >= 8
+                 AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)
+               ORDER BY announcement_id DESC LIMIT 4""",
+            (host,),
+        )
+        samples = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT COUNT(*) AS n FROM announcements
+               WHERE split_part(split_part(origin_url,'//',2),'/',1) = %s
+                 AND (deadline_date IS NULL OR deadline_date >= CURRENT_DATE)""",
+            (host,),
+        )
+        total = cur.fetchone()["n"]
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+    if not samples:
+        return {"status": "NOT_FOUND", "host": host, "detail": "마감 전 공고 표본이 없습니다."}
+
+    probes = check_samples_html(samples)
+    out = {
+        "status": "SUCCESS",
+        "host": host,
+        "total_live_announcements": total,
+        "html": [{"ratio": round(p.ratio, 2), "status": p.status} for p in probes],
+        "html_verdict": judge_source_probes(probes),
+        "sample_url": samples[0]["origin_url"],
+        "sample_title": samples[0]["title"][:80],
+    }
+    if req.use_browser and out["html_verdict"] == "suspect":
+        b = check_samples_browser(samples)
+        out["browser"] = [{"ratio": round(p.ratio, 2), "status": p.status} for p in b]
+        out["browser_verdict"] = judge_source_probes(b) if b else "unavailable"
+    return out
+
+
 class InspectAnnouncementRequest(BaseModel):
     password: str
     announcement_id: int

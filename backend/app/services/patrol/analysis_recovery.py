@@ -41,7 +41,11 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
         WHERE af.resolved_at IS NULL
           AND af.retry_count < 5
           AND (af.next_retry_at IS NULL OR af.next_retry_at <= CURRENT_TIMESTAMP)
-        ORDER BY af.next_retry_at NULLS FIRST
+          -- 마감이 지난 공고는 분석해도 쓸 데가 없다. 실측(2026-08-24): 최근 7일 분석
+          -- 388건 중 54건(14%)이 이미 마감된 공고였다. 그만큼 슬롯과 토큰을 버렸다.
+          AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
+        -- 마감이 임박한 것부터. 마감일이 없는 것은 그다음(원문을 열어야 마감을 알 수 있다).
+        ORDER BY (a.deadline_date IS NULL), a.deadline_date ASC, af.next_retry_at NULLS FIRST
         LIMIT %s
     """, (max_retries,))
     rows = cur.fetchall()
@@ -185,7 +189,12 @@ def discover_unanalyzed(db_conn, limit: int = 100) -> Dict[str, Any]:
           AND af.id IS NULL
           AND a.origin_url IS NOT NULL AND a.origin_url != ''
           AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
-        ORDER BY (a.deadline_date IS NULL) DESC, a.created_at DESC
+        -- 마감 임박한 것을 먼저 넣는다.
+        -- 전에는 마감일 없는 것을 우선했다(원문 확보 → enricher 가 마감을 채우는 흐름).
+        -- 그런데 마감일 없는 공고가 5,379건이라 우선순위를 계속 먹었고, 마감 90일 이내
+        -- 841건(그중 7일 이내 492건)이 분석되지 못한 채 남았다(2026-08-24 실측).
+        -- 마감을 채우는 목적은 살리되(마감일 없음이 두 번째), 임박한 것이 밀리지 않게 한다.
+        ORDER BY (a.deadline_date IS NULL), a.deadline_date ASC, a.created_at DESC
         LIMIT %s
     """, (limit,))
     candidates = cur.fetchall()

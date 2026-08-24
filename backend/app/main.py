@@ -193,6 +193,32 @@ def init_database():
             "idx_toss_orders_user",
         )
 
+        # analysis_failures 에 FK 가 없어 공고를 지워도 큐 레코드가 남았다.
+        # 2026-08-24 실측: 42,674건 중 23,430건이 고아였고, 일일 메일의
+        # 「분석실패 733」 중 725건이 실체 없는 유령이었다(정리 후 8건).
+        # 프로덕션은 이미 정리·적용했다. 다른 환경에서도 같은 상태가 되게 한다.
+        _safe_exec("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints
+                    WHERE constraint_name = 'analysis_failures_announcement_id_fkey'
+                      AND table_name = 'analysis_failures'
+                ) THEN
+                    DELETE FROM analysis_failures f
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM announcements a
+                        WHERE a.announcement_id = f.announcement_id
+                    );
+                    ALTER TABLE analysis_failures
+                        ADD CONSTRAINT analysis_failures_announcement_id_fkey
+                        FOREIGN KEY (announcement_id)
+                        REFERENCES announcements(announcement_id)
+                        ON DELETE CASCADE;
+                END IF;
+            END$$
+        """, "analysis_failures FK")
+
         # PRO 컨설턴트 상담 세션 (서버 측 상태 관리 — 단계/수집정보 저장)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pro_consult_sessions (

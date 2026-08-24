@@ -103,6 +103,51 @@ class TestJudgeSource(unittest.TestCase):
         self.assertEqual(judge_source([]), "unknown")
 
 
+class TestBlockedIsNotDead(unittest.TestCase):
+    """「우리 서버에서 안 열린다」와 「링크가 죽었다」는 다르다.
+
+    2026-08-24 프로덕션 실측 사고 —
+      www.jeju.go.kr 106건이 죽음으로 보고됐으나, 같은 주소를 다른 곳에서 재니
+      제목 일치 100% 였다. Railway 서버가 차단당한 것이지 링크는 멀쩡했다.
+      사용자 브라우저에서는 열린다.
+
+    죽은 링크는 HTTP 200 에 껍데기를 준다. 차단은 연결 실패·403·429 로 나타난다.
+    이 둘을 섞으면 멀쩡한 수집처를 죽었다고 보고한다.
+    """
+
+    def test_차단_표본은_판정에서_빠진다(self):
+        from app.services.patrol.link_liveness import judge_source_probes, Probe
+        probes = [Probe(0.0, "blocked"), Probe(0.0, "blocked"),
+                  Probe(0.0, "error"), Probe(0.0, "blocked")]
+        self.assertEqual(judge_source_probes(probes), "unknown")
+
+    def test_열린_표본이_전멸해야_suspect(self):
+        from app.services.patrol.link_liveness import judge_source_probes, Probe
+        probes = [Probe(0.0, "ok"), Probe(0.0, "ok"), Probe(0.0, "ok"), Probe(0.1, "ok")]
+        self.assertEqual(judge_source_probes(probes), "suspect")
+
+    def test_차단이_섞여도_열린것이_살아있으면_ok(self):
+        # jeju 실측 — 1건 연결실패, 3건 100%
+        from app.services.patrol.link_liveness import judge_source_probes, Probe
+        probes = [Probe(0.0, "error"), Probe(1.0, "ok"), Probe(1.0, "ok"), Probe(1.0, "ok")]
+        self.assertEqual(judge_source_probes(probes), "ok")
+
+    def test_열린_표본이_모자라면_판정하지_않는다(self):
+        from app.services.patrol.link_liveness import judge_source_probes, Probe
+        probes = [Probe(0.0, "ok"), Probe(0.0, "ok"), Probe(0.0, "blocked"), Probe(0.0, "error")]
+        self.assertEqual(judge_source_probes(probes), "unknown")
+
+    def test_상태코드로_분류한다(self):
+        from app.services.patrol.link_liveness import classify_status
+        self.assertEqual(classify_status(200), "ok")
+        self.assertEqual(classify_status(404), "ok")     # 404 는 진짜 없는 것 — 판정 대상
+        self.assertEqual(classify_status(403), "blocked")
+        self.assertEqual(classify_status(429), "blocked")
+        self.assertEqual(classify_status(503), "blocked")
+        self.assertEqual(classify_status(500), "blocked")
+        self.assertEqual(classify_status(None), "error")  # 연결 자체가 안 됨
+
+
 class TestOverDetectionGuard(unittest.TestCase):
     """오탐 방지 — 이 테스트가 깨지면 멀쩡한 공고를 망가뜨릴 수 있다.
 

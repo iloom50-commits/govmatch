@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import html as _html
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 from urllib.parse import urlsplit
 
 # 제목 어절이 이 비율 이상 페이지에 있으면 살아있는 것으로 본다.
@@ -94,6 +94,42 @@ def judge_source(ratios: List[float]) -> str:
     return "suspect" if all(r < ALIVE_THRESHOLD for r in ratios) else "ok"
 
 
+class Probe(NamedTuple):
+    """표본 하나를 열어본 결과.
+
+    status
+      ok      — 페이지를 받아 읽었다. ratio 로 생사를 판정한다.
+      blocked — 서버가 우리를 막았다(403·429·5xx). 링크의 생사와 무관하다.
+      error   — 연결 자체가 안 됐다(타임아웃·리셋·DNS). 역시 판정 근거가 못 된다.
+    """
+    ratio: float
+    status: str
+
+
+def classify_status(http_status: Optional[int]) -> str:
+    """HTTP 상태코드를 판정 가능/불가로 나눈다.
+
+    404 는 ok 로 둔다 — 「없는 페이지」는 링크가 죽었다는 진짜 신호다.
+    403·429·5xx 는 우리 쪽이 막힌 것이라 링크의 생사를 말해주지 않는다.
+    """
+    if http_status is None:
+        return "error"
+    if http_status in (403, 429) or http_status >= 500:
+        return "blocked"
+    return "ok"
+
+
+def judge_source_probes(probes: List[Probe]) -> str:
+    """수집처 판정 — 차단·연결실패 표본은 빼고 본다.
+
+    2026-08-24 사고: 이 구분이 없어 www.jeju.go.kr 106건을 죽었다고 보고했다.
+    Railway 서버가 차단당했을 뿐 링크는 멀쩡했다(다른 곳에서 재니 100%).
+    **우리 서버에서 안 열리는 것과 링크가 죽은 것은 다르다.**
+    """
+    usable = [p.ratio for p in probes if p.status == "ok"]
+    return judge_source(usable)
+
+
 def needs_browser_recheck(verdict: str) -> bool:
     """1차 HTML 판정이 suspect 면 브라우저로 다시 봐야 한다.
 
@@ -111,21 +147,25 @@ def host_of(url: str) -> str:
 
 # ── 바깥과 이야기하는 부분 ────────────────────────────────
 
-def _fetch_html(url: str, timeout: int = 15) -> str:
-    import requests
-    r = requests.get(url, headers={"User-Agent": _UA}, timeout=timeout, allow_redirects=True)
-    return r.text or ""
+def check_samples_html(samples: List[Dict[str, Any]], workers: int = 8) -> List[Probe]:
+    """표본들을 HTTP 로 열어 본다.
 
-
-def check_samples_html(samples: List[Dict[str, Any]], workers: int = 8) -> List[float]:
-    """표본들의 제목 일치율을 HTML 요청으로 잰다. 실패는 0.0 으로 본다."""
+    연결 실패를 0.0 으로 뭉개면 안 된다 — 차단당한 수집처가 죽은 것으로 둔갑한다.
+    상태를 함께 돌려줘서 판정에서 뺄 수 있게 한다.
+    """
     from concurrent.futures import ThreadPoolExecutor
+    import requests
 
-    def one(s: Dict[str, Any]) -> float:
+    def one(s: Dict[str, Any]) -> Probe:
         try:
-            return title_match_ratio(visible_text(_fetch_html(s["origin_url"])), s["title"])
+            r = requests.get(s["origin_url"], headers={"User-Agent": _UA},
+                             timeout=15, allow_redirects=True)
         except Exception:
-            return 0.0
+            return Probe(0.0, "error")
+        st = classify_status(r.status_code)
+        if st != "ok":
+            return Probe(0.0, st)
+        return Probe(title_match_ratio(visible_text(r.text or ""), s["title"]), "ok")
 
     if not samples:
         return []
@@ -133,34 +173,48 @@ def check_samples_html(samples: List[Dict[str, Any]], workers: int = 8) -> List[
         return list(ex.map(one, samples))
 
 
-def check_samples_browser(samples: List[Dict[str, Any]]) -> List[float]:
+def check_samples_browser(samples: List[Dict[str, Any]]) -> List[Probe]:
     """브라우저로 실제 렌더한 뒤 잰다 — 1차에서 suspect 로 나온 수집처에만 쓴다.
 
     느리고 무겁다(건당 수 초). 수집처 단위로만 부르기 때문에 감당할 수 있다.
     Playwright 가 없으면 빈 목록을 돌려준다 — 그러면 판정을 보류한다.
+    여기서도 응답 상태를 본다. 차단(403·429·5xx)이나 연결 실패는 죽음이 아니다.
     """
     try:
         from playwright.sync_api import sync_playwright
     except Exception:
         return []
 
-    out: List[float] = []
+    out: List[Probe] = []
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"])
             ctx = browser.new_context(user_agent=_UA, viewport={"width": 1280, "height": 900})
             for s in samples:
                 page = ctx.new_page()
+                code: Optional[int] = None
+
+                def _grab(resp, _u=s["origin_url"]):
+                    nonlocal code
+                    if code is None and resp.url.rstrip("/") == _u.rstrip("/"):
+                        code = resp.status
+
+                page.on("response", _grab)
                 try:
                     try:
                         page.goto(s["origin_url"], wait_until="networkidle", timeout=30000)
                     except Exception:
                         page.goto(s["origin_url"], wait_until="domcontentloaded", timeout=20000)
                     page.wait_for_timeout(2500)
-                    text = _WS_RE.sub(" ", page.locator("body").inner_text()).strip()
-                    out.append(title_match_ratio(text, s["title"]))
+                    st = classify_status(code if code is not None else 200)
+                    if st != "ok":
+                        out.append(Probe(0.0, st))
+                    else:
+                        text = _WS_RE.sub(" ", page.locator("body").inner_text()).strip()
+                        out.append(Probe(title_match_ratio(text, s["title"]), "ok"))
                 except Exception:
-                    out.append(0.0)
+                    # 렌더 자체가 안 됐다 — 판정 근거가 못 된다
+                    out.append(Probe(0.0, "error"))
                 finally:
                     page.close()
             browser.close()
@@ -217,34 +271,42 @@ def scan_dead_links(
     grouped = _live_samples_by_host(cur, per_host, min_total)
 
     first_pass = []
+    blocked_hosts = 0
     for host, g in grouped.items():
-        ratios = check_samples_html(g["samples"])
-        if needs_browser_recheck(judge_source(ratios)):
-            first_pass.append((g, ratios))
+        probes = check_samples_html(g["samples"])
+        verdict = judge_source_probes(probes)
+        if verdict == "unknown" and probes:
+            # 열린 표본이 모자란다 — 차단이거나 접속 불가. 죽음이 아니다.
+            blocked_hosts += 1
+        if needs_browser_recheck(verdict):
+            first_pass.append((g, probes))
 
     dead: List[Dict[str, Any]] = []
     skipped = 0
     # 무거운 2차는 상한을 둔다. 넘긴 것은 조용히 버리지 않고 세어서 보고한다.
-    for g, ratios in first_pass[:max_browser_hosts]:
+    for g, probes in first_pass[:max_browser_hosts]:
         b = check_samples_browser(g["samples"])
         if not b:                      # Playwright 불가 — 판정 보류
             skipped += 1
             continue
-        if judge_source(b) == "suspect":
-            dead.append({
-                "host": g["host"],
-                "total": g["total"],
-                "ratios_html": [round(x, 2) for x in ratios],
-                "ratios_browser": [round(x, 2) for x in b],
-                "sample_url": g["samples"][0]["origin_url"],
-                "sample_title": g["samples"][0]["title"][:60],
-            })
+        if judge_source_probes(b) != "suspect":
+            continue                   # 살아있거나(오탐) 판정 불가(차단)
+        dead.append({
+            "host": g["host"],
+            "total": g["total"],
+            "ratios_html": [round(p.ratio, 2) for p in probes],
+            "ratios_browser": [round(p.ratio, 2) for p in b],
+            "status_browser": [p.status for p in b],
+            "sample_url": g["samples"][0]["origin_url"],
+            "sample_title": g["samples"][0]["title"][:60],
+        })
     skipped += max(0, len(first_pass) - max_browser_hosts)
 
     dead.sort(key=lambda d: -d["total"])
     return {
         "checked_hosts": len(grouped),
         "html_only_suspect": len(first_pass),
+        "unjudgeable_hosts": blocked_hosts,
         "dead": dead,
         "dead_hosts": len(dead),
         "dead_announcements": sum(d["total"] for d in dead),

@@ -12809,15 +12809,39 @@ def push_unsubscribe(data: dict):
     return {"status": "SUCCESS", "message": "푸시 알림 해제 완료"}
 
 
+class PushTestRequest(BaseModel):
+    business_number: Optional[str] = None
+    all_subscribers: bool = False
+
+
 @app.post("/api/admin/push-test", dependencies=[Depends(_verify_admin)])
-def admin_push_test():
+def admin_push_test(req: PushTestRequest = PushTestRequest()):
+    """푸시 시험 발송.
+
+    ★ 기본은 한 사람에게만 보낸다. business_number 를 반드시 지정한다.
+      전에는 조건 없이 `SELECT ... FROM push_subscriptions` 라 **구독자 전원**에게
+      「새로운 맞춤 공고가 등록되었습니다!」 가 나갔다. 시험 한 번에 실사용자 22명이
+      거짓 알림을 받는 구조였다(2026-08-25 확인). 전원 발송은 all_subscribers=true 를
+      명시해야만 한다.
+    """
     from pywebpush import webpush, WebPushException
     vapid_private = os.getenv("VAPID_PRIVATE_KEY", "")
     vapid_claims = {"sub": os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")}
 
+    bn = (req.business_number or "").strip()
+    if not bn and not req.all_subscribers:
+        raise HTTPException(
+            status_code=400,
+            detail="business_number 를 지정하십시오. 전원에게 보내려면 all_subscribers=true 를 명시해야 합니다.",
+        )
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions")
+    if bn:
+        cursor.execute(
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE business_number = %s", (bn,))
+    else:
+        cursor.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions")
     subs = cursor.fetchall()
     conn.close()
 

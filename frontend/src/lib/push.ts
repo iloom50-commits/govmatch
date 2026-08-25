@@ -73,6 +73,32 @@ export async function isPushSubscribed(): Promise<boolean> {
   }
 }
 
+/**
+ * 켜자마자 알림을 하나 띄워 「실제로 보이는지」를 그 자리에서 확인시킨다.
+ *
+ * 왜 필요한가 (2026-08-25)
+ *   대표가 푸시를 켜 뒀는데 알림이 오지 않았다. 서버는 FCM 에 정상 전달했고(HTTP 201)
+ *   sw.js·아이콘도 멀쩡했다. 그런데도 화면에 뜨지 않았다.
+ *   원인이 넷인데 사용자가 구분할 수 없다 —
+ *     ① 브라우저가 꺼져 있었다  ② Windows 집중 지원  ③ 사이트 알림 차단  ④ 서비스워커 문제
+ *   켜는 순간 알림을 띄우면, 보이면 전부 정상이고 안 보이면 ②③ 문제임을 즉시 안다.
+ *   토스트 메시지로는 이걸 가릴 수 없다. 실제 알림이어야 한다.
+ *
+ * 실패해도 푸시 켜기 자체는 성공으로 둔다 — 확인용이지 조건이 아니다.
+ */
+async function showWelcomeNotification(): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+    if (!reg) return;
+    await reg.showNotification("푸시 알림을 켰습니다", {
+      body: "앞으로 이렇게 알려드릴게요 — 상담 완료 · 맞춤 공고",
+      icon: "/icon-192-maskable.png",
+      badge: "/icon-128.png",
+      tag: "govmatch-welcome",
+    });
+  } catch { /* 확인용이므로 실패해도 넘어간다 */ }
+}
+
 /** 푸시 켜기 — 권한 요청 후 구독 보장. 권한 거부/미지원 시 false. */
 export async function enableWebPush(businessNumber: string): Promise<boolean> {
   if (!isPushSupported()) return false;
@@ -81,7 +107,10 @@ export async function enableWebPush(businessNumber: string): Promise<boolean> {
     try { perm = await Notification.requestPermission(); } catch { return false; }
   }
   if (perm !== "granted") return false;
-  return ensurePushSubscribed(businessNumber);
+  const ok = await ensurePushSubscribed(businessNumber);
+  // 서버 저장까지 성공했을 때만 띄운다 — 저장이 안 됐는데 알림이 뜨면 더 헷갈린다
+  if (ok) await showWelcomeNotification();
+  return ok;
 }
 
 /** 푸시 끄기 — 구독 해지 + 서버 통지 */

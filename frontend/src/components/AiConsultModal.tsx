@@ -569,12 +569,17 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
   }, []);
 
   // 권한 없이 notify만(인앱 배지 폴백) — '그냥 닫기'용
+  //
+  // ★ 타임아웃이 없으면 인터넷이 느릴 때 브라우저 기본 대기(수십 초~수 분)까지 매달린다.
+  //   이 함수를 await 한 뒤에 창을 닫던 구조였어서, 그동안 창이 잠겼다(2026-08-25 대표 제보).
+  //   지금은 호출부가 기다리지 않지만, 배경 요청이 무한정 남지 않도록 여기서도 끊는다.
   const notifyServer = useCallback(async (jobId: string) => {
     const token = localStorage.getItem("auth_token");
     try {
       await fetch(`${API}/api/ai/consult/job/${jobId}/notify`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000),
       });
     } catch { /* 무시 — 인앱 배지 폴백 */ }
   }, []);
@@ -608,7 +613,10 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
   useModalBack(open, requestClose);
 
   // 사용자가 직접 상담 종료 — ai_consult_logs에 명시 저장
-  const handleManualEnd = async () => {
+  // 저장 성공 여부를 돌려준다.
+  // 전에는 결과를 알리지 않아서, 저장이 안 돼도 호출부가 "저장되었습니다 ✓" 를 띄웠다
+  // (조건 셋 중 하나만 빠져도 조용히 건너뛰고, 예외도 catch 로 삼켰다).
+  const handleManualEnd = async (): Promise<boolean> => {
     setIsDone(true);
 
     const lastAiMsg = [...messages].reverse().find(m => m.role === "assistant");
@@ -616,6 +624,7 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
 
     // 명시 저장 호출 (AI 호출 없이 INSERT만)
     let savedId: number | null = consultLogId;
+    let saved = false;
     try {
       const token = localStorage.getItem("auth_token");
       if (token && announcement?.announcement_id && messages.length >= 2) {
@@ -628,10 +637,13 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
             conclusion: null,
             session_id: sessionIdRef.current,
           }),
+          // 인터넷이 느려도 창이 잠기지 않게 한다. 실패하면 실패했다고 알린다.
+          signal: AbortSignal.timeout(8000),
         });
         if (res.ok) {
           const j = await res.json();
           savedId = j.consult_log_id || null;
+          saved = true;
         }
       }
     } catch {}
@@ -650,6 +662,8 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
       text: "상담이 종료되었습니다.\n\n이 공고에 대해 다시 상담을 원하시면 공고 카드에서 **'나도 받을 수 있나?'**를 클릭하세요.",
       done: true,
     }]);
+
+    return saved;
   };
 
   // 상담 보고서 출력 — 공통 템플릿 사용 (상담 기록 페이지와 동일 포맷)
@@ -944,10 +958,17 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
               {messages.length >= 2 && !loading && (
                 <div className="flex gap-2">
                   <button
-                    onClick={() => {
-                      handleManualEnd();
-                      toast("저장되었습니다 ✓ 내 상담 기록에서 다시 볼 수 있어요", "success");
-                      setTimeout(() => handleClose(), 800);
+                    onClick={async () => {
+                      // 전에는 handleManualEnd() 를 await 하지 않고 무조건 성공 토스트를 띄웠다.
+                      // 저장이 안 돼도 "저장되었습니다" 가 떴다. 이제 결과대로 알린다.
+                      const saved = await handleManualEnd();
+                      toast(
+                        saved
+                          ? "저장되었습니다 ✓ 내 상담 기록에서 다시 볼 수 있어요"
+                          : "저장하지 못했어요 — 네트워크를 확인해 주세요. 상담 내용은 화면에 남아 있어요",
+                        saved ? "success" : "error",
+                      );
+                      if (saved) setTimeout(() => handleClose(), 800);
                     }}
                     className="flex-1 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[13px] md:text-[12px] font-bold transition-all rounded-lg flex items-center justify-center gap-1.5 active:scale-[0.98]"
                   >
@@ -981,26 +1002,32 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
             <h3 className="text-lg font-bold text-slate-800 mb-2">분석이 진행 중이에요</h3>
             <p className="text-[13px] text-slate-600 mb-6">지금 닫아도 백그라운드에서 계속 분석돼요. 완료되면 알림으로 알려드릴까요?</p>
             <div className="flex gap-3">
+              {/* ★ 닫기를 먼저 한다. 서버 통지를 기다리지 않는다.
+                  전에는 await notifyServer() 뒤에 handleClose() 를 불러서, 인터넷이 느리면
+                  창이 안 닫혔다(2026-08-25 대표 제보 — 버튼을 눌러도 아무 반응이 없음).
+                  서버의 분석은 어차피 백그라운드에서 계속되므로 기다릴 이유가 없다. */}
               <button
-                onClick={async () => {
+                onClick={() => {
                   setShowLeaveNotifyDialog(false);
                   const jid = jobIdRef.current;
+                  handleClose();
                   if (jid) {
-                    await notifyServer(jid);
+                    void notifyServer(jid);
                     toast("백그라운드에서 계속 분석 중이에요 — 완료되면 상담이력에서 확인할 수 있어요", "info");
                   }
-                  handleClose();
                 }}
                 className="flex-1 py-2.5 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all active:scale-95"
               >
                 그냥 닫기
               </button>
               <button
-                onClick={async () => {
+                onClick={() => {
                   setShowLeaveNotifyDialog(false);
                   const jid = jobIdRef.current;
-                  if (jid) await requestPushAndNotify(jid);
                   handleClose();
+                  // 권한 팝업은 이 클릭의 제스처 컨텍스트에서 바로 뜬다(handleClose 는 동기).
+                  // 그 뒤 네트워크 요청 셋(/auth/me · 푸시구독 · 통지)은 배경에서 진행된다.
+                  if (jid) void requestPushAndNotify(jid);
                 }}
                 className="flex-1 py-2.5 px-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all active:scale-95"
               >
@@ -1029,7 +1056,12 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
               <button
                 onClick={async () => {
                   setShowSaveDialog(false);
-                  await handleManualEnd();
+                  // 저장이 실패하거나 오래 걸려도 창은 닫는다 — 닫기가 네트워크에 묶이면 안 된다.
+                  // (handleManualEnd 안의 fetch 에 8초 타임아웃이 걸려 있다)
+                  const saved = await handleManualEnd();
+                  if (!saved) {
+                    toast("저장하지 못했어요 — 네트워크를 확인해 주세요", "error");
+                  }
                   handleClose();
                 }}
                 className="flex-1 py-2.5 px-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all active:scale-95"

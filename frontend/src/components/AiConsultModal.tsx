@@ -993,9 +993,12 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
         </div>
       </div>
 
-      {/* 상담 저장 확인 다이얼로그 */}
+      {/* 분석 진행 중 안내 다이얼로그
+          ★ pointer-events-auto 가 반드시 있어야 한다. 모달 루트(위)가 lg:pointer-events-none
+            이라 데스크톱에서 이 속성이 상속되고, 없으면 버튼이 보이기만 하고 눌리지 않는다.
+            (2026-08-25 대표 제보 — 「버튼을 눌러도 동작하지 않고 창이 닫히지 않았다」) */}
       {showLeaveNotifyDialog && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-auto">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
             <div className="text-3xl mb-2">🔔</div>
@@ -1038,8 +1041,9 @@ export default function AiConsultModal({ planStatus, onUpgrade }: AiConsultModal
         </div>
       )}
 
+      {/* 상담 저장 확인 다이얼로그 — pointer-events-auto 필수(위 주석과 같은 이유) */}
       {showSaveDialog && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-auto">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
             <h3 className="text-lg font-bold text-slate-800 mb-2">상담을 저장하시겠습니까?</h3>

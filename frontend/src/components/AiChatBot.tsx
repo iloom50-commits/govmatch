@@ -2077,9 +2077,12 @@ ${convHtml}
         )}
       </div>
 
-      {/* 상담 저장 확인 다이얼로그 */}
+      {/* 상담 저장 확인 다이얼로그
+          ★ pointer-events-auto 필수 — 이 컴포넌트 루트가 lg:pointer-events-none 이라
+            데스크톱에서 상속되고, 없으면 버튼이 보이기만 하고 눌리지 않는다
+            (2026-08-25 AiConsultModal 에서 같은 결함이 실제로 드러났다) */}
       {showSaveDialog && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-auto">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
             <h3 className="text-lg font-bold text-slate-800 mb-2">상담을 저장하시겠습니까?</h3>
@@ -2117,9 +2120,9 @@ ${convHtml}
         </div>
       )}
 
-      {/* 상담 보고서 모달 */}
+      {/* 상담 보고서 모달 — pointer-events-auto 필수(위와 같은 이유) */}
       {showReport && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-auto">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowReport(false)} />
           <div className="relative w-full max-w-2xl max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0">

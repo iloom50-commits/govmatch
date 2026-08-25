@@ -12,8 +12,10 @@ from __future__ import annotations
 import time
 import datetime
 import hashlib
+import html as _html
 import logging
 import json
+import re as _re
 from typing import List, Dict, Any, Optional
 import psycopg2
 import psycopg2.extras
@@ -65,6 +67,24 @@ def register(cls):
     instance = cls()
     SCRAPER_REGISTRY.append(instance)
     return cls
+
+
+def _unescape_text(v: Any) -> str:
+    """HTML 엔티티를 풀고 공백을 정리한다.
+
+    수집기가 39개인데 unescape 를 하는 것은 4개뿐이었다. 나머지에서 들어온 제목이
+    화면에 `&#39;섬유산업…&#39;` 처럼 그대로 보였다(2026-08-25, DB 214건 실측).
+    수집기마다 고치면 새 수집기에서 또 빠지므로 저장 관문에서 한 번에 푼다.
+
+    두 번 인코딩된 것(`&amp;#39;` → `&#39;` → `'`)도 있어 최대 2회 푼다.
+    무한 반복하지 않는 이유는, 본문에 `&amp;` 를 글자로 쓴 공고를 망가뜨리지 않기 위해서다.
+    """
+    s = str(v or "").strip()
+    for _ in range(2):
+        if not _re.search(r"&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]{2,8});", s):
+            break
+        s = _html.unescape(s)
+    return _re.sub(r"\s+", " ", s).strip()
 
 
 class BaseScraper:
@@ -209,7 +229,11 @@ class BaseScraper:
 
     def _save_item(self, item: Dict[str, Any], db_conn) -> bool:
         """announcements 테이블에 저장 (origin_url 중복 시 UPDATE)."""
-        title = (item.get("title") or "").strip()
+        # HTML 엔티티를 여기서 푼다 — 저장 관문 한 곳에서만.
+        # 수집기 39개 중 unescape 를 하는 것은 4개뿐이어서, 나머지에서 들어온 제목이
+        # 화면에 &#39; · &amp; 그대로 보였다(2026-08-25 대표 제보, DB 214건).
+        # 수집기마다 고치면 새로 만들 때 또 빠진다. 관문에서 막는다.
+        title = _unescape_text(item.get("title"))
         origin_url = (item.get("origin_url") or "").strip()
         if not title or not origin_url:
             return False
@@ -262,13 +286,13 @@ class BaseScraper:
             (
                 title[:500],
                 origin_url,
-                (item.get("department") or self.display_name),
+                (_unescape_text(item.get("department")) or self.display_name),
                 region,
                 category,
                 target_type,  # NULL이면 AI 분류(ai_classify_pending)가 처리
-                (item.get("support_amount") or None),
+                (_unescape_text(item.get("support_amount")) or None),
                 _dl_date,
-                (item.get("summary_text") or "")[:4000] or None,
+                _unescape_text(item.get("summary_text"))[:4000] or None,
                 f"scraper:{self.name}",
                 _dl_type,
                 _dl_raw,

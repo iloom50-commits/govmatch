@@ -37,12 +37,18 @@ export async function ensurePushSubscribed(businessNumber: string): Promise<bool
     }
 
     const subJson = sub.toJSON();
-    await fetch(`${API}/api/push/subscribe`, {
+    // ★ 서버 저장 결과를 확인한다.
+    //   전에는 .catch(()=>{}) 로 삼키고 무조건 true 를 돌려줬다. 서버에 구독이
+    //   저장되지 않아도 화면의 토글은 켜졌고, 사용자는 알림이 오는 줄 알았다
+    //   (2026-08-25 대표 제보 — "설정해도 저장되었다는 메시지가 없다").
+    //   브라우저 구독만으로는 알림이 오지 않는다. 서버에 endpoint 가 있어야 한다.
+    const res = await fetch(`${API}/api/push/subscribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ business_number: businessNumber, endpoint: subJson.endpoint, keys: subJson.keys }),
-    }).catch(() => {});
-    return true;
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null);
+    return !!res && res.ok;
   } catch {
     return false;
   }

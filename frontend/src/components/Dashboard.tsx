@@ -658,10 +658,15 @@ export default function Dashboard({ matches, profile, onEditProfile, onLogout, p
         const bn = profile?.business_number;
         const ok = bn ? await enableWebPush(bn) : false;
         setPushEnabled(ok);
-        if (!ok) setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
+        // 켜졌으면 켜졌다고 말한다 — 전에는 성공 시 토글 색만 바뀌어서
+        // 「저장된 것인지」 알 수 없었다(2026-08-25 대표 제보).
+        if (ok) toast("푸시 알림을 켰습니다 ✓ 상담 완료·맞춤 공고를 브라우저로 받습니다", "success");
+        else setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
       } else {
-        await disableWebPush();
+        const off = await disableWebPush();
         setPushEnabled(false);
+        toast(off ? "푸시 알림을 껐습니다" : "끄는 중 문제가 있었어요 — 다시 시도해 주세요",
+              off ? "info" : "error");
       }
     } finally {
       setPushLoading(false);

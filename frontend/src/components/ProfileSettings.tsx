@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useModalBack } from "@/hooks/useModalBack";
 import { enableWebPush, disableWebPush, isPushSubscribed, isPushSupported } from "@/lib/push";
 import PushEnableGuide from "./PushEnableGuide";
+import { useToast } from "@/components/ui/Toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -29,6 +30,7 @@ interface ProfileSettingsProps {
 }
 
 export default function ProfileSettings({ profile, onSave, onClose, onLogout, onCharge, planStatus }: ProfileSettingsProps) {
+  const { toast } = useToast();
   useModalBack(true, onClose);
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -71,10 +73,13 @@ export default function ProfileSettings({ profile, onSave, onClose, onLogout, on
         const bn = profile?.business_number;
         const ok = bn ? await enableWebPush(bn) : false;
         setPushEnabled(ok);
-        if (!ok) setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
+        // 성공했으면 성공했다고 말한다(2026-08-25 대표 제보 — 켜도 아무 메시지가 없었다)
+        if (ok) toast("푸시 알림을 켰습니다 ✓", "success");
+        else setShowPushGuide(true);  // 권한 차단·iOS 등 → 켜는 방법 안내
       } else {
-        await disableWebPush();
+        const off = await disableWebPush();
         setPushEnabled(false);
+        toast(off ? "푸시 알림을 껐습니다" : "끄는 중 문제가 있었어요", off ? "info" : "error");
       }
     } finally {
       setPushLoading(false);

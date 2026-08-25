@@ -413,10 +413,12 @@ export default function NotificationModal({
       if (enabled) {
         const ok = await enableWebPush(businessNumber);
         setPushEnabled(ok);
-        if (!ok) toast("푸시 알림 권한이 없습니다. 브라우저 설정에서 허용해주세요.", "error");
+        if (ok) toast("푸시 알림을 켰습니다 ✓", "success");
+        else toast("푸시 알림을 켜지 못했습니다. 브라우저 알림 권한을 확인해 주세요.", "error");
       } else {
-        await disableWebPush();
+        const off = await disableWebPush();
         setPushEnabled(false);
+        toast(off ? "푸시 알림을 껐습니다" : "끄는 중 문제가 있었어요", off ? "info" : "error");
       }
     } finally {
       setPushLoading(false);

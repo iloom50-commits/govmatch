@@ -297,23 +297,33 @@ class CistepScraper(BaseScraper):
     origin_url_prefix = "https://www.cistep.re.kr"
 
     def fetch_items(self) -> List[Dict[str, Any]]:
+        # ★ 공고 링크는 sprt_biz_idx= 를 쓴다. 메뉴는 contents/read.do?pd_pkid= 다.
+        #   전에는 a[href*='read.do'] 로 잡아 좌측 메뉴·푸터까지 긁었고,
+        #   그 결과 「원장 인사말」·「조직도」·「오시는 길」 같은 것이 공고로 저장됐다
+        #   (2026-08-26 실측: DB 의 cistep 9건이 전부 사이트 소개 페이지였다).
+        #   「39일째 신규 0건」이 아니라 처음부터 공고를 가져온 적이 없었다.
         base = "https://www.cistep.re.kr/gnb01/lnb01/list.do"
         results = []
+        seen: set = set()
         for page in range(1, 6):
             soup = _get(f"{base}?pageIndex={page}")
-            links = soup.select("a[href*='read.do']")
+            links = soup.select("a[href*='sprt_biz_idx=']")
             if not links:
                 break
             found = False
             for a in links:
-                title = _clean(a.get_text())
-                if not title or _EXCLUDE_KW.search(title):
-                    continue
                 href = a.get("href", "")
+                if href in seen:
+                    continue
+                seen.add(href)
+                # 제목은 링크 자체보다 안쪽 strong 에 들어 있다
+                node = a.find("strong") or a
+                title = _clean(node.get_text())
+                if not title or len(title) < 5 or _EXCLUDE_KW.search(title):
+                    continue
                 url = f"https://www.cistep.re.kr{href}" if href.startswith("/") else href
-                tr = a.find_parent("tr")
-                tds = tr.find_all("td") if tr else []
-                date = _parse_date(" ".join(td.get_text() for td in tds))
+                tr = a.find_parent("tr") or a.find_parent("li")
+                date = _parse_date(_clean(tr.get_text())) if tr else None
                 results.append(_item(title, url, date, region="천안시"))
                 found = True
             if not found:

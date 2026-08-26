@@ -66,8 +66,17 @@ class _CceiRegionScraper(BaseScraper):
         items: List[Dict[str, Any]] = []
         page = 1
         seen: set = set()
+        scanned = 0          # 훑은 게시물 수(걸러진 것 포함)
 
-        while len(items) < 30:
+        # ★ 「지원사업을 30건 모을 때까지」로 센다. 전에는 훑은 건수로 세어
+        #   30건에서 멈췄는데, 그 30건이 채용 공고로 채워지면 지원사업에 닿지 못했다.
+        #   실측(2026-08-26): chungbuk 60건 중 채용 등 32건 · 지원사업 20건,
+        #   jeonbuk 60건 중 채용 33건 · 지원사업 26건.
+        #   최신 공고가 「(사)창조경제혁신센터협의회 직원 채용」으로 도배돼 있어
+        #   두 곳 모두 7월 말 이후 신규 0건이었다(사이트에는 지원사업이 있었다).
+        #   훑는 상한(MAX_SCAN)은 두어 무한정 돌지 않게 한다.
+        MAX_SCAN = 120
+        while len(items) < 30 and scanned < MAX_SCAN:
             try:
                 resp = requests.post(
                     api_url,
@@ -86,6 +95,7 @@ class _CceiRegionScraper(BaseScraper):
                 break
 
             for row in rows:
+                scanned += 1
                 seq = str(row.get("SEQ", ""))
                 if not seq or seq in seen:
                     continue
@@ -120,7 +130,9 @@ class _CceiRegionScraper(BaseScraper):
 
             total = int(result.get("size", 0))
             row_size = int(result.get("rowSize", 5))
-            if page * row_size >= total or page >= 6:
+            # page 상한을 6(=30건)에서 올린다. MAX_SCAN 이 실제 상한 역할을 하므로
+            # 지원사업이 일찍 모이면 여기까지 오지 않는다 — 정상인 센터는 전처럼 빨리 끝난다.
+            if page * row_size >= total or page >= 24:
                 break
             page += 1
 

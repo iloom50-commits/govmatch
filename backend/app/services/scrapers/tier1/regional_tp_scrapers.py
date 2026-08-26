@@ -518,6 +518,13 @@ class JejuTpScraper(BaseScraper):
     name = "jejutp"
     display_name = "제주테크노파크(JTP)"
     origin_url_prefix = f"{_JEJU_BASE}/board/business/detail/"
+    # 이 API 는 최신순이 아니다 — 실측(2026-08-26) page=0 의 id 순서가
+    #   5383, 5350, 5274, 5401 … 처럼 뒤죽박죽이고, createdDate 도
+    #   07-08 → 05-29 → 02-25 → 08-26 순으로 섞여 나온다.
+    # base.run() 의 「연속 5건 기존이면 중단」은 최신순을 가정한 최적화라
+    # 여기서는 앞쪽 옛 공고에 막혀 뒤의 새 공고에 닿지 못한다.
+    # 그래서 45일째 신규 0건이었다(사이트에는 08-26 등록 공고가 있었다).
+    skip_consecutive_break = True
 
     def fetch_items(self) -> List[Dict[str, Any]]:
         import datetime as _dt
@@ -542,9 +549,6 @@ class JejuTpScraper(BaseScraper):
             if not content:
                 break
 
-            found_new = False
-            all_expired = True
-
             for item in content:
                 post_id = str(item.get("id", ""))
                 if not post_id or post_id in seen:
@@ -560,9 +564,6 @@ class JejuTpScraper(BaseScraper):
                             continue
                     except Exception:
                         pass
-                    all_expired = False
-                else:
-                    all_expired = False
 
                 title = (item.get("annoName") or item.get("businessName") or "").strip()
                 if not title or len(title) < 5:
@@ -570,7 +571,6 @@ class JejuTpScraper(BaseScraper):
                 if _EXCLUDE_KW.search(title):
                     continue
 
-                found_new = True
                 items.append({
                     "title": title[:400],
                     "origin_url": f"{_JEJU_BASE}/board/business/detail/{post_id}",
@@ -582,9 +582,10 @@ class JejuTpScraper(BaseScraper):
                     "support_amount": None,
                 })
 
-            if all_expired:
-                break
-            if not found_new:
+            # 최신순이 아니므로 「이 페이지에 쓸 게 없다 → 다음도 없다」가 성립하지 않는다.
+            # 전에는 all_expired / not found_new 로 끊었는데, 앞 페이지에 옛 공고가 몰리면
+            # 뒤의 새 공고를 못 봤다. 대신 충분히 모이면 멈춘다(무한정 훑지 않기 위해).
+            if len(items) >= 60:
                 break
 
         return items

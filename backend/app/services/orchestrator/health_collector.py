@@ -59,7 +59,7 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
     # 1. 파이프라인 마지막 실행
     try:
         cur.execute("""
-            SELECT created_at, result,
+            SELECT created_at, result, detail,
                    EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400 AS age_days
             FROM system_logs WHERE action IN ('daily_pipeline', 'pipeline_run')
             ORDER BY created_at DESC LIMIT 1
@@ -74,7 +74,24 @@ def collect_health(db_conn, run_canary: bool = True) -> dict:
             if age > STALE_DAYS:
                 alerts.append(f"🚨 파이프라인 {age:.0f}일째 미실행 (마지막 {r['created_at']:%m-%d %H:%M})")
             elif r["result"] and str(r["result"]) not in ("success", "ok"):
-                alerts.append(f"🚨 파이프라인 마지막 실행 결과: {r['result']}")
+                # 「partial」 만으로는 무엇이 죽었는지 알 수 없어 매번 되물어야 했다.
+                # 실패 단계 이름과 사유는 이미 이 로그의 detail 에 들어 있다 —
+                # errors: ["④ 공고 분석 실패: IndexError: tuple index out of range"]
+                # (2026-08-26: ④단계가 이틀간 죽어 있었는데 메일만 보고는 알 수 없었다)
+                _reasons = []
+                try:
+                    import json as _json
+                    _d = r["detail"]
+                    _d = _json.loads(_d) if isinstance(_d, str) else (_d or {})
+                    _reasons = [str(x)[:110] for x in (_d.get("errors") or [])][:3]
+                    h["pipeline"]["error_count"] = _d.get("error_count")
+                    h["pipeline"]["failed_steps"] = _reasons
+                except Exception:
+                    pass
+                if _reasons:
+                    alerts.append("🚨 파이프라인 부분 실패 — " + " / ".join(_reasons))
+                else:
+                    alerts.append(f"🚨 파이프라인 마지막 실행 결과: {r['result']}")
     except Exception as e:
         alerts.append("⚠️ 파이프라인 상태 조회 실패")
         h["pipeline"] = {"error": str(e)[:80]}

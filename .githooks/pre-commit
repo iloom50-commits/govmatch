@@ -30,4 +30,13 @@ if ! python -m ruff check app/ --no-cache -q; then
   echo "  (정말 급하면  git commit --no-verify)"
   exit 1
 fi
+
+# SQL 문자열 안의 홀로 쓰인 퍼센트 기호 — psycopg2 가 포맷 지정자로 해석해 IndexError.
+# 주석에 쓴 한 글자 때문에 일일 파이프라인 ④단계가 이틀간 죽었다(2026-08-25·26).
+# ruff 도 py_compile 도 못 잡는다 — 구문 오류가 아니라 실행 시점 오류다.
+if ! python scripts/check_sql_percent.py; then
+  echo ""
+  echo "  고친 뒤 다시 커밋하십시오.   (정말 급하면  git commit --no-verify)"
+  exit 1
+fi
 exit 0

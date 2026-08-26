@@ -42,7 +42,12 @@ def recover_failed_analyses(db_conn, max_retries: int = 50) -> Dict[str, Any]:
           AND af.retry_count < 5
           AND (af.next_retry_at IS NULL OR af.next_retry_at <= CURRENT_TIMESTAMP)
           -- 마감이 지난 공고는 분석해도 쓸 데가 없다. 실측(2026-08-24): 최근 7일 분석
-          -- 388건 중 54건(14%)이 이미 마감된 공고였다. 그만큼 슬롯과 토큰을 버렸다.
+          -- 388건 중 54건이 이미 마감된 공고였다. 그만큼 슬롯과 토큰을 버렸다.
+          -- ★ 이 SQL 문자열 안에 퍼센트 기호를 쓰지 말 것.
+          --   psycopg2 는 쿼리를 파이썬 포맷 연산으로 처리하므로, 주석이라도
+          --   포맷 지정자로 해석해 IndexError 가 난다. 그 한 글자 때문에
+          --   파이프라인 ④단계가 이틀간 죽었다(08-25·08-26).
+          --   검사: python scripts/check_sql_percent.py
           AND (a.deadline_date IS NULL OR a.deadline_date >= CURRENT_DATE)
         -- 마감이 임박한 것부터. 마감일이 없는 것은 그다음(원문을 열어야 마감을 알 수 있다).
         ORDER BY (a.deadline_date IS NULL), a.deadline_date ASC, af.next_retry_at NULLS FIRST
